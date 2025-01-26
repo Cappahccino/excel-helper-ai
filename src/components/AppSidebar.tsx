@@ -70,7 +70,7 @@ export function AppSidebar() {
             onClick={handleSignOut}
             className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className={`transition-all duration-200 ${open ? 'h-4 w-4' : 'h-6 w-6'}`} />
             <motion.span
               animate={{
                 display: open ? "inline-block" : "none",
