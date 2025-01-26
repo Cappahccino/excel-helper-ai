@@ -20,7 +20,7 @@ export default {
     extend: {
       fontFamily: {
         bricolage: ["Bricolage Grotesque", "sans-serif"],
-        'gt-super': ["GT Super", "serif"],
+        'open-sans': ["Open Sans", "sans-serif"],
       },
       colors: {
         "color-1": "hsl(var(--color-1))",
