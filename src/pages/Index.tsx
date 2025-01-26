@@ -1,5 +1,6 @@
 import { FileUpload } from "@/components/FileUpload";
 import { Chat } from "@/components/Chat";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   return (
@@ -13,6 +14,9 @@ const Index = () => {
             <p className="text-balance text-center text-muted-foreground lg:text-lg max-w-2xl">
               Upload your Excel file and get instant help with formulas, analysis, and troubleshooting. Our AI assistant is here to make Excel easy.
             </p>
+            <Button size="lg" className="mt-4">
+              Get Started
+            </Button>
           </div>
 
           <div className="mt-16 w-full max-w-4xl space-y-8 p-4">
