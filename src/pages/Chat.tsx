@@ -56,7 +56,7 @@ const Chat = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16 items-center">
                 <div className="flex items-center gap-4">
-                  <h1 className="text-xl font-bold">Excel Helper</h1>
+                  <h1 className="text-xl font-bold text-excel font-bricolage">I hate excel</h1>
                 </div>
                 <Button
                   variant="ghost"
