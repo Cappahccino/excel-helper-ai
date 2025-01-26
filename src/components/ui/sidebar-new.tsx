@@ -157,7 +157,6 @@ export const SidebarLink = ({
   link,
   className,
   onClick,
-  ...props
 }: {
   link: Links;
   className?: string;
@@ -172,7 +171,6 @@ export const SidebarLink = ({
         className
       )}
       onClick={onClick}
-      {...props}
     >
       {link.icon}
       <motion.span
