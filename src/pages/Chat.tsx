@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { FileUpload } from "@/components/FileUpload";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Upload, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
+import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 
 const Chat = () => {
   const navigate = useNavigate();
@@ -91,10 +90,6 @@ const Chat = () => {
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="space-y-8">
-          <FileUpload />
         </div>
       </main>
     </div>
