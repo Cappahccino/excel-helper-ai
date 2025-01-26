@@ -1,9 +1,28 @@
 import { useState } from "react";
-import { Send } from "lucide-react";
+import { Send, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+
+// Define allowed Excel file extensions
+const ALLOWED_EXCEL_EXTENSIONS = [
+  '.xlsx', // Excel Workbook
+  '.xlsm', // Excel Macro-Enabled Workbook
+  '.xlsb', // Excel Binary Workbook
+  '.xltx', // Template
+  '.xltm', // Template with macros
+  '.xls',  // Excel 97-2003 Workbook
+  '.xlt',  // Excel 97-2003 Template
+  '.xml',  // XML Spreadsheet 2003
+  '.xlam', // Excel Add-In
+  '.xla',  // Excel 97-2003 Add-In
+  '.xlw',  // Excel 4.0 Workbook
+  '.xlr',  // Works spreadsheet
+  '.csv'   // CSV file
+];
 
 export function Chat() {
   const [message, setMessage] = useState("");
+  const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -13,10 +32,32 @@ export function Chat() {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    if (!ALLOWED_EXCEL_EXTENSIONS.includes(fileExtension)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload only Excel compatible files",
+        variant: "destructive",
+      });
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    // Handle the valid Excel file upload here
+    toast({
+      title: "File uploaded",
+      description: `Successfully uploaded ${file.name}`,
+    });
+  };
+
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm border">
       <div className="h-[400px] p-4 overflow-y-auto">
-        {/* Chat messages will go here */}
         <div className="flex flex-col gap-4">
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
             <p className="text-sm">Hello! Upload an Excel file and I'll help you analyze it.</p>
@@ -24,7 +65,24 @@ export function Chat() {
         </div>
       </div>
       <form onSubmit={handleSubmit} className="border-t p-4">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <div className="relative">
+            <input
+              type="file"
+              accept={ALLOWED_EXCEL_EXTENSIONS.join(',')}
+              onChange={handleFileUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              aria-label="Upload Excel file"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </div>
           <input
             type="text"
             value={message}
