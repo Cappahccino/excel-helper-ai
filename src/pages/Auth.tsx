@@ -43,7 +43,7 @@ const Auth = () => {
           password,
         });
         if (error) throw error;
-        navigate("/");
+        navigate("/chat");
       }
     } catch (error: any) {
       toast({
