@@ -1,5 +1,5 @@
 import { LayoutDashboard, UserCog, Settings, LogOut } from "lucide-react";
-import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
+import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -30,17 +30,24 @@ export function AppSidebar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <Sidebar defaultOpen={open} onOpenChange={setOpen}>
-      <SidebarBody className="justify-between gap-10">
+    <SidebarProvider defaultOpen={open} onOpenChange={setOpen}>
+      <Sidebar>
         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
           <div className="h-5 w-6 bg-black dark:bg-white rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm flex-shrink-0" />
           <div className="mt-8 flex flex-col gap-2">
             {links.map((link, idx) => (
-              <SidebarLink key={idx} link={link} />
+              <a
+                key={idx}
+                href={link.href}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50"
+              >
+                {link.icon}
+                <span>{link.label}</span>
+              </a>
             ))}
           </div>
         </div>
-      </SidebarBody>
-    </Sidebar>
+      </Sidebar>
+    </SidebarProvider>
   );
 }
