@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,11 +13,58 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useId } from "react";
 import { IconBrandGoogle } from "@tabler/icons-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 export function SignUpDialog() {
   const id = useId();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success!",
+        description: "Please check your email to verify your account.",
+      });
+      
+      setOpen(false);
+      navigate("/chat");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="bg-green-500 text-white hover:bg-green-600">Sign up</Button>
       </DialogTrigger>
@@ -44,15 +93,40 @@ export function SignUpDialog() {
           </DialogHeader>
         </div>
 
-        <form className="space-y-5">
+        <form onSubmit={handleSignUp} className="space-y-5">
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor={`${id}-name`}>Full name</Label>
-              <Input id={`${id}-name`} placeholder="John Doe" type="text" required />
+              <Label htmlFor={`${id}-name`}>First name</Label>
+              <Input 
+                id={`${id}-firstName`} 
+                placeholder="John" 
+                type="text" 
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${id}-lastName`}>Last name</Label>
+              <Input 
+                id={`${id}-lastName`} 
+                placeholder="Doe" 
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required 
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${id}-email`}>Email</Label>
-              <Input id={`${id}-email`} placeholder="john@example.com" type="email" required />
+              <Input 
+                id={`${id}-email`} 
+                placeholder="john@example.com" 
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required 
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${id}-password`}>Password</Label>
@@ -60,12 +134,14 @@ export function SignUpDialog() {
                 id={`${id}-password`}
                 placeholder="Enter your password"
                 type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
           </div>
-          <Button type="button" className="w-full">
-            Sign up
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Creating account..." : "Sign up"}
           </Button>
         </form>
 
