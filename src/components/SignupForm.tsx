@@ -3,7 +3,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  IconBrandGithub,
   IconBrandGoogle,
 } from "@tabler/icons-react";
 
@@ -53,16 +52,6 @@ export function SignupForm() {
         <div className="bg-gradient-to-r from-transparent via-neutral-300 to-transparent my-8 h-[1px] w-full" />
 
         <div className="flex flex-col space-y-4">
-          <button
-            className="relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50"
-            type="button"
-          >
-            <IconBrandGithub className="h-4 w-4 text-neutral-800" />
-            <span className="text-neutral-700 text-sm">
-              GitHub
-            </span>
-            <BottomGradient />
-          </button>
           <button
             className="relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50"
             type="button"
