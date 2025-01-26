@@ -51,7 +51,7 @@ const Chat = () => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-900 text-white">
         <AppSidebar />
-        <div className="flex-1 rounded-l-3xl bg-gray-800/30 backdrop-blur-sm">
+        <div className="flex-1">
           <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm fixed top-0 w-full z-50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16 items-center">
