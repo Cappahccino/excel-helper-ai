@@ -45,6 +45,11 @@ export function PlaceholdersAndVanishInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const handleButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    vanishAndSubmit();
+  };
+
   const startAnimation = () => {
     intervalRef.current = setInterval(() => {
       setCurrentPlaceholder((prev) => (prev + 1) % placeholders.length);
@@ -267,7 +272,7 @@ export function PlaceholdersAndVanishInput({
       />
 
       <button
-        onClick={handleSubmit}
+        onClick={handleButtonClick}
         className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 rounded-xl bg-black/5 dark:bg-white/5 py-1 px-1"
         type="button"
       >
