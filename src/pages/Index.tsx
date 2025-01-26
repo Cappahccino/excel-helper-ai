@@ -9,6 +9,9 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <nav className="w-full py-4 px-8 flex justify-end border-b bg-white">
+        <SignUpDialog />
+      </nav>
       <section className="flex items-center justify-center w-full py-20">
         <div className="container flex flex-col items-center justify-center">
           <div className="mx-auto flex max-w-screen-lg flex-col items-center gap-6 animate-fade-up">
@@ -18,12 +21,9 @@ const Index = () => {
             <p className="text-balance text-center text-muted-foreground lg:text-lg max-w-2xl">
               Upload your Excel file and get instant help with formulas, analysis, and troubleshooting. Our AI assistant is here to make Excel easy.
             </p>
-            <div className="flex gap-4">
-              <RainbowButton onClick={() => navigate("/auth")}>
-                Get Started
-              </RainbowButton>
-              <SignUpDialog />
-            </div>
+            <RainbowButton onClick={() => navigate("/auth")}>
+              Get Started
+            </RainbowButton>
           </div>
 
           <div className="mt-16 w-full max-w-4xl space-y-8 p-4">
