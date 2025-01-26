@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,14 +11,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useId } from "react";
-import { IconBrandGoogle } from "@tabler/icons-react";
 
-export function SignUpDialog() {
+export function SignInDialog() {
   const id = useId();
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="bg-green-500 text-white hover:bg-green-600">Sign up</Button>
+        <Button variant="outline">Sign in</Button>
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
@@ -37,9 +37,9 @@ export function SignUpDialog() {
             </svg>
           </div>
           <DialogHeader>
-            <DialogTitle className="sm:text-center">Sign up to Excel Helper</DialogTitle>
+            <DialogTitle className="sm:text-center">Welcome back</DialogTitle>
             <DialogDescription className="sm:text-center">
-              We just need a few details to get you started.
+              Enter your credentials to login to your account.
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -47,12 +47,8 @@ export function SignUpDialog() {
         <form className="space-y-5">
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor={`${id}-name`}>Full name</Label>
-              <Input id={`${id}-name`} placeholder="John Doe" type="text" required />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor={`${id}-email`}>Email</Label>
-              <Input id={`${id}-email`} placeholder="john@example.com" type="email" required />
+              <Input id={`${id}-email`} placeholder="hi@yourcompany.com" type="email" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${id}-password`}>Password</Label>
@@ -64,8 +60,19 @@ export function SignUpDialog() {
               />
             </div>
           </div>
+          <div className="flex justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Checkbox id={`${id}-remember`} />
+              <Label htmlFor={`${id}-remember`} className="font-normal text-muted-foreground">
+                Remember me
+              </Label>
+            </div>
+            <a className="text-sm underline hover:no-underline" href="#">
+              Forgot password?
+            </a>
+          </div>
           <Button type="button" className="w-full">
-            Sign up
+            Sign in
           </Button>
         </form>
 
@@ -73,18 +80,7 @@ export function SignUpDialog() {
           <span className="text-xs text-muted-foreground">Or</span>
         </div>
 
-        <Button variant="outline" className="w-full flex gap-2 items-center justify-center">
-          <IconBrandGoogle className="h-4 w-4" />
-          Continue with Google
-        </Button>
-
-        <p className="text-center text-xs text-muted-foreground">
-          By signing up you agree to our{" "}
-          <a className="underline hover:no-underline" href="#">
-            Terms
-          </a>
-          .
-        </p>
+        <Button variant="outline">Login with Google</Button>
       </DialogContent>
     </Dialog>
   );

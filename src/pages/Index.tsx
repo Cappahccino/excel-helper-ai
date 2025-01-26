@@ -3,13 +3,15 @@ import { Chat } from "@/components/Chat";
 import { RainbowButton } from "@/components/ui/rainbow-button";
 import { useNavigate } from "react-router-dom";
 import { SignUpDialog } from "@/components/SignUpDialog";
+import { SignInDialog } from "@/components/SignInDialog";
 
 const Index = () => {
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="w-full py-4 px-8 flex justify-end border-b bg-white">
+      <nav className="w-full py-4 px-8 flex items-center justify-end gap-4 border-b bg-white">
+        <SignInDialog />
         <SignUpDialog />
       </nav>
       <section className="flex items-center justify-center w-full py-20">
