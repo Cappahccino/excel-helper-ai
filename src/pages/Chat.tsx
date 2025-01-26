@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -58,6 +59,15 @@ const Chat = () => {
                   <SidebarTrigger />
                   <h1 className="text-xl font-bold">Excel Helper</h1>
                 </div>
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    navigate("/");
+                  }}
+                >
+                  Sign Out
+                </Button>
               </div>
             </div>
           </nav>
