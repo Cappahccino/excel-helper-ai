@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { FileUpload } from "@/components/FileUpload";
-import { Chat as ChatComponent } from "@/components/Chat";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -96,7 +95,6 @@ const Chat = () => {
 
         <div className="space-y-8">
           <FileUpload />
-          <ChatComponent />
         </div>
       </main>
     </div>
