@@ -4,6 +4,7 @@ import {
   BookOpen,
   ArrowUpRight,
   CreditCard,
+  Plus,
 } from "lucide-react";
 import {
   Sidebar,
@@ -19,7 +20,7 @@ import {
 const items = [
   {
     title: "New Chat",
-    icon: MessageSquare,
+    icon: Plus,
     url: "/chat",
   },
   {
@@ -55,10 +56,10 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
-          <SidebarGroupContent>
+          <SidebarGroupContent className="space-y-4">
             <SidebarMenu>
               {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.title} className="py-1">
                   <SidebarMenuButton asChild>
                     <a href={item.url}>
                       <item.icon className="h-4 w-4" />
