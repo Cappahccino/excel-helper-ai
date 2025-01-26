@@ -2,6 +2,7 @@ import { FileUpload } from "@/components/FileUpload";
 import { Chat } from "@/components/Chat";
 import { RainbowButton } from "@/components/ui/rainbow-button";
 import { useNavigate } from "react-router-dom";
+import { SignUpDialog } from "@/components/SignUpDialog";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -17,9 +18,12 @@ const Index = () => {
             <p className="text-balance text-center text-muted-foreground lg:text-lg max-w-2xl">
               Upload your Excel file and get instant help with formulas, analysis, and troubleshooting. Our AI assistant is here to make Excel easy.
             </p>
-            <RainbowButton onClick={() => navigate("/auth")}>
-              Get Started
-            </RainbowButton>
+            <div className="flex gap-4">
+              <RainbowButton onClick={() => navigate("/auth")}>
+                Get Started
+              </RainbowButton>
+              <SignUpDialog />
+            </div>
           </div>
 
           <div className="mt-16 w-full max-w-4xl space-y-8 p-4">
