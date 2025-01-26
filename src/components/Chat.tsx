@@ -20,7 +20,11 @@ const ALLOWED_EXCEL_EXTENSIONS = [
   '.csv'   // CSV file
 ];
 
-export function Chat() {
+interface ChatProps {
+  onFileUpload?: (file: File) => Promise<string | null>;
+}
+
+export function Chat({ onFileUpload }: ChatProps) {
   const [message, setMessage] = useState("");
   const { toast } = useToast();
 
@@ -32,7 +36,7 @@ export function Chat() {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -48,11 +52,15 @@ export function Chat() {
       return;
     }
 
-    // Handle the valid Excel file upload here
-    toast({
-      title: "File uploaded",
-      description: `Successfully uploaded ${file.name}`,
-    });
+    if (onFileUpload) {
+      const filePath = await onFileUpload(file);
+      if (filePath) {
+        toast({
+          title: "File uploaded",
+          description: `Successfully uploaded ${file.name}`,
+        });
+      }
+    }
   };
 
   return (

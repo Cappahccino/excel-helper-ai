@@ -3,23 +3,51 @@ import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { Chat as ChatComponent } from "@/components/Chat";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
-
-  const placeholders = [
-    "Add a file or start chat...",
-    "Summarise the data in my sheet",
-    "Sum column C when when rows in Column B equal June",
-  ];
+  const { toast } = useToast();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     // Handle form submission
+  };
+
+  const handleFileUpload = async (file: File) => {
+    try {
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('excel_files')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      toast({
+        title: "Success",
+        description: "File uploaded successfully",
+      });
+
+      return filePath;
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload file",
+        variant: "destructive",
+      });
+      return null;
+    }
   };
 
   const workflows = [
@@ -66,11 +94,7 @@ const Chat = () => {
                     What do you need help analyzing?
                   </h2>
                   <div className="max-w-2xl mx-auto">
-                    <PlaceholdersAndVanishInput
-                      placeholders={placeholders}
-                      onChange={handleChange}
-                      onSubmit={handleSubmit}
-                    />
+                    <ChatComponent onFileUpload={handleFileUpload} />
                   </div>
                 </div>
 
