@@ -23,7 +23,7 @@ const Index = () => {
       <section className="flex items-center justify-center w-full py-20">
         <div className="container flex flex-col items-center justify-center">
           <div className="mx-auto flex max-w-screen-lg flex-col items-center gap-6 animate-fade-up">
-            <h2 className="text-center text-4xl font-light tracking-tight lg:text-6xl text-black">
+            <h2 className="text-center text-4xl font-light tracking-tight lg:text-6xl text-black font-gt-super">
               Analyze and make sense of your Excel files
             </h2>
             <p className="text-balance text-center text-muted-foreground lg:text-lg max-w-2xl">
