@@ -73,50 +73,52 @@ const Chat = () => {
 
           <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto">
-              <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold mb-4">
-                  What do you need help analyzing?
-                </h2>
-                <div className="max-w-2xl mx-auto">
-                  <PlaceholdersAndVanishInput
-                    placeholders={placeholders}
-                    onChange={handleChange}
-                    onSubmit={handleSubmit}
-                  />
-                </div>
-              </div>
-
-              <div className="mb-12">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold">
-                    Or start from ready workflows
-                  </h3>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search workflows..."
-                      className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
+              <div className="bg-gray-800/30 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
+                <div className="text-center mb-12">
+                  <h2 className="text-3xl font-bold mb-4">
+                    What do you need help analyzing?
+                  </h2>
+                  <div className="max-w-2xl mx-auto">
+                    <PlaceholdersAndVanishInput
+                      placeholders={placeholders}
+                      onChange={handleChange}
+                      onSubmit={handleSubmit}
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {workflows.map((workflow, index) => (
-                    <div
-                      key={index}
-                      className="p-6 rounded-lg border border-gray-800 bg-gray-800/50 hover:bg-gray-800/70 transition-colors cursor-pointer"
-                    >
-                      <div className="mb-4 text-blue-400">{workflow.icon}</div>
-                      <h4 className="text-lg font-semibold mb-2">
-                        {workflow.title}
-                      </h4>
-                      <p className="text-gray-400 text-sm mb-4">
-                        {workflow.description}
-                      </p>
-                      <p className="text-xs text-gray-500">{workflow.runs}</p>
+                <div className="mb-12">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold">
+                      Or start from ready workflows
+                    </h3>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search workflows..."
+                        className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
+                      />
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {workflows.map((workflow, index) => (
+                      <div
+                        key={index}
+                        className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/50 hover:bg-gray-800/70 transition-colors cursor-pointer backdrop-blur-sm"
+                      >
+                        <div className="mb-4 text-blue-400">{workflow.icon}</div>
+                        <h4 className="text-lg font-semibold mb-2">
+                          {workflow.title}
+                        </h4>
+                        <p className="text-gray-400 text-sm mb-4">
+                          {workflow.description}
+                        </p>
+                        <p className="text-xs text-gray-500">{workflow.runs}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
