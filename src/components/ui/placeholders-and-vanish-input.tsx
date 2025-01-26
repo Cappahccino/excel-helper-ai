@@ -3,6 +3,28 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { Paperclip, FileUp, X } from "lucide-react";
+
+interface FileDisplayProps {
+  fileName: string;
+  onClear: () => void;
+}
+
+function FileDisplay({ fileName, onClear }: FileDisplayProps) {
+  return (
+    <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 w-fit px-3 py-1 rounded-lg group border dark:border-white/10">
+      <FileUp className="w-4 h-4 dark:text-white" />
+      <span className="text-sm dark:text-white">{fileName}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="ml-1 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+      >
+        <X className="w-3 h-3 dark:text-white" />
+      </button>
+    </div>
+  );
+}
 
 export function PlaceholdersAndVanishInput({
   placeholders,
@@ -11,22 +33,35 @@ export function PlaceholdersAndVanishInput({
 }: {
   placeholders: string[];
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>, file?: File) => void;
 }) {
   const [currentPlaceholder, setCurrentPlaceholder] = useState(0);
-
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState("");
+  const [animating, setAnimating] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const newDataRef = useRef<any[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    vanishAndSubmit();
+  };
+
   const startAnimation = () => {
     intervalRef.current = setInterval(() => {
       setCurrentPlaceholder((prev) => (prev + 1) % placeholders.length);
     }, 3000);
   };
+
   const handleVisibilityChange = () => {
     if (document.visibilityState !== "visible" && intervalRef.current) {
-      clearInterval(intervalRef.current); // Clear the interval when the tab is not visible
+      clearInterval(intervalRef.current);
       intervalRef.current = null;
     } else if (document.visibilityState === "visible") {
-      startAnimation(); // Restart the interval when the tab becomes visible
+      startAnimation();
     }
   };
 
@@ -42,11 +77,19 @@ export function PlaceholdersAndVanishInput({
     };
   }, [placeholders]);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const newDataRef = useRef<any[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState("");
-  const [animating, setAnimating] = useState(false);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const draw = useCallback(() => {
     if (!inputRef.current) return;
@@ -172,8 +215,9 @@ export function PlaceholdersAndVanishInput({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     vanishAndSubmit();
-    onSubmit && onSubmit(e);
+    onSubmit && onSubmit(e, selectedFile || undefined);
   };
+
   return (
     <form
       className={cn(
@@ -182,9 +226,30 @@ export function PlaceholdersAndVanishInput({
       )}
       onSubmit={handleSubmit}
     >
+      {selectedFile && (
+        <div className="absolute -top-12 left-0">
+          <FileDisplay fileName={selectedFile.name} onClear={clearFile} />
+        </div>
+      )}
+      
+      <div
+        className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 flex items-center justify-center h-7 sm:h-8 w-7 sm:w-8 rounded-lg bg-black/5 dark:bg-white/5 hover:cursor-pointer"
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <Paperclip className="w-3.5 sm:w-4 h-3.5 sm:h-4 transition-opacity transform scale-x-[-1] rotate-45 dark:text-white" />
+      </div>
+
+      <input
+        type="file"
+        className="hidden"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        accept=".xlsx,.xls,.csv"
+      />
+
       <canvas
         className={cn(
-          "absolute pointer-events-none  text-base transform scale-50 top-[20%] left-2 sm:left-8 origin-top-left filter invert dark:invert-0 pr-20",
+          "absolute pointer-events-none text-base transform scale-50 top-[20%] left-2 sm:left-8 origin-top-left filter invert dark:invert-0 pr-20",
           !animating ? "opacity-0" : "opacity-100"
         )}
         ref={canvasRef}
@@ -201,46 +266,22 @@ export function PlaceholdersAndVanishInput({
         value={value}
         type="text"
         className={cn(
-          "w-full relative text-sm sm:text-base z-50 border-none dark:text-white bg-transparent text-black h-full rounded-full focus:outline-none focus:ring-0 pl-4 sm:pl-10 pr-20",
+          "w-full relative text-sm sm:text-base z-50 border-none dark:text-white bg-transparent text-black h-full rounded-full focus:outline-none focus:ring-0 pl-12 sm:pl-16 pr-20",
           animating && "text-transparent dark:text-transparent"
         )}
       />
 
       <button
-        disabled={!value}
-        type="submit"
-        className="absolute right-2 top-1/2 z-50 -translate-y-1/2 h-8 w-8 rounded-full disabled:bg-gray-100 bg-black dark:bg-zinc-900 dark:disabled:bg-zinc-800 transition duration-200 flex items-center justify-center"
+        onClick={handleButtonClick}
+        className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 rounded-xl bg-black/5 dark:bg-white/5 py-1 px-1"
+        type="button"
       >
-        <motion.svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-gray-300 h-4 w-4"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <motion.path
-            d="M5 12l14 0"
-            initial={{
-              strokeDasharray: "50%",
-              strokeDashoffset: "50%",
-            }}
-            animate={{
-              strokeDashoffset: value ? 0 : "50%",
-            }}
-            transition={{
-              duration: 0.3,
-              ease: "linear",
-            }}
-          />
-          <path d="M13 18l6 -6" />
-          <path d="M13 6l6 6" />
-        </motion.svg>
+        <Paperclip
+          className={cn(
+            "w-3.5 sm:w-4 h-3.5 sm:h-4 transition-opacity dark:text-white",
+            (value || selectedFile) ? "opacity-100" : "opacity-30"
+          )}
+        />
       </button>
 
       <div className="absolute inset-0 flex items-center rounded-full pointer-events-none">
