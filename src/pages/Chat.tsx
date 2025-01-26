@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { toast } from "sonner";
 
 const Chat = () => {
   const navigate = useNavigate();
@@ -19,8 +20,16 @@ const Chat = () => {
     setSearchQuery(e.target.value);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>, file?: File) => {
     e.preventDefault();
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("File size must be less than 5MB");
+        return;
+      }
+      // Handle file upload
+      console.log("File to upload:", file);
+    }
     // Handle form submission
   };
 
