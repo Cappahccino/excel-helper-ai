@@ -49,9 +49,9 @@ const Chat = () => {
   return (
     <div className="min-h-screen bg-gray-900 text-white flex">
       <AppSidebar />
-      <div className="flex-1 ml-[240px]"> {/* Added margin-left to account for sidebar width */}
-        <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm fixed top-0 right-0 left-[240px] z-50"> {/* Adjusted left position */}
-          <div className="px-4 sm:px-6 lg:px-8">
+      <div className="flex-1 ml-[240px]">
+        <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm fixed top-0 right-0 left-[240px] z-50">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16 items-center">
               <h1 className="text-xl font-bold">Excel Helper</h1>
               <Button
@@ -67,7 +67,7 @@ const Chat = () => {
           </div>
         </nav>
 
-        <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8">
+        <main className="container mx-auto pt-20 pb-8 px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">What do you need help analyzing?</h2>
             <div className="max-w-2xl mx-auto">
