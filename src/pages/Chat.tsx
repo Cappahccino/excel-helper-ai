@@ -2,12 +2,16 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
+import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
+import { AIInputWithFile } from "@/components/ui/ai-input-with-file";
 
 const Chat = () => {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState("");
+
+  const handleSubmit = (message: string, file?: File) => {
+    console.log('Message:', message);
+    console.log('File:', file);
+  };
 
   const workflows = [
     {
@@ -53,14 +57,10 @@ const Chat = () => {
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold mb-4">What do you want to analyze today?</h2>
           <div className="max-w-2xl mx-auto relative">
-            <Input
-              type="text"
+            <AIInputWithFile 
+              onSubmit={handleSubmit}
               placeholder="Add a file or start a conversation now and add files later..."
-              className="w-full bg-gray-800 border-gray-700 text-white pl-4 pr-12 py-6"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <Upload className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer" />
           </div>
         </div>
 
@@ -69,10 +69,10 @@ const Chat = () => {
             <h3 className="text-xl font-semibold">Or start from ready workflows</h3>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <Input
+              <input
                 type="text"
                 placeholder="Search workflows..."
-                className="pl-10 bg-gray-800 border-gray-700 text-white"
+                className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
               />
             </div>
           </div>
