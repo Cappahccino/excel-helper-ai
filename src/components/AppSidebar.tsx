@@ -57,7 +57,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      <SidebarBody className="justify-between gap-10 bg-[#1A1F2C]">
+      <SidebarBody className="justify-between gap-10 bg-gray-900">
         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
           <div className="mt-8 flex flex-col gap-2">
             {links.map((link, idx) => (
