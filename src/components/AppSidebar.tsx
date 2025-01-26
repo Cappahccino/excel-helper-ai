@@ -11,6 +11,7 @@ import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar-new";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
 const links = [
   {
