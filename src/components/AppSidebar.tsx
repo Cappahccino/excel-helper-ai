@@ -6,72 +6,56 @@ import {
   CreditCard,
   Plus,
 } from "lucide-react";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar-new";
+import { useState } from "react";
 
-const items = [
+const links = [
   {
-    title: "New Chat",
-    icon: Plus,
-    url: "/chat",
+    label: "New Chat",
+    href: "/chat",
+    icon: <Plus className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
   },
   {
-    title: "My Chats",
-    icon: MessageSquare,
-    url: "/chat",
+    label: "My Chats",
+    href: "/chat",
+    icon: <MessageSquare className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
   },
   {
-    title: "My Files",
-    icon: FileText,
-    url: "/files",
+    label: "My Files",
+    href: "/files",
+    icon: <FileText className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
   },
   {
-    title: "Documentation",
-    icon: BookOpen,
-    url: "/docs",
+    label: "Documentation",
+    href: "/docs",
+    icon: <BookOpen className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
   },
   {
-    title: "Upgrade Account",
-    icon: ArrowUpRight,
-    url: "/upgrade",
+    label: "Upgrade Account",
+    href: "/upgrade",
+    icon: <ArrowUpRight className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
   },
   {
-    title: "Account & Billing",
-    icon: CreditCard,
-    url: "/account",
+    label: "Account & Billing",
+    href: "/account",
+    icon: <CreditCard className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
   },
 ];
 
 export function AppSidebar() {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Sidebar>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
-          <SidebarGroupContent className="space-y-4">
-            <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title} className="py-1">
-                  <SidebarMenuButton asChild>
-                    <a href={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
+    <Sidebar open={open} setOpen={setOpen}>
+      <SidebarBody className="justify-between gap-10">
+        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="mt-8 flex flex-col gap-2">
+            {links.map((link, idx) => (
+              <SidebarLink key={idx} link={link} />
+            ))}
+          </div>
+        </div>
+      </SidebarBody>
     </Sidebar>
   );
 }
