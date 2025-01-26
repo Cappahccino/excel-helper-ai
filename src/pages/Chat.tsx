@@ -66,7 +66,7 @@ const Chat = () => {
 
       <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold mb-4">What do you want to analyze today?</h2>
+          <h2 className="text-3xl font-bold mb-4">What do you need help analyzing?</h2>
           <div className="max-w-2xl mx-auto">
             <PlaceholdersAndVanishInput
               placeholders={placeholders}
