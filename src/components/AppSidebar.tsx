@@ -30,7 +30,7 @@ export function AppSidebar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <Sidebar open={open} setOpen={setOpen}>
+    <Sidebar defaultOpen={open} onOpenChange={setOpen}>
       <SidebarBody className="justify-between gap-10">
         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
           <div className="h-5 w-6 bg-black dark:bg-white rounded-br-lg rounded-tr-sm rounded-tl-lg rounded-bl-sm flex-shrink-0" />
