@@ -1,14 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 
 const Chat = () => {
-  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
 
   const placeholders = [
@@ -58,15 +54,6 @@ const Chat = () => {
                 <div className="flex items-center gap-4">
                   <h1 className="text-xl font-bold text-excel font-bricolage">I hate excel</h1>
                 </div>
-                <Button
-                  variant="ghost"
-                  onClick={async () => {
-                    await supabase.auth.signOut();
-                    navigate("/");
-                  }}
-                >
-                  Sign Out
-                </Button>
               </div>
             </div>
           </nav>

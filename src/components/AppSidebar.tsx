@@ -5,9 +5,12 @@ import {
   ArrowUpRight,
   CreditCard,
   Plus,
+  LogOut,
 } from "lucide-react";
 import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar-new";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 const links = [
   {
@@ -44,6 +47,12 @@ const links = [
 
 export function AppSidebar() {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
@@ -53,6 +62,13 @@ export function AppSidebar() {
             {links.map((link, idx) => (
               <SidebarLink key={idx} link={link} />
             ))}
+            <button
+              onClick={handleSignOut}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
       </SidebarBody>
