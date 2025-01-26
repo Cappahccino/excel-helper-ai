@@ -1,7 +1,5 @@
-import { FileUpload } from "@/components/FileUpload";
-import { Chat } from "@/components/Chat";
-import { RainbowButton } from "@/components/ui/rainbow-button";
 import { useNavigate } from "react-router-dom";
+import { RainbowButton } from "@/components/ui/rainbow-button";
 import { SignUpDialog } from "@/components/SignUpDialog";
 import { SignInDialog } from "@/components/SignInDialog";
 
@@ -32,11 +30,6 @@ const Index = () => {
             <RainbowButton onClick={() => navigate("/auth")}>
               Get Started
             </RainbowButton>
-          </div>
-
-          <div className="mt-16 w-full max-w-4xl space-y-8 p-4">
-            <FileUpload />
-            <Chat />
           </div>
         </div>
       </section>
