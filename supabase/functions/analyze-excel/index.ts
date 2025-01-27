@@ -32,14 +32,9 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Extract the base64 data (remove data URL prefix if present)
-    const base64Data = fileContent.includes('base64,') 
-      ? fileContent.split('base64,')[1] 
-      : fileContent;
-
     try {
       // Convert base64 to binary
-      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      const binaryData = Uint8Array.from(atob(fileContent), c => c.charCodeAt(0));
       
       if (file) {
         // Generate a unique file path
@@ -101,7 +96,7 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',

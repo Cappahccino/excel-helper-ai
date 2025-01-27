@@ -27,15 +27,13 @@ export function Chat() {
       let fileData = null;
 
       if (uploadedFile) {
-        // Read file as ArrayBuffer and convert to base64
-        fileContent = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const arrayBuffer = reader.result;
-            resolve(arrayBuffer);
-          };
-          reader.readAsDataURL(uploadedFile);
-        });
+        // Read file as ArrayBuffer
+        const arrayBuffer = await uploadedFile.arrayBuffer();
+        // Convert ArrayBuffer to Base64
+        const base64String = btoa(
+          new Uint8Array(arrayBuffer)
+            .reduce((data, byte) => data + String.fromCharCode(byte), '')
+        );
 
         const session = await supabase.auth.getSession();
         const userId = session.data.session?.user.id;
@@ -50,11 +48,12 @@ export function Chat() {
           size: uploadedFile.size,
           userId
         };
+
+        fileContent = base64String;
       }
 
       console.log('Sending request to analyze-excel function');
       
-      // Call the edge function to analyze
       const { data, error } = await supabase.functions.invoke('analyze-excel', {
         body: { 
           fileContent,
