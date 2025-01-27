@@ -4,9 +4,20 @@ import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-van
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { ExcelPreview } from "@/components/ExcelPreview";
+import { supabase } from "@/integrations/supabase/client";
+
+const ALLOWED_EXCEL_EXTENSIONS = [
+  '.xlsx', '.xlsm', '.xlsb', '.xltx', '.xltm', '.xls', '.xlt',
+  '.xml', '.xlam', '.xla', '.xlw', '.xlr', '.csv'
+];
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { toast } = useToast();
 
   const placeholders = [
     "Add a file or start chat...",
@@ -18,31 +29,66 @@ const Chat = () => {
     setSearchQuery(e.target.value);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Handle form submission
+    if (!uploadedFile && !searchQuery.trim()) return;
+
+    try {
+      setIsAnalyzing(true);
+      
+      // Get the Excel content
+      const fileContent = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result);
+        reader.readAsText(uploadedFile as File);
+      });
+
+      // Call the edge function to analyze the file
+      const { data, error } = await supabase.functions.invoke('analyze-excel', {
+        body: { fileContent, userPrompt: searchQuery },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Analysis Complete",
+        description: data.analysis,
+      });
+
+      setSearchQuery("");
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze the file. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
-  const workflows = [
-    {
-      icon: <BarChart2 className="w-8 h-8" />,
-      title: "Quick Visualization",
-      description: "Visually explore your spreadsheet data",
-      runs: "42250 runs",
-    },
-    {
-      icon: <Table2 className="w-8 h-8" />,
-      title: "Data Cleaner",
-      description: "Methodically clean your data",
-      runs: "11000 runs",
-    },
-    {
-      icon: <FileSpreadsheet className="w-8 h-8" />,
-      title: "Extract Tables",
-      description: "Extract tables from spreadsheets",
-      runs: "4367 runs",
-    },
-  ];
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    if (!ALLOWED_EXCEL_EXTENSIONS.includes(fileExtension)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload only Excel compatible files",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadedFile(file);
+    toast({
+      title: "File uploaded",
+      description: `Successfully uploaded ${file.name}`,
+    });
+  };
 
   return (
     <SidebarProvider>
@@ -67,13 +113,23 @@ const Chat = () => {
                     What do you need help analyzing?
                   </h2>
                   <div className="max-w-2xl mx-auto flex items-center gap-4">
-                    <Button 
-                      variant="outline" 
-                      className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload File
-                    </Button>
+                    <input
+                      type="file"
+                      accept={ALLOWED_EXCEL_EXTENSIONS.join(',')}
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="excel-upload"
+                    />
+                    <label htmlFor="excel-upload">
+                      <Button 
+                        variant="outline" 
+                        className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
+                        onClick={() => document.getElementById('excel-upload')?.click()}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload File
+                      </Button>
+                    </label>
                     <PlaceholdersAndVanishInput
                       placeholders={placeholders}
                       onChange={handleChange}
@@ -81,6 +137,19 @@ const Chat = () => {
                     />
                   </div>
                 </div>
+
+                {uploadedFile && (
+                  <div className="mb-8">
+                    <ExcelPreview file={uploadedFile} />
+                  </div>
+                )}
+
+                {isAnalyzing && (
+                  <div className="flex items-center justify-center p-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+                    <span className="ml-2 text-sm text-gray-400">Analyzing...</span>
+                  </div>
+                )}
 
                 <div className="mb-12">
                   <div className="flex items-center justify-between mb-6">
