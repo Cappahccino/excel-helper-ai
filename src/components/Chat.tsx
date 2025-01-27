@@ -29,11 +29,10 @@ export function Chat() {
       if (uploadedFile) {
         // Read file as ArrayBuffer
         const arrayBuffer = await uploadedFile.arrayBuffer();
-        // Convert ArrayBuffer to Base64
-        const base64String = btoa(
-          new Uint8Array(arrayBuffer)
-            .reduce((data, byte) => data + String.fromCharCode(byte), '')
-        );
+        // Convert ArrayBuffer to Uint8Array
+        const uint8Array = new Uint8Array(arrayBuffer);
+        // Convert Uint8Array to base64
+        const base64String = btoa(String.fromCharCode.apply(null, uint8Array));
 
         const session = await supabase.auth.getSession();
         const userId = session.data.session?.user.id;

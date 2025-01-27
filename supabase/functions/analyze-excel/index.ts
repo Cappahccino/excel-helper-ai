@@ -17,15 +17,15 @@ serve(async (req) => {
     console.log('Received request to analyze-excel function');
     const { fileContent, userPrompt, file } = await req.json();
     
-    if (!fileContent) {
-      console.error('No file content provided');
+    if (!fileContent || !file) {
+      console.error('No file content or file metadata provided');
       return new Response(
         JSON.stringify({ error: 'No file content provided' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    console.log('Processing file:', file?.name);
+    console.log('Processing file:', file.name);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -36,39 +36,37 @@ serve(async (req) => {
       // Convert base64 to binary
       const binaryData = Uint8Array.from(atob(fileContent), c => c.charCodeAt(0));
       
-      if (file) {
-        // Generate a unique file path
-        const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
+      // Generate a unique file path
+      const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
 
-        console.log('Uploading file to storage:', filePath);
+      console.log('Uploading file to storage:', filePath);
 
-        // Upload file to Storage
-        const { error: uploadError } = await supabase.storage
-          .from('excel_files')
-          .upload(filePath, binaryData, {
-            contentType: file.type,
-            upsert: false
-          });
+      // Upload file to Storage
+      const { error: uploadError } = await supabase.storage
+        .from('excel_files')
+        .upload(filePath, binaryData, {
+          contentType: file.type,
+          upsert: false
+        });
 
-        if (uploadError) {
-          console.error('Storage upload error:', uploadError);
-          throw new Error('Failed to upload file to storage');
-        }
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw new Error('Failed to upload file to storage');
+      }
 
-        // Save file metadata to database
-        const { error: dbError } = await supabase
-          .from('excel_files')
-          .insert({
-            user_id: file.userId,
-            filename: file.name,
-            file_path: filePath,
-            file_size: file.size
-          });
+      // Save file metadata to database
+      const { error: dbError } = await supabase
+        .from('excel_files')
+        .insert({
+          user_id: file.userId,
+          filename: file.name,
+          file_path: filePath,
+          file_size: file.size
+        });
 
-        if (dbError) {
-          console.error('Database error:', dbError);
-          throw new Error('Failed to save file metadata');
-        }
+      if (dbError) {
+        console.error('Database error:', dbError);
+        throw new Error('Failed to save file metadata');
       }
 
       // Parse Excel data for analysis
@@ -96,7 +94,7 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4',
           messages: [
             {
               role: 'system',
@@ -123,10 +121,10 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
 
-    } catch (decodeError) {
-      console.error('Error decoding base64:', decodeError);
+    } catch (error) {
+      console.error('Error processing file:', error);
       return new Response(
-        JSON.stringify({ error: 'Failed to decode base64: ' + decodeError.message }),
+        JSON.stringify({ error: 'Failed to process file: ' + error.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
