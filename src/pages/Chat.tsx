@@ -66,7 +66,11 @@ const Chat = () => {
                   <h2 className="text-3xl font-bold mb-4">
                     What do you need help analyzing?
                   </h2>
-                  <div className="max-w-2xl mx-auto">
+                  <div className="max-w-2xl mx-auto flex items-center gap-4">
+                    <Button variant="outline" className="bg-transparent border-gray-700 text-white hover:bg-gray-800">
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload File
+                    </Button>
                     <PlaceholdersAndVanishInput
                       placeholders={placeholders}
                       onChange={handleChange}
@@ -80,19 +84,13 @@ const Chat = () => {
                     <h3 className="text-xl font-semibold">
                       Or start from ready workflows
                     </h3>
-                    <div className="flex items-center gap-4">
-                      <Button variant="outline" className="bg-transparent border-gray-700 text-white hover:bg-gray-800">
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload File
-                      </Button>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Search workflows..."
-                          className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
-                        />
-                      </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search workflows..."
+                        className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
+                      />
                     </div>
                   </div>
 
