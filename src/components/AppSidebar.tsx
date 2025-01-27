@@ -59,9 +59,13 @@ export function AppSidebar() {
     <Sidebar open={open} setOpen={setOpen}>
       <SidebarBody className="justify-between gap-10 bg-gray-900">
         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="px-4 py-6">
-            <h1 className="text-xl font-bold text-white">I hate excel</h1>
-          </div>
+          <motion.div 
+            className="px-4 py-6"
+            animate={{ opacity: open ? 1 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <h1 className="text-xl font-bold font-bricolage text-[#F2FCE2]">I hate excel</h1>
+          </motion.div>
           <div className="flex flex-col gap-2">
             {links.map((link, idx) => (
               <SidebarLink key={idx} link={link} />
