@@ -61,7 +61,7 @@ const Chat = () => {
 
           <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto">
-              <div className="bg-gray-800/30 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
+              <div className="bg-gray-900/50 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
                 <div className="text-center mb-12">
                   <h2 className="text-3xl font-bold mb-4">
                     What do you need help analyzing?
