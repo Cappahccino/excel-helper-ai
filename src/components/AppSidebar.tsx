@@ -17,32 +17,32 @@ const links = [
   {
     label: "New Chat",
     href: "/chat",
-    icon: <Plus className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+    icon: <Plus className="h-4 w-4 text-white" />,
   },
   {
     label: "My Chats",
     href: "/chat",
-    icon: <MessageSquare className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+    icon: <MessageSquare className="h-4 w-4 text-white" />,
   },
   {
     label: "My Files",
     href: "/files",
-    icon: <FileText className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+    icon: <FileText className="h-4 w-4 text-white" />,
   },
   {
     label: "Documentation",
     href: "/docs",
-    icon: <BookOpen className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+    icon: <BookOpen className="h-4 w-4 text-white" />,
   },
   {
     label: "Upgrade Account",
     href: "/upgrade",
-    icon: <ArrowUpRight className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+    icon: <ArrowUpRight className="h-4 w-4 text-white" />,
   },
   {
     label: "Account & Billing",
     href: "/account",
-    icon: <CreditCard className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+    icon: <CreditCard className="h-4 w-4 text-white" />,
   },
 ];
 
@@ -70,7 +70,7 @@ export function AppSidebar() {
             link={{
               label: "Sign Out",
               href: "#",
-              icon: <LogOut className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />,
+              icon: <LogOut className="h-4 w-4 text-white" />,
             }}
             onClick={handleSignOut}
           />
