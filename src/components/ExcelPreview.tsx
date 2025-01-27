@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ExcelPreviewProps {
   file: File;
@@ -64,35 +65,46 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
   }
 
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="p-4 flex justify-between items-center border-b">
-        <h3 className="font-semibold">Preview: {file.name}</h3>
-        <span className="text-sm text-muted-foreground">First 20 rows</span>
+    <div className="rounded-lg border bg-[#1A1F2C] text-white">
+      <div className="p-4 flex justify-between items-center border-b border-gray-700">
+        <h3 className="font-semibold text-white">Preview: {file.name}</h3>
+        <span className="text-sm text-gray-400">First 20 rows</span>
       </div>
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {previewData.headers.map((header, index) => (
-                <TableHead key={index} className="whitespace-nowrap">
-                  {header || `Column ${index + 1}`}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {previewData.rows.map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                {row.map((cell, cellIndex) => (
-                  <TableCell key={cellIndex} className="truncate max-w-[200px]">
-                    {cell?.toString() || "-"}
-                  </TableCell>
+      <ScrollArea className="h-[400px] w-full">
+        <div className="p-4">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-gray-700">
+                {previewData.headers.map((header, index) => (
+                  <TableHead 
+                    key={index} 
+                    className="text-gray-300 whitespace-nowrap border-gray-700"
+                  >
+                    {header || `Column ${index + 1}`}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {previewData.rows.map((row, rowIndex) => (
+                <TableRow 
+                  key={rowIndex} 
+                  className="border-gray-700 hover:bg-gray-800/50"
+                >
+                  {row.map((cell, cellIndex) => (
+                    <TableCell 
+                      key={cellIndex} 
+                      className="text-gray-200 truncate max-w-[200px] border-gray-700"
+                    >
+                      {cell?.toString() || "-"}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </ScrollArea>
     </div>
   );
 }
