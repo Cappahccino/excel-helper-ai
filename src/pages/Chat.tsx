@@ -13,6 +13,28 @@ const ALLOWED_EXCEL_EXTENSIONS = [
   '.xml', '.xlam', '.xla', '.xlw', '.xlr', '.csv'
 ];
 
+// Define the workflows data
+const workflows = [
+  {
+    icon: <BarChart2 className="w-6 h-6" />,
+    title: "Data Analysis",
+    description: "Analyze your Excel data with advanced statistical methods",
+    runs: "2.5k runs"
+  },
+  {
+    icon: <Table2 className="w-6 h-6" />,
+    title: "Table Operations",
+    description: "Perform complex table operations and transformations",
+    runs: "1.8k runs"
+  },
+  {
+    icon: <FileSpreadsheet className="w-6 h-6" />,
+    title: "Excel Processing",
+    description: "Process and clean your Excel files automatically",
+    runs: "3.2k runs"
+  }
+];
+
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
