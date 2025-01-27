@@ -3,33 +3,55 @@ import { Send, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ExcelPreview } from "./ExcelPreview";
+import { supabase } from "@/integrations/supabase/client";
 
 const ALLOWED_EXCEL_EXTENSIONS = [
-  '.xlsx', // Excel Workbook
-  '.xlsm', // Excel Macro-Enabled Workbook
-  '.xlsb', // Excel Binary Workbook
-  '.xltx', // Template
-  '.xltm', // Template with macros
-  '.xls',  // Excel 97-2003 Workbook
-  '.xlt',  // Excel 97-2003 Template
-  '.xml',  // XML Spreadsheet 2003
-  '.xlam', // Excel Add-In
-  '.xla',  // Excel 97-2003 Add-In
-  '.xlw',  // Excel 4.0 Workbook
-  '.xlr',  // Works spreadsheet
-  '.csv'   // CSV file
+  '.xlsx', '.xlsm', '.xlsb', '.xltx', '.xltm', '.xls', '.xlt',
+  '.xml', '.xlam', '.xla', '.xlw', '.xlr', '.csv'
 ];
 
 export function Chat() {
   const [message, setMessage] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim()) {
-      // Handle message submission here
+    if (!uploadedFile && !message.trim()) return;
+
+    try {
+      setIsAnalyzing(true);
+      
+      // Get the Excel content from the preview component
+      const fileContent = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result);
+        reader.readAsText(uploadedFile as File);
+      });
+
+      // Call the edge function to analyze the file
+      const { data, error } = await supabase.functions.invoke('analyze-excel', {
+        body: { fileContent, userPrompt: message },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Analysis Complete",
+        description: data.analysis,
+      });
+
       setMessage("");
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze the file. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -45,7 +67,7 @@ export function Chat() {
         description: "Please upload only Excel compatible files",
         variant: "destructive",
       });
-      e.target.value = ''; // Reset input
+      e.target.value = '';
       return;
     }
 
@@ -66,6 +88,12 @@ export function Chat() {
           {uploadedFile && (
             <div className="w-full">
               <ExcelPreview file={uploadedFile} />
+            </div>
+          )}
+          {isAnalyzing && (
+            <div className="flex items-center justify-center p-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+              <span className="ml-2 text-sm text-gray-600">Analyzing...</span>
             </div>
           )}
         </div>
@@ -96,7 +124,11 @@ export function Chat() {
             placeholder="Ask about your Excel file..."
             className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
-          <Button type="submit" className="bg-excel hover:bg-excel/90">
+          <Button 
+            type="submit" 
+            className="bg-excel hover:bg-excel/90"
+            disabled={isAnalyzing || (!uploadedFile && !message.trim())}
+          >
             <Send className="h-4 w-4" />
           </Button>
         </div>
