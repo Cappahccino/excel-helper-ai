@@ -27,28 +27,37 @@ export function Chat() {
       let fileData = null;
 
       if (uploadedFile) {
-        // Read file as ArrayBuffer
-        const arrayBuffer = await uploadedFile.arrayBuffer();
-        // Convert ArrayBuffer to Uint8Array
-        const uint8Array = new Uint8Array(arrayBuffer);
-        // Convert Uint8Array to base64
-        const base64String = btoa(String.fromCharCode.apply(null, uint8Array));
+        try {
+          // Read file as ArrayBuffer
+          const arrayBuffer = await uploadedFile.arrayBuffer();
+          // Convert ArrayBuffer to Uint8Array
+          const uint8Array = new Uint8Array(arrayBuffer);
+          // Convert Uint8Array to base64
+          const base64String = btoa(
+            Array.from(uint8Array)
+              .map(byte => String.fromCharCode(byte))
+              .join('')
+          );
 
-        const session = await supabase.auth.getSession();
-        const userId = session.data.session?.user.id;
+          const session = await supabase.auth.getSession();
+          const userId = session.data.session?.user.id;
 
-        if (!userId) {
-          throw new Error('User not authenticated');
+          if (!userId) {
+            throw new Error('User not authenticated');
+          }
+
+          fileData = {
+            name: uploadedFile.name,
+            type: uploadedFile.type,
+            size: uploadedFile.size,
+            userId
+          };
+
+          fileContent = base64String;
+        } catch (error) {
+          console.error('Error processing file:', error);
+          throw new Error('Failed to process file for upload');
         }
-
-        fileData = {
-          name: uploadedFile.name,
-          type: uploadedFile.type,
-          size: uploadedFile.size,
-          userId
-        };
-
-        fileContent = base64String;
       }
 
       console.log('Sending request to analyze-excel function');
@@ -72,6 +81,7 @@ export function Chat() {
       });
 
       setMessage("");
+      setUploadedFile(null);
     } catch (error) {
       console.error('Error:', error);
       toast({

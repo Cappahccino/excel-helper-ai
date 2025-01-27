@@ -20,7 +20,7 @@ serve(async (req) => {
     if (!fileContent || !file) {
       console.error('No file content or file metadata provided');
       return new Response(
-        JSON.stringify({ error: 'No file content provided' }),
+        JSON.stringify({ error: 'No file content or metadata provided' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
@@ -34,7 +34,11 @@ serve(async (req) => {
 
     try {
       // Convert base64 to binary
-      const binaryData = Uint8Array.from(atob(fileContent), c => c.charCodeAt(0));
+      const binaryString = atob(fileContent);
+      const binaryData = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        binaryData[i] = binaryString.charCodeAt(i);
+      }
       
       // Generate a unique file path
       const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
