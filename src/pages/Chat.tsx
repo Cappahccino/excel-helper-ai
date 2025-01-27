@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
+import { BarChart2, Table2, FileSpreadsheet, Upload, MessageSquarePlus } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -53,7 +53,10 @@ const Chat = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16 items-center">
                 <div className="flex items-center gap-4">
-                  <h1 className="text-xl font-bold text-excel font-bricolage">I hate excel</h1>
+                  <div className="flex items-center gap-2 text-excel">
+                    <MessageSquarePlus className="w-5 h-5" />
+                    <h1 className="text-xl font-bold font-bricolage">New Chat</h1>
+                  </div>
                 </div>
               </div>
             </div>
