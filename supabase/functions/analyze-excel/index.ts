@@ -28,53 +28,62 @@ serve(async (req) => {
     if (fileContent) {
       console.log('Processing file analysis');
       
-      // Convert base64 to binary
-      const base64Data = fileContent.split(',')[1];
-      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-      
-      // Parse Excel data
-      const workbook = XLSX.read(binaryData, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      
-      // Convert data to string format for OpenAI
-      const headers = jsonData[0];
-      const sampleData = jsonData.slice(1, 6); // Take first 5 rows as sample
-      const dataPreview = `
-        Headers: ${headers.join(', ')}
-        Sample rows:
-        ${sampleData.map(row => row.join(', ')).join('\n')}
-      `;
+      try {
+        // Convert base64 to binary
+        const base64Data = fileContent.split(',')[1];
+        const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        
+        // Parse Excel data
+        const workbook = XLSX.read(binaryData, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        // Convert data to string format for OpenAI
+        const headers = jsonData[0];
+        const sampleData = jsonData.slice(1, 6); // Take first 5 rows as sample
+        const dataPreview = `
+          Headers: ${headers.join(', ')}
+          Sample rows:
+          ${sampleData.map(row => row.join(', ')).join('\n')}
+        `;
 
-      // Get initial file analysis from OpenAI
-      const analysisResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert at analyzing Excel data. Explain what data this file contains in a clear, concise way.'
-            },
-            {
-              role: 'user',
-              content: `Here's the Excel data:\n${dataPreview}\n\nExplain what data this file contains.`
-            }
-          ],
-        }),
-      });
+        console.log('Data preview prepared:', dataPreview);
 
-      const analysisData = await analysisResponse.json();
-      analysis = analysisData.choices[0].message.content;
+        // Get initial file analysis from OpenAI
+        const analysisResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openAIApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an expert at analyzing Excel data. Explain what data this file contains in a clear, concise way.'
+              },
+              {
+                role: 'user',
+                content: `Here's the Excel data:\n${dataPreview}\n\nExplain what data this file contains.`
+              }
+            ],
+          }),
+        });
+
+        const analysisData = await analysisResponse.json();
+        analysis = analysisData.choices[0].message.content;
+        console.log('Analysis generated:', analysis);
+      } catch (error) {
+        console.error('Error processing file:', error);
+        throw new Error(`Failed to process Excel file: ${error.message}`);
+      }
     }
 
     // If there's a specific user prompt, get additional analysis
     if (userPrompt) {
+      console.log('Processing user prompt:', userPrompt);
       const promptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -82,7 +91,7 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4',
           messages: [
             {
               role: 'system',

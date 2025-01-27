@@ -18,7 +18,7 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() && !uploadedFile) return;
 
     try {
       setIsAnalyzing(true);
@@ -155,7 +155,7 @@ export function Chat() {
           <Button 
             type="submit" 
             className="bg-excel hover:bg-excel/90"
-            disabled={isAnalyzing || !message.trim()}
+            disabled={isAnalyzing || (!message.trim() && !uploadedFile)}
           >
             <Send className="h-4 w-4" />
           </Button>
