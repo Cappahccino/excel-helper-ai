@@ -1,6 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 const corsHeaders = {
@@ -15,10 +15,12 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Received request to analyze-excel function');
     const { fileContent, userPrompt, file } = await req.json();
     
-    if (!fileContent || !file) {
-      throw new Error('No file provided');
+    if (!fileContent) {
+      console.error('No file content provided');
+      throw new Error('No file content provided');
     }
 
     const supabase = createClient(
@@ -26,31 +28,51 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('Processing file upload:', file.name);
+    console.log('Processing file:', file?.name);
 
     // Convert base64 to binary
     const base64Data = fileContent.split(',')[1];
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-
-    // Generate a unique file path
-    const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
-
-    console.log('Uploading file to storage:', filePath);
-
-    // Upload file to Storage
-    const { error: uploadError } = await supabase.storage
-      .from('excel_files')
-      .upload(filePath, binaryData, {
-        contentType: file.type,
-        upsert: false
-      });
-
-    if (uploadError) {
-      console.error('Storage upload error:', uploadError);
-      throw new Error('Failed to upload file to storage');
+    if (!base64Data) {
+      console.error('Invalid base64 data');
+      throw new Error('Invalid file content format');
     }
 
-    console.log('File uploaded successfully, parsing Excel data');
+    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+    if (file) {
+      // Generate a unique file path
+      const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
+
+      console.log('Uploading file to storage:', filePath);
+
+      // Upload file to Storage
+      const { error: uploadError } = await supabase.storage
+        .from('excel_files')
+        .upload(filePath, binaryData, {
+          contentType: file.type,
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw new Error('Failed to upload file to storage');
+      }
+
+      // Save file metadata to database
+      const { error: dbError } = await supabase
+        .from('excel_files')
+        .insert({
+          user_id: file.userId,
+          filename: file.name,
+          file_path: filePath,
+          file_size: file.size
+        });
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        throw new Error('Failed to save file metadata');
+      }
+    }
 
     // Parse Excel data for analysis
     const workbook = XLSX.read(binaryData, { type: 'array' });
@@ -99,25 +121,8 @@ serve(async (req) => {
     const analysisData = await openAIResponse.json();
     const analysis = analysisData.choices[0].message.content;
 
-    console.log('Analysis complete, saving file metadata');
-
-    // Save file metadata to database
-    const { error: dbError } = await supabase
-      .from('excel_files')
-      .insert({
-        user_id: file.userId,
-        filename: file.name,
-        file_path: filePath,
-        file_size: file.size
-      });
-
-    if (dbError) {
-      console.error('Database error:', dbError);
-      throw new Error('Failed to save file metadata');
-    }
-
     return new Response(
-      JSON.stringify({ success: true, analysis, filePath }),
+      JSON.stringify({ success: true, analysis }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
