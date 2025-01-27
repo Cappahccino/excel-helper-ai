@@ -3,7 +3,7 @@ import { Search, BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { HoverBorderGradient } from "@/components/ui/hover-border-gradient";
+import { Button as MovingButton } from "@/components/ui/moving-border";
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,13 +67,13 @@ const Chat = () => {
                     What do you need help analyzing?
                   </h2>
                   <div className="max-w-2xl mx-auto flex items-center gap-4">
-                    <HoverBorderGradient
-                      containerClassName="rounded-full"
-                      className="bg-transparent text-white flex items-center gap-2"
+                    <MovingButton
+                      containerClassName="w-auto h-auto"
+                      className="bg-transparent border-gray-700 text-white hover:bg-gray-800 px-4 py-2"
                     >
-                      <Upload className="w-4 h-4" />
+                      <Upload className="w-4 h-4 mr-2" />
                       Upload File
-                    </HoverBorderGradient>
+                    </MovingButton>
                     <PlaceholdersAndVanishInput
                       placeholders={placeholders}
                       onChange={handleChange}
