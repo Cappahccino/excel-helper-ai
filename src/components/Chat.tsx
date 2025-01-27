@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Send, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { ExcelPreview } from "./ExcelPreview";
 
-// Define allowed Excel file extensions
 const ALLOWED_EXCEL_EXTENSIONS = [
   '.xlsx', // Excel Workbook
   '.xlsm', // Excel Macro-Enabled Workbook
@@ -22,6 +22,7 @@ const ALLOWED_EXCEL_EXTENSIONS = [
 
 export function Chat() {
   const [message, setMessage] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -48,7 +49,7 @@ export function Chat() {
       return;
     }
 
-    // Handle the valid Excel file upload here
+    setUploadedFile(file);
     toast({
       title: "File uploaded",
       description: `Successfully uploaded ${file.name}`,
@@ -56,12 +57,17 @@ export function Chat() {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm border">
-      <div className="h-[400px] p-4 overflow-y-auto">
+    <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
+      <div className="h-[600px] p-4 overflow-y-auto">
         <div className="flex flex-col gap-4">
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
             <p className="text-sm">Hello! Upload an Excel file and I'll help you analyze it.</p>
           </div>
+          {uploadedFile && (
+            <div className="w-full">
+              <ExcelPreview file={uploadedFile} />
+            </div>
+          )}
         </div>
       </div>
       <form onSubmit={handleSubmit} className="border-t p-4">
