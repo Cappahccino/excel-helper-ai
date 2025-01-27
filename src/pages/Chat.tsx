@@ -67,7 +67,10 @@ const Chat = () => {
                     What do you need help analyzing?
                   </h2>
                   <div className="max-w-2xl mx-auto flex items-center gap-4">
-                    <Button variant="outline" className="bg-transparent border-gray-700 text-white hover:bg-gray-800">
+                    <Button 
+                      variant="outline" 
+                      className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
+                    >
                       <Upload className="w-4 h-4 mr-2" />
                       Upload File
                     </Button>
