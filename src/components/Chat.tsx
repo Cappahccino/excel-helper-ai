@@ -27,10 +27,13 @@ export function Chat() {
       let fileData = null;
 
       if (uploadedFile) {
-        // Get the Excel content from the preview component
+        // Read file as ArrayBuffer and convert to base64
         fileContent = await new Promise((resolve) => {
           const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result);
+          reader.onload = () => {
+            const arrayBuffer = reader.result;
+            resolve(arrayBuffer);
+          };
           reader.readAsDataURL(uploadedFile);
         });
 
@@ -49,6 +52,8 @@ export function Chat() {
         };
       }
 
+      console.log('Sending request to analyze-excel function');
+      
       // Call the edge function to analyze
       const { data, error } = await supabase.functions.invoke('analyze-excel', {
         body: { 
@@ -58,7 +63,10 @@ export function Chat() {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
 
       toast({
         title: uploadedFile ? "Analysis Complete" : "Response Received",

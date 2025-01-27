@@ -1,4 +1,3 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
@@ -20,111 +19,122 @@ serve(async (req) => {
     
     if (!fileContent) {
       console.error('No file content provided');
-      throw new Error('No file content provided');
+      return new Response(
+        JSON.stringify({ error: 'No file content provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
+
+    console.log('Processing file:', file?.name);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('Processing file:', file?.name);
+    // Extract the base64 data (remove data URL prefix if present)
+    const base64Data = fileContent.includes('base64,') 
+      ? fileContent.split('base64,')[1] 
+      : fileContent;
 
-    // Convert base64 to binary
-    const base64Data = fileContent.split(',')[1];
-    if (!base64Data) {
-      console.error('Invalid base64 data');
-      throw new Error('Invalid file content format');
-    }
+    try {
+      // Convert base64 to binary
+      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      
+      if (file) {
+        // Generate a unique file path
+        const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
 
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        console.log('Uploading file to storage:', filePath);
 
-    if (file) {
-      // Generate a unique file path
-      const filePath = `${file.userId}/${crypto.randomUUID()}-${file.name}`;
+        // Upload file to Storage
+        const { error: uploadError } = await supabase.storage
+          .from('excel_files')
+          .upload(filePath, binaryData, {
+            contentType: file.type,
+            upsert: false
+          });
 
-      console.log('Uploading file to storage:', filePath);
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError);
+          throw new Error('Failed to upload file to storage');
+        }
 
-      // Upload file to Storage
-      const { error: uploadError } = await supabase.storage
-        .from('excel_files')
-        .upload(filePath, binaryData, {
-          contentType: file.type,
-          upsert: false
-        });
+        // Save file metadata to database
+        const { error: dbError } = await supabase
+          .from('excel_files')
+          .insert({
+            user_id: file.userId,
+            filename: file.name,
+            file_path: filePath,
+            file_size: file.size
+          });
 
-      if (uploadError) {
-        console.error('Storage upload error:', uploadError);
-        throw new Error('Failed to upload file to storage');
+        if (dbError) {
+          console.error('Database error:', dbError);
+          throw new Error('Failed to save file metadata');
+        }
       }
 
-      // Save file metadata to database
-      const { error: dbError } = await supabase
-        .from('excel_files')
-        .insert({
-          user_id: file.userId,
-          filename: file.name,
-          file_path: filePath,
-          file_size: file.size
-        });
+      // Parse Excel data for analysis
+      const workbook = XLSX.read(binaryData, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-      if (dbError) {
-        console.error('Database error:', dbError);
-        throw new Error('Failed to save file metadata');
+      // Prepare data preview for OpenAI
+      const headers = jsonData[0];
+      const sampleData = jsonData.slice(1, 6); // Take first 5 rows as sample
+      const dataPreview = `
+        Headers: ${headers.join(', ')}
+        Sample rows:
+        ${sampleData.map(row => row.join(', ')).join('\n')}
+      `;
+
+      console.log('Analyzing data with OpenAI');
+
+      // Get analysis from OpenAI
+      const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert at analyzing Excel data. Explain what data this file contains in a clear, concise way.'
+            },
+            {
+              role: 'user',
+              content: `Here's the Excel data:\n${dataPreview}\n\nUser's question: ${userPrompt || 'Explain what data this file contains.'}`
+            }
+          ],
+        }),
+      });
+
+      if (!openAIResponse.ok) {
+        console.error('OpenAI API error:', await openAIResponse.text());
+        throw new Error('Failed to analyze file content');
       }
+
+      const analysisData = await openAIResponse.json();
+      const analysis = analysisData.choices[0].message.content;
+
+      return new Response(
+        JSON.stringify({ success: true, analysis }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } catch (decodeError) {
+      console.error('Error decoding base64:', decodeError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to decode base64: ' + decodeError.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
-
-    // Parse Excel data for analysis
-    const workbook = XLSX.read(binaryData, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-    // Prepare data preview for OpenAI
-    const headers = jsonData[0];
-    const sampleData = jsonData.slice(1, 6); // Take first 5 rows as sample
-    const dataPreview = `
-      Headers: ${headers.join(', ')}
-      Sample rows:
-      ${sampleData.map(row => row.join(', ')).join('\n')}
-    `;
-
-    console.log('Analyzing data with OpenAI');
-
-    // Get analysis from OpenAI
-    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert at analyzing Excel data. Explain what data this file contains in a clear, concise way.'
-          },
-          {
-            role: 'user',
-            content: `Here's the Excel data:\n${dataPreview}\n\nExplain what data this file contains.`
-          }
-        ],
-      }),
-    });
-
-    if (!openAIResponse.ok) {
-      console.error('OpenAI API error:', await openAIResponse.text());
-      throw new Error('Failed to analyze file content');
-    }
-
-    const analysisData = await openAIResponse.json();
-    const analysis = analysisData.choices[0].message.content;
-
-    return new Response(
-      JSON.stringify({ success: true, analysis }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
