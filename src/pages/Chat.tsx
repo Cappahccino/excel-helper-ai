@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Search, BarChart2, Table2, FileSpreadsheet } from "lucide-react";
+import { Search, BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -79,13 +80,19 @@ const Chat = () => {
                     <h3 className="text-xl font-semibold">
                       Or start from ready workflows
                     </h3>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search workflows..."
-                        className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
-                      />
+                    <div className="flex items-center gap-4">
+                      <Button variant="outline" className="bg-transparent border-gray-700 text-white hover:bg-gray-800">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload File
+                      </Button>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search workflows..."
+                          className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
+                        />
+                      </div>
                     </div>
                   </div>
 
