@@ -74,11 +74,22 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         <div className="p-4">
           <Table>
             <TableHeader>
-              <TableRow className="border-gray-700">
+              <TableRow className="border-gray-700 [&>th]:border-r [&>th]:border-gray-700 [&>th:last-child]:border-r-0">
                 {previewData.headers.map((header, index) => (
                   <TableHead 
                     key={index} 
-                    className="text-gray-300 whitespace-nowrap border-gray-700"
+                    className="
+                      text-gray-300 
+                      whitespace-nowrap 
+                      border-gray-700 
+                      bg-[#2D3748] 
+                      font-semibold 
+                      px-3 
+                      py-2
+                      text-sm
+                      select-none
+                      border-b-2
+                    "
                   >
                     {header || `Column ${index + 1}`}
                   </TableHead>
@@ -89,12 +100,29 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
               {previewData.rows.map((row, rowIndex) => (
                 <TableRow 
                   key={rowIndex} 
-                  className="border-gray-700 hover:bg-gray-800/50"
+                  className="
+                    border-gray-700 
+                    hover:bg-gray-800/50 
+                    [&>td]:border-r 
+                    [&>td]:border-gray-700 
+                    [&>td:last-child]:border-r-0
+                  "
                 >
                   {row.map((cell, cellIndex) => (
                     <TableCell 
                       key={cellIndex} 
-                      className="text-gray-200 truncate max-w-[200px] border-gray-700"
+                      className="
+                        text-gray-200 
+                        truncate 
+                        max-w-[200px] 
+                        border-gray-700
+                        px-3 
+                        py-1.5
+                        text-sm
+                        font-mono
+                        border-b
+                        select-none
+                      "
                     >
                       {cell?.toString() || "-"}
                     </TableCell>
