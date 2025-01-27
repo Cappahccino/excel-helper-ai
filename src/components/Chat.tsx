@@ -18,27 +18,50 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadedFile && !message.trim()) return;
+    if (!message.trim()) return;
 
     try {
       setIsAnalyzing(true);
       
-      // Get the Excel content from the preview component
-      const fileContent = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result);
-        reader.readAsText(uploadedFile as File);
-      });
+      let fileContent = null;
+      let fileData = null;
 
-      // Call the edge function to analyze the file
+      if (uploadedFile) {
+        // Get the Excel content from the preview component
+        fileContent = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result);
+          reader.readAsDataURL(uploadedFile);
+        });
+
+        const session = await supabase.auth.getSession();
+        const userId = session.data.session?.user.id;
+
+        if (!userId) {
+          throw new Error('User not authenticated');
+        }
+
+        fileData = {
+          name: uploadedFile.name,
+          type: uploadedFile.type,
+          size: uploadedFile.size,
+          userId
+        };
+      }
+
+      // Call the edge function to analyze
       const { data, error } = await supabase.functions.invoke('analyze-excel', {
-        body: { fileContent, userPrompt: message },
+        body: { 
+          fileContent,
+          userPrompt: message,
+          file: fileData
+        },
       });
 
       if (error) throw error;
 
       toast({
-        title: "Analysis Complete",
+        title: uploadedFile ? "Analysis Complete" : "Response Received",
         description: data.analysis,
       });
 
@@ -47,7 +70,7 @@ export function Chat() {
       console.error('Error:', error);
       toast({
         title: "Error",
-        description: "Failed to analyze the file. Please try again.",
+        description: "Failed to process your request. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -83,7 +106,10 @@ export function Chat() {
       <div className="h-[600px] p-4 overflow-y-auto">
         <div className="flex flex-col gap-4">
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-            <p className="text-sm">Hello! Upload an Excel file and I'll help you analyze it.</p>
+            <p className="text-sm">
+              Hello! You can ask me any questions or upload an Excel file for analysis.
+              I'm here to help with both general queries and data analysis.
+            </p>
           </div>
           {uploadedFile && (
             <div className="w-full">
@@ -93,7 +119,9 @@ export function Chat() {
           {isAnalyzing && (
             <div className="flex items-center justify-center p-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-              <span className="ml-2 text-sm text-gray-600">Analyzing...</span>
+              <span className="ml-2 text-sm text-gray-600">
+                {uploadedFile ? "Analyzing..." : "Processing..."}
+              </span>
             </div>
           )}
         </div>
@@ -121,13 +149,13 @@ export function Chat() {
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Ask about your Excel file..."
+            placeholder={uploadedFile ? "Ask about your Excel file..." : "Ask me anything..."}
             className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           <Button 
             type="submit" 
             className="bg-excel hover:bg-excel/90"
-            disabled={isAnalyzing || (!uploadedFile && !message.trim())}
+            disabled={isAnalyzing || !message.trim()}
           >
             <Send className="h-4 w-4" />
           </Button>
