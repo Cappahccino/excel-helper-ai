@@ -1,19 +1,19 @@
 import { useState } from "react";
-import { BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
-import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ExcelPreview } from "@/components/ExcelPreview";
 import { supabase } from "@/integrations/supabase/client";
+import { WorkflowCard } from "@/components/WorkflowCard";
+import { ChatHeader } from "@/components/ChatHeader";
+import { FileUploadSection } from "@/components/FileUploadSection";
 
 const ALLOWED_EXCEL_EXTENSIONS = [
   '.xlsx', '.xlsm', '.xlsb', '.xltx', '.xltm', '.xls', '.xlt',
   '.xml', '.xlam', '.xla', '.xlw', '.xlr', '.csv'
 ];
 
-// Define the workflows data
 const workflows = [
   {
     icon: <BarChart2 className="w-6 h-6" />,
@@ -58,14 +58,12 @@ const Chat = () => {
     try {
       setIsAnalyzing(true);
       
-      // Get the Excel content
       const fileContent = await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result);
         reader.readAsText(uploadedFile as File);
       });
 
-      // Call the edge function to analyze the file
       const { data, error } = await supabase.functions.invoke('analyze-excel', {
         body: { fileContent, userPrompt: searchQuery },
       });
@@ -117,48 +115,18 @@ const Chat = () => {
       <div className="flex min-h-screen w-full bg-gray-900 text-white">
         <AppSidebar />
         <div className="flex-1">
-          <nav className="bg-gray-900/50 backdrop-blur-sm fixed top-0 w-full z-50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16 items-center">
-                <div className="flex-1 text-center">
-                  <h1 className="text-xl font-bold text-excel font-bricolage">New Chat</h1>
-                </div>
-              </div>
-            </div>
-          </nav>
+          <ChatHeader />
 
           <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto">
               <div className="bg-blue-900/20 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
-                <div className="text-center mb-12">
-                  <h2 className="text-3xl font-bold mb-4">
-                    What do you need help analyzing?
-                  </h2>
-                  <div className="max-w-2xl mx-auto flex items-center gap-4">
-                    <input
-                      type="file"
-                      accept={ALLOWED_EXCEL_EXTENSIONS.join(',')}
-                      onChange={handleFileUpload}
-                      className="hidden"
-                      id="excel-upload"
-                    />
-                    <label htmlFor="excel-upload">
-                      <Button 
-                        variant="outline" 
-                        className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
-                        onClick={() => document.getElementById('excel-upload')?.click()}
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload File
-                      </Button>
-                    </label>
-                    <PlaceholdersAndVanishInput
-                      placeholders={placeholders}
-                      onChange={handleChange}
-                      onSubmit={handleSubmit}
-                    />
-                  </div>
-                </div>
+                <FileUploadSection
+                  placeholders={placeholders}
+                  handleFileUpload={handleFileUpload}
+                  handleChange={handleChange}
+                  handleSubmit={handleSubmit}
+                  allowedExtensions={ALLOWED_EXCEL_EXTENSIONS}
+                />
 
                 {uploadedFile && (
                   <div className="mb-8">
@@ -182,19 +150,7 @@ const Chat = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {workflows.map((workflow, index) => (
-                      <div
-                        key={index}
-                        className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/50 hover:bg-gray-800/70 transition-colors cursor-pointer backdrop-blur-sm"
-                      >
-                        <div className="mb-4 text-blue-400">{workflow.icon}</div>
-                        <h4 className="text-lg font-semibold mb-2">
-                          {workflow.title}
-                        </h4>
-                        <p className="text-gray-400 text-sm mb-4">
-                          {workflow.description}
-                        </p>
-                        <p className="text-xs text-gray-500">{workflow.runs}</p>
-                      </div>
+                      <WorkflowCard key={index} {...workflow} />
                     ))}
                   </div>
                 </div>
