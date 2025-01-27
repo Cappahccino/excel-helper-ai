@@ -28,10 +28,13 @@ export function Chat() {
 
       if (uploadedFile) {
         try {
+          console.log('Processing file for upload:', uploadedFile.name);
+          
           // Read file as ArrayBuffer
           const arrayBuffer = await uploadedFile.arrayBuffer();
           // Convert ArrayBuffer to Uint8Array
           const uint8Array = new Uint8Array(arrayBuffer);
+          
           // Convert Uint8Array to base64
           const base64String = btoa(
             Array.from(uint8Array)
@@ -54,6 +57,11 @@ export function Chat() {
           };
 
           fileContent = base64String;
+          console.log('File processed successfully:', {
+            fileName: fileData.name,
+            fileSize: fileData.size,
+            hasContent: !!fileContent
+          });
         } catch (error) {
           console.error('Error processing file:', error);
           throw new Error('Failed to process file for upload');

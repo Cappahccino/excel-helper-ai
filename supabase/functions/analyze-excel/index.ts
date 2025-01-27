@@ -17,8 +17,18 @@ serve(async (req) => {
     console.log('Received request to analyze-excel function');
     const { fileContent, userPrompt, file } = await req.json();
     
+    console.log('Received data:', {
+      hasFileContent: !!fileContent,
+      fileMetadata: file ? {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        userId: file.userId
+      } : null
+    });
+
     if (!fileContent || !file) {
-      console.error('No file content or file metadata provided');
+      console.error('Missing required data:', { hasFileContent: !!fileContent, hasFile: !!file });
       return new Response(
         JSON.stringify({ error: 'No file content or metadata provided' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
