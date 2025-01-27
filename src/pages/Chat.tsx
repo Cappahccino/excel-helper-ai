@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
+import { BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -84,14 +84,6 @@ const Chat = () => {
                     <h3 className="text-xl font-semibold">
                       Or start from ready workflows
                     </h3>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search workflows..."
-                        className="pl-10 bg-gray-800 border-gray-700 text-white rounded-md"
-                      />
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
