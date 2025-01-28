@@ -4,10 +4,10 @@ import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-van
 
 interface FileUploadSectionProps {
   placeholders: string[];
-  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
-  allowedExtensions: string[];
+  handleFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  allowedExtensions?: string[];
 }
 
 export function FileUploadSection({
@@ -23,23 +23,27 @@ export function FileUploadSection({
         What do you need help analyzing?
       </h2>
       <div className="max-w-2xl mx-auto flex items-center gap-4">
-        <input
-          type="file"
-          accept={allowedExtensions.join(',')}
-          onChange={handleFileUpload}
-          className="hidden"
-          id="excel-upload"
-        />
-        <label htmlFor="excel-upload">
-          <Button 
-            variant="outline" 
-            className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
-            onClick={() => document.getElementById('excel-upload')?.click()}
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Upload File
-          </Button>
-        </label>
+        {handleFileUpload && allowedExtensions && (
+          <>
+            <input
+              type="file"
+              accept={allowedExtensions.join(',')}
+              onChange={handleFileUpload}
+              className="hidden"
+              id="excel-upload"
+            />
+            <label htmlFor="excel-upload">
+              <Button 
+                variant="outline" 
+                className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
+                onClick={() => document.getElementById('excel-upload')?.click()}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Upload File
+              </Button>
+            </label>
+          </>
+        )}
         <PlaceholdersAndVanishInput
           placeholders={placeholders}
           onChange={handleChange}
