@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,71 +7,75 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
+    // Get the form data from the request
     const formData = await req.formData()
-    const file = formData.get('file')
-    const userId = formData.get('userId')
-
-    if (!file || !userId) {
-      throw new Error('File and user ID are required')
+    const file = formData.get('file') as File
+    
+    if (!file) {
+      throw new Error('No file provided')
     }
 
-    const supabase = createClient(
+    // Create Supabase client
+    const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Sanitize filename
-    const fileName = (file as File).name.replace(/[^\x00-\x7F]/g, '')
-    const fileExt = fileName.split('.').pop()
-    const filePath = `${crypto.randomUUID()}.${fileExt}`
-
-    // Upload file to storage
-    const { error: uploadError } = await supabase.storage
-      .from('excel_files')
-      .upload(filePath, file, {
-        contentType: file.type,
-        upsert: false
-      })
-
-    if (uploadError) {
-      throw new Error('Failed to upload file')
+    // Get the current user
+    const authHeader = req.headers.get('Authorization')!
+    const user = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
+    
+    if (!user.data.user) {
+      throw new Error('Not authenticated')
     }
 
+    // Upload file to storage
+    const fileBuffer = await file.arrayBuffer()
+    const fileName = `${user.data.user.id}/${Date.now()}-${file.name}`
+    
+    const { data: uploadData, error: uploadError } = await supabaseClient
+      .storage
+      .from('excel_files')
+      .upload(fileName, fileBuffer, {
+        contentType: file.type,
+        upsert: true
+      })
+
+    if (uploadError) throw uploadError
+
     // Save file metadata to database
-    const { data: fileData, error: dbError } = await supabase
+    const { data: metaData, error: metaError } = await supabaseClient
       .from('excel_files')
       .insert({
-        user_id: userId,
-        filename: fileName,
-        file_path: filePath,
-        file_size: file.size,
+        user_id: user.data.user.id,
+        filename: file.name,
+        file_path: uploadData.path,
+        file_size: file.size
       })
       .select()
       .single()
 
-    if (dbError) {
-      throw new Error('Failed to save file metadata')
-    }
+    if (metaError) throw metaError
 
     return new Response(
-      JSON.stringify({ 
-        message: 'File uploaded successfully',
-        fileId: fileData.id
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ fileId: metaData.id }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
     )
   } catch (error) {
-    console.error('Error in upload-excel function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400 
       }
     )
   }
