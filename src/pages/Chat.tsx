@@ -3,16 +3,10 @@ import { BarChart2, Table2, FileSpreadsheet } from "lucide-react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useToast } from "@/hooks/use-toast";
-import { ExcelPreview } from "@/components/ExcelPreview";
 import { supabase } from "@/integrations/supabase/client";
 import { WorkflowCard } from "@/components/WorkflowCard";
 import { ChatHeader } from "@/components/ChatHeader";
 import { FileUploadSection } from "@/components/FileUploadSection";
-
-const ALLOWED_EXCEL_EXTENSIONS = [
-  '.xlsx', '.xlsm', '.xlsb', '.xltx', '.xltm', '.xls', '.xlt',
-  '.xml', '.xlam', '.xla', '.xlw', '.xlr', '.csv'
-];
 
 const workflows = [
   {
@@ -37,14 +31,12 @@ const workflows = [
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
 
   const placeholders = [
-    "Add a file or start chat...",
-    "Summarise the data in my sheet",
-    "Sum column C when when rows in Column B equal June",
+    "Ask me anything...",
+    "How can I help you today?",
+    "What would you like to know?",
   ];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,61 +45,22 @@ const Chat = () => {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!uploadedFile && !searchQuery.trim()) return;
+    if (!searchQuery.trim()) return;
 
     try {
-      setIsAnalyzing(true);
-      
-      const fileContent = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result);
-        reader.readAsText(uploadedFile as File);
-      });
-
-      const { data, error } = await supabase.functions.invoke('analyze-excel', {
-        body: { fileContent, userPrompt: searchQuery },
-      });
-
-      if (error) throw error;
-
       toast({
-        title: "Analysis Complete",
-        description: data.analysis,
+        title: "Message sent",
+        description: "Your message has been received.",
       });
-
       setSearchQuery("");
     } catch (error) {
       console.error('Error:', error);
       toast({
         title: "Error",
-        description: "Failed to analyze the file. Please try again.",
+        description: "Failed to process your request. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsAnalyzing(false);
     }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!ALLOWED_EXCEL_EXTENSIONS.includes(fileExtension)) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload only Excel compatible files",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setUploadedFile(file);
-    toast({
-      title: "File uploaded",
-      description: `Successfully uploaded ${file.name}`,
-    });
   };
 
   return (
@@ -122,24 +75,9 @@ const Chat = () => {
               <div className="bg-blue-900/20 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
                 <FileUploadSection
                   placeholders={placeholders}
-                  handleFileUpload={handleFileUpload}
                   handleChange={handleChange}
                   handleSubmit={handleSubmit}
-                  allowedExtensions={ALLOWED_EXCEL_EXTENSIONS}
                 />
-
-                {uploadedFile && (
-                  <div className="mb-8">
-                    <ExcelPreview file={uploadedFile} />
-                  </div>
-                )}
-
-                {isAnalyzing && (
-                  <div className="flex items-center justify-center p-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-                    <span className="ml-2 text-sm text-gray-400">Analyzing...</span>
-                  </div>
-                )}
 
                 <div className="mb-12">
                   <div className="flex items-center justify-between mb-6">
