@@ -78,6 +78,21 @@ const Chat = () => {
             onReset={resetUpload}
           />
 
+          {fileId && (
+            <div className="bg-muted p-3 rounded-lg">
+              <p className="text-sm font-mono">File ID: {fileId}</p>
+              <p className="text-xs mt-2">Use this payload to test the Lambda function:</p>
+              <pre className="bg-black text-white p-2 rounded mt-1 text-xs overflow-x-auto">
+{JSON.stringify({
+  body: JSON.stringify({
+    fileId: fileId,
+    query: "Please analyze this Excel file"
+  })
+}, null, 2)}
+              </pre>
+            </div>
+          )}
+
           {uploadedFile && !isUploading && (
             <div className="w-full">
               <ExcelPreview file={uploadedFile} />
