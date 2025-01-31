@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useCallback } from "react";
+import { BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
+import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { Button } from "@/components/ui/button";
+import { FileUploadZone } from "@/components/FileUploadZone";
+import { ExcelPreview } from "@/components/ExcelPreview";
 import { useToast } from "@/hooks/use-toast";
-import { ChatContainer } from "@/components/chat/ChatContainer";
-import { ChatHeader } from "@/components/chat/ChatHeader";
-import { ChatMessages } from "@/components/chat/ChatMessages";
-import { ChatInput } from "@/components/chat/ChatInput";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,7 +53,7 @@ const Chat = () => {
           filename: file.name,
           file_path: filePath,
           file_size: file.size,
-          user_id: user.id,
+          user_id: user.id, // Add the user_id field
         })
         .select()
         .single();
@@ -137,22 +138,72 @@ const Chat = () => {
 
   return (
     <SidebarProvider>
-      <ChatHeader />
-      <ChatContainer
-        currentFile={currentFile}
-        isUploading={isUploading}
-        uploadProgress={uploadProgress}
-        handleFileUpload={handleFileUpload}
-        handleReset={handleReset}
-      >
-        <ChatMessages messages={messages} />
-        <ChatInput
-          placeholders={placeholders}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          handleSubmit={handleSubmit}
-        />
-      </ChatContainer>
+      <div className="flex min-h-screen w-full bg-gray-900 text-white">
+        <AppSidebar />
+        <div className="flex-1">
+          <nav className="bg-gray-900/50 backdrop-blur-sm fixed top-0 w-full z-50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16 items-center">
+                <div className="flex-1 text-center">
+                  <h1 className="text-xl font-bold text-excel font-bricolage">New Chat</h1>
+                </div>
+              </div>
+            </div>
+          </nav>
+
+          <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-7xl mx-auto">
+              <div className="bg-blue-900/20 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
+                <div className="text-center mb-12">
+                  <h2 className="text-3xl font-bold mb-4">
+                    What do you need help analyzing?
+                  </h2>
+                  <div className="max-w-2xl mx-auto">
+                    <FileUploadZone
+                      onFileUpload={handleFileUpload}
+                      isUploading={isUploading}
+                      uploadProgress={uploadProgress}
+                      currentFile={currentFile}
+                      onReset={handleReset}
+                    />
+                    
+                    {currentFile && (
+                      <div className="mt-8">
+                        <ExcelPreview file={currentFile} />
+                      </div>
+                    )}
+
+                    {messages && messages.length > 0 && (
+                      <div className="mt-8 space-y-4 text-left">
+                        {messages.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`p-4 rounded-lg ${
+                              message.is_ai_response
+                                ? "bg-blue-900/30 ml-4"
+                                : "bg-gray-800/50 mr-4"
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-8">
+                      <PlaceholdersAndVanishInput
+                        placeholders={placeholders}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onSubmit={handleSubmit}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
     </SidebarProvider>
   );
 };
