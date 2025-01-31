@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
 
 interface ExcelPreviewProps {
   file: File;
@@ -19,6 +20,7 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
     rows: any[][];
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const readExcel = async () => {
@@ -30,13 +32,17 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        // Extract headers (first row) and data rows
         const headers = jsonData[0] as string[];
         const rows = jsonData.slice(1, 21) as any[][]; // Limit to 20 rows
 
         setPreviewData({ headers, rows });
       } catch (error) {
         console.error("Error reading Excel file:", error);
+        toast({
+          title: "Error",
+          description: "Failed to read Excel file. Please make sure it's a valid Excel document.",
+          variant: "destructive",
+        });
       } finally {
         setLoading(false);
       }
@@ -45,19 +51,19 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
     if (file) {
       readExcel();
     }
-  }, [file]);
+  }, [file, toast]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+      <div className="flex items-center justify-center p-4" role="status">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel" aria-label="Loading"></div>
       </div>
     );
   }
 
   if (!previewData) {
     return (
-      <div className="text-center p-4 text-muted-foreground">
+      <div className="text-center p-4 text-muted-foreground" role="alert">
         Unable to preview file
       </div>
     );
