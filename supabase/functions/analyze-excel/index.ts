@@ -1,12 +1,17 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
-import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+interface ExcelAnalysisRequest {
+  fileId: string;
+  query?: string;
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -15,7 +20,7 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query } = await req.json();
+    const { fileId, query } = await req.json() as ExcelAnalysisRequest;
     console.log('Processing file:', fileId, 'with query:', query);
 
     // Initialize Supabase client
@@ -46,7 +51,7 @@ serve(async (req) => {
       throw new Error('Error downloading file');
     }
 
-    // Convert file to array buffer and process with XLSX
+    // Process Excel file
     const arrayBuffer = await fileBuffer.arrayBuffer();
     const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
     
@@ -54,10 +59,17 @@ serve(async (req) => {
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
     
-    // Convert to JSON but limit the rows to prevent memory issues
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-    const headers = jsonData[0] as string[];
-    const sampleRows = jsonData.slice(1, 11); // Only take first 10 rows for analysis
+    // Convert to JSON with chunking (max 100 rows)
+    const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    const headers = allData[0] as string[];
+    const dataRows = allData.slice(1);
+    
+    // Process in chunks of 100 rows
+    const chunkSize = 100;
+    const chunks = [];
+    for (let i = 0; i < dataRows.length; i += chunkSize) {
+      chunks.push(dataRows.slice(i, i + chunkSize));
+    }
 
     // Prepare data summary
     const summary = {
@@ -65,8 +77,8 @@ serve(async (req) => {
       sheetNames: workbook.SheetNames,
       columnCount: headers.length,
       columnNames: headers,
-      totalRows: jsonData.length - 1,
-      sampleData: sampleRows,
+      totalRows: dataRows.length,
+      sampleData: chunks[0], // First chunk for initial analysis
     };
 
     // Prepare system message with file summary
@@ -77,9 +89,10 @@ serve(async (req) => {
     - Columns (${summary.columnCount}): ${summary.columnNames.join(', ')}
     - Total Rows: ${summary.totalRows}
     
-    Provide clear, concise analysis based on this data structure.`;
+    Provide clear, concise analysis based on this data structure.
+    If the user asks a specific question, focus on answering that question using the available data.`;
 
-    // Call OpenAI API with optimized prompt
+    // Call OpenAI API
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -92,7 +105,7 @@ serve(async (req) => {
           { role: 'system', content: systemMessage },
           { role: 'user', content: query || 'Please provide a brief summary of this Excel file and its contents.' }
         ],
-        max_tokens: 500, // Limit response length
+        max_tokens: 500,
         temperature: 0.7,
       }),
     });
@@ -117,6 +130,17 @@ serve(async (req) => {
         })
         .then(({ error }) => {
           if (error) console.error('Error storing analysis:', error);
+        })
+    );
+
+    // Update last_accessed timestamp
+    EdgeRuntime.waitUntil(
+      supabase
+        .from('excel_files')
+        .update({ last_accessed: new Date().toISOString() })
+        .eq('id', fileId)
+        .then(({ error }) => {
+          if (error) console.error('Error updating last_accessed:', error);
         })
     );
 
