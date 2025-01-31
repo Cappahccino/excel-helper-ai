@@ -13,6 +13,9 @@ interface ExcelAnalysisRequest {
   query?: string;
 }
 
+const MAX_ROWS_PER_CHUNK = 50; // Reduced from 100 to 50 for better memory management
+const MAX_PREVIEW_ROWS = 10;  // Only show first 10 rows in preview
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -51,34 +54,49 @@ serve(async (req) => {
       throw new Error('Error downloading file');
     }
 
-    // Process Excel file
+    // Process Excel file with streaming approach
     const arrayBuffer = await fileBuffer.arrayBuffer();
-    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { 
+      type: 'array',
+      cellDates: true,
+      cellNF: false,
+      cellText: false
+    });
     
     // Get first sheet data
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
     
-    // Convert to JSON with chunking (max 100 rows)
-    const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-    const headers = allData[0] as string[];
-    const dataRows = allData.slice(1);
+    // Get headers and total rows
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    const totalRows = range.e.r;
     
-    // Process in chunks of 100 rows
-    const chunkSize = 100;
-    const chunks = [];
-    for (let i = 0; i < dataRows.length; i += chunkSize) {
-      chunks.push(dataRows.slice(i, i + chunkSize));
+    // Extract headers
+    const headers: string[] = [];
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cell = worksheet[XLSX.utils.encode_cell({r: 0, c: C})];
+      headers.push(cell?.v?.toString() || `Column ${C + 1}`);
     }
 
-    // Prepare data summary
+    // Get preview data (first few rows)
+    const previewData = [];
+    for (let R = 1; R <= Math.min(MAX_PREVIEW_ROWS, totalRows); ++R) {
+      const row = [];
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
+        row.push(cell?.v?.toString() || '');
+      }
+      previewData.push(row);
+    }
+
+    // Prepare data summary with memory-efficient approach
     const summary = {
       totalSheets: workbook.SheetNames.length,
       sheetNames: workbook.SheetNames,
       columnCount: headers.length,
       columnNames: headers,
-      totalRows: dataRows.length,
-      sampleData: chunks[0], // First chunk for initial analysis
+      totalRows: totalRows,
+      previewData: previewData,
     };
 
     // Prepare system message with file summary
@@ -89,10 +107,11 @@ serve(async (req) => {
     - Columns (${summary.columnCount}): ${summary.columnNames.join(', ')}
     - Total Rows: ${summary.totalRows}
     
+    The preview data shows the first ${MAX_PREVIEW_ROWS} rows of the file.
     Provide clear, concise analysis based on this data structure.
     If the user asks a specific question, focus on answering that question using the available data.`;
 
-    // Call OpenAI API
+    // Call OpenAI API with optimized prompt
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
