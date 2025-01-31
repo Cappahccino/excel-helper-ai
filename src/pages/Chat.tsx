@@ -1,12 +1,22 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { BarChart2, Table2, FileSpreadsheet, Upload } from "lucide-react";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
+import { FileUploadZone } from "@/components/FileUploadZone";
+import { ExcelPreview } from "@/components/ExcelPreview";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 
 const Chat = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [fileId, setFileId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const placeholders = [
     "Add a file or start chat...",
@@ -14,35 +24,110 @@ const Chat = () => {
     "Sum column C when when rows in Column B equal June",
   ];
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+  const handleFileUpload = async (file: File) => {
+    try {
+      setIsUploading(true);
+      setCurrentFile(file);
+
+      // Upload file to Supabase Storage
+      const filePath = `${crypto.randomUUID()}-${file.name}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('excel_files')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Create file record in database
+      const { data: fileRecord, error: dbError } = await supabase
+        .from('excel_files')
+        .insert({
+          filename: file.name,
+          file_path: filePath,
+          file_size: file.size,
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      setFileId(fileRecord.id);
+
+      // Get initial analysis
+      const { data: analysis, error: analysisError } = await supabase.functions
+        .invoke('analyze-excel', {
+          body: { fileId: fileRecord.id }
+        });
+
+      if (analysisError) throw analysisError;
+
+      toast({
+        title: "File uploaded successfully",
+        description: "Initial analysis complete",
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Upload failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleReset = () => {
+    setCurrentFile(null);
+    setFileId(null);
+    setUploadProgress(0);
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Handle form submission
+    if (!searchQuery.trim()) return;
+
+    try {
+      const { data: analysis, error } = await supabase.functions
+        .invoke('analyze-excel', {
+          body: { fileId, query: searchQuery }
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Analysis complete",
+        description: "Your query has been processed",
+      });
+    } catch (error) {
+      console.error('Query error:', error);
+      toast({
+        title: "Query failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const workflows = [
-    {
-      icon: <BarChart2 className="w-8 h-8" />,
-      title: "Quick Visualization",
-      description: "Visually explore your spreadsheet data",
-      runs: "42250 runs",
+  // Fetch chat messages
+  const { data: messages } = useQuery({
+    queryKey: ['chat-messages', fileId],
+    queryFn: async () => {
+      if (!fileId) return [];
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('excel_file_id', fileId)
+        .order('created_at', { ascending: true });
+      
+      if (error) throw error;
+      return data;
     },
-    {
-      icon: <Table2 className="w-8 h-8" />,
-      title: "Data Cleaner",
-      description: "Methodically clean your data",
-      runs: "11000 runs",
-    },
-    {
-      icon: <FileSpreadsheet className="w-8 h-8" />,
-      title: "Extract Tables",
-      description: "Extract tables from spreadsheets",
-      runs: "4367 runs",
-    },
-  ];
+    enabled: !!fileId,
+  });
 
   return (
     <SidebarProvider>
@@ -66,45 +151,46 @@ const Chat = () => {
                   <h2 className="text-3xl font-bold mb-4">
                     What do you need help analyzing?
                   </h2>
-                  <div className="max-w-2xl mx-auto flex items-center gap-4">
-                    <Button 
-                      variant="outline" 
-                      className="bg-transparent border-gray-700 text-white hover:bg-gray-800 transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:border-white"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload File
-                    </Button>
-                    <PlaceholdersAndVanishInput
-                      placeholders={placeholders}
-                      onChange={handleChange}
-                      onSubmit={handleSubmit}
+                  <div className="max-w-2xl mx-auto">
+                    <FileUploadZone
+                      onFileUpload={handleFileUpload}
+                      isUploading={isUploading}
+                      uploadProgress={uploadProgress}
+                      currentFile={currentFile}
+                      onReset={handleReset}
                     />
-                  </div>
-                </div>
-
-                <div className="mb-12">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold">
-                      Or start from ready workflows
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {workflows.map((workflow, index) => (
-                      <div
-                        key={index}
-                        className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/50 hover:bg-gray-800/70 transition-colors cursor-pointer backdrop-blur-sm"
-                      >
-                        <div className="mb-4 text-blue-400">{workflow.icon}</div>
-                        <h4 className="text-lg font-semibold mb-2">
-                          {workflow.title}
-                        </h4>
-                        <p className="text-gray-400 text-sm mb-4">
-                          {workflow.description}
-                        </p>
-                        <p className="text-xs text-gray-500">{workflow.runs}</p>
+                    
+                    {currentFile && (
+                      <div className="mt-8">
+                        <ExcelPreview file={currentFile} />
                       </div>
-                    ))}
+                    )}
+
+                    {messages && messages.length > 0 && (
+                      <div className="mt-8 space-y-4 text-left">
+                        {messages.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`p-4 rounded-lg ${
+                              message.is_ai_response
+                                ? "bg-blue-900/30 ml-4"
+                                : "bg-gray-800/50 mr-4"
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-8">
+                      <PlaceholdersAndVanishInput
+                        placeholders={placeholders}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onSubmit={handleSubmit}
+                        value={searchQuery}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

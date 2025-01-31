@@ -9,6 +9,41 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          excel_file_id: string | null
+          id: string
+          is_ai_response: boolean | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          excel_file_id?: string | null
+          id?: string
+          is_ai_response?: boolean | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          excel_file_id?: string | null
+          id?: string
+          is_ai_response?: boolean | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_excel_file_id_fkey"
+            columns: ["excel_file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       excel_files: {
         Row: {
           created_at: string
