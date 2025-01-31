@@ -29,6 +29,12 @@ const Chat = () => {
       setIsUploading(true);
       setCurrentFile(file);
 
+      // Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
       // Upload file to Supabase Storage
       const filePath = `${crypto.randomUUID()}-${file.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -47,6 +53,7 @@ const Chat = () => {
           filename: file.name,
           file_path: filePath,
           file_size: file.size,
+          user_id: user.id, // Add the user_id field
         })
         .select()
         .single();
@@ -188,7 +195,6 @@ const Chat = () => {
                         placeholders={placeholders}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onSubmit={handleSubmit}
-                        value={searchQuery}
                       />
                     </div>
                   </div>
