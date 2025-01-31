@@ -60,11 +60,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
           cacheControl: '3600',
-          upsert: false,
-          onUploadProgress: (progress) => {
-            const percentage = (progress.loaded / progress.total) * 100;
-            setUploadProgress(Math.round(percentage));
-          },
+          upsert: false
         });
 
       if (uploadError) throw uploadError;
@@ -85,6 +81,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       setFile(sanitizedFile);
       setFileId(fileRecord.id);
+      setUploadProgress(100);
 
       // Get initial analysis
       const { data: analysis, error: analysisError } = await supabase.functions

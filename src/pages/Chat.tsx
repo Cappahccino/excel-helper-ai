@@ -8,7 +8,7 @@ import { useFileUpload } from "@/hooks/useFileUpload";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 
-export function Chat() {
+const Chat = () => {
   const [message, setMessage] = useState("");
   const { toast } = useToast();
   const {
@@ -131,4 +131,6 @@ export function Chat() {
       </form>
     </div>
   );
-}
+};
+
+export default Chat;
