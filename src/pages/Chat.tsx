@@ -47,13 +47,15 @@ const Chat = () => {
 
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
+      if (userError || !user) {
+        throw new Error('User not authenticated');
+      }
 
       // Save user message
       const { error: messageError } = await supabase
         .from('chat_messages')
         .insert({
-          content: message,
+          content: message.trim(),
           excel_file_id: fileId,
           is_ai_response: false,
           user_id: user.id
@@ -61,29 +63,17 @@ const Chat = () => {
 
       if (messageError) throw messageError;
 
-      // Call analyze-excel function
+      // Call analyze-excel function with all required parameters
       const { data: analysis, error } = await supabase.functions
         .invoke('analyze-excel', {
           body: { 
             fileId, 
-            query: message,
+            query: message.trim(),
             userId: user.id 
           }
         });
 
       if (error) throw error;
-
-      // Save AI response
-      const { error: aiMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: analysis.message,
-          excel_file_id: fileId,
-          is_ai_response: true,
-          user_id: user.id
-        });
-
-      if (aiMessageError) throw aiMessageError;
 
       // Refetch messages to show the new ones
       await refetchMessages();
