@@ -1,120 +1,117 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
+import OpenAI from 'openai';
+import { Database } from '../../../src/integrations/supabase/types';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// Define types for the request body
+interface RequestBody {
+  fileId: string;
+  query: string;
+}
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+// Define types for the Lambda event
+interface LambdaEvent {
+  body: string;
+  headers: {
+    [key: string]: string;
+  };
+}
 
+// Define types for the Lambda response
+interface LambdaResponse {
+  statusCode: number;
+  headers: {
+    'Content-Type': string;
+    'Access-Control-Allow-Origin': string;
+  };
+  body: string;
+}
+
+// Initialize Supabase client with types
+const supabase = createClient<Database>(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: Deno.env.get('OPENAI_API_KEY')
+});
+
+export const handler = async (event: LambdaEvent): Promise<LambdaResponse> => {
   try {
-    // Parse request body and validate required fields
-    const requestData = await req.json();
-    console.log('Received request data:', JSON.stringify(requestData, null, 2));
+    // Parse and type the request body
+    const { fileId, query }: RequestBody = JSON.parse(event.body);
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
-    }
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase configuration');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Get file metadata from database
+    // Get file metadata from Supabase with proper types
     const { data: fileData, error: fileError } = await supabase
       .from('excel_files')
       .select('*')
       .eq('id', fileId)
       .single();
 
-    if (fileError || !fileData) {
-      console.error('Error fetching file data:', fileError);
-      throw new Error(fileError?.message || 'File not found');
-    }
+    if (fileError) throw fileError;
 
-    // Get the Lambda auth token
-    const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
-    const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
+    // Download file from Supabase Storage
+    const { data: fileBuffer, error: downloadError } = await supabase
+      .storage
+      .from('excel_files')
+      .download(fileData.file_path);
 
-    if (!lambdaAuthToken || !lambdaUrl) {
-      throw new Error('Lambda configuration missing');
-    }
+    if (downloadError) throw downloadError;
 
-    console.log('Calling Lambda function for file:', fileData.filename);
-    
-    // Call AWS Lambda function
-    const lambdaResponse = await fetch(lambdaUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${lambdaAuthToken}`,
-      },
-      body: JSON.stringify({
-        fileId,
-        filePath: fileData.file_path,
-        query,
-        supabaseUrl,
-        supabaseKey,
-      }),
+    // Process Excel file with proper typing
+    const arrayBuffer = await fileBuffer.arrayBuffer();
+    const workbook = XLSX.read(new Uint8Array(arrayBuffer));
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    // Get OpenAI analysis with proper types
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You are analyzing Excel data. Provide clear, concise insights."
+        },
+        {
+          role: "user",
+          content: `Analyze this Excel data: ${JSON.stringify(jsonData.slice(0, 100))}. Query: ${query}`
+        }
+      ]
     });
 
-    if (!lambdaResponse.ok) {
-      console.error('Lambda error status:', lambdaResponse.status);
-      const errorText = await lambdaResponse.text();
-      console.error('Lambda error response:', errorText);
-      
-      if (lambdaResponse.status === 401) {
-        throw new Error('Unauthorized: Invalid Lambda authentication token');
-      }
-      throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
-    }
+    // Store analysis in Supabase with proper types
+    const { error: chatError } = await supabase
+      .from('chat_messages')
+      .insert({
+        excel_file_id: fileId,
+        content: completion.choices[0].message.content,
+        is_ai_response: true,
+        user_id: fileData.user_id // Required by the schema
+      });
 
-    const analysis = await lambdaResponse.json();
-    console.log('Analysis received from Lambda:', analysis);
+    if (chatError) throw chatError;
 
-    if (!analysis || !analysis.message) {
-      throw new Error('Invalid response from Lambda');
-    }
-
-    return new Response(
-      JSON.stringify({ message: analysis.message }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
-      }
-    );
-
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        analysis: completion.choices[0].message.content
+      })
+    };
   } catch (error) {
-    console.error('Error in analyze-excel function:', error);
-    
-    // Ensure we always return a properly formatted error response
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
-        details: error instanceof Error ? error.stack : undefined
-      }),
-      { 
-        status: error.message?.includes('Unauthorized') ? 401 : 500,
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        }
-      }
-    );
+    console.error('Error:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })
+    };
   }
-});
+};
