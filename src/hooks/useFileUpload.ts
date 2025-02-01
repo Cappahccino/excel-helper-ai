@@ -3,36 +3,38 @@ import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-interface UseFileUploadReturn {
+interface UseFileUploadState {
   file: File | null;
   isUploading: boolean;
   uploadProgress: number;
   error: string | null;
-  handleFileUpload: (file: File) => Promise<void>;
-  resetUpload: () => void;
   fileId: string | null;
 }
 
-export const useFileUpload = (): UseFileUploadReturn => {
-  const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [fileId, setFileId] = useState<string | null>(null);
+export function useFileUpload() {
+  const [state, setState] = useState<UseFileUploadState>({
+    file: null,
+    isUploading: false,
+    uploadProgress: 0,
+    error: null,
+    fileId: null
+  });
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
-    setFile(null);
-    setIsUploading(false);
-    setUploadProgress(0);
-    setError(null);
-    setFileId(null);
+    setState({
+      file: null,
+      isUploading: false,
+      uploadProgress: 0,
+      error: null,
+      fileId: null
+    });
   }, []);
 
   const handleFileUpload = useCallback(async (newFile: File) => {
     const validation = validateFile(newFile);
     if (!validation.isValid) {
-      setError(validation.error);
+      setState(prev => ({ ...prev, error: validation.error }));
       toast({
         title: "Upload Error",
         description: validation.error,
@@ -42,22 +44,23 @@ export const useFileUpload = (): UseFileUploadReturn => {
     }
 
     try {
-      setIsUploading(true);
-      setError(null);
+      setState(prev => ({
+        ...prev,
+        isUploading: true,
+        error: null
+      }));
+
       const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
         type: newFile.type,
       });
 
-      // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
-      console.log('User authenticated for file upload:', user.id);
 
-      // Upload file to Supabase Storage
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
           cacheControl: '3600',
@@ -65,9 +68,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         });
 
       if (uploadError) throw uploadError;
-      console.log('File uploaded successfully:', filePath);
 
-      // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -80,11 +81,13 @@ export const useFileUpload = (): UseFileUploadReturn => {
         .single();
 
       if (dbError) throw dbError;
-      console.log('File record created:', fileRecord);
 
-      setFile(sanitizedFile);
-      setFileId(fileRecord.id);
-      setUploadProgress(100);
+      setState(prev => ({
+        ...prev,
+        file: sanitizedFile,
+        fileId: fileRecord.id,
+        uploadProgress: 100
+      }));
 
       toast({
         title: "Success",
@@ -92,24 +95,23 @@ export const useFileUpload = (): UseFileUploadReturn => {
       });
     } catch (err) {
       console.error('Upload error:', err);
-      setError(err instanceof Error ? err.message : "Failed to upload file");
+      setState(prev => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "Failed to upload file"
+      }));
       toast({
         title: "Upload Failed",
         description: err instanceof Error ? err.message : "Failed to upload file",
         variant: "destructive",
       });
     } finally {
-      setIsUploading(false);
+      setState(prev => ({ ...prev, isUploading: false }));
     }
   }, [toast]);
 
   return {
-    file,
-    isUploading,
-    uploadProgress,
-    error,
+    ...state,
     handleFileUpload,
     resetUpload,
-    fileId,
   };
-};
+}
