@@ -22,7 +22,7 @@ const Chat = () => {
   } = useFileUpload();
 
   // Fetch chat messages
-  const { data: messages, isLoading: messagesLoading } = useQuery({
+  const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async () => {
       if (!fileId) return [];
@@ -64,7 +64,11 @@ const Chat = () => {
       // Call analyze-excel function
       const { data: analysis, error } = await supabase.functions
         .invoke('analyze-excel', {
-          body: { fileId, query: message }
+          body: { 
+            fileId, 
+            query: message,
+            userId: user.id 
+          }
         });
 
       if (error) throw error;
@@ -81,6 +85,8 @@ const Chat = () => {
 
       if (aiMessageError) throw aiMessageError;
 
+      // Refetch messages to show the new ones
+      await refetchMessages();
       setMessage("");
     } catch (error) {
       console.error('Analysis error:', error);
@@ -135,7 +141,7 @@ const Chat = () => {
                       : "bg-gray-50 mr-4"
                   }`}
                 >
-                  <p className="text-sm">{message.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               ))}
             </div>
