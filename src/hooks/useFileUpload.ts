@@ -49,10 +49,11 @@ export const useFileUpload = (): UseFileUploadReturn => {
       });
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
+      console.log('User authenticated for file upload:', user.id);
 
       // Upload file to Supabase Storage
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
@@ -64,6 +65,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         });
 
       if (uploadError) throw uploadError;
+      console.log('File uploaded successfully:', filePath);
 
       // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
@@ -78,47 +80,15 @@ export const useFileUpload = (): UseFileUploadReturn => {
         .single();
 
       if (dbError) throw dbError;
+      console.log('File record created:', fileRecord);
 
       setFile(sanitizedFile);
       setFileId(fileRecord.id);
       setUploadProgress(100);
 
-      // Save initial system message
-      const initialPrompt = "What kind of data does this Excel file contain? Please, Give me an overview of this Excel file's contents";
-      const { error: messageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: initialPrompt,
-          excel_file_id: fileRecord.id,
-          is_ai_response: false,
-          user_id: user.id
-        });
-
-      if (messageError) throw messageError;
-
-      // Get initial analysis
-      const { data: analysis, error: analysisError } = await supabase.functions
-        .invoke('analyze-excel', {
-          body: { fileId: fileRecord.id, query: initialPrompt }
-        });
-
-      if (analysisError) throw analysisError;
-
-      // Save AI response
-      const { error: aiMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: analysis.message,
-          excel_file_id: fileRecord.id,
-          is_ai_response: true,
-          user_id: user.id
-        });
-
-      if (aiMessageError) throw aiMessageError;
-
       toast({
         title: "Success",
-        description: "File uploaded and analyzed successfully",
+        description: "File uploaded successfully",
       });
     } catch (err) {
       console.error('Upload error:', err);

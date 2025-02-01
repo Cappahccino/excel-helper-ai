@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -7,11 +7,15 @@ import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 const Chat = () => {
   const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const navigate = useNavigate();
   const { toast } = useToast();
+  
   const {
     file: uploadedFile,
     isUploading,
@@ -20,6 +24,27 @@ const Chat = () => {
     resetUpload,
     fileId,
   } = useFileUpload();
+
+  // Check authentication status and get user ID
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        console.error('Authentication error:', error);
+        toast({
+          title: "Authentication Error",
+          description: "Please log in to continue.",
+          variant: "destructive",
+        });
+        navigate('/auth');
+        return;
+      }
+      console.log('User authenticated:', user.id);
+      setUserId(user.id);
+    };
+
+    checkAuth();
+  }, [navigate, toast]);
 
   // Fetch chat messages
   const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
@@ -42,27 +67,43 @@ const Chat = () => {
     e.preventDefault();
     if (!message.trim() || !fileId || isAnalyzing) return;
 
+    // Validate required fields before making the request
+    if (!userId) {
+      console.error('User ID is missing');
+      toast({
+        title: "Error",
+        description: "User authentication required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!fileId) {
+      console.error('File ID is missing');
+      toast({
+        title: "Error",
+        description: "Please upload a file first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsAnalyzing(true);
-      console.log('Starting analysis with excel_file_id:', fileId);
+      console.log('Starting analysis with:', {
+        excel_file_id: fileId,
+        user_id: userId,
+        query: message.trim()
+      });
 
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        console.error('Authentication error:', userError);
-        throw new Error('User not authenticated');
-      }
-
-      console.log('User authenticated:', user.id);
-
-      // Save user message using snake_case field names
+      // Save user message
       const { error: messageError } = await supabase
         .from('chat_messages')
         .insert({
           content: message.trim(),
           excel_file_id: fileId,
           is_ai_response: false,
-          user_id: user.id
+          user_id: userId
         });
 
       if (messageError) {
@@ -70,15 +111,13 @@ const Chat = () => {
         throw messageError;
       }
 
-      console.log('User message saved, calling analyze-excel function');
-
-      // Call analyze-excel function with snake_case field names
+      // Call analyze-excel function with validated data
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('analyze-excel', {
           body: { 
-            excel_file_id: fileId, 
+            excel_file_id: fileId,
             query: message.trim(),
-            user_id: user.id 
+            user_id: userId
           }
         });
 
