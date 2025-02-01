@@ -1,11 +1,26 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+interface LambdaResponse {
+  fileName: string;
+  fileSize: number;
+  message: string;
+  openAiResponse: {
+    model: string;
+    usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    };
+    responseContent: string;
+  };
+  timestamp: string;
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -14,16 +29,6 @@ serve(async (req) => {
   }
 
   try {
-    // Parse request body and validate required fields
-    const requestData = await req.json();
-    console.log('Received request data:', JSON.stringify(requestData, null, 2));
-
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
-    }
-
-    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
@@ -33,19 +38,15 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get file metadata from database
-    const { data: fileData, error: fileError } = await supabase
-      .from('excel_files')
-      .select('*')
-      .eq('id', fileId)
-      .single();
+    // Get request data
+    const { fileId, query, userId } = await req.json();
+    console.log('Processing request for file:', fileId);
 
-    if (fileError || !fileData) {
-      console.error('Error fetching file data:', fileError);
-      throw new Error(fileError?.message || 'File not found');
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required parameters');
     }
 
-    // Get the Lambda auth token
+    // Get Lambda configuration
     const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
     const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
 
@@ -53,9 +54,8 @@ serve(async (req) => {
       throw new Error('Lambda configuration missing');
     }
 
-    console.log('Calling Lambda function for file:', fileData.filename);
-    
     // Call AWS Lambda function
+    console.log('Calling Lambda function...');
     const lambdaResponse = await fetch(lambdaUrl, {
       method: 'POST',
       headers: {
@@ -64,7 +64,6 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         fileId,
-        filePath: fileData.file_path,
         query,
         supabaseUrl,
         supabaseKey,
@@ -75,44 +74,63 @@ serve(async (req) => {
       console.error('Lambda error status:', lambdaResponse.status);
       const errorText = await lambdaResponse.text();
       console.error('Lambda error response:', errorText);
-      
-      if (lambdaResponse.status === 401) {
-        throw new Error('Unauthorized: Invalid Lambda authentication token');
-      }
       throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
     }
 
-    const analysis = await lambdaResponse.json();
-    console.log('Analysis received from Lambda:', analysis);
+    // Parse and validate Lambda response
+    const analysis = await lambdaResponse.json() as LambdaResponse;
+    console.log('Received Lambda response:', analysis);
 
-    if (!analysis || !analysis.message) {
-      throw new Error('Invalid response from Lambda');
+    if (!analysis || !analysis.message || !analysis.openAiResponse) {
+      console.error('Invalid Lambda response structure:', analysis);
+      throw new Error('Invalid response structure from Lambda');
     }
 
+    // Store the analysis in chat_messages
+    console.log('Storing analysis in database...');
+    const { error: messageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: analysis.message,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        openai_model: analysis.openAiResponse.model,
+        openai_usage: analysis.openAiResponse.usage,
+        raw_response: analysis.openAiResponse
+      });
+
+    if (messageError) {
+      console.error('Error storing message:', messageError);
+      throw new Error('Failed to store analysis results');
+    }
+
+    // Return success response
     return new Response(
-      JSON.stringify({ message: analysis.message }),
+      JSON.stringify({ 
+        message: analysis.message,
+        model: analysis.openAiResponse.model,
+        usage: analysis.openAiResponse.usage
+      }),
       { 
         headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         } 
       }
     );
 
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
-    
-    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
-        details: error instanceof Error ? error.stack : undefined
+        error: error instanceof Error ? error.message : 'An unexpected error occurred'
       }),
       { 
-        status: error.message?.includes('Unauthorized') ? 401 : 500,
+        status: error instanceof Error && error.message.includes('Invalid response') ? 400 : 500,
         headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
       }
     );
