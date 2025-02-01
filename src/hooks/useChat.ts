@@ -48,6 +48,8 @@ async function storeMessage(
 }
 
 async function analyzeLambdaFunction(requestBody: LambdaRequestBody): Promise<LambdaResponse> {
+  console.log('Sending request to Lambda:', requestBody);
+  
   const response = await fetch(API_CONFIG.LAMBDA_FUNCTION_URL!, {
     method: 'POST',
     headers: {
@@ -58,11 +60,14 @@ async function analyzeLambdaFunction(requestBody: LambdaRequestBody): Promise<La
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(`Lambda function error: ${errorData.error || 'Unknown error'}`);
+    const errorText = await response.text();
+    console.error('Lambda response error:', response.status, errorText);
+    throw new Error(`Lambda function error: ${errorText || 'Unknown error'}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log('Lambda response:', data);
+  return data;
 }
 
 export function useChat(fileId: string | null, userId: string | null) {
