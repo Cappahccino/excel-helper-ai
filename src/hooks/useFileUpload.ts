@@ -83,13 +83,38 @@ export const useFileUpload = (): UseFileUploadReturn => {
       setFileId(fileRecord.id);
       setUploadProgress(100);
 
+      // Save initial system message
+      const initialPrompt = "What kind of data does this Excel file contain? Please, Give me an overview of this Excel file's contents";
+      const { error: messageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: initialPrompt,
+          excel_file_id: fileRecord.id,
+          is_ai_response: false,
+          user_id: user.id
+        });
+
+      if (messageError) throw messageError;
+
       // Get initial analysis
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('analyze-excel', {
-          body: { fileId: fileRecord.id }
+          body: { fileId: fileRecord.id, query: initialPrompt }
         });
 
       if (analysisError) throw analysisError;
+
+      // Save AI response
+      const { error: aiMessageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: analysis.message,
+          excel_file_id: fileRecord.id,
+          is_ai_response: true,
+          user_id: user.id
+        });
+
+      if (aiMessageError) throw aiMessageError;
 
       toast({
         title: "Success",
