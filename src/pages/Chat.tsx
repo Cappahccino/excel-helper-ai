@@ -72,13 +72,13 @@ const Chat = () => {
 
       console.log('User message saved, calling analyze-excel function');
 
-      // Call analyze-excel function with all required parameters
+      // Call analyze-excel function with snake_case field names
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('analyze-excel', {
           body: JSON.stringify({ 
-            fileId, 
+            excel_file_id: fileId, 
             query: message.trim(),
-            userId: user.id 
+            user_id: user.id 
           })
         });
 

@@ -1,4 +1,3 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
@@ -26,15 +25,16 @@ serve(async (req) => {
       throw new Error('Invalid request body format');
     }
 
-    const { fileId, query, userId } = requestData;
+    // Use snake_case to match database column names
+    const { excel_file_id: fileId, query, user_id: userId } = requestData;
     
     console.log('Extracted fields:', { fileId, query, userId });
 
     if (!fileId || !query || !userId) {
       const missingFields = [];
-      if (!fileId) missingFields.push('fileId');
+      if (!fileId) missingFields.push('excel_file_id');
       if (!query) missingFields.push('query');
-      if (!userId) missingFields.push('userId');
+      if (!userId) missingFields.push('user_id');
       
       const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
       console.error(errorMessage);
