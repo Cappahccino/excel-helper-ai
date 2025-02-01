@@ -34,12 +34,18 @@ serve(async (req) => {
       throw new Error('File not found');
     }
 
-    // Call AWS Lambda function
+    // Get the Lambda auth token
+    const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
+    if (!lambdaAuthToken) {
+      throw new Error('Lambda authentication token not configured');
+    }
+
+    // Call AWS Lambda function with authentication
     const lambdaResponse = await fetch('YOUR_LAMBDA_FUNCTION_URL', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('LAMBDA_AUTH_TOKEN')}`,
+        'Authorization': `Bearer ${lambdaAuthToken}`,
       },
       body: JSON.stringify({
         fileId,
@@ -51,11 +57,18 @@ serve(async (req) => {
     });
 
     if (!lambdaResponse.ok) {
-      console.error('Lambda error:', await lambdaResponse.text());
+      console.error('Lambda error status:', lambdaResponse.status);
+      const errorText = await lambdaResponse.text();
+      console.error('Lambda error response:', errorText);
+      
+      if (lambdaResponse.status === 401) {
+        throw new Error('Unauthorized: Invalid Lambda authentication token');
+      }
       throw new Error('Error processing file with Lambda');
     }
 
     const analysis = await lambdaResponse.json();
+    console.log('Analysis received from Lambda:', analysis);
 
     // Store the analysis in chat_messages using background task
     EdgeRuntime.waitUntil(
@@ -92,7 +105,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
-        status: 500,
+        status: error.message.includes('Unauthorized') ? 401 : 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
