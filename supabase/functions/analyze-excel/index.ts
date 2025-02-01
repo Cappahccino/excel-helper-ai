@@ -18,9 +18,31 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query, userId } = requestData;
-    if (!fileId || !query || !userId) {
-      throw new Error('Missing required fields: fileId, query, and userId are required');
+    const { fileId, query } = requestData;
+    if (!fileId || !query) {
+      throw new Error('Missing required fields: fileId and query are required');
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase configuration');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get file metadata from database
+    const { data: fileData, error: fileError } = await supabase
+      .from('excel_files')
+      .select('*')
+      .eq('id', fileId)
+      .single();
+
+    if (fileError || !fileData) {
+      console.error('Error fetching file data:', fileError);
+      throw new Error(fileError?.message || 'File not found');
     }
 
     // Get the Lambda auth token
@@ -31,9 +53,9 @@ serve(async (req) => {
       throw new Error('Lambda configuration missing');
     }
 
-    console.log('Calling Lambda function for analysis');
+    console.log('Calling Lambda function for file:', fileData.filename);
     
-    // Call AWS Lambda function with proper authentication
+    // Call AWS Lambda function
     const lambdaResponse = await fetch(lambdaUrl, {
       method: 'POST',
       headers: {
@@ -42,8 +64,10 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         fileId,
+        filePath: fileData.file_path,
         query,
-        userId
+        supabaseUrl,
+        supabaseKey,
       }),
     });
 
@@ -51,26 +75,22 @@ serve(async (req) => {
       console.error('Lambda error status:', lambdaResponse.status);
       const errorText = await lambdaResponse.text();
       console.error('Lambda error response:', errorText);
+      
+      if (lambdaResponse.status === 401) {
+        throw new Error('Unauthorized: Invalid Lambda authentication token');
+      }
       throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
     }
 
-    const lambdaResult = await lambdaResponse.json();
-    console.log('Lambda response received:', JSON.stringify(lambdaResult, null, 2));
+    const analysis = await lambdaResponse.json();
+    console.log('Analysis received from Lambda:', analysis);
 
-    // Validate the Lambda response
-    if (!lambdaResult || !lambdaResult.message) {
-      console.error('Invalid Lambda response format:', lambdaResult);
-      throw new Error('Invalid response format from Lambda');
+    if (!analysis || !analysis.message) {
+      throw new Error('Invalid response from Lambda');
     }
 
-    // Return the response in the expected format
     return new Response(
-      JSON.stringify({
-        message: lambdaResult.message,
-        fileName: lambdaResult.fileName,
-        fileSize: lambdaResult.fileSize,
-        timestamp: lambdaResult.timestamp
-      }),
+      JSON.stringify({ message: analysis.message }),
       { 
         headers: { 
           ...corsHeaders, 
@@ -82,13 +102,14 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
     
+    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
         details: error instanceof Error ? error.stack : undefined
       }),
       { 
-        status: 500,
+        status: error.message?.includes('Unauthorized') ? 401 : 500,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
