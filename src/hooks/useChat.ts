@@ -3,8 +3,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatMessage } from "@/types/chat";
 
-const LAMBDA_FUNCTION_URL = process.env.LAMBDA_FUNCTION_URL;
-const LAMBDA_AUTH_TOKEN = process.env.LAMBDA_AUTH_TOKEN;
+const LAMBDA_FUNCTION_URL = import.meta.env.VITE_LAMBDA_FUNCTION_URL;
+const LAMBDA_AUTH_TOKEN = import.meta.env.VITE_LAMBDA_AUTH_TOKEN;
 
 export function useChat(fileId: string | null, userId: string | null) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -43,8 +43,8 @@ export function useChat(fileId: string | null, userId: string | null) {
           fileId,
           filePath: fileData.file_path,
           query: message,
-          supabaseUrl: process.env.SUPABASE_URL,
-          supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+          supabaseKey: import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
         })
       });
 
