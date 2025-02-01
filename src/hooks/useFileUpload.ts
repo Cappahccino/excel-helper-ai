@@ -104,11 +104,11 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       if (analysisError) throw analysisError;
 
-      // Save AI response - Fixed to use the correct property name
+      // Save AI response
       const { error: aiMessageError } = await supabase
         .from('chat_messages')
         .insert({
-          content: analysis.generatedText || "Unable to analyze file", // Use generatedText and provide fallback
+          content: analysis.message,
           excel_file_id: fileRecord.id,
           is_ai_response: true,
           user_id: user.id
