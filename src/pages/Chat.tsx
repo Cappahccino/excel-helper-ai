@@ -96,21 +96,6 @@ const Chat = () => {
         query: message.trim()
       });
 
-      // Save user message
-      const { error: messageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: message.trim(),
-          excel_file_id: fileId,
-          is_ai_response: false,
-          user_id: userId
-        });
-
-      if (messageError) {
-        console.error('Error saving user message:', messageError);
-        throw messageError;
-      }
-
       // Call analyze-excel function with validated data
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('analyze-excel', {
