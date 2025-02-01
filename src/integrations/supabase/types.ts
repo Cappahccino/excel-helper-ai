@@ -16,6 +16,9 @@ export type Database = {
           excel_file_id: string | null
           id: string
           is_ai_response: boolean | null
+          openai_model: string | null
+          openai_usage: Json | null
+          raw_response: Json | null
           user_id: string
         }
         Insert: {
@@ -24,6 +27,9 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
+          openai_model?: string | null
+          openai_usage?: Json | null
+          raw_response?: Json | null
           user_id: string
         }
         Update: {
@@ -32,6 +38,9 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
+          openai_model?: string | null
+          openai_usage?: Json | null
+          raw_response?: Json | null
           user_id?: string
         }
         Relationships: [
