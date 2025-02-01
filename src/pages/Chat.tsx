@@ -73,6 +73,21 @@ const Chat = () => {
 
       if (error) throw error;
 
+      // Save AI response
+      const { error: aiMessageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: analysis.message,
+          excel_file_id: fileId,
+          is_ai_response: true,
+          user_id: user.id,
+          openai_model: analysis.model,
+          openai_usage: analysis.usage,
+          raw_response: analysis
+        });
+
+      if (aiMessageError) throw aiMessageError;
+
       // Refetch messages to show the new ones
       await refetchMessages();
       setMessage("");
