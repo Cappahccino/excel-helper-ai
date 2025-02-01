@@ -1,10 +1,69 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ChatMessage } from "@/types/chat";
+import { API_CONFIG } from "@/config/apiConfig";
+import { FileData, LambdaRequestBody, LambdaResponse } from "@/types/messages";
 
-const LAMBDA_FUNCTION_URL = import.meta.env.VITE_LAMBDA_FUNCTION_URL;
-const LAMBDA_AUTH_TOKEN = import.meta.env.VITE_LAMBDA_AUTH_TOKEN;
+async function getFileData(fileId: string): Promise<FileData> {
+  const { data, error } = await supabase
+    .from('excel_files')
+    .select('*')
+    .eq('id', fileId)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to fetch file data: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function storeMessage(
+  content: string,
+  fileId: string,
+  userId: string,
+  isAiResponse: boolean,
+  aiResponseData?: LambdaResponse
+) {
+  const messageData = {
+    content,
+    excel_file_id: fileId,
+    user_id: userId,
+    is_ai_response: isAiResponse,
+    ...(aiResponseData && {
+      openai_model: aiResponseData.openAiResponse?.model,
+      openai_usage: aiResponseData.openAiResponse?.usage,
+      raw_response: aiResponseData.openAiResponse
+    })
+  };
+
+  const { error } = await supabase
+    .from('chat_messages')
+    .insert(messageData);
+
+  if (error) {
+    console.error(`Error storing ${isAiResponse ? 'AI' : 'user'} message:`, error);
+    throw error;
+  }
+}
+
+async function analyzeLambdaFunction(requestBody: LambdaRequestBody): Promise<LambdaResponse> {
+  const response = await fetch(API_CONFIG.LAMBDA_FUNCTION_URL!, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_CONFIG.LAMBDA_AUTH_TOKEN}`
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Lambda function error: ${errorData.error || 'Unknown error'}`);
+  }
+
+  return response.json();
+}
 
 export function useChat(fileId: string | null, userId: string | null) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -15,79 +74,27 @@ export function useChat(fileId: string | null, userId: string | null) {
 
     try {
       setIsAnalyzing(true);
-      console.log('Starting analysis with:', {
+      console.log('Starting analysis with:', { fileId, userId, message });
+
+      const fileData = await getFileData(fileId);
+
+      // Store user message first
+      await storeMessage(message, fileId, userId, false);
+
+      // Analyze with Lambda function
+      const requestBody: LambdaRequestBody = {
         fileId,
-        userId,
-        message
-      });
+        filePath: fileData.file_path,
+        query: message,
+        supabaseUrl: API_CONFIG.SUPABASE_URL!,
+        supabaseKey: API_CONFIG.SUPABASE_KEY!
+      };
 
-      // Get the file data first
-      const { data: fileData, error: fileError } = await supabase
-        .from('excel_files')
-        .select('*')
-        .eq('id', fileId)
-        .single();
-
-      if (fileError) {
-        throw new Error(`Failed to fetch file data: ${fileError.message}`);
-      }
-
-      // Call Lambda function
-      const response = await fetch(LAMBDA_FUNCTION_URL!, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${LAMBDA_AUTH_TOKEN}`
-        },
-        body: JSON.stringify({
-          fileId,
-          filePath: fileData.file_path,
-          query: message,
-          supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-          supabaseKey: import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Lambda function error: ${errorData.error || 'Unknown error'}`);
-      }
-
-      const analysis = await response.json();
+      const analysis = await analyzeLambdaFunction(requestBody);
       console.log('Analysis completed:', analysis);
 
-      // Store the chat message
-      const { error: messageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: message,
-          excel_file_id: fileId,
-          user_id: userId,
-          is_ai_response: false
-        });
-
-      if (messageError) {
-        console.error('Error storing user message:', messageError);
-        throw messageError;
-      }
-
       // Store AI response
-      const { error: aiMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: analysis.message,
-          excel_file_id: fileId,
-          user_id: userId,
-          is_ai_response: true,
-          openai_model: analysis.openAiResponse?.model,
-          openai_usage: analysis.openAiResponse?.usage,
-          raw_response: analysis.openAiResponse
-        });
-
-      if (aiMessageError) {
-        console.error('Error storing AI response:', aiMessageError);
-        throw aiMessageError;
-      }
+      await storeMessage(analysis.message, fileId, userId, true, analysis);
       
       toast({
         title: "Analysis Complete",
