@@ -44,7 +44,7 @@ const Chat = () => {
 
     try {
       setIsAnalyzing(true);
-      console.log('Starting analysis with fileId:', fileId);
+      console.log('Starting analysis with excel_file_id:', fileId);
 
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -55,7 +55,7 @@ const Chat = () => {
 
       console.log('User authenticated:', user.id);
 
-      // Save user message
+      // Save user message using snake_case field names
       const { error: messageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -75,11 +75,11 @@ const Chat = () => {
       // Call analyze-excel function with snake_case field names
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('analyze-excel', {
-          body: JSON.stringify({ 
+          body: { 
             excel_file_id: fileId, 
             query: message.trim(),
             user_id: user.id 
-          })
+          }
         });
 
       if (analysisError) {

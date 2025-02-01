@@ -25,16 +25,16 @@ serve(async (req) => {
       throw new Error('Invalid request body format');
     }
 
-    // Use snake_case to match database column names
-    const { excel_file_id: fileId, query, user_id: userId } = requestData;
+    // Extract fields using snake_case consistently
+    const { excel_file_id, query, user_id } = requestData;
     
-    console.log('Extracted fields:', { fileId, query, userId });
+    console.log('Extracted fields:', { excel_file_id, query, user_id });
 
-    if (!fileId || !query || !userId) {
+    if (!excel_file_id || !query || !user_id) {
       const missingFields = [];
-      if (!fileId) missingFields.push('excel_file_id');
+      if (!excel_file_id) missingFields.push('excel_file_id');
       if (!query) missingFields.push('query');
-      if (!userId) missingFields.push('user_id');
+      if (!user_id) missingFields.push('user_id');
       
       const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
       console.error(errorMessage);
@@ -55,7 +55,7 @@ serve(async (req) => {
     const { data: fileData, error: fileError } = await supabase
       .from('excel_files')
       .select('*')
-      .eq('id', fileId)
+      .eq('id', excel_file_id)
       .single();
 
     if (fileError || !fileData) {
@@ -81,8 +81,8 @@ serve(async (req) => {
         'Authorization': `Bearer ${lambdaAuthToken}`,
       },
       body: JSON.stringify({
-        fileId,
-        filePath: fileData.file_path,
+        excel_file_id,
+        file_path: fileData.file_path,
         query,
         supabaseUrl,
         supabaseKey,
@@ -93,10 +93,6 @@ serve(async (req) => {
       console.error('Lambda error status:', lambdaResponse.status);
       const errorText = await lambdaResponse.text();
       console.error('Lambda error response:', errorText);
-      
-      if (lambdaResponse.status === 401) {
-        throw new Error('Unauthorized: Invalid Lambda authentication token');
-      }
       throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
     }
 
@@ -107,14 +103,14 @@ serve(async (req) => {
       throw new Error('Invalid response format from Lambda');
     }
 
-    // Store the message in chat_messages with OpenAI metadata
+    // Store the message in chat_messages
     const { error: messageError } = await supabase
       .from('chat_messages')
       .insert({
         content: analysis.message,
-        excel_file_id: fileId,
+        excel_file_id,
         is_ai_response: true,
-        user_id: userId,
+        user_id,
         openai_model: analysis.openAiResponse.model,
         openai_usage: analysis.openAiResponse.usage,
         raw_response: analysis.openAiResponse
@@ -128,9 +124,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: analysis.message,
-        fileName: analysis.fileName,
-        fileSize: analysis.fileSize,
-        timestamp: analysis.timestamp
+        file_name: fileData.filename,
+        file_size: fileData.file_size,
+        timestamp: new Date().toISOString()
       }),
       { 
         headers: { 
@@ -149,7 +145,7 @@ serve(async (req) => {
         details: error instanceof Error ? error.stack : undefined
       }),
       { 
-        status: error.message?.includes('Unauthorized') ? 401 : 500,
+        status: 500,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
