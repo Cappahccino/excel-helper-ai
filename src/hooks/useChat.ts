@@ -3,6 +3,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatMessage } from "@/types/chat";
 
+const LAMBDA_FUNCTION_URL = process.env.LAMBDA_FUNCTION_URL;
+const LAMBDA_AUTH_TOKEN = process.env.LAMBDA_AUTH_TOKEN;
+
 export function useChat(fileId: string | null, userId: string | null) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
@@ -29,23 +32,28 @@ export function useChat(fileId: string | null, userId: string | null) {
         throw new Error(`Failed to fetch file data: ${fileError.message}`);
       }
 
-      // Call Lambda function through Supabase Edge Function
-      const { data: analysis, error: analysisError } = await supabase.functions
-        .invoke('analyze-excel', {
-          body: { 
-            fileId: fileId,
-            filePath: fileData.file_path,
-            query: message,
-            supabaseUrl: process.env.SUPABASE_URL,
-            supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY
-          }
-        });
+      // Call Lambda function
+      const response = await fetch(LAMBDA_FUNCTION_URL!, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${LAMBDA_AUTH_TOKEN}`
+        },
+        body: JSON.stringify({
+          fileId,
+          filePath: fileData.file_path,
+          query: message,
+          supabaseUrl: process.env.SUPABASE_URL,
+          supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+        })
+      });
 
-      if (analysisError) {
-        console.error('Analysis error:', analysisError);
-        throw analysisError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Lambda function error: ${errorData.error || 'Unknown error'}`);
       }
 
+      const analysis = await response.json();
       console.log('Analysis completed:', analysis);
 
       // Store the chat message
