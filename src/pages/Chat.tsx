@@ -44,12 +44,16 @@ const Chat = () => {
 
     try {
       setIsAnalyzing(true);
+      console.log('Starting analysis with fileId:', fileId);
 
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
+        console.error('Authentication error:', userError);
         throw new Error('User not authenticated');
       }
+
+      console.log('User authenticated:', user.id);
 
       // Save user message
       const { error: messageError } = await supabase
@@ -61,23 +65,38 @@ const Chat = () => {
           user_id: user.id
         });
 
-      if (messageError) throw messageError;
+      if (messageError) {
+        console.error('Error saving user message:', messageError);
+        throw messageError;
+      }
+
+      console.log('User message saved, calling analyze-excel function');
 
       // Call analyze-excel function with all required parameters
-      const { data: analysis, error } = await supabase.functions
+      const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('analyze-excel', {
-          body: { 
+          body: JSON.stringify({ 
             fileId, 
             query: message.trim(),
             userId: user.id 
-          }
+          })
         });
 
-      if (error) throw error;
+      if (analysisError) {
+        console.error('Analysis error:', analysisError);
+        throw analysisError;
+      }
+
+      console.log('Analysis completed:', analysis);
 
       // Refetch messages to show the new ones
       await refetchMessages();
       setMessage("");
+      
+      toast({
+        title: "Analysis Complete",
+        description: "Your Excel file has been analyzed successfully.",
+      });
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
