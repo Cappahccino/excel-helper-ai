@@ -37,11 +37,19 @@ serve(async (req) => {
     // Get the Lambda auth token
     const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
     if (!lambdaAuthToken) {
+      console.error('Lambda authentication token not configured');
       throw new Error('Lambda authentication token not configured');
     }
 
     // Call AWS Lambda function with authentication
-    const lambdaResponse = await fetch('YOUR_LAMBDA_FUNCTION_URL', {
+    const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
+    if (!lambdaUrl) {
+      console.error('Lambda function URL not configured');
+      throw new Error('Lambda function URL not configured');
+    }
+
+    console.log('Calling Lambda function with authenticated request');
+    const lambdaResponse = await fetch(lambdaUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
