@@ -47,9 +47,7 @@ const Chat = () => {
 
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('User not authenticated');
-      }
+      if (userError || !user) throw new Error('User not authenticated');
 
       // Save user message
       const { error: messageError } = await supabase
@@ -63,24 +61,17 @@ const Chat = () => {
 
       if (messageError) throw messageError;
 
-      // Call analyze-excel function with all required parameters
+      // Call analyze-excel function
       const { data: analysis, error } = await supabase.functions
         .invoke('analyze-excel', {
           body: { 
-            fileId: fileId, // Explicitly named parameter
-            query: message.trim(), // Ensure query is not empty
-            userId: user.id // Include user ID
+            fileId, 
+            query: message,
+            userId: user.id 
           }
         });
 
-      if (error) {
-        console.error('Analysis error:', error);
-        throw new Error(error.message || 'Failed to analyze Excel file');
-      }
-
-      if (!analysis || !analysis.message) {
-        throw new Error('Invalid response from analysis');
-      }
+      if (error) throw error;
 
       // Save AI response
       const { error: aiMessageError } = await supabase
@@ -89,10 +80,7 @@ const Chat = () => {
           content: analysis.message,
           excel_file_id: fileId,
           is_ai_response: true,
-          user_id: user.id,
-          openai_model: analysis.model,
-          openai_usage: analysis.usage,
-          raw_response: analysis
+          user_id: user.id
         });
 
       if (aiMessageError) throw aiMessageError;
