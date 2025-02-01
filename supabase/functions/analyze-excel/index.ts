@@ -14,12 +14,23 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query } = await req.json();
-    console.log('Processing file:', fileId, 'with query:', query);
+    // Parse request body and validate required fields
+    const requestData = await req.json();
+    console.log('Received request data:', JSON.stringify(requestData, null, 2));
+
+    const { fileId, query } = requestData;
+    if (!fileId || !query) {
+      throw new Error('Missing required fields: fileId and query are required');
+    }
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase configuration');
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get file metadata from database
@@ -31,24 +42,20 @@ serve(async (req) => {
 
     if (fileError || !fileData) {
       console.error('Error fetching file data:', fileError);
-      throw new Error('File not found');
+      throw new Error(fileError?.message || 'File not found');
     }
 
     // Get the Lambda auth token
     const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
-    if (!lambdaAuthToken) {
-      console.error('Lambda authentication token not configured');
-      throw new Error('Lambda authentication token not configured');
-    }
-
-    // Call AWS Lambda function with authentication
     const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
-    if (!lambdaUrl) {
-      console.error('Lambda function URL not configured');
-      throw new Error('Lambda function URL not configured');
+
+    if (!lambdaAuthToken || !lambdaUrl) {
+      throw new Error('Lambda configuration missing');
     }
 
-    console.log('Calling Lambda function with authenticated request');
+    console.log('Calling Lambda function for file:', fileData.filename);
+    
+    // Call AWS Lambda function
     const lambdaResponse = await fetch(lambdaUrl, {
       method: 'POST',
       headers: {
@@ -72,49 +79,41 @@ serve(async (req) => {
       if (lambdaResponse.status === 401) {
         throw new Error('Unauthorized: Invalid Lambda authentication token');
       }
-      throw new Error('Error processing file with Lambda');
+      throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
     }
 
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    // Store the analysis in chat_messages using background task
-    EdgeRuntime.waitUntil(
-      supabase
-        .from('chat_messages')
-        .insert({
-          excel_file_id: fileId,
-          content: analysis.message,
-          is_ai_response: true,
-          user_id: fileData.user_id,
-        })
-        .then(({ error }) => {
-          if (error) console.error('Error storing analysis:', error);
-        })
-    );
-
-    // Update last_accessed timestamp
-    EdgeRuntime.waitUntil(
-      supabase
-        .from('excel_files')
-        .update({ last_accessed: new Date().toISOString() })
-        .eq('id', fileId)
-        .then(({ error }) => {
-          if (error) console.error('Error updating last_accessed:', error);
-        })
-    );
+    if (!analysis || !analysis.message) {
+      throw new Error('Invalid response from Lambda');
+    }
 
     return new Response(
       JSON.stringify({ message: analysis.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
+
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
+    
+    // Ensure we always return a properly formatted error response
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        details: error instanceof Error ? error.stack : undefined
+      }),
       { 
-        status: error.message.includes('Unauthorized') ? 401 : 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: error.message?.includes('Unauthorized') ? 401 : 500,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        }
       }
     );
   }
