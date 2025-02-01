@@ -15,12 +15,30 @@ serve(async (req) => {
 
   try {
     // Parse request body and validate required fields
-    const requestData = await req.json();
-    console.log('Received request data:', JSON.stringify(requestData, null, 2));
+    let requestData;
+    try {
+      const body = await req.text();
+      requestData = JSON.parse(body);
+      console.log('Received raw request data:', body);
+      console.log('Parsed request data:', requestData);
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      throw new Error('Invalid request body format');
+    }
 
     const { fileId, query, userId } = requestData;
+    
+    console.log('Extracted fields:', { fileId, query, userId });
+
     if (!fileId || !query || !userId) {
-      throw new Error('Missing required fields: fileId, query, and userId are required');
+      const missingFields = [];
+      if (!fileId) missingFields.push('fileId');
+      if (!query) missingFields.push('query');
+      if (!userId) missingFields.push('userId');
+      
+      const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
     }
 
     // Initialize Supabase client
