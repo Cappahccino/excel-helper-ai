@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 
 const Chat = () => {
   const [message, setMessage] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const {
     file: uploadedFile,
@@ -39,9 +40,23 @@ const Chat = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId) return;
+    if (!message.trim() || !fileId || isAnalyzing) return;
 
     try {
+      setIsAnalyzing(true);
+
+      // Save user message
+      const { error: messageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: message,
+          excel_file_id: fileId,
+          is_ai_response: false,
+        });
+
+      if (messageError) throw messageError;
+
+      // Call analyze-excel function
       const { data: analysis, error } = await supabase.functions
         .invoke('analyze-excel', {
           body: { fileId, query: message }
@@ -49,14 +64,27 @@ const Chat = () => {
 
       if (error) throw error;
 
+      // Save AI response
+      const { error: aiMessageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: analysis.message,
+          excel_file_id: fileId,
+          is_ai_response: true,
+        });
+
+      if (aiMessageError) throw aiMessageError;
+
       setMessage("");
     } catch (error) {
-      console.error('Query error:', error);
+      console.error('Analysis error:', error);
       toast({
-        title: "Query Failed",
-        description: error instanceof Error ? error.message : "Failed to process query",
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyze Excel file",
         variant: "destructive",
       });
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -78,21 +106,6 @@ const Chat = () => {
             onReset={resetUpload}
           />
 
-          {fileId && (
-            <div className="bg-muted p-3 rounded-lg">
-              <p className="text-sm font-mono">File ID: {fileId}</p>
-              <p className="text-xs mt-2">Use this payload to test the Lambda function:</p>
-              <pre className="bg-black text-white p-2 rounded mt-1 text-xs overflow-x-auto">
-{JSON.stringify({
-  body: JSON.stringify({
-    fileId: fileId,
-    query: "Please analyze this Excel file"
-  })
-}, null, 2)}
-              </pre>
-            </div>
-          )}
-
           {uploadedFile && !isUploading && (
             <div className="w-full">
               <ExcelPreview file={uploadedFile} />
@@ -112,13 +125,20 @@ const Chat = () => {
                   key={message.id}
                   className={`p-4 rounded-lg ${
                     message.is_ai_response
-                      ? "bg-blue-900/20 ml-4"
-                      : "bg-gray-800/50 mr-4"
+                      ? "bg-blue-50 ml-4"
+                      : "bg-gray-50 mr-4"
                   }`}
                 >
-                  {message.content}
+                  <p className="text-sm">{message.content}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {isAnalyzing && (
+            <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+              <p className="text-sm">Analyzing your Excel file...</p>
             </div>
           )}
         </div>
@@ -138,7 +158,7 @@ const Chat = () => {
             type="submit" 
             className="bg-excel hover:bg-excel/90"
             aria-label="Send message"
-            disabled={!fileId || isUploading}
+            disabled={!fileId || isUploading || isAnalyzing}
           >
             <Send className="h-4 w-4" aria-hidden="true" />
           </Button>
