@@ -92,30 +92,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       ]
     });
 
-    console.log('OpenAI raw response received:', rawResponse);
+    console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
 
-    // Create structured response using the raw response
-    const openAiResponse = {
-      id: rawResponse.id, // This is the chat_id (e.g., "chatcmpl-xxx")
-      model: rawResponse.model,
-      responseContent: rawResponse.choices[0].message.content,
-      usage: rawResponse.usage,
-      created: rawResponse.created,
-      choices: rawResponse.choices
-    };
-
-    // Store AI response in chat_messages
+    // Store AI response in chat_messages with all the OpenAI metadata
     const { error: aiMessageError } = await supabase
       .from('chat_messages')
       .insert({
-        content: openAiResponse.responseContent,
+        content: rawResponse.choices[0].message.content,
         excel_file_id: fileId,
         is_ai_response: true,
         user_id: userId,
-        chat_id: openAiResponse.id,
-        openai_model: openAiResponse.model,
-        openai_usage: openAiResponse.usage,
-        raw_response: rawResponse
+        chat_id: rawResponse.id,
+        openai_model: rawResponse.model,
+        openai_usage: rawResponse.usage,
+        raw_response: JSON.parse(JSON.stringify(rawResponse)) // Ensure proper JSON serialization
       });
 
     if (aiMessageError) {
@@ -125,16 +115,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('AI response stored successfully');
 
-    // Return the structured response
+    // Return the response without double stringification
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
         fileName: fileData.filename,
         fileSize: fileData.file_size,
-        message: openAiResponse.responseContent,
-        openAiResponse,
-        rawResponse,
+        message: rawResponse.choices[0].message.content,
+        openAiResponse: {
+          model: rawResponse.model,
+          usage: rawResponse.usage,
+          responseContent: rawResponse.choices[0].message.content,
+          id: rawResponse.id
+        },
         timestamp: new Date().toISOString()
       })
     };
