@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, query, userId } = requestData;
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields: fileId, query, and userId are required');
     }
 
     // Initialize Supabase client
@@ -66,6 +66,7 @@ serve(async (req) => {
         fileId,
         filePath: fileData.file_path,
         query,
+        userId,
         supabaseUrl,
         supabaseKey,
       }),
@@ -85,12 +86,57 @@ serve(async (req) => {
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    if (!analysis || !analysis.message) {
+    // Update validation to handle both response formats
+    if (!analysis) {
       throw new Error('Invalid response from Lambda');
     }
 
+    let message;
+    let metadata = {};
+
+    // Handle OpenAI response format
+    if (analysis.openAiResponse) {
+      const openAiResponse = analysis.openAiResponse;
+      if (!openAiResponse.choices?.[0]?.message?.content) {
+        throw new Error('Invalid OpenAI response format');
+      }
+      message = openAiResponse.choices[0].message.content;
+      metadata = {
+        chat_id: openAiResponse.id,
+        model: openAiResponse.model,
+        usage: openAiResponse.usage,
+        raw_response: openAiResponse
+      };
+    } 
+    // Handle direct message format
+    else if (analysis.message) {
+      message = analysis.message;
+    }
+    else {
+      throw new Error('Invalid response format from Lambda');
+    }
+
+    // Store the message in chat_messages
+    const { error: messageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: message,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        ...metadata
+      });
+
+    if (messageError) {
+      console.error('Error storing message:', messageError);
+      throw new Error('Failed to store message in database');
+    }
+
     return new Response(
-      JSON.stringify({ message: analysis.message }),
+      JSON.stringify({ 
+        message,
+        ...metadata
+      }),
       { 
         headers: { 
           ...corsHeaders, 
