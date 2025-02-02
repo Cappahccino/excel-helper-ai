@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, query, userId } = requestData;
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields: fileId, query, and userId are required');
     }
 
     // Initialize Supabase client
@@ -85,12 +85,36 @@ serve(async (req) => {
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    if (!analysis || !analysis.message) {
+    if (!analysis || !analysis.openAiResponse) {
       throw new Error('Invalid response from Lambda');
     }
 
+    // Store the message in the database with additional OpenAI metadata
+    const { error: messageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: analysis.openAiResponse.choices[0].message.content,
+        excel_file_id: fileId,
+        user_id: userId,
+        is_ai_response: true,
+        chat_id: analysis.openAiResponse.id,
+        openai_model: analysis.openAiResponse.model,
+        openai_usage: analysis.openAiResponse.usage,
+        raw_response: analysis.openAiResponse
+      });
+
+    if (messageError) {
+      console.error('Error storing message:', messageError);
+      throw messageError;
+    }
+
     return new Response(
-      JSON.stringify({ message: analysis.message }),
+      JSON.stringify({ 
+        message: analysis.openAiResponse.choices[0].message.content,
+        chatId: analysis.openAiResponse.id,
+        model: analysis.openAiResponse.model,
+        usage: analysis.openAiResponse.usage
+      }),
       { 
         headers: { 
           ...corsHeaders, 
@@ -102,7 +126,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
     
-    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
