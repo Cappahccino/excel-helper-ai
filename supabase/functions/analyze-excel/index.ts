@@ -18,22 +18,41 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', requestData);
 
-    const { fileId, filePath, query, supabaseUrl, supabaseKey } = requestData;
+    const { fileId, query, userId } = requestData;
 
-    if (!fileId || !filePath || !query || !supabaseUrl || !supabaseKey) {
+    if (!fileId || !query || !userId) {
       return new Response(
-        JSON.stringify({ error: 'Missing required parameters' }),
+        JSON.stringify({ error: 'Missing required parameters: fileId, query, and userId are required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    // Initialize Supabase client
+    // Initialize Supabase client using environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase configuration');
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get file from storage
-    const { data: fileData, error: downloadError } = await supabase.storage
+    // Get file metadata from Supabase
+    const { data: fileData, error: fileError } = await supabase
       .from('excel_files')
-      .download(filePath);
+      .select('*')
+      .eq('id', fileId)
+      .single();
+
+    if (fileError) {
+      console.error('Error fetching file metadata:', fileError);
+      throw new Error('Failed to fetch file metadata');
+    }
+
+    // Download file from storage
+    const { data: fileBuffer, error: downloadError } = await supabase.storage
+      .from('excel_files')
+      .download(fileData.file_path);
 
     if (downloadError) {
       console.error('Error downloading file:', downloadError);
@@ -58,10 +77,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         fileId,
-        filePath,
         query,
-        supabaseUrl,
-        supabaseKey,
+        userId
       }),
     });
 
@@ -75,7 +92,7 @@ serve(async (req) => {
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    // Validate and structure the response
+    // Validate and extract the response content
     if (!analysis || !analysis.choices?.[0]?.message?.content) {
       throw new Error('Invalid response format from Lambda');
     }
