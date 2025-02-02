@@ -1,3 +1,4 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
@@ -13,69 +14,106 @@ serve(async (req) => {
   }
 
   try {
-    // Validate authorization
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ error: 'Missing or invalid authorization token' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      );
-    }
-
-    // Parse request body
+    // Parse request body and validate required fields
     const requestData = await req.json();
-    console.log('Received request data:', requestData);
+    console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, filePath, query, supabaseUrl, supabaseKey } = requestData;
-
-    if (!fileId || !filePath || !query || !supabaseUrl || !supabaseKey) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required parameters' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
+    const { fileId, query } = requestData;
+    if (!fileId || !query) {
+      throw new Error('Missing required fields: fileId and query are required');
     }
 
     // Initialize Supabase client
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Get file from storage
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('excel_files')
-      .download(filePath);
-
-    if (downloadError) {
-      console.error('Error downloading file:', downloadError);
-      throw new Error('Failed to download Excel file');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase configuration');
     }
 
-    // For now, return a mock response (you'll implement actual Excel analysis later)
-    const mockResponse = {
-      message: `I've analyzed your Excel file. You asked: "${query}". The file contains data that I can help you analyze.`,
-      openAiResponse: {
-        model: "gpt-4",
-        usage: {
-          prompt_tokens: 100,
-          completion_tokens: 50,
-          total_tokens: 150
-        }
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get file metadata from database
+    const { data: fileData, error: fileError } = await supabase
+      .from('excel_files')
+      .select('*')
+      .eq('id', fileId)
+      .single();
+
+    if (fileError || !fileData) {
+      console.error('Error fetching file data:', fileError);
+      throw new Error(fileError?.message || 'File not found');
+    }
+
+    // Get the Lambda auth token
+    const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
+    const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
+
+    if (!lambdaAuthToken || !lambdaUrl) {
+      throw new Error('Lambda configuration missing');
+    }
+
+    console.log('Calling Lambda function for file:', fileData.filename);
+    
+    // Call AWS Lambda function
+    const lambdaResponse = await fetch(lambdaUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${lambdaAuthToken}`,
+      },
+      body: JSON.stringify({
+        fileId,
+        filePath: fileData.file_path,
+        query,
+        supabaseUrl,
+        supabaseKey,
+      }),
+    });
+
+    if (!lambdaResponse.ok) {
+      console.error('Lambda error status:', lambdaResponse.status);
+      const errorText = await lambdaResponse.text();
+      console.error('Lambda error response:', errorText);
+      
+      if (lambdaResponse.status === 401) {
+        throw new Error('Unauthorized: Invalid Lambda authentication token');
       }
-    };
+      throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
+    }
+
+    const analysis = await lambdaResponse.json();
+    console.log('Analysis received from Lambda:', analysis);
+
+    if (!analysis || !analysis.message) {
+      throw new Error('Invalid response from Lambda');
+    }
 
     return new Response(
-      JSON.stringify(mockResponse),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ message: analysis.message }),
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
 
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
+    
+    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
         details: error instanceof Error ? error.stack : undefined
       }),
       { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+        status: error.message?.includes('Unauthorized') ? 401 : 500,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        }
       }
     );
   }

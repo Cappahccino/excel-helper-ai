@@ -3,38 +3,36 @@ import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-interface UseFileUploadState {
+interface UseFileUploadReturn {
   file: File | null;
   isUploading: boolean;
   uploadProgress: number;
   error: string | null;
+  handleFileUpload: (file: File) => Promise<void>;
+  resetUpload: () => void;
   fileId: string | null;
 }
 
-export function useFileUpload() {
-  const [state, setState] = useState<UseFileUploadState>({
-    file: null,
-    isUploading: false,
-    uploadProgress: 0,
-    error: null,
-    fileId: null
-  });
+export const useFileUpload = (): UseFileUploadReturn => {
+  const [file, setFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [fileId, setFileId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
-    setState({
-      file: null,
-      isUploading: false,
-      uploadProgress: 0,
-      error: null,
-      fileId: null
-    });
+    setFile(null);
+    setIsUploading(false);
+    setUploadProgress(0);
+    setError(null);
+    setFileId(null);
   }, []);
 
   const handleFileUpload = useCallback(async (newFile: File) => {
     const validation = validateFile(newFile);
     if (!validation.isValid) {
-      setState(prev => ({ ...prev, error: validation.error }));
+      setError(validation.error);
       toast({
         title: "Upload Error",
         description: validation.error,
@@ -44,23 +42,21 @@ export function useFileUpload() {
     }
 
     try {
-      setState(prev => ({
-        ...prev,
-        isUploading: true,
-        error: null
-      }));
-
+      setIsUploading(true);
+      setError(null);
       const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
         type: newFile.type,
       });
 
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
 
+      // Upload file to Supabase Storage
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
           cacheControl: '3600',
@@ -69,6 +65,7 @@ export function useFileUpload() {
 
       if (uploadError) throw uploadError;
 
+      // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -82,36 +79,67 @@ export function useFileUpload() {
 
       if (dbError) throw dbError;
 
-      setState(prev => ({
-        ...prev,
-        file: sanitizedFile,
-        fileId: fileRecord.id,
-        uploadProgress: 100
-      }));
+      setFile(sanitizedFile);
+      setFileId(fileRecord.id);
+      setUploadProgress(100);
+
+      // Save initial system message
+      const initialPrompt = "What kind of data does this Excel file contain? Please, Give me an overview of this Excel file's contents";
+      const { error: messageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: initialPrompt,
+          excel_file_id: fileRecord.id,
+          is_ai_response: false,
+          user_id: user.id
+        });
+
+      if (messageError) throw messageError;
+
+      // Get initial analysis
+      const { data: analysis, error: analysisError } = await supabase.functions
+        .invoke('analyze-excel', {
+          body: { fileId: fileRecord.id, query: initialPrompt }
+        });
+
+      if (analysisError) throw analysisError;
+
+      // Save AI response
+      const { error: aiMessageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: analysis.message,
+          excel_file_id: fileRecord.id,
+          is_ai_response: true,
+          user_id: user.id
+        });
+
+      if (aiMessageError) throw aiMessageError;
 
       toast({
         title: "Success",
-        description: "File uploaded successfully",
+        description: "File uploaded and analyzed successfully",
       });
     } catch (err) {
       console.error('Upload error:', err);
-      setState(prev => ({
-        ...prev,
-        error: err instanceof Error ? err.message : "Failed to upload file"
-      }));
+      setError(err instanceof Error ? err.message : "Failed to upload file");
       toast({
         title: "Upload Failed",
         description: err instanceof Error ? err.message : "Failed to upload file",
         variant: "destructive",
       });
     } finally {
-      setState(prev => ({ ...prev, isUploading: false }));
+      setIsUploading(false);
     }
   }, [toast]);
 
   return {
-    ...state,
+    file,
+    isUploading,
+    uploadProgress,
+    error,
     handleFileUpload,
     resetUpload,
+    fileId,
   };
-}
+};
