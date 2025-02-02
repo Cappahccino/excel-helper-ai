@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query, userId } = requestData;
-    if (!fileId || !query || !userId) {
-      throw new Error('Missing required fields: fileId, query, and userId are required');
+    const { fileId, query } = requestData;
+    if (!fileId || !query) {
+      throw new Error('Missing required fields: fileId and query are required');
     }
 
     // Initialize Supabase client
@@ -45,23 +45,6 @@ serve(async (req) => {
       throw new Error(fileError?.message || 'File not found');
     }
 
-    // Store user's query in chat_messages
-    const { error: userMessageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: query,
-        excel_file_id: fileId,
-        is_ai_response: false,
-        user_id: userId
-      });
-
-    if (userMessageError) {
-      console.error('Error storing user message:', userMessageError);
-      throw userMessageError;
-    }
-
-    console.log('Successfully stored user query');
-
     // Get the Lambda auth token
     const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
     const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
@@ -83,7 +66,6 @@ serve(async (req) => {
         fileId,
         filePath: fileData.file_path,
         query,
-        userId,
         supabaseUrl,
         supabaseKey,
       }),
@@ -105,41 +87,25 @@ serve(async (req) => {
 
     // Parse the body string into an object
     const parsedBody = JSON.parse(analysis.body);
-    console.log('Parsed Lambda response body:', parsedBody);
-
-    // Extract OpenAI metadata from the response
-    const openAiResponse = parsedBody.openAiResponse;
-    console.log('Extracted OpenAI response:', openAiResponse);
-
-    // Store AI response with metadata in chat_messages
-    const { error: aiMessageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: openAiResponse.responseContent,
-        excel_file_id: fileId,
-        is_ai_response: true,
-        user_id: userId,
-        chat_id: openAiResponse.id,           // From OpenAI response
-        openai_model: openAiResponse.model,    // From OpenAI response
-        openai_usage: openAiResponse.usage,    // Usage statistics
-        raw_response: openAiResponse          // Full response object
-      });
-
-    if (aiMessageError) {
-      console.error('Error storing AI response:', aiMessageError);
-      throw aiMessageError;
+    
+    if (!parsedBody || !parsedBody.openAiResponse) {
+      throw new Error('Invalid response from Lambda');
     }
-
-    console.log('Successfully stored AI response with metadata');
 
     return new Response(
       JSON.stringify(parsedBody),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
 
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
     
+    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
