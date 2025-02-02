@@ -100,38 +100,25 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('OpenAI analysis received:', completion);
 
-    // Store AI response with metadata in chat_messages
-    const { error: aiMessageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: completion.choices[0].message.content,
-        excel_file_id: fileId,
-        is_ai_response: true,
-        user_id: userId,
-        chat_id: completion.id,
-        openai_model: completion.model,
-        openai_usage: completion.usage,
-        raw_response: completion
-      });
+    // Structure the OpenAI response
+    const openAiResponse = {
+      id: completion.id, // This will be the chat_id (e.g., "chatcmpl-xxx")
+      model: completion.model,
+      responseContent: completion.choices[0].message.content,
+      usage: completion.usage,
+      created: completion.created,
+      choices: completion.choices
+    };
 
-    if (aiMessageError) throw aiMessageError;
-    console.log('AI response stored successfully with metadata');
-
-    // Update last_accessed timestamp for the file
-    const { error: updateError } = await supabase
-      .from('excel_files')
-      .update({ last_accessed: new Date().toISOString() })
-      .eq('id', fileId);
-
-    if (updateError) throw updateError;
-
+    // Return the structured response
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        message: completion.choices[0].message.content,
         fileName: fileData.filename,
         fileSize: fileData.file_size,
+        message: completion.choices[0].message.content,
+        openAiResponse, // Include the full structured response
         timestamp: new Date().toISOString()
       })
     };
