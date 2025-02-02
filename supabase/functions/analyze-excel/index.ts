@@ -84,13 +84,16 @@ serve(async (req) => {
 
     const analysis = await lambdaResponse.json();
     console.log('Edge function received Lambda response:', analysis);
+
+    // Parse the body string into an object
+    const parsedBody = JSON.parse(analysis.body);
     
-    if (!analysis || !analysis.openAiResponse) {
+    if (!parsedBody || !parsedBody.openAiResponse) {
       throw new Error('Invalid response from Lambda');
     }
 
     return new Response(
-      JSON.stringify(analysis),
+      JSON.stringify(parsedBody),
       { 
         headers: { 
           ...corsHeaders, 
