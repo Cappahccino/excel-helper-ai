@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, query, userId } = requestData;
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields: fileId, query, and userId are required');
     }
 
     // Initialize Supabase client
@@ -92,6 +92,23 @@ serve(async (req) => {
       throw new Error('Invalid response from Lambda');
     }
 
+    // Store AI response with metadata in chat_messages
+    const { error: aiMessageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: parsedBody.openAiResponse.responseContent,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        chat_id: parsedBody.openAiResponse.id,
+        openai_model: parsedBody.openAiResponse.model,
+        openai_usage: parsedBody.openAiResponse.usage,
+        raw_response: parsedBody.openAiResponse
+      });
+
+    if (aiMessageError) throw aiMessageError;
+    console.log('AI response stored successfully with metadata');
+
     return new Response(
       JSON.stringify(parsedBody),
       { 
@@ -105,7 +122,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
     
-    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
