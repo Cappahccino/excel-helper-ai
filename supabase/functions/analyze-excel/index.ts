@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, query, userId } = requestData;
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields: fileId, query, and userId are required');
     }
 
     // Initialize Supabase client
@@ -66,6 +66,7 @@ serve(async (req) => {
         fileId,
         filePath: fileData.file_path,
         query,
+        userId,
         supabaseUrl,
         supabaseKey,
       }),
@@ -85,12 +86,42 @@ serve(async (req) => {
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    if (!analysis || !analysis.message) {
+    if (!analysis || !analysis.openAiResponse) {
       throw new Error('Invalid response from Lambda');
     }
 
+    const openAiResponse = analysis.openAiResponse;
+    const message = openAiResponse.choices[0].message.content;
+    const chatId = openAiResponse.id;
+    const model = openAiResponse.model;
+    const usage = openAiResponse.usage;
+
+    // Store AI response in chat_messages with OpenAI metadata
+    const { error: aiMessageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: message,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        chat_id: chatId,
+        openai_model: model,
+        openai_usage: usage,
+        raw_response: openAiResponse
+      });
+
+    if (aiMessageError) {
+      console.error('Error storing AI message:', aiMessageError);
+      throw aiMessageError;
+    }
+
     return new Response(
-      JSON.stringify({ message: analysis.message }),
+      JSON.stringify({ 
+        message,
+        chatId,
+        model,
+        usage
+      }),
       { 
         headers: { 
           ...corsHeaders, 
@@ -102,7 +133,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
     
-    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
