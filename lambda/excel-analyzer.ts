@@ -94,6 +94,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
 
+    // Log specific fields we want to track
+    console.log('Metadata fields to be stored:', {
+      chat_id: rawResponse.id,
+      model: rawResponse.model,
+      usage: rawResponse.usage
+    });
+
     // Clean the OpenAI response for storage
     const cleanResponse = {
       id: rawResponse.id,
@@ -104,8 +111,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       system_fingerprint: rawResponse.system_fingerprint
     };
 
+    console.log('Cleaned response object:', cleanResponse);
+
     // Store AI response in chat_messages with properly structured metadata
-    const { error: aiMessageError } = await supabase
+    const { data: insertedMessage, error: aiMessageError } = await supabase
       .from('chat_messages')
       .insert({
         content: rawResponse.choices[0].message.content,
@@ -116,14 +125,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         openai_model: rawResponse.model,    // Direct access to root-level model
         openai_usage: rawResponse.usage,    // Direct access to root-level usage
         raw_response: cleanResponse         // Cleaned response object
-      });
+      })
+      .select()
+      .single();
 
     if (aiMessageError) {
       console.error('Error storing AI response:', aiMessageError);
       throw aiMessageError;
     }
 
-    console.log('AI response stored successfully');
+    console.log('Successfully stored message with metadata:', insertedMessage);
 
     // Return the response without double stringification
     return {
