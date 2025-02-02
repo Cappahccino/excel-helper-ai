@@ -1,18 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
-import * as XLSX from 'xlsx';
-import OpenAI from 'openai';
-import type { Database } from '../src/integrations/supabase/types';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-
-// Initialize Supabase client with proper typing
-const supabase = createClient<Database>(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+import { getFileMetadata, downloadExcelFile, storeUserMessage, storeAIResponse, updateFileAccess } from './services/supabase';
+import { processExcelFile } from './services/excel';
+import { analyzeExcelData } from './services/openai';
 
 interface RequestBody {
   fileId: string;
@@ -30,7 +19,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     console.log('Received event:', JSON.stringify(event, null, 2));
     
-    // Get file details from event with proper typing
     const { fileId, query, userId } = JSON.parse(event.body || '{}') as RequestBody;
 
     if (!fileId || !query || !userId) {
@@ -39,99 +27,31 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Processing request for:', { fileId, userId });
 
-    // Get file metadata from Supabase
-    const { data: fileData, error: fileError } = await supabase
-      .from('excel_files')
-      .select('*')
-      .eq('id', fileId)
-      .maybeSingle();
+    // Get file metadata and store user message
+    const fileData = await getFileMetadata(fileId);
+    await storeUserMessage(query, fileId, userId);
+    console.log('File metadata retrieved and user message stored');
 
-    if (fileError) throw fileError;
-    if (!fileData) throw new Error('File not found');
-
-    console.log('File metadata retrieved:', fileData);
-
-    // Store user's question in chat_messages
-    const { error: userMessageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: query,
-        excel_file_id: fileId,
-        is_ai_response: false,
-        user_id: userId
-      });
-
-    if (userMessageError) throw userMessageError;
-    console.log('User message stored successfully');
-
-    // Download file from Supabase Storage
-    const { data: fileBuffer, error: downloadError } = await supabase
-      .storage
-      .from('excel_files')
-      .download(fileData.file_path);
-
-    if (downloadError) throw downloadError;
-    if (!fileBuffer) throw new Error('File buffer is empty');
-
-    console.log('File downloaded successfully');
-
-    // Process Excel file
-    const arrayBuffer = await fileBuffer.arrayBuffer();
-    const workbook = XLSX.read(new Uint8Array(arrayBuffer));
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-    console.log('Excel file processed, getting OpenAI analysis');
+    // Download and process Excel file
+    const fileBuffer = await downloadExcelFile(fileData.file_path);
+    const jsonData = await processExcelFile(await fileBuffer.arrayBuffer());
+    console.log('Excel file processed');
 
     // Get OpenAI analysis
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: "You are analyzing Excel data. Provide clear, concise insights."
-        },
-        {
-          role: "user",
-          content: `Analyze this Excel data: ${JSON.stringify(jsonData.slice(0, 100))}. Query: ${query}`
-        }
-      ]
-    });
-
-    const aiResponse = completion.choices[0].message.content;
+    const completion = await analyzeExcelData(jsonData, query);
     console.log('OpenAI analysis received');
 
-    // Store AI response in chat_messages with OpenAI metadata
-    const { error: aiMessageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: aiResponse,
-        excel_file_id: fileId,
-        is_ai_response: true,
-        user_id: userId,
-        openai_model: completion.model,
-        openai_usage: completion.usage,
-        raw_response: completion,
-        chat_id: completion.id
-      });
-
-    if (aiMessageError) throw aiMessageError;
-    console.log('AI response stored successfully');
-
-    // Update last_accessed timestamp for the file
-    const { error: updateError } = await supabase
-      .from('excel_files')
-      .update({ last_accessed: new Date().toISOString() })
-      .eq('id', fileId);
-
-    if (updateError) throw updateError;
+    // Store AI response and update file access
+    await storeAIResponse(completion, fileId, userId);
+    await updateFileAccess(fileId);
+    console.log('AI response stored and file access updated');
 
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
         openAiResponse: completion,
-        message: aiResponse,
+        message: completion.choices[0].message.content,
         fileName: fileData.filename,
         fileSize: fileData.file_size,
         timestamp: new Date().toISOString()
