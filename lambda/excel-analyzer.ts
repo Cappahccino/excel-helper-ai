@@ -94,7 +94,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
 
-    // Store AI response in chat_messages with all the OpenAI metadata
+    // Clean the OpenAI response for storage
+    const cleanResponse = {
+      id: rawResponse.id,
+      model: rawResponse.model,
+      created: rawResponse.created,
+      usage: rawResponse.usage,
+      choices: rawResponse.choices,
+      system_fingerprint: rawResponse.system_fingerprint
+    };
+
+    // Store AI response in chat_messages with properly structured metadata
     const { error: aiMessageError } = await supabase
       .from('chat_messages')
       .insert({
@@ -102,10 +112,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         excel_file_id: fileId,
         is_ai_response: true,
         user_id: userId,
-        chat_id: rawResponse.id,
-        openai_model: rawResponse.model,
-        openai_usage: rawResponse.usage,
-        raw_response: JSON.parse(JSON.stringify(rawResponse)) // Ensure proper JSON serialization
+        chat_id: rawResponse.id,           // Direct access to root-level id
+        openai_model: rawResponse.model,    // Direct access to root-level model
+        openai_usage: rawResponse.usage,    // Direct access to root-level usage
+        raw_response: cleanResponse         // Cleaned response object
       });
 
     if (aiMessageError) {
