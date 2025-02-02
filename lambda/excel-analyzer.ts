@@ -129,7 +129,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        openAiResponse: completion,
+        openAiResponse: completion,  // Now sending the complete OpenAI response object
         fileName: fileData.filename,
         fileSize: fileData.file_size,
         timestamp: new Date().toISOString()
