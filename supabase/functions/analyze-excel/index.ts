@@ -14,38 +14,33 @@ serve(async (req) => {
   }
 
   try {
-    // Parse request body and validate required fields
+    // Parse request body
     const requestData = await req.json();
-    console.log('Received request data:', JSON.stringify(requestData, null, 2));
+    console.log('Received request data:', requestData);
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, filePath, query, supabaseUrl, supabaseKey } = requestData;
+
+    if (!fileId || !filePath || !query || !supabaseUrl || !supabaseKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase configuration');
-    }
-
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get file metadata from database
-    const { data: fileData, error: fileError } = await supabase
+    // Get file from storage
+    const { data: fileData, error: downloadError } = await supabase.storage
       .from('excel_files')
-      .select('*')
-      .eq('id', fileId)
-      .single();
+      .download(filePath);
 
-    if (fileError || !fileData) {
-      console.error('Error fetching file data:', fileError);
-      throw new Error(fileError?.message || 'File not found');
+    if (downloadError) {
+      console.error('Error downloading file:', downloadError);
+      throw new Error('Failed to download Excel file');
     }
 
-    // Get the Lambda auth token
+    // Call Lambda function for analysis
     const lambdaAuthToken = Deno.env.get('LAMBDA_AUTH_TOKEN');
     const lambdaUrl = Deno.env.get('LAMBDA_FUNCTION_URL');
 
@@ -53,9 +48,8 @@ serve(async (req) => {
       throw new Error('Lambda configuration missing');
     }
 
-    console.log('Calling Lambda function for file:', fileData.filename);
+    console.log('Calling Lambda function for analysis...');
     
-    // Call AWS Lambda function
     const lambdaResponse = await fetch(lambdaUrl, {
       method: 'POST',
       headers: {
@@ -64,7 +58,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         fileId,
-        filePath: fileData.file_path,
+        filePath,
         query,
         supabaseUrl,
         supabaseKey,
@@ -75,45 +69,42 @@ serve(async (req) => {
       console.error('Lambda error status:', lambdaResponse.status);
       const errorText = await lambdaResponse.text();
       console.error('Lambda error response:', errorText);
-      
-      if (lambdaResponse.status === 401) {
-        throw new Error('Unauthorized: Invalid Lambda authentication token');
-      }
       throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
     }
 
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    if (!analysis || !analysis.message) {
-      throw new Error('Invalid response from Lambda');
+    // Validate and structure the response
+    if (!analysis || !analysis.choices?.[0]?.message?.content) {
+      throw new Error('Invalid response format from Lambda');
     }
 
-    return new Response(
-      JSON.stringify({ message: analysis.message }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
+    const responseData = {
+      message: analysis.choices[0].message.content,
+      chat_id: analysis.id,
+      openAiResponse: {
+        model: analysis.model,
+        usage: analysis.usage,
+        raw_response: analysis
       }
+    };
+
+    return new Response(
+      JSON.stringify(responseData),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
-    
-    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
         details: error instanceof Error ? error.stack : undefined
       }),
       { 
-        status: error.message?.includes('Unauthorized') ? 401 : 500,
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
       }
     );
   }
