@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, query, userId } = requestData;
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields: fileId, query, and userId are required');
     }
 
     // Initialize Supabase client
@@ -43,6 +43,21 @@ serve(async (req) => {
     if (fileError || !fileData) {
       console.error('Error fetching file data:', fileError);
       throw new Error(fileError?.message || 'File not found');
+    }
+
+    // Store user's query message
+    const { error: userMessageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: query,
+        excel_file_id: fileId,
+        is_ai_response: false,
+        user_id: userId
+      });
+
+    if (userMessageError) {
+      console.error('Error storing user message:', userMessageError);
+      throw userMessageError;
     }
 
     // Get the Lambda auth token
@@ -85,12 +100,34 @@ serve(async (req) => {
     const analysis = await lambdaResponse.json();
     console.log('Edge function received Lambda response:', analysis);
 
-    // Parse the body string into an object
+    // Parse the Lambda response body
     const parsedBody = JSON.parse(analysis.body);
-    
+    console.log('Parsed Lambda response body:', parsedBody);
+
     if (!parsedBody || !parsedBody.openAiResponse) {
       throw new Error('Invalid response from Lambda');
     }
+
+    // Store AI response with metadata
+    const { error: aiMessageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: parsedBody.message,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        chat_id: parsedBody.openAiResponse.id,
+        openai_model: parsedBody.openAiResponse.model,
+        openai_usage: parsedBody.openAiResponse.usage,
+        raw_response: parsedBody.openAiResponse
+      });
+
+    if (aiMessageError) {
+      console.error('Error storing AI response:', aiMessageError);
+      throw aiMessageError;
+    }
+
+    console.log('Successfully stored AI response with metadata');
 
     return new Response(
       JSON.stringify(parsedBody),
@@ -105,7 +142,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in analyze-excel function:', error);
     
-    // Ensure we always return a properly formatted error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
