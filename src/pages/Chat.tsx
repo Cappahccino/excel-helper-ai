@@ -21,7 +21,6 @@ const Chat = () => {
     fileId,
   } = useFileUpload();
 
-  // Fetch chat messages
   const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async () => {
@@ -45,22 +44,10 @@ const Chat = () => {
     try {
       setIsAnalyzing(true);
 
-      // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
-      // Save user message
-      const { error: messageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: message,
-          excel_file_id: fileId,
-          is_ai_response: false,
-          user_id: user.id
-        });
-
-      if (messageError) throw messageError;
-
+      // The user message is now stored by the Lambda function
       // Call analyze-excel function
       const { data: analysis, error } = await supabase.functions
         .invoke('analyze-excel', {
@@ -73,18 +60,7 @@ const Chat = () => {
 
       if (error) throw error;
 
-      // Save AI response
-      const { error: aiMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: analysis.message,
-          excel_file_id: fileId,
-          is_ai_response: true,
-          user_id: user.id
-        });
-
-      if (aiMessageError) throw aiMessageError;
-
+      // The AI response is now stored by the Lambda function
       // Refetch messages to show the new ones
       await refetchMessages();
       setMessage("");
