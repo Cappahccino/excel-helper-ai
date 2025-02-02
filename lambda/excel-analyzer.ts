@@ -125,6 +125,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     if (updateError) throw updateError;
 
+    console.log('Lambda response structure:', {
+      openAiResponse: completion,
+      fileName: fileData.filename,
+      fileSize: fileData.file_size,
+      timestamp: new Date().toISOString()
+    });
+
     return {
       statusCode: 200,
       headers: corsHeaders,

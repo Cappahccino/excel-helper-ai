@@ -83,8 +83,8 @@ serve(async (req) => {
     }
 
     const analysis = await lambdaResponse.json();
-    console.log('Analysis received from Lambda:', analysis);
-
+    console.log('Edge function received Lambda response:', analysis);
+    
     if (!analysis || !analysis.openAiResponse) {
       throw new Error('Invalid response from Lambda');
     }
