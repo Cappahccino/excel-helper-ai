@@ -98,17 +98,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       ]
     });
 
-    const aiResponse = completion.choices[0].message.content;
     console.log('OpenAI analysis received');
 
     // Store AI response in chat_messages
     const { error: aiMessageError } = await supabase
       .from('chat_messages')
       .insert({
-        content: aiResponse,
+        content: completion.choices[0].message.content,
         excel_file_id: fileId,
         is_ai_response: true,
-        user_id: userId
+        user_id: userId,
+        chat_id: completion.id,
+        openai_model: completion.model,
+        openai_usage: completion.usage,
+        raw_response: completion
       });
 
     if (aiMessageError) throw aiMessageError;
@@ -126,7 +129,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        message: aiResponse,
+        openAiResponse: completion,
         fileName: fileData.filename,
         fileSize: fileData.file_size,
         timestamp: new Date().toISOString()
