@@ -43,12 +43,19 @@ const Chat = () => {
 
     try {
       setIsAnalyzing(true);
+      console.log('Starting analysis with fileId:', fileId);
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
+      if (userError || !user) {
+        throw new Error('User not authenticated');
+      }
 
-      // The user message is now stored by the Lambda function
-      // Call analyze-excel function
+      console.log('Sending request to analyze-excel with:', {
+        fileId,
+        query: message,
+        userId: user.id
+      });
+
       const { data: analysis, error } = await supabase.functions
         .invoke('analyze-excel', {
           body: { 
@@ -58,10 +65,12 @@ const Chat = () => {
           }
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Analysis error:', error);
+        throw error;
+      }
 
-      // The AI response is now stored by the Lambda function
-      // Refetch messages to show the new ones
+      console.log('Analysis completed successfully:', analysis);
       await refetchMessages();
       setMessage("");
     } catch (error) {
