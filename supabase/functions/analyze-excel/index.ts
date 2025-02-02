@@ -85,12 +85,12 @@ serve(async (req) => {
     const analysis = await lambdaResponse.json();
     console.log('Analysis received from Lambda:', analysis);
 
-    if (!analysis || !analysis.message) {
+    if (!analysis || !analysis.openAiResponse) {
       throw new Error('Invalid response from Lambda');
     }
 
     return new Response(
-      JSON.stringify({ message: analysis.message }),
+      JSON.stringify(analysis),
       { 
         headers: { 
           ...corsHeaders, 
