@@ -100,7 +100,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('OpenAI analysis received:', completion);
 
-    // Store AI response with additional metadata in chat_messages
+    // Store AI response with metadata in chat_messages
     const { error: aiMessageError } = await supabase
       .from('chat_messages')
       .insert({
@@ -125,18 +125,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     if (updateError) throw updateError;
 
-    console.log('Lambda response structure:', {
-      openAiResponse: completion,
-      fileName: fileData.filename,
-      fileSize: fileData.file_size,
-      timestamp: new Date().toISOString()
-    });
-
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        openAiResponse: completion,  // Now sending the complete OpenAI response object
+        message: completion.choices[0].message.content,
         fileName: fileData.filename,
         fileSize: fileData.file_size,
         timestamp: new Date().toISOString()
