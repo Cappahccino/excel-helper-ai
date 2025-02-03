@@ -168,19 +168,22 @@ const storeMessage = async (message: ChatMessage): Promise<void> => {
   console.log('Attempting to store message:', JSON.stringify(message, null, 2));
   
   try {
-    // Validate message structure before storing
-    if (!message.content || !message.user_id) {
-      throw new Error('Missing required fields in message');
-    }
+    // Create a simplified version of the message without the raw response
+    const simplifiedMessage = {
+      content: message.content,
+      excel_file_id: message.excel_file_id,
+      is_ai_response: message.is_ai_response,
+      user_id: message.user_id,
+      chat_id: message.chat_id,
+      openai_model: message.openai_model,
+      openai_usage: message.openai_usage
+    };
 
-    // Ensure OpenAI metadata is properly formatted if present
-    if (message.raw_response) {
-      message.raw_response = sanitizeOpenAIResponse(message.raw_response);
-    }
+    console.log('Storing simplified message:', JSON.stringify(simplifiedMessage, null, 2));
 
     const { error } = await supabase
       .from('chat_messages')
-      .insert(message);
+      .insert(simplifiedMessage);
 
     if (error) {
       console.error('Database error when storing message:', error);
