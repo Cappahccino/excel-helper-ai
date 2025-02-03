@@ -9,39 +9,51 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
 
 interface ExcelPreviewProps {
   file: File;
 }
 
-interface PreviewData {
-  headers: string[];
-  rows: any[][];
-}
-
 export function ExcelPreview({ file }: ExcelPreviewProps) {
+  const [previewData, setPreviewData] = useState<{
+    headers: string[];
+    rows: any[][];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const { data: previewData, isLoading } = useQuery({
-    queryKey: ['excel-preview', file.name, file.lastModified],
-    queryFn: async (): Promise<PreviewData> => {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  useEffect(() => {
+    const readExcel = async () => {
+      try {
+        setLoading(true);
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-      const headers = jsonData[0] as string[];
-      const rows = jsonData.slice(1, 21) as any[][]; // Limit to 20 rows
+        const headers = jsonData[0] as string[];
+        const rows = jsonData.slice(1, 21) as any[][]; // Limit to 20 rows
 
-      return { headers, rows };
-    },
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
-    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
-  });
+        setPreviewData({ headers, rows });
+      } catch (error) {
+        console.error("Error reading Excel file:", error);
+        toast({
+          title: "Error",
+          description: "Failed to read Excel file. Please make sure it's a valid Excel document.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  if (isLoading) {
+    if (file) {
+      readExcel();
+    }
+  }, [file, toast]);
+
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-4" role="status">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel" aria-label="Loading"></div>
