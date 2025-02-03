@@ -20,6 +20,11 @@ interface ChatMessage {
   created_at: string;
 }
 
+interface QueryResponse {
+  messages: ChatMessage[];
+  count: number;
+}
+
 export function MessageList({ threadId }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { ref: loadMoreRef, inView } = useInView();
@@ -30,10 +35,10 @@ export function MessageList({ threadId }: MessageListProps) {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage
-  } = useInfiniteQuery({
+  } = useInfiniteQuery<QueryResponse>({
     queryKey: ['messages', threadId],
     queryFn: async ({ pageParam = 0 }) => {
-      const start = pageParam * MESSAGES_PER_PAGE;
+      const start = Number(pageParam) * MESSAGES_PER_PAGE;
       
       const { data, error, count } = await supabase
         .from('chat_messages')
@@ -45,11 +50,11 @@ export function MessageList({ threadId }: MessageListProps) {
       if (error) throw error;
       
       return {
-        messages: data.map(message => ({
+        messages: (data as any[]).map(message => ({
           ...message,
           status: message.status as MessageStatus
         })),
-        count,
+        count: count || 0,
       };
     },
     getNextPageParam: (lastPage, allPages) => {
@@ -57,7 +62,6 @@ export function MessageList({ threadId }: MessageListProps) {
       const nextPage = allPages.length;
       return nextPage < totalPages ? nextPage : undefined;
     },
-    initialPageSize: MESSAGES_PER_PAGE,
   });
 
   const scrollToBottom = useCallback(() => {
