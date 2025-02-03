@@ -17,9 +17,12 @@ export type Database = {
           excel_file_id: string | null
           id: string
           is_ai_response: boolean | null
+          metadata: Json | null
           openai_model: string | null
           openai_usage: Json | null
           raw_response: Json | null
+          status: string
+          thread_id: string | null
           user_id: string
         }
         Insert: {
@@ -29,9 +32,12 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
+          metadata?: Json | null
           openai_model?: string | null
           openai_usage?: Json | null
           raw_response?: Json | null
+          status?: string
+          thread_id?: string | null
           user_id: string
         }
         Update: {
@@ -41,14 +47,62 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
+          metadata?: Json | null
           openai_model?: string | null
           openai_usage?: Json | null
           raw_response?: Json | null
+          status?: string
+          thread_id?: string | null
           user_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "chat_messages_excel_file_id_fkey"
+            columns: ["excel_file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_threads: {
+        Row: {
+          created_at: string
+          excel_file_id: string | null
+          id: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          excel_file_id?: string | null
+          id?: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          excel_file_id?: string | null
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_threads_excel_file_id_fkey"
             columns: ["excel_file_id"]
             isOneToOne: false
             referencedRelation: "excel_files"

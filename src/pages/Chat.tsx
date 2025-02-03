@@ -1,17 +1,17 @@
 import { useState } from "react";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ExcelPreview } from "@/components/ExcelPreview";
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
+import { ChatThread } from "@/components/chat/ChatThread";
+import { ThreadList } from "@/components/chat/ThreadList";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
 
 const Chat = () => {
-  const [message, setMessage] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const {
     file: uploadedFile,
     isUploading,
@@ -21,137 +21,87 @@ const Chat = () => {
     fileId,
   } = useFileUpload();
 
-  const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
-    queryKey: ['chat-messages', fileId],
-    queryFn: async () => {
-      if (!fileId) return [];
+  const { mutate: createThread } = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq('excel_file_id', fileId)
-        .order('created_at', { ascending: true });
-      
+        .from('chat_threads')
+        .insert({
+          user_id: user.id,
+          excel_file_id: fileId,
+          title: uploadedFile?.name || 'New Chat',
+        })
+        .select()
+        .single();
+
       if (error) throw error;
       return data;
     },
-    enabled: !!fileId,
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || !fileId || isAnalyzing) return;
-
-    try {
-      setIsAnalyzing(true);
-
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
-
-      // The user message is now stored by the Lambda function
-      // Call analyze-excel function
-      const { data: analysis, error } = await supabase.functions
-        .invoke('analyze-excel', {
-          body: { 
-            fileId, 
-            query: message,
-            userId: user.id 
-          }
-        });
-
-      if (error) throw error;
-
-      // The AI response is now stored by the Lambda function
-      // Refetch messages to show the new ones
-      await refetchMessages();
-      setMessage("");
-    } catch (error) {
-      console.error('Analysis error:', error);
+    onSuccess: (data) => {
+      setActiveThreadId(data.id);
+      queryClient.invalidateQueries({ queryKey: ['threads'] });
+    },
+    onError: (error) => {
       toast({
-        title: "Analysis Failed",
-        description: error instanceof Error ? error.message : "Failed to analyze Excel file",
+        title: "Error",
+        description: "Failed to create chat thread",
         variant: "destructive",
       });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
+    },
+  });
 
   return (
-    <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
-      <div className="h-[600px] p-4 overflow-y-auto">
-        <div className="flex flex-col gap-4">
-          <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-            <p className="text-sm">
-              Hello! Upload an Excel file and I'll help you analyze it.
-            </p>
-          </div>
-          
-          <FileUploadZone
-            onFileUpload={handleFileUpload}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-            currentFile={uploadedFile}
-            onReset={resetUpload}
-          />
-
-          {uploadedFile && !isUploading && (
-            <div className="w-full">
-              <ExcelPreview file={uploadedFile} />
-            </div>
-          )}
-
-          {messagesLoading && (
-            <div className="flex items-center justify-center p-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-            </div>
-          )}
-
-          {messages && messages.length > 0 && (
-            <div className="space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`p-4 rounded-lg ${
-                    message.is_ai_response
-                      ? "bg-blue-50 ml-4"
-                      : "bg-gray-50 mr-4"
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {isAnalyzing && (
-            <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-              <p className="text-sm">Analyzing your Excel file...</p>
-            </div>
-          )}
-        </div>
+    <div className="flex h-[calc(100vh-4rem)] gap-4 p-4">
+      <div className="w-64 border-r pr-4">
+        <ThreadList 
+          onSelectThread={setActiveThreadId}
+          selectedThreadId={activeThreadId}
+        />
       </div>
       
-      <form onSubmit={handleSubmit} className="border-t p-4">
-        <div className="flex gap-2 items-center">
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Ask about your Excel file..."
-            className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="Message input"
-          />
-          <Button 
-            type="submit" 
-            className="bg-excel hover:bg-excel/90"
-            aria-label="Send message"
-            disabled={!fileId || isUploading || isAnalyzing}
-          >
-            <Send className="h-4 w-4" aria-hidden="true" />
-          </Button>
+      <div className="flex-1">
+        <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
+          <div className="h-[600px] flex flex-col">
+            {!activeThreadId ? (
+              <div className="p-4">
+                <div className="flex flex-col gap-4">
+                  <div className="bg-muted p-3 rounded-lg max-w-[80%]">
+                    <p className="text-sm">
+                      Hello! Upload an Excel file and I'll help you analyze it.
+                    </p>
+                  </div>
+                  
+                  <FileUploadZone
+                    onFileUpload={handleFileUpload}
+                    isUploading={isUploading}
+                    uploadProgress={uploadProgress}
+                    currentFile={uploadedFile}
+                    onReset={resetUpload}
+                  />
+
+                  {uploadedFile && !isUploading && (
+                    <>
+                      <div className="w-full">
+                        <ExcelPreview file={uploadedFile} />
+                      </div>
+                      <Button
+                        onClick={() => createThread()}
+                        className="bg-excel hover:bg-excel/90"
+                      >
+                        Start New Chat
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <ChatThread threadId={activeThreadId} fileId={fileId} />
+            )}
+          </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 };
