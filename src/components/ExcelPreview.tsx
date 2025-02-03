@@ -9,23 +9,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 
 interface ExcelPreviewProps {
   file: File;
 }
 
+interface PreviewData {
+  headers: string[];
+  rows: any[][];
+}
+
 export function ExcelPreview({ file }: ExcelPreviewProps) {
-  const [previewData, setPreviewData] = useState<{
-    headers: string[];
-    rows: any[][];
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const readExcel = async () => {
+  // Use React Query for caching the Excel preview data
+  const { data: previewData, isLoading } = useQuery({
+    queryKey: ['excel-preview', file.name, file.lastModified],
+    queryFn: async (): Promise<PreviewData> => {
       try {
-        setLoading(true);
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
         const firstSheetName = workbook.SheetNames[0];
@@ -35,7 +37,7 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         const headers = jsonData[0] as string[];
         const rows = jsonData.slice(1, 21) as any[][]; // Limit to 20 rows
 
-        setPreviewData({ headers, rows });
+        return { headers, rows };
       } catch (error) {
         console.error("Error reading Excel file:", error);
         toast({
@@ -43,17 +45,14 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
           description: "Failed to read Excel file. Please make sure it's a valid Excel document.",
           variant: "destructive",
         });
-      } finally {
-        setLoading(false);
+        throw error;
       }
-    };
+    },
+    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+    cacheTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+  });
 
-    if (file) {
-      readExcel();
-    }
-  }, [file, toast]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center p-4" role="status">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel" aria-label="Loading"></div>
