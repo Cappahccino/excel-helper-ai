@@ -27,9 +27,9 @@ export function MessageList({ threadId }: { threadId: string }) {
     hasNextPage,
     isFetchingNextPage,
     status
-  } = useInfiniteQuery<QueryResponse, Error>({
+  } = useInfiniteQuery<QueryResponse>({
     queryKey: ['messages', threadId],
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam = 0 }) => {
       const start = Number(pageParam) * MESSAGES_PER_PAGE;
       
       const { data, error, count } = await supabase
@@ -43,8 +43,16 @@ export function MessageList({ threadId }: { threadId: string }) {
         throw error;
       }
 
+      // Ensure the status is one of our allowed values
+      const messages = (data || []).map(msg => ({
+        ...msg,
+        status: (msg.status === 'sent' || msg.status === 'pending' || msg.status === 'error' 
+          ? msg.status 
+          : 'sent') as 'sent' | 'pending' | 'error'
+      }));
+
       return {
-        messages: data || [],
+        messages,
         count: count || 0,
       };
     },
@@ -62,12 +70,16 @@ export function MessageList({ threadId }: { threadId: string }) {
     }
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  if (status === 'loading') {
+  if (status === 'pending') {
     return <div>Loading messages...</div>;
   }
 
   if (status === 'error') {
     return <div>Error: {error.message}</div>;
+  }
+
+  if (!data) {
+    return null;
   }
 
   return (
