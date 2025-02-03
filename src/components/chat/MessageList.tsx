@@ -1,40 +1,32 @@
-import { useEffect, useRef, useCallback } from "react";
-import { Message } from "./Message";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { Message } from "./Message";
 import { useInView } from "react-intersection-observer";
+import { useEffect } from "react";
 
 const MESSAGES_PER_PAGE = 20;
 
-interface MessageListProps {
-  threadId: string;
-}
-
-type MessageStatus = 'sent' | 'pending' | 'error';
-
-interface ChatMessage {
-  id: string;
-  content: string;
-  is_ai_response: boolean;
-  status: MessageStatus;
-  created_at: string;
-}
-
 interface QueryResponse {
-  messages: ChatMessage[];
+  messages: {
+    id: string;
+    content: string;
+    is_ai_response: boolean;
+    status: 'sent' | 'pending' | 'error';
+    created_at: string;
+  }[];
   count: number;
 }
 
-export function MessageList({ threadId }: MessageListProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { ref: loadMoreRef, inView } = useInView();
+export function MessageList({ threadId }: { threadId: string }) {
+  const { ref, inView } = useInView();
 
   const {
     data,
-    isLoading,
+    error,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage
+    isFetchingNextPage,
+    status
   } = useInfiniteQuery<QueryResponse, Error>({
     queryKey: ['messages', threadId],
     queryFn: async ({ pageParam }) => {
@@ -42,18 +34,17 @@ export function MessageList({ threadId }: MessageListProps) {
       
       const { data, error, count } = await supabase
         .from('chat_messages')
-        .select('*', { count: 'exact' })
+        .select('id, content, is_ai_response, status, created_at', { count: 'exact' })
         .eq('thread_id', threadId)
         .order('created_at', { ascending: false })
         .range(start, start + MESSAGES_PER_PAGE - 1);
-      
-      if (error) throw error;
-      
+
+      if (error) {
+        throw error;
+      }
+
       return {
-        messages: (data as any[]).map(message => ({
-          ...message,
-          status: message.status as MessageStatus
-        })),
+        messages: data || [],
         count: count || 0,
       };
     },
@@ -65,47 +56,33 @@ export function MessageList({ threadId }: MessageListProps) {
     },
   });
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
-
   useEffect(() => {
     if (inView && hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-      </div>
-    );
+  if (status === 'loading') {
+    return <div>Loading messages...</div>;
   }
 
-  const messages = data?.pages.flatMap(page => page.messages) ?? [];
+  if (status === 'error') {
+    return <div>Error: {error.message}</div>;
+  }
 
   return (
-    <div className="space-y-4">
-      {hasNextPage && (
-        <div ref={loadMoreRef} className="h-4">
-          {isFetchingNextPage && (
-            <div className="flex justify-center">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-            </div>
-          )}
-        </div>
+    <div className="flex flex-col-reverse gap-4">
+      {data.pages.map((page) =>
+        page.messages.map((message) => (
+          <Message
+            key={message.id}
+            content={message.content}
+            isAiResponse={message.is_ai_response}
+            status={message.status}
+          />
+        ))
       )}
-      
-      {messages.map((message) => (
-        <Message
-          key={message.id}
-          content={message.content}
-          isAiResponse={message.is_ai_response}
-          status={message.status}
-        />
-      ))}
-      <div ref={messagesEndRef} />
+      <div ref={ref} className="h-1" />
     </div>
   );
 }
