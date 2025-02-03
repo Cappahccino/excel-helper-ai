@@ -132,11 +132,25 @@ const processExcelFile = async (fileBuffer: ArrayBuffer) => {
 };
 
 const storeMessage = async (message: ChatMessage): Promise<void> => {
-  const { error } = await supabase
-    .from('chat_messages')
-    .insert(message);
+  console.log('Attempting to store message:', JSON.stringify(message, null, 2));
+  
+  try {
+    const { error } = await supabase
+      .from('chat_messages')
+      .insert(message);
 
-  if (error) {
+    if (error) {
+      console.error('Database error when storing message:', error);
+      throw new AnalysisError(
+        `Failed to store message: ${error.message}`,
+        'DATABASE_ERROR',
+        500
+      );
+    }
+    
+    console.log('Message stored successfully');
+  } catch (error) {
+    console.error('Error in storeMessage:', error);
     throw new AnalysisError(
       'Failed to store message',
       'DATABASE_ERROR',
@@ -168,7 +182,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       .eq('id', fileId)
       .maybeSingle();
 
-    if (fileError) throw new AnalysisError('Database error', 'DATABASE_ERROR', 500);
+    if (fileError) {
+      console.error('Database error when fetching file:', fileError);
+      throw new AnalysisError('Database error', 'DATABASE_ERROR', 500);
+    }
     if (!fileData) throw new AnalysisError('File not found', 'FILE_NOT_FOUND', 404);
 
     console.log('File metadata retrieved:', fileData);
@@ -189,7 +206,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       .from('excel_files')
       .download(fileData.file_path);
 
-    if (downloadError) throw new AnalysisError('File download failed', 'DOWNLOAD_ERROR', 500);
+    if (downloadError) {
+      console.error('Error downloading file:', downloadError);
+      throw new AnalysisError('File download failed', 'DOWNLOAD_ERROR', 500);
+    }
     if (!fileBuffer) throw new AnalysisError('File buffer is empty', 'EMPTY_FILE', 400);
 
     console.log('File downloaded successfully');
@@ -225,7 +245,18 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       system_fingerprint: rawResponse.system_fingerprint
     };
 
-    // Store AI response
+    // Store AI response with detailed logging
+    console.log('Preparing to store AI response:', {
+      content: rawResponse.choices[0].message.content,
+      excel_file_id: fileId,
+      is_ai_response: true,
+      user_id: userId,
+      chat_id: rawResponse.id,
+      openai_model: rawResponse.model,
+      openai_usage: rawResponse.usage,
+      raw_response: cleanResponse
+    });
+
     await storeMessage({
       content: rawResponse.choices[0].message.content,
       excel_file_id: fileId,
@@ -260,7 +291,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     };
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error in handler:', error);
     
     const statusCode = error instanceof AnalysisError ? error.statusCode : 500;
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
