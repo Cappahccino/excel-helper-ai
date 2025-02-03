@@ -23,10 +23,20 @@ interface RequestBody {
   userId: string;
 }
 
+interface TokenDetails {
+  cached_tokens: number;
+  audio_tokens: number;
+  reasoning_tokens?: number;
+  accepted_prediction_tokens?: number;
+  rejected_prediction_tokens?: number;
+}
+
 interface OpenAIUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  prompt_tokens_details?: TokenDetails;
+  completion_tokens_details?: TokenDetails;
 }
 
 interface OpenAIChoice {
@@ -131,10 +141,43 @@ const processExcelFile = async (fileBuffer: ArrayBuffer) => {
   }
 };
 
+const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
+  // Extract only the fields we need and ensure they match our schema
+  return {
+    id: rawResponse.id,
+    model: rawResponse.model,
+    created: rawResponse.created,
+    usage: {
+      prompt_tokens: rawResponse.usage.prompt_tokens,
+      completion_tokens: rawResponse.usage.completion_tokens,
+      total_tokens: rawResponse.usage.total_tokens
+    },
+    choices: rawResponse.choices.map((choice: any) => ({
+      message: {
+        content: choice.message.content,
+        role: choice.message.role
+      },
+      finish_reason: choice.finish_reason,
+      index: choice.index
+    })),
+    system_fingerprint: rawResponse.system_fingerprint
+  };
+};
+
 const storeMessage = async (message: ChatMessage): Promise<void> => {
   console.log('Attempting to store message:', JSON.stringify(message, null, 2));
   
   try {
+    // Validate message structure before storing
+    if (!message.content || !message.user_id) {
+      throw new Error('Missing required fields in message');
+    }
+
+    // Ensure OpenAI metadata is properly formatted if present
+    if (message.raw_response) {
+      message.raw_response = sanitizeOpenAIResponse(message.raw_response);
+    }
+
     const { error } = await supabase
       .from('chat_messages')
       .insert(message);
@@ -235,38 +278,24 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
 
-    // Clean response for storage
-    const cleanResponse: RawResponse = {
-      id: rawResponse.id,
-      model: rawResponse.model,
-      created: rawResponse.created,
-      usage: rawResponse.usage,
-      choices: rawResponse.choices,
-      system_fingerprint: rawResponse.system_fingerprint
-    };
+    // Clean and validate response before storage
+    const cleanResponse = sanitizeOpenAIResponse(rawResponse);
 
     // Store AI response with detailed logging
-    console.log('Preparing to store AI response:', {
+    const messageToStore: ChatMessage = {
       content: rawResponse.choices[0].message.content,
       excel_file_id: fileId,
       is_ai_response: true,
       user_id: userId,
       chat_id: rawResponse.id,
       openai_model: rawResponse.model,
-      openai_usage: rawResponse.usage,
+      openai_usage: cleanResponse.usage,
       raw_response: cleanResponse
-    });
+    };
 
-    await storeMessage({
-      content: rawResponse.choices[0].message.content,
-      excel_file_id: fileId,
-      is_ai_response: true,
-      user_id: userId,
-      chat_id: rawResponse.id,
-      openai_model: rawResponse.model,
-      openai_usage: rawResponse.usage,
-      raw_response: cleanResponse
-    });
+    console.log('Preparing to store AI response:', messageToStore);
+
+    await storeMessage(messageToStore);
 
     console.log('AI response stored successfully');
 
