@@ -35,9 +35,9 @@ export function MessageList({ threadId }: MessageListProps) {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage
-  } = useInfiniteQuery<QueryResponse>({
+  } = useInfiniteQuery<QueryResponse, Error>({
     queryKey: ['messages', threadId],
-    queryFn: async ({ pageParam = 0 }) => {
+    queryFn: async ({ pageParam }) => {
       const start = Number(pageParam) * MESSAGES_PER_PAGE;
       
       const { data, error, count } = await supabase
@@ -57,6 +57,7 @@ export function MessageList({ threadId }: MessageListProps) {
         count: count || 0,
       };
     },
+    initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       const totalPages = Math.ceil(lastPage.count / MESSAGES_PER_PAGE);
       const nextPage = allPages.length;
