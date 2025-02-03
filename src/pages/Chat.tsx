@@ -7,6 +7,7 @@ import { ChatThread } from "@/components/chat/ChatThread";
 import { ThreadList } from "@/components/chat/ThreadList";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);

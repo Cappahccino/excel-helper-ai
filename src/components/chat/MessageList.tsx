@@ -6,6 +6,16 @@ interface MessageListProps {
   threadId: string;
 }
 
+type MessageStatus = 'sent' | 'pending' | 'error';
+
+interface ChatMessage {
+  id: string;
+  content: string;
+  is_ai_response: boolean;
+  status: MessageStatus;
+  created_at: string;
+}
+
 export function MessageList({ threadId }: MessageListProps) {
   const { data: messages, isLoading } = useQuery({
     queryKey: ['messages', threadId],
@@ -17,7 +27,10 @@ export function MessageList({ threadId }: MessageListProps) {
         .order('created_at', { ascending: true });
       
       if (error) throw error;
-      return data;
+      return data.map(message => ({
+        ...message,
+        status: message.status as MessageStatus
+      }));
     },
   });
 
