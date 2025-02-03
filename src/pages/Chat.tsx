@@ -5,6 +5,8 @@ import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { ThreadList } from "@/components/chat/ThreadList";
+import { MessageInput } from "@/components/chat/MessageInput";
+import { MessageList } from "@/components/chat/MessageList";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -63,44 +65,47 @@ const Chat = () => {
       </div>
       
       <div className="flex-1">
-        <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
-          <div className="h-[600px] flex flex-col">
-            {!activeThreadId ? (
-              <div className="p-4">
-                <div className="flex flex-col gap-4">
-                  <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-                    <p className="text-sm">
-                      Hello! Upload an Excel file and I'll help you analyze it.
-                    </p>
-                  </div>
-                  
-                  <FileUploadZone
-                    onFileUpload={handleFileUpload}
-                    isUploading={isUploading}
-                    uploadProgress={uploadProgress}
-                    currentFile={uploadedFile}
-                    onReset={resetUpload}
-                  />
-
-                  {uploadedFile && !isUploading && (
-                    <>
-                      <div className="w-full">
-                        <ExcelPreview file={uploadedFile} />
-                      </div>
-                      <Button
-                        onClick={() => createThread()}
-                        className="bg-excel hover:bg-excel/90"
-                      >
-                        Start New Chat
-                      </Button>
-                    </>
-                  )}
+        <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border h-full flex flex-col">
+          {!activeThreadId ? (
+            <div className="p-4 flex-1 overflow-y-auto">
+              <div className="flex flex-col gap-4">
+                <div className="bg-muted p-3 rounded-lg max-w-[80%]">
+                  <p className="text-sm">
+                    Hello! Upload an Excel file and I'll help you analyze it.
+                  </p>
                 </div>
+                
+                <FileUploadZone
+                  onFileUpload={handleFileUpload}
+                  isUploading={isUploading}
+                  uploadProgress={uploadProgress}
+                  currentFile={uploadedFile}
+                  onReset={resetUpload}
+                />
+
+                {uploadedFile && !isUploading && (
+                  <>
+                    <div className="w-full">
+                      <ExcelPreview file={uploadedFile} />
+                    </div>
+                    <Button
+                      onClick={() => createThread()}
+                      className="bg-excel hover:bg-excel/90"
+                    >
+                      Start New Chat
+                    </Button>
+                  </>
+                )}
               </div>
-            ) : (
-              <ChatThread threadId={activeThreadId} fileId={fileId} />
-            )}
-          </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 overflow-y-auto">
+                <MessageList threadId={activeThreadId} />
+              </div>
+              <MessageInput threadId={activeThreadId} fileId={fileId} />
+            </>
+          )}
         </div>
       </div>
     </div>
