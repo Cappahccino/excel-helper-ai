@@ -9,6 +9,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
+import { Database } from "@/integrations/supabase/types";
+
+type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
 
 const MESSAGES_PER_PAGE = 20;
 
@@ -27,8 +30,8 @@ export function Chat() {
   // Fetch messages with pagination
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['chat-messages', fileId],
-    queryFn: async ({ pageParam = 0 }) => {
-      const start = pageParam * MESSAGES_PER_PAGE;
+    queryFn: async ({ pageParam }) => {
+      const start = (pageParam as number) * MESSAGES_PER_PAGE;
       const { data, error, count } = await supabase
         .from('chat_messages')
         .select('*', { count: 'exact' })
@@ -38,11 +41,12 @@ export function Chat() {
 
       if (error) throw error;
       return {
-        messages: data,
-        nextPage: data.length === MESSAGES_PER_PAGE ? pageParam + 1 : undefined,
+        messages: data as ChatMessage[],
+        nextPage: data.length === MESSAGES_PER_PAGE ? (pageParam as number) + 1 : undefined,
         count,
       };
     },
+    initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextPage,
     enabled: !!fileId,
   });
