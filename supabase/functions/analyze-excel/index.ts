@@ -18,9 +18,9 @@ serve(async (req) => {
     const requestData = await req.json();
     console.log('Received request data:', JSON.stringify(requestData, null, 2));
 
-    const { fileId, query } = requestData;
-    if (!fileId || !query) {
-      throw new Error('Missing required fields: fileId and query are required');
+    const { fileId, query, userId } = requestData;
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields: fileId, query, and userId are required');
     }
 
     // Initialize Supabase client
@@ -82,16 +82,40 @@ serve(async (req) => {
       throw new Error(`Lambda error: ${errorText || 'Unknown error'}`);
     }
 
+    // Parse the Lambda response
     const analysis = await lambdaResponse.json();
     console.log('Edge function received Lambda response:', analysis);
 
-    // Parse the body string into an object
+    // Parse the body string into an object (since it comes as a string)
     const parsedBody = JSON.parse(analysis.body);
-    
-    if (!parsedBody || !parsedBody.openAiResponse) {
-      throw new Error('Invalid response from Lambda');
+    console.log('Parsed Lambda response body:', parsedBody);
+
+    // Extract OpenAI metadata from the response
+    const openAiResponse = parsedBody.openAiResponse;
+    console.log('Extracted OpenAI response:', openAiResponse);
+
+    // Store AI response with metadata
+    const { error: aiMessageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: openAiResponse.responseContent,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        chat_id: openAiResponse.id,           // From OpenAI response
+        openai_model: openAiResponse.model,    // From OpenAI response
+        openai_usage: openAiResponse.usage,    // Usage statistics
+        raw_response: openAiResponse          // Full response object
+      });
+
+    if (aiMessageError) {
+      console.error('Error storing AI response:', aiMessageError);
+      throw aiMessageError;
     }
 
+    console.log('Successfully stored AI response with metadata');
+
+    // Return the original response
     return new Response(
       JSON.stringify(parsedBody),
       { 
