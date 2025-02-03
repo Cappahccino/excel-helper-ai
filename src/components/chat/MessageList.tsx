@@ -1,6 +1,10 @@
+import { useEffect, useRef, useCallback } from "react";
 import { Message } from "./Message";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useInView } from "react-intersection-observer";
+
+const MESSAGES_PER_PAGE = 20;
 
 interface MessageListProps {
   threadId: string;
@@ -17,22 +21,54 @@ interface ChatMessage {
 }
 
 export function MessageList({ threadId }: MessageListProps) {
-  const { data: messages, isLoading } = useQuery({
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { ref: loadMoreRef, inView } = useInView();
+
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage
+  } = useInfiniteQuery({
     queryKey: ['messages', threadId],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    queryFn: async ({ pageParam = 0 }) => {
+      const start = pageParam * MESSAGES_PER_PAGE;
+      
+      const { data, error, count } = await supabase
         .from('chat_messages')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('thread_id', threadId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .range(start, start + MESSAGES_PER_PAGE - 1);
       
       if (error) throw error;
-      return data.map(message => ({
-        ...message,
-        status: message.status as MessageStatus
-      }));
+      
+      return {
+        messages: data.map(message => ({
+          ...message,
+          status: message.status as MessageStatus
+        })),
+        count,
+      };
     },
+    getNextPageParam: (lastPage, allPages) => {
+      const totalPages = Math.ceil(lastPage.count / MESSAGES_PER_PAGE);
+      const nextPage = allPages.length;
+      return nextPage < totalPages ? nextPage : undefined;
+    },
+    initialPageSize: MESSAGES_PER_PAGE,
   });
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) {
     return (
@@ -42,9 +78,21 @@ export function MessageList({ threadId }: MessageListProps) {
     );
   }
 
+  const messages = data?.pages.flatMap(page => page.messages) ?? [];
+
   return (
     <div className="space-y-4">
-      {messages?.map((message) => (
+      {hasNextPage && (
+        <div ref={loadMoreRef} className="h-4">
+          {isFetchingNextPage && (
+            <div className="flex justify-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {messages.map((message) => (
         <Message
           key={message.id}
           content={message.content}
@@ -52,6 +100,7 @@ export function MessageList({ threadId }: MessageListProps) {
           status={message.status}
         />
       ))}
+      <div ref={messagesEndRef} />
     </div>
   );
 }

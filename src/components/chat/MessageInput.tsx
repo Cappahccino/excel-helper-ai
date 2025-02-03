@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { debounce } from "@/utils/debounce";
 
 interface MessageInputProps {
   threadId: string;
@@ -38,6 +39,12 @@ export function MessageInput({ threadId, fileId, disabled }: MessageInputProps) 
     },
   });
 
+  // Debounce the message update
+  const debouncedSetMessage = useCallback(
+    debounce((value: string) => setMessage(value), 300),
+    []
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || disabled) return;
@@ -50,7 +57,10 @@ export function MessageInput({ threadId, fileId, disabled }: MessageInputProps) 
         <input
           type="text"
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => {
+            setMessage(e.target.value); // Update local state immediately for UI
+            debouncedSetMessage(e.target.value); // Debounce the actual state update
+          }}
           placeholder="Ask about your Excel file..."
           className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           disabled={disabled || isPending}
