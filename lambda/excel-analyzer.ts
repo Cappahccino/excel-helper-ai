@@ -66,6 +66,7 @@ interface ChatMessage {
   openai_model?: string;
   openai_usage?: OpenAIUsage;
   raw_response?: RawResponse;
+  created_at?: string;
 }
 
 interface AnalysisResponse {
@@ -77,6 +78,7 @@ interface AnalysisResponse {
     usage: OpenAIUsage;
     responseContent: string;
     id: string;
+    raw_response?: RawResponse;
   };
   timestamp: string;
 }
@@ -142,7 +144,6 @@ const processExcelFile = async (fileBuffer: ArrayBuffer) => {
 };
 
 const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
-  // Extract only the fields we need and ensure they match our schema
   return {
     id: rawResponse.id,
     model: rawResponse.model,
@@ -168,19 +169,26 @@ const storeMessage = async (message: ChatMessage): Promise<void> => {
   console.log('Attempting to store message:', JSON.stringify(message, null, 2));
   
   try {
-    // Validate message structure before storing
     if (!message.content || !message.user_id) {
       throw new Error('Missing required fields in message');
     }
 
-    // Ensure OpenAI metadata is properly formatted if present
-    if (message.raw_response) {
-      message.raw_response = sanitizeOpenAIResponse(message.raw_response);
-    }
+    const messageToStore = {
+      ...message,
+      created_at: message.created_at || new Date().toISOString(),
+      raw_response: message.raw_response ? sanitizeOpenAIResponse(message.raw_response) : undefined,
+      openai_usage: message.openai_usage ? {
+        prompt_tokens: message.openai_usage.prompt_tokens,
+        completion_tokens: message.openai_usage.completion_tokens,
+        total_tokens: message.openai_usage.total_tokens,
+        prompt_tokens_details: message.openai_usage.prompt_tokens_details,
+        completion_tokens_details: message.openai_usage.completion_tokens_details
+      } : undefined
+    };
 
     const { error } = await supabase
       .from('chat_messages')
-      .insert(message);
+      .insert(messageToStore);
 
     if (error) {
       console.error('Database error when storing message:', error);
@@ -213,12 +221,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     console.log('Received event:', JSON.stringify(event, null, 2));
     
-    // Validate request
     const { fileId, query, userId } = validateRequest(JSON.parse(event.body || '{}'));
-
     console.log('Processing request for:', { fileId, userId });
 
-    // Get file metadata
     const { data: fileData, error: fileError } = await supabase
       .from('excel_files')
       .select('*')
@@ -233,7 +238,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('File metadata retrieved:', fileData);
 
-    // Store user message
     await storeMessage({
       content: query,
       excel_file_id: fileId,
@@ -243,7 +247,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('User message stored successfully');
 
-    // Download and process file
     const { data: fileBuffer, error: downloadError } = await supabase
       .storage
       .from('excel_files')
@@ -261,27 +264,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Excel file processed, getting OpenAI analysis');
 
-    // Get OpenAI response
     const rawResponse = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: `Analyze this Excel data: ${JSON.stringify(jsonData.slice(0, 100))}. Query: ${query}`
-        }
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `Analyze this Excel data: ${JSON.stringify(jsonData.slice(0, 100))}. Query: ${query}` }
       ]
     });
 
     console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
 
-    // Clean and validate response before storage
     const cleanResponse = sanitizeOpenAIResponse(rawResponse);
+    const timestamp = new Date().toISOString();
 
-    // Store AI response with detailed logging
     const messageToStore: ChatMessage = {
       content: rawResponse.choices[0].message.content,
       excel_file_id: fileId,
@@ -290,16 +285,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       chat_id: rawResponse.id,
       openai_model: rawResponse.model,
       openai_usage: cleanResponse.usage,
-      raw_response: cleanResponse
+      raw_response: cleanResponse,
+      created_at: timestamp
     };
 
     console.log('Preparing to store AI response:', messageToStore);
-
     await storeMessage(messageToStore);
-
     console.log('AI response stored successfully');
 
-    // Prepare and return response
     const response: AnalysisResponse = {
       fileName: fileData.filename,
       fileSize: fileData.file_size,
@@ -308,9 +301,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         model: rawResponse.model,
         usage: rawResponse.usage,
         responseContent: rawResponse.choices[0].message.content,
-        id: rawResponse.id
+        id: rawResponse.id,
+        raw_response: cleanResponse
       },
-      timestamp: new Date().toISOString()
+      timestamp
     };
 
     return {
