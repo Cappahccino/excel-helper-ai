@@ -67,6 +67,7 @@ interface ChatMessage {
   openai_usage?: OpenAIUsage;
   raw_response?: RawResponse;
   created_at?: string;
+  thread_id?: string | null;
 }
 
 interface AnalysisResponse {
@@ -247,37 +248,84 @@ const storeMessage = async (message: ChatMessage): Promise<void> => {
   }
 };
 
-// New function to update the user's message with the chat_id
-const updateMessageChatId = async (userId: string, content: string, chatId: string): Promise<void> => {
-  console.log('Updating message chat_id:', { userId, content, chatId });
-  
+// New function to create a thread for the conversation
+const createThread = async (userId: string, fileId: string, query: string): Promise<string> => {
   try {
-    const { error } = await supabase
-      .from('chat_messages')
-      .update({ chat_id: chatId })
-      .match({ 
-        user_id: userId, 
-        content: content,
-        is_ai_response: false,
-        chat_id: null 
+    const { data: thread, error } = await supabase
+      .from('chat_threads')
+      .insert({
+        title: query.substring(0, 50) + '...',
+        user_id: userId,
+        excel_file_id: fileId
       })
+      .select()
       .single();
 
-    if (error) {
-      console.error('Error updating message chat_id:', error);
-      throw new AnalysisError(
-        `Failed to update message chat_id: ${error.message}`,
-        'DATABASE_ERROR',
-        500
-      );
-    }
-    
-    console.log('Successfully updated message chat_id');
+    if (error) throw error;
+    return thread.id;
   } catch (error) {
-    console.error('Error in updateMessageChatId:', error);
+    console.error('Error creating thread:', error);
     throw new AnalysisError(
-      'Failed to update message chat_id',
-      'DATABASE_ERROR',
+      'Failed to create chat thread',
+      'THREAD_CREATION_ERROR',
+      500
+    );
+  }
+};
+
+// New function to store messages in the thread
+const storeMessages = async (
+  threadId: string,
+  userId: string,
+  fileId: string,
+  query: string,
+  aiResponse: any
+): Promise<void> => {
+  const {
+    id: chatId,
+    model,
+    usage,
+    choices
+  } = aiResponse;
+
+  const messageContent = choices[0]?.message?.content;
+  if (!messageContent) {
+    throw new AnalysisError(
+      'Invalid AI response: missing message content',
+      'INVALID_RESPONSE',
+      500
+    );
+  }
+
+  const { error: messagesError } = await supabase
+    .from('chat_messages')
+    .insert([
+      {
+        thread_id: threadId,
+        content: query,
+        is_ai_response: false,
+        user_id: userId,
+        excel_file_id: fileId,
+        chat_id: chatId
+      },
+      {
+        thread_id: threadId,
+        content: messageContent,
+        is_ai_response: true,
+        user_id: userId,
+        excel_file_id: fileId,
+        chat_id: chatId,
+        openai_model: model,
+        openai_usage: usage,
+        raw_response: sanitizeOpenAIResponse(aiResponse)
+      }
+    ]);
+
+  if (messagesError) {
+    console.error('Error storing messages:', messagesError);
+    throw new AnalysisError(
+      'Failed to store messages',
+      'MESSAGE_STORAGE_ERROR',
       500
     );
   }
@@ -297,49 +345,37 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const { fileId, query, userId } = validateRequest(JSON.parse(event.body || '{}'));
     console.log('Processing request for:', { fileId, userId });
 
+    // Create a new thread for this conversation
+    const threadId = await createThread(userId, fileId, query);
+    console.log('Created new thread:', threadId);
+
     const { data: fileData, error: fileError } = await supabase
       .from('excel_files')
       .select('*')
       .eq('id', fileId)
       .maybeSingle();
 
-    if (fileError) {
-      console.error('Database error when fetching file:', fileError);
-      throw new AnalysisError('Database error', 'DATABASE_ERROR', 500);
-    }
+    if (fileError) throw new AnalysisError('Database error', 'DATABASE_ERROR', 500);
     if (!fileData) throw new AnalysisError('File not found', 'FILE_NOT_FOUND', 404);
 
     console.log('File metadata retrieved:', fileData);
-
-    await storeMessage({
-      content: query,
-      excel_file_id: fileId,
-      is_ai_response: false,
-      user_id: userId
-    });
-
-    console.log('User message stored successfully');
 
     const { data: fileBuffer, error: downloadError } = await supabase
       .storage
       .from('excel_files')
       .download(fileData.file_path);
 
-    if (downloadError) {
-      console.error('Error downloading file:', downloadError);
-      throw new AnalysisError('File download failed', 'DOWNLOAD_ERROR', 500);
-    }
+    if (downloadError) throw new AnalysisError('File download failed', 'DOWNLOAD_ERROR', 500);
     if (!fileBuffer) throw new AnalysisError('File buffer is empty', 'EMPTY_FILE', 400);
 
     console.log('File downloaded successfully');
 
     const jsonData = await processExcelFile(await fileBuffer.arrayBuffer());
-
     console.log('Excel file processed, getting OpenAI analysis');
 
     try {
       const openAiResponse = await openai.chat.completions.create({
-        model: "gpt-4o", // Updated model name
+        model: "gpt-4",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { 
@@ -347,54 +383,27 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             content: `Analyze this Excel data (showing first 50 rows): ${JSON.stringify(jsonData)}. Query: ${query}` 
           }
         ],
-        max_tokens: 1000 // Limit response size
+        max_tokens: 1000
       });
 
       console.log('OpenAI response received:', JSON.stringify(openAiResponse, null, 2));
 
-      const {
-        chatId,
-        model,
-        usage,
-        messageContent,
-        rawResponse: cleanResponse
-      } = extractOpenAIResponseData(openAiResponse);
-
-      // Update the user's message with the chat_id
-      await updateMessageChatId(userId, query, chatId);
-      console.log('Updated user message with chat_id:', chatId);
-
-      const timestamp = new Date().toISOString();
-
-      // Store AI response
-      const messageToStore: ChatMessage = {
-        content: messageContent,
-        excel_file_id: fileId,
-        is_ai_response: true,
-        user_id: userId,
-        chat_id: chatId,
-        openai_model: model,
-        openai_usage: usage,
-        raw_response: cleanResponse,
-        created_at: timestamp
-      };
-
-      console.log('Preparing to store AI response:', messageToStore);
-      await storeMessage(messageToStore);
-      console.log('AI response stored successfully');
+      // Store both messages with the thread ID
+      await storeMessages(threadId, userId, fileId, query, openAiResponse);
+      console.log('Messages stored successfully');
 
       const response: AnalysisResponse = {
         fileName: fileData.filename,
         fileSize: fileData.file_size,
-        message: messageContent,
+        message: openAiResponse.choices[0].message.content,
         openAiResponse: {
-          model,
-          usage,
-          responseContent: messageContent,
-          id: chatId,
-          raw_response: cleanResponse
+          model: openAiResponse.model,
+          usage: openAiResponse.usage,
+          responseContent: openAiResponse.choices[0].message.content,
+          id: openAiResponse.id,
+          raw_response: sanitizeOpenAIResponse(openAiResponse)
         },
-        timestamp
+        timestamp: new Date().toISOString()
       };
 
       return {
