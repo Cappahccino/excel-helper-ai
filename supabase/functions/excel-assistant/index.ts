@@ -13,19 +13,23 @@ const openai = new OpenAI({
 
 // Create or get the assistant
 async function getOrCreateAssistant() {
+  console.log('🔍 Attempting to get or create assistant...');
   try {
     // First, try to list existing assistants
     const assistants = await openai.beta.assistants.list({
       limit: 1,
       order: "desc"
     });
+    console.log('📋 Found existing assistants:', assistants.data.length);
 
     // If we find an existing assistant, use it
     if (assistants.data.length > 0) {
+      console.log('✅ Using existing assistant:', assistants.data[0].id);
       return assistants.data[0];
     }
 
     // If no assistant exists, create a new one
+    console.log('🆕 No existing assistant found, creating new one...');
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analyst",
       instructions: `You are an Excel data analyst assistant. Your role is to:
@@ -38,60 +42,106 @@ async function getOrCreateAssistant() {
       model: "gpt-4o",
     });
 
-    console.log("Created new assistant:", assistant.id);
+    console.log('✅ Created new assistant:', assistant.id);
     return assistant;
   } catch (error) {
-    console.error("Error getting/creating assistant:", error);
+    console.error('❌ Error in getOrCreateAssistant:', error);
+    console.error('Stack trace:', error.stack);
     throw error;
   }
 }
 
 serve(async (req) => {
+  const requestId = crypto.randomUUID();
+  console.log(`🚀 [${requestId}] New request received`);
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log(`✨ [${requestId}] Handling CORS preflight request`);
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { fileId, query, userId, jsonData } = await req.json();
-    console.log('Processing request for:', { fileId, userId });
+    console.log(`📝 [${requestId}] Processing request for:`, {
+      fileId,
+      userId,
+      queryLength: query?.length,
+      dataSize: JSON.stringify(jsonData).length
+    });
 
     if (!fileId || !query || !userId || !jsonData) {
+      console.error(`❌ [${requestId}] Missing required fields:`, {
+        hasFileId: !!fileId,
+        hasQuery: !!query,
+        hasUserId: !!userId,
+        hasJsonData: !!jsonData
+      });
       throw new Error('Missing required fields');
     }
 
     // Get or create the assistant
+    console.log(`🤖 [${requestId}] Getting assistant...`);
     const assistant = await getOrCreateAssistant();
-    console.log("Using assistant:", assistant.id);
+    console.log(`✅ [${requestId}] Using assistant:`, assistant.id);
 
     // Create a new thread
+    console.log(`🧵 [${requestId}] Creating new thread...`);
     const thread = await openai.beta.threads.create();
-    console.log("Created thread:", thread.id);
+    console.log(`✅ [${requestId}] Created thread:`, thread.id);
 
     // Add the user's message to the thread
+    console.log(`💬 [${requestId}] Adding user message to thread...`);
     await openai.beta.threads.messages.create(thread.id, {
       role: "user",
       content: `Analyze this Excel data: ${JSON.stringify(jsonData)}. Query: ${query}`
     });
+    console.log(`✅ [${requestId}] Added user message to thread`);
 
     // Create a run
+    console.log(`🏃 [${requestId}] Creating run...`);
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: assistant.id,
     });
+    console.log(`✅ [${requestId}] Created run:`, run.id);
 
     // Wait for the run to complete
+    console.log(`⏳ [${requestId}] Waiting for run to complete...`);
     let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-    while (runStatus.status !== "completed") {
+    let attempts = 0;
+    const maxAttempts = 60; // Maximum 60 seconds wait
+    
+    while (runStatus.status !== "completed" && attempts < maxAttempts) {
+      console.log(`🔄 [${requestId}] Run status:`, runStatus.status);
+      
       if (runStatus.status === "failed" || runStatus.status === "cancelled") {
+        console.error(`❌ [${requestId}] Run failed:`, {
+          status: runStatus.status,
+          error: runStatus.last_error
+        });
         throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
       }
+      
       await new Promise(resolve => setTimeout(resolve, 1000));
       runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      attempts++;
     }
 
+    if (attempts >= maxAttempts) {
+      console.error(`⚠️ [${requestId}] Run timed out after ${maxAttempts} seconds`);
+      throw new Error('Run timed out');
+    }
+
+    console.log(`✅ [${requestId}] Run completed successfully`);
+
     // Get the assistant's response
+    console.log(`📥 [${requestId}] Retrieving messages...`);
     const messages = await openai.beta.threads.messages.list(thread.id);
     const lastMessage = messages.data[0];
+    console.log(`✅ [${requestId}] Retrieved messages:`, {
+      messageCount: messages.data.length,
+      responseLength: lastMessage.content[0].text.value.length
+    });
 
     // Format the response
     const response = {
@@ -105,12 +155,14 @@ serve(async (req) => {
       }
     };
 
+    console.log(`🏁 [${requestId}] Request completed successfully`);
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in excel-assistant function:', error);
+    console.error(`❌ [${requestId}] Error in excel-assistant function:`, error);
+    console.error(`📚 [${requestId}] Stack trace:`, error.stack);
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
