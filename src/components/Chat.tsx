@@ -95,8 +95,8 @@ export function Chat() {
       return data;
     },
     enabled: !!fileId,
-    refetchInterval: (data) => 
-      data && data.processing_status === 'processing' ? 5000 : false,
+    refetchInterval: (query) => 
+      query.data?.processing_status === 'processing' ? 5000 : false,
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
