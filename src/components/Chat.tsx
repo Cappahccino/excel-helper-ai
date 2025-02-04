@@ -65,12 +65,14 @@ export function Chat() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase.functions
-        .invoke('analyze-excel', {
+      // Call the Supabase Edge Function instead of Lambda
+      const { data: analysis, error } = await supabase.functions
+        .invoke('excel-assistant', {
           body: { fileId, query: message, userId: user.id }
         });
 
       if (error) throw error;
+
       setMessage("");
     } catch (error) {
       console.error('Analysis error:', error);
