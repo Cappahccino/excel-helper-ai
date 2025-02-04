@@ -34,7 +34,12 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        const headers = jsonData[0] as string[];
+        // Ensure we have valid data
+        if (!Array.isArray(jsonData) || jsonData.length === 0) {
+          throw new Error("No data found in Excel file");
+        }
+
+        const headers = (jsonData[0] || []) as string[];
         const rows = jsonData.slice(1, 21) as any[][]; // Limit to 20 rows
 
         return { headers, rows };
@@ -60,7 +65,7 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
     );
   }
 
-  if (!previewData) {
+  if (!previewData || !previewData.headers || !previewData.rows) {
     return (
       <div className="text-center p-4 text-muted-foreground" role="alert">
         Unable to preview file

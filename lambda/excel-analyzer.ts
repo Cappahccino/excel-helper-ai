@@ -140,7 +140,11 @@ const processExcelFile = async (fileBuffer: ArrayBuffer) => {
     }
 
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-    return XLSX.utils.sheet_to_json(worksheet);
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+    
+    // Limit the data to prevent token overflow
+    const limitedData = jsonData.slice(0, 50); // Only analyze first 50 rows
+    return limitedData;
   } catch (error) {
     if (error instanceof AnalysisError) throw error;
     throw new AnalysisError(
@@ -297,61 +301,77 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Excel file processed, getting OpenAI analysis');
 
-    const openAiResponse = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Analyze this Excel data: ${JSON.stringify(jsonData.slice(0, 100))}. Query: ${query}` }
-      ]
-    });
+    try {
+      const openAiResponse = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // Use the mini model for better token management
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { 
+            role: "user", 
+            content: `Analyze this Excel data (showing first 50 rows): ${JSON.stringify(jsonData)}. Query: ${query}` 
+          }
+        ],
+        max_tokens: 1000 // Limit response size
+      });
 
-    console.log('OpenAI raw response received:', JSON.stringify(openAiResponse, null, 2));
+      console.log('OpenAI response received:', JSON.stringify(openAiResponse, null, 2));
 
-    const {
-      chatId,
-      model,
-      usage,
-      messageContent,
-      rawResponse: cleanResponse
-    } = extractOpenAIResponseData(openAiResponse);
-
-    const timestamp = new Date().toISOString();
-
-    const messageToStore: ChatMessage = {
-      content: messageContent,
-      excel_file_id: fileId,
-      is_ai_response: true,
-      user_id: userId,
-      chat_id: chatId,
-      openai_model: model,
-      openai_usage: usage,
-      raw_response: cleanResponse,
-      created_at: timestamp
-    };
-
-    console.log('Preparing to store AI response:', messageToStore);
-    await storeMessage(messageToStore);
-    console.log('AI response stored successfully');
-
-    const response: AnalysisResponse = {
-      fileName: fileData.filename,
-      fileSize: fileData.file_size,
-      message: messageContent,
-      openAiResponse: {
+      const {
+        chatId,
         model,
         usage,
-        responseContent: messageContent,
-        id: chatId,
-        raw_response: cleanResponse
-      },
-      timestamp
-    };
+        messageContent,
+        rawResponse: cleanResponse
+      } = extractOpenAIResponseData(openAiResponse);
 
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: JSON.stringify(response)
-    };
+      const timestamp = new Date().toISOString();
+
+      const messageToStore: ChatMessage = {
+        content: messageContent,
+        excel_file_id: fileId,
+        is_ai_response: true,
+        user_id: userId,
+        chat_id: chatId,
+        openai_model: model,
+        openai_usage: usage,
+        raw_response: cleanResponse,
+        created_at: timestamp
+      };
+
+      console.log('Preparing to store AI response:', messageToStore);
+      await storeMessage(messageToStore);
+      console.log('AI response stored successfully');
+
+      const response: AnalysisResponse = {
+        fileName: fileData.filename,
+        fileSize: fileData.file_size,
+        message: messageContent,
+        openAiResponse: {
+          model,
+          usage,
+          responseContent: messageContent,
+          id: chatId,
+          raw_response: cleanResponse
+        },
+        timestamp
+      };
+
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify(response)
+      };
+
+    } catch (error: any) {
+      if (error?.response?.status === 429 || error?.message?.includes('too large')) {
+        throw new AnalysisError(
+          'The Excel file is too large to analyze. Please try with a smaller dataset or a more specific query.',
+          'TOKEN_LIMIT_EXCEEDED',
+          400
+        );
+      }
+      throw error;
+    }
 
   } catch (error) {
     console.error('Error in handler:', error);
