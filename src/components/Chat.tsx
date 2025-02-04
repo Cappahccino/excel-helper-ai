@@ -10,6 +10,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
 import { Database } from "@/integrations/supabase/types";
+import { Loader2 } from "lucide-react";
 
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
 type ExcelFile = Database['public']['Tables']['excel_files']['Row'];
@@ -85,6 +86,25 @@ export function Chat() {
     };
   }, [fileId, toast, setUploadProgress]);
 
+  // Query to get file status
+  const { data: fileStatus } = useQuery({
+    queryKey: ['file-status', fileId],
+    queryFn: async () => {
+      if (!fileId) return null;
+      const { data, error } = await supabase
+        .from('excel_files')
+        .select('processing_status, error_message')
+        .eq('id', fileId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!fileId,
+    refetchInterval: (data) => 
+      data?.processing_status === 'processing' ? 5000 : false,
+  });
+
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async ({ pageParam }) => {
@@ -141,6 +161,30 @@ export function Chat() {
     }
   };
 
+  const renderProcessingStatus = () => {
+    if (!fileStatus) return null;
+
+    switch (fileStatus.processing_status) {
+      case 'processing':
+        return (
+          <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+            <p className="text-sm text-blue-700">Processing your Excel file...</p>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="p-4 bg-red-50 rounded-lg">
+            <p className="text-sm text-red-700">
+              {fileStatus.error_message || "An error occurred while processing your file."}
+            </p>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
       <div className="h-[600px] flex flex-col">
@@ -164,6 +208,7 @@ export function Chat() {
               {uploadedFile && !isUploading && (
                 <div className="w-full">
                   <ExcelPreview file={uploadedFile} />
+                  {renderProcessingStatus()}
                 </div>
               )}
 
@@ -212,7 +257,7 @@ export function Chat() {
               type="submit" 
               className="bg-excel hover:bg-excel/90"
               aria-label="Send message"
-              disabled={!fileId || isUploading}
+              disabled={!fileId || isUploading || fileStatus?.processing_status === 'processing'}
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
