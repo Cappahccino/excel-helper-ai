@@ -13,7 +13,7 @@ interface FileStatus {
 export const useProcessingStatus = (fileId: string | null) => {
   const { toast } = useToast();
 
-  const { data: fileStatus, refetch } = useQuery({
+  const { data: fileStatus, refetch } = useQuery<FileStatus>({
     queryKey: ["file-status", fileId],
     queryFn: async () => {
       if (!fileId) return null;
@@ -28,8 +28,8 @@ export const useProcessingStatus = (fileId: string | null) => {
       return data as FileStatus;
     },
     enabled: !!fileId,
-    refetchInterval: (query) => {
-      const status = query?.data?.processing_status;
+    refetchInterval: (data) => {
+      const status = data?.processing_status;
       return status && ["pending", "uploading", "processing", "analyzing"].includes(status)
         ? 2000  // Poll every 2 seconds while processing
         : false; // Stop polling when complete or error
