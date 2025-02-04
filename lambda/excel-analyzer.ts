@@ -247,6 +247,42 @@ const storeMessage = async (message: ChatMessage): Promise<void> => {
   }
 };
 
+// New function to update the user's message with the chat_id
+const updateMessageChatId = async (userId: string, content: string, chatId: string): Promise<void> => {
+  console.log('Updating message chat_id:', { userId, content, chatId });
+  
+  try {
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ chat_id: chatId })
+      .match({ 
+        user_id: userId, 
+        content: content,
+        is_ai_response: false,
+        chat_id: null 
+      })
+      .single();
+
+    if (error) {
+      console.error('Error updating message chat_id:', error);
+      throw new AnalysisError(
+        `Failed to update message chat_id: ${error.message}`,
+        'DATABASE_ERROR',
+        500
+      );
+    }
+    
+    console.log('Successfully updated message chat_id');
+  } catch (error) {
+    console.error('Error in updateMessageChatId:', error);
+    throw new AnalysisError(
+      'Failed to update message chat_id',
+      'DATABASE_ERROR',
+      500
+    );
+  }
+};
+
 // Main Handler
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const corsHeaders = {
@@ -323,6 +359,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         messageContent,
         rawResponse: cleanResponse
       } = extractOpenAIResponseData(openAiResponse);
+
+      // Update the user's message with the chat_id
+      await updateMessageChatId(userId, query, chatId);
+      console.log('Updated user message with chat_id:', chatId);
 
       const timestamp = new Date().toISOString();
 
