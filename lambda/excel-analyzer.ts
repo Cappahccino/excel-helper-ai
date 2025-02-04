@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 import OpenAI from 'openai';
@@ -153,11 +152,19 @@ const processExcelFile = async (fileBuffer: ArrayBuffer) => {
 };
 
 const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
+  const sanitizedUsage: OpenAIUsage = {
+    prompt_tokens: rawResponse.usage.prompt_tokens,
+    completion_tokens: rawResponse.usage.completion_tokens,
+    total_tokens: rawResponse.usage.total_tokens,
+    prompt_tokens_details: rawResponse.usage.prompt_tokens_details,
+    completion_tokens_details: rawResponse.usage.completion_tokens_details
+  };
+
   return {
     id: rawResponse.id,
     model: rawResponse.model,
     created: rawResponse.created,
-    usage: rawResponse.usage,
+    usage: sanitizedUsage,
     choices: rawResponse.choices.map((choice: any) => ({
       message: {
         content: choice.message.content,
@@ -185,7 +192,7 @@ const extractOpenAIResponseData = (rawResponse: any): ExtractedOpenAIResponse =>
   return {
     chatId: rawResponse.id,
     model: rawResponse.model,
-    usage: rawResponse.usage,
+    usage: cleanResponse.usage, // Using sanitized usage data for consistency
     messageContent,
     rawResponse: cleanResponse
   };
@@ -290,7 +297,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('Excel file processed, getting OpenAI analysis');
 
-    const rawResponse = await openai.chat.completions.create({
+    const openAiResponse = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
@@ -298,7 +305,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       ]
     });
 
-    console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
+    console.log('OpenAI raw response received:', JSON.stringify(openAiResponse, null, 2));
 
     const {
       chatId,
@@ -306,7 +313,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       usage,
       messageContent,
       rawResponse: cleanResponse
-    } = extractOpenAIResponseData(rawResponse);
+    } = extractOpenAIResponseData(openAiResponse);
 
     const timestamp = new Date().toISOString();
 
