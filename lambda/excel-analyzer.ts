@@ -331,7 +331,47 @@ const storeMessages = async (
   }
 };
 
-// Main Handler
+// New function to process chunked files
+const processChunkedFile = async (fileData: any): Promise<ArrayBuffer> => {
+  const { data: chunks, error: chunksError } = await supabase.storage
+    .from('excel_files')
+    .list(fileData.file_path.split('/')[0]);
+
+  if (chunksError) throw chunksError;
+
+  // Sort chunks by index
+  const sortedChunks = chunks
+    .filter(chunk => chunk.name.includes('_chunk_'))
+    .sort((a, b) => {
+      const aIndex = parseInt(a.name.split('_chunk_')[1]);
+      const bIndex = parseInt(b.name.split('_chunk_')[1]);
+      return aIndex - bIndex;
+    });
+
+  // Combine chunks
+  const buffers: ArrayBuffer[] = [];
+  for (const chunk of sortedChunks) {
+    const { data: chunkData, error: downloadError } = await supabase.storage
+      .from('excel_files')
+      .download(`${fileData.file_path}_chunk_${chunk.name.split('_chunk_')[1]}`);
+
+    if (downloadError) throw downloadError;
+    buffers.push(await chunkData.arrayBuffer());
+  }
+
+  // Concatenate buffers
+  const totalLength = buffers.reduce((acc, buf) => acc + buf.byteLength, 0);
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const buffer of buffers) {
+    combined.set(new Uint8Array(buffer), offset);
+    offset += buffer.byteLength;
+  }
+
+  return combined.buffer;
+};
+
+// Update the handler to use the new processChunkedFile function
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const corsHeaders = {
     'Content-Type': 'application/json',
@@ -345,7 +385,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const { fileId, query, userId } = validateRequest(JSON.parse(event.body || '{}'));
     console.log('Processing request for:', { fileId, userId });
 
-    // Create a new thread for this conversation
     const threadId = await createThread(userId, fileId, query);
     console.log('Created new thread:', threadId);
 
@@ -360,17 +399,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('File metadata retrieved:', fileData);
 
-    const { data: fileBuffer, error: downloadError } = await supabase
-      .storage
-      .from('excel_files')
-      .download(fileData.file_path);
+    // Process chunked file
+    const fileBuffer = await processChunkedFile(fileData);
+    console.log('Chunked file processed successfully');
 
-    if (downloadError) throw new AnalysisError('File download failed', 'DOWNLOAD_ERROR', 500);
-    if (!fileBuffer) throw new AnalysisError('File buffer is empty', 'EMPTY_FILE', 400);
-
-    console.log('File downloaded successfully');
-
-    const jsonData = await processExcelFile(await fileBuffer.arrayBuffer());
+    const jsonData = await processExcelFile(fileBuffer);
     console.log('Excel file processed, getting OpenAI analysis');
 
     try {

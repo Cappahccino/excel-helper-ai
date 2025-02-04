@@ -113,29 +113,56 @@ export type Database = {
       excel_files: {
         Row: {
           created_at: string
+          error_message: string | null
           file_path: string
           file_size: number
           filename: string
           id: string
           last_accessed: string
+          processed_chunks: number | null
+          processing_completed_at: string | null
+          processing_started_at: string | null
+          processing_status:
+            | Database["public"]["Enums"]["file_processing_status"]
+            | null
+          total_chunks: number | null
+          upload_progress: number | null
           user_id: string
         }
         Insert: {
           created_at?: string
+          error_message?: string | null
           file_path: string
           file_size: number
           filename: string
           id?: string
           last_accessed?: string
+          processed_chunks?: number | null
+          processing_completed_at?: string | null
+          processing_started_at?: string | null
+          processing_status?:
+            | Database["public"]["Enums"]["file_processing_status"]
+            | null
+          total_chunks?: number | null
+          upload_progress?: number | null
           user_id: string
         }
         Update: {
           created_at?: string
+          error_message?: string | null
           file_path?: string
           file_size?: number
           filename?: string
           id?: string
           last_accessed?: string
+          processed_chunks?: number | null
+          processing_completed_at?: string | null
+          processing_started_at?: string | null
+          processing_status?:
+            | Database["public"]["Enums"]["file_processing_status"]
+            | null
+          total_chunks?: number | null
+          upload_progress?: number | null
           user_id?: string
         }
         Relationships: []
@@ -175,7 +202,13 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      file_processing_status:
+        | "pending"
+        | "uploading"
+        | "processing"
+        | "analyzing"
+        | "completed"
+        | "error"
     }
     CompositeTypes: {
       [_ in never]: never

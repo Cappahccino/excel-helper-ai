@@ -3,6 +3,8 @@ import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+
 interface UseFileUploadReturn {
   file: File | null;
   isUploading: boolean;
@@ -29,6 +31,25 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setFileId(null);
   }, []);
 
+  const uploadChunk = async (
+    chunk: Blob,
+    chunkIndex: number,
+    totalChunks: number,
+    filePath: string
+  ) => {
+    const { error: uploadError } = await supabase.storage
+      .from('excel_files')
+      .upload(`${filePath}_chunk_${chunkIndex}`, chunk, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+    
+    const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+    setUploadProgress(progress);
+  };
+
   const handleFileUpload = useCallback(async (newFile: File) => {
     const validation = validateFile(newFile);
     if (!validation.isValid) {
@@ -54,18 +75,11 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Upload file to Supabase Storage
+      // Calculate total chunks
+      const totalChunks = Math.ceil(sanitizedFile.size / CHUNK_SIZE);
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('excel_files')
-        .upload(filePath, sanitizedFile, {
-          cacheControl: '3600',
-          upsert: false
-        });
 
-      if (uploadError) throw uploadError;
-
-      // Create file record in database
+      // Create file record in database with initial status
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -73,53 +87,54 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
+          processing_status: 'uploading',
+          total_chunks: totalChunks,
+          processed_chunks: 0,
+          upload_progress: 0
         })
         .select()
         .single();
 
       if (dbError) throw dbError;
+      setFileId(fileRecord.id);
+
+      // Upload chunks
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, sanitizedFile.size);
+        const chunk = sanitizedFile.slice(start, end);
+        
+        await uploadChunk(chunk, i, totalChunks, filePath);
+
+        // Update progress in database
+        const { error: updateError } = await supabase
+          .from('excel_files')
+          .update({
+            processed_chunks: i + 1,
+            upload_progress: Math.round(((i + 1) / totalChunks) * 100)
+          })
+          .eq('id', fileRecord.id);
+
+        if (updateError) throw updateError;
+      }
+
+      // Update file status to processing
+      const { error: statusError } = await supabase
+        .from('excel_files')
+        .update({
+          processing_status: 'processing',
+          processing_started_at: new Date().toISOString()
+        })
+        .eq('id', fileRecord.id);
+
+      if (statusError) throw statusError;
 
       setFile(sanitizedFile);
-      setFileId(fileRecord.id);
-      setUploadProgress(100);
-
-      // Save initial system message
-      const initialPrompt = "What kind of data does this Excel file contain? Please, Give me an overview of this Excel file's contents";
-      const { error: messageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: initialPrompt,
-          excel_file_id: fileRecord.id,
-          is_ai_response: false,
-          user_id: user.id
-        });
-
-      if (messageError) throw messageError;
-
-      // Get initial analysis
-      const { data: analysis, error: analysisError } = await supabase.functions
-        .invoke('analyze-excel', {
-          body: { fileId: fileRecord.id, query: initialPrompt }
-        });
-
-      if (analysisError) throw analysisError;
-
-      // Save AI response
-      const { error: aiMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: analysis.message,
-          excel_file_id: fileRecord.id,
-          is_ai_response: true,
-          user_id: user.id
-        });
-
-      if (aiMessageError) throw aiMessageError;
-
       toast({
         title: "Success",
-        description: "File uploaded and analyzed successfully",
+        description: "File uploaded successfully",
       });
+
     } catch (err) {
       console.error('Upload error:', err);
       setError(err instanceof Error ? err.message : "Failed to upload file");
@@ -128,6 +143,17 @@ export const useFileUpload = (): UseFileUploadReturn => {
         description: err instanceof Error ? err.message : "Failed to upload file",
         variant: "destructive",
       });
+
+      // Update error status in database if we have a fileId
+      if (fileId) {
+        await supabase
+          .from('excel_files')
+          .update({
+            processing_status: 'error',
+            error_message: err instanceof Error ? err.message : "Failed to upload file"
+          })
+          .eq('id', fileId);
+      }
     } finally {
       setIsUploading(false);
     }
