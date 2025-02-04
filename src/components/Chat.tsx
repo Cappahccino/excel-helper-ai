@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ExcelPreview } from "./ExcelPreview";
@@ -10,7 +10,6 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
 import { Database } from "@/integrations/supabase/types";
-import { Loader2 } from "lucide-react";
 
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
 type ExcelFile = Database['public']['Tables']['excel_files']['Row'];
