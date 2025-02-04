@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
-import OpenAI from 'openai';
 import type { Database } from '../src/integrations/supabase/types';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
@@ -39,24 +38,6 @@ interface OpenAIUsage {
   completion_tokens_details?: TokenDetails;
 }
 
-interface OpenAIChoice {
-  message: {
-    content: string;
-    role: string;
-  };
-  finish_reason: string;
-  index: number;
-}
-
-interface RawResponse {
-  id: string;
-  model: string;
-  created: number;
-  usage: OpenAIUsage;
-  choices: OpenAIChoice[];
-  system_fingerprint: string;
-}
-
 interface ChatMessage {
   content: string;
   excel_file_id: string;
@@ -65,53 +46,16 @@ interface ChatMessage {
   chat_id?: string;
   openai_model?: string;
   openai_usage?: OpenAIUsage;
-  raw_response?: RawResponse;
+  raw_response?: any;
   created_at?: string;
   thread_id?: string | null;
 }
 
-interface AnalysisResponse {
-  fileName: string;
-  fileSize: number;
-  message: string;
-  openAiResponse: {
-    model: string;
-    usage: OpenAIUsage;
-    responseContent: string;
-    id: string;
-    raw_response?: RawResponse;
-  };
-  timestamp: string;
-}
-
-interface ExtractedOpenAIResponse {
-  chatId: string;
-  model: string;
-  usage: OpenAIUsage;
-  messageContent: string;
-  rawResponse: RawResponse;
-}
-
-// Initialize clients
+// Initialize client
 const supabase = createClient<Database>(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-// Constants
-const SYSTEM_PROMPT = `
-You are an Excel data analyst assistant. Your role is to:
-- Provide clear, concise insights from Excel data
-- Focus on relevant patterns and trends
-- Use numerical evidence to support conclusions
-- Highlight notable outliers or anomalies
-- Format responses for readability
-Please present your analysis in a structured way using clear sections and proper formatting.
-`;
 
 // Helper Functions
 const validateRequest = (body: any): RequestBody => {
@@ -156,182 +100,6 @@ const processExcelFile = async (fileBuffer: ArrayBuffer) => {
   }
 };
 
-const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
-  const sanitizedUsage: OpenAIUsage = {
-    prompt_tokens: rawResponse.usage.prompt_tokens,
-    completion_tokens: rawResponse.usage.completion_tokens,
-    total_tokens: rawResponse.usage.total_tokens,
-    prompt_tokens_details: rawResponse.usage.prompt_tokens_details,
-    completion_tokens_details: rawResponse.usage.completion_tokens_details
-  };
-
-  return {
-    id: rawResponse.id,
-    model: rawResponse.model,
-    created: rawResponse.created,
-    usage: sanitizedUsage,
-    choices: rawResponse.choices.map((choice: any) => ({
-      message: {
-        content: choice.message.content,
-        role: choice.message.role
-      },
-      finish_reason: choice.finish_reason,
-      index: choice.index
-    })),
-    system_fingerprint: rawResponse.system_fingerprint
-  };
-};
-
-const extractOpenAIResponseData = (rawResponse: any): ExtractedOpenAIResponse => {
-  console.log('Raw OpenAI response:', JSON.stringify(rawResponse, null, 2));
-  
-  if (!rawResponse?.choices || !Array.isArray(rawResponse.choices) || rawResponse.choices.length === 0) {
-    throw new AnalysisError('Invalid OpenAI response: missing choices', 'OPENAI_RESPONSE_ERROR', 500);
-  }
-
-  const messageContent = rawResponse.choices?.[0]?.message?.content;
-  if (!messageContent) {
-    throw new AnalysisError('Invalid OpenAI response: missing message content', 'OPENAI_RESPONSE_ERROR', 500);
-  }
-
-  const cleanResponse = sanitizeOpenAIResponse(rawResponse);
-
-  return {
-    chatId: rawResponse.id,
-    model: rawResponse.model,
-    usage: cleanResponse.usage,
-    messageContent,
-    rawResponse: cleanResponse
-  };
-};
-
-const storeMessage = async (message: ChatMessage): Promise<void> => {
-  console.log('Storing message with data:', JSON.stringify(message, null, 2));
-  
-  try {
-    if (!message.content || !message.user_id) {
-      throw new Error('Missing required fields in message');
-    }
-
-    const messageToStore = {
-      ...message,
-      created_at: message.created_at || new Date().toISOString(),
-      raw_response: message.raw_response ? sanitizeOpenAIResponse(message.raw_response) : undefined,
-      openai_usage: message.openai_usage ? {
-        prompt_tokens: message.openai_usage.prompt_tokens,
-        completion_tokens: message.openai_usage.completion_tokens,
-        total_tokens: message.openai_usage.total_tokens
-      } : undefined
-    };
-
-    const { error } = await supabase
-      .from('chat_messages')
-      .insert(messageToStore);
-
-    if (error) {
-      console.error('Database error when storing message:', error);
-      throw new AnalysisError(
-        `Failed to store message: ${error.message}`,
-        'DATABASE_ERROR',
-        500
-      );
-    }
-    
-    console.log('Message stored successfully');
-  } catch (error) {
-    console.error('Error in storeMessage:', error);
-    throw new AnalysisError(
-      'Failed to store message',
-      'DATABASE_ERROR',
-      500
-    );
-  }
-};
-
-// New function to create a thread for the conversation
-const createThread = async (userId: string, fileId: string, query: string): Promise<string> => {
-  try {
-    const { data: thread, error } = await supabase
-      .from('chat_threads')
-      .insert({
-        title: query.substring(0, 50) + '...',
-        user_id: userId,
-        excel_file_id: fileId
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return thread.id;
-  } catch (error) {
-    console.error('Error creating thread:', error);
-    throw new AnalysisError(
-      'Failed to create chat thread',
-      'THREAD_CREATION_ERROR',
-      500
-    );
-  }
-};
-
-// New function to store messages in the thread
-const storeMessages = async (
-  threadId: string,
-  userId: string,
-  fileId: string,
-  query: string,
-  aiResponse: any
-): Promise<void> => {
-  const {
-    id: chatId,
-    model,
-    usage,
-    choices
-  } = aiResponse;
-
-  const messageContent = choices[0]?.message?.content;
-  if (!messageContent) {
-    throw new AnalysisError(
-      'Invalid AI response: missing message content',
-      'INVALID_RESPONSE',
-      500
-    );
-  }
-
-  const { error: messagesError } = await supabase
-    .from('chat_messages')
-    .insert([
-      {
-        thread_id: threadId,
-        content: query,
-        is_ai_response: false,
-        user_id: userId,
-        excel_file_id: fileId,
-        chat_id: chatId
-      },
-      {
-        thread_id: threadId,
-        content: messageContent,
-        is_ai_response: true,
-        user_id: userId,
-        excel_file_id: fileId,
-        chat_id: chatId,
-        openai_model: model,
-        openai_usage: usage,
-        raw_response: sanitizeOpenAIResponse(aiResponse)
-      }
-    ]);
-
-  if (messagesError) {
-    console.error('Error storing messages:', messagesError);
-    throw new AnalysisError(
-      'Failed to store messages',
-      'MESSAGE_STORAGE_ERROR',
-      500
-    );
-  }
-};
-
-// New function to process chunked files
 const processChunkedFile = async (fileData: any): Promise<ArrayBuffer> => {
   const { data: chunks, error: chunksError } = await supabase.storage
     .from('excel_files')
@@ -371,7 +139,6 @@ const processChunkedFile = async (fileData: any): Promise<ArrayBuffer> => {
   return combined.buffer;
 };
 
-// Update the handler to use the new processChunkedFile function
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const corsHeaders = {
     'Content-Type': 'application/json',
@@ -384,9 +151,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     
     const { fileId, query, userId } = validateRequest(JSON.parse(event.body || '{}'));
     console.log('Processing request for:', { fileId, userId });
-
-    const threadId = await createThread(userId, fileId, query);
-    console.log('Created new thread:', threadId);
 
     const { data: fileData, error: fileError } = await supabase
       .from('excel_files')
@@ -404,45 +168,60 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.log('Chunked file processed successfully');
 
     const jsonData = await processExcelFile(fileBuffer);
-    console.log('Excel file processed, getting OpenAI analysis');
+    console.log('Excel file processed, calling excel-assistant function');
 
     try {
-      const openAiResponse = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { 
-            role: "user", 
-            content: `Analyze this Excel data (showing first 50 rows): ${JSON.stringify(jsonData)}. Query: ${query}` 
-          }
-        ],
-        max_tokens: 1000
+      const { data: analysis, error } = await supabase.functions.invoke('excel-assistant', {
+        body: { fileId, query, userId, jsonData }
       });
 
-      console.log('OpenAI response received:', JSON.stringify(openAiResponse, null, 2));
+      if (error) throw error;
 
-      // Store both messages with the thread ID
-      await storeMessages(threadId, userId, fileId, query, openAiResponse);
-      console.log('Messages stored successfully');
+      // Store messages
+      const { error: messagesError } = await supabase
+        .from('chat_messages')
+        .insert([
+          {
+            thread_id: analysis.threadId,
+            content: query,
+            is_ai_response: false,
+            user_id: userId,
+            excel_file_id: fileId,
+          },
+          {
+            thread_id: analysis.threadId,
+            content: analysis.message,
+            is_ai_response: true,
+            user_id: userId,
+            excel_file_id: fileId,
+            openai_model: analysis.model,
+            openai_usage: analysis.usage,
+          }
+        ]);
 
-      const response: AnalysisResponse = {
-        fileName: fileData.filename,
-        fileSize: fileData.file_size,
-        message: openAiResponse.choices[0].message.content,
-        openAiResponse: {
-          model: openAiResponse.model,
-          usage: openAiResponse.usage,
-          responseContent: openAiResponse.choices[0].message.content,
-          id: openAiResponse.id,
-          raw_response: sanitizeOpenAIResponse(openAiResponse)
-        },
-        timestamp: new Date().toISOString()
-      };
+      if (messagesError) {
+        throw new AnalysisError(
+          `Failed to store messages: ${messagesError.message}`,
+          'MESSAGE_STORAGE_ERROR',
+          500
+        );
+      }
 
       return {
         statusCode: 200,
         headers: corsHeaders,
-        body: JSON.stringify(response)
+        body: JSON.stringify({
+          fileName: fileData.filename,
+          fileSize: fileData.file_size,
+          message: analysis.message,
+          openAiResponse: {
+            model: analysis.model,
+            usage: analysis.usage,
+            responseContent: analysis.message,
+            id: analysis.threadId,
+          },
+          timestamp: new Date().toISOString()
+        })
       };
 
     } catch (error: any) {
