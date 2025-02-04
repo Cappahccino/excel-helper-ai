@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 import OpenAI from 'openai';
@@ -83,6 +84,14 @@ interface AnalysisResponse {
   timestamp: string;
 }
 
+interface ExtractedOpenAIResponse {
+  chatId: string;
+  model: string;
+  usage: OpenAIUsage;
+  messageContent: string;
+  rawResponse: RawResponse;
+}
+
 // Initialize clients
 const supabase = createClient<Database>(
   process.env.SUPABASE_URL!,
@@ -148,11 +157,7 @@ const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
     id: rawResponse.id,
     model: rawResponse.model,
     created: rawResponse.created,
-    usage: {
-      prompt_tokens: rawResponse.usage.prompt_tokens,
-      completion_tokens: rawResponse.usage.completion_tokens,
-      total_tokens: rawResponse.usage.total_tokens
-    },
+    usage: rawResponse.usage,
     choices: rawResponse.choices.map((choice: any) => ({
       message: {
         content: choice.message.content,
@@ -162,6 +167,27 @@ const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
       index: choice.index
     })),
     system_fingerprint: rawResponse.system_fingerprint
+  };
+};
+
+const extractOpenAIResponseData = (rawResponse: any): ExtractedOpenAIResponse => {
+  if (!rawResponse?.choices || !Array.isArray(rawResponse.choices) || rawResponse.choices.length === 0) {
+    throw new AnalysisError('Invalid OpenAI response: missing choices', 'OPENAI_RESPONSE_ERROR', 500);
+  }
+
+  const messageContent = rawResponse.choices?.[0]?.message?.content;
+  if (!messageContent) {
+    throw new AnalysisError('Invalid OpenAI response: missing message content', 'OPENAI_RESPONSE_ERROR', 500);
+  }
+
+  const cleanResponse = sanitizeOpenAIResponse(rawResponse);
+
+  return {
+    chatId: rawResponse.id,
+    model: rawResponse.model,
+    usage: rawResponse.usage,
+    messageContent,
+    rawResponse: cleanResponse
   };
 };
 
@@ -274,17 +300,24 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     console.log('OpenAI raw response received:', JSON.stringify(rawResponse, null, 2));
 
-    const cleanResponse = sanitizeOpenAIResponse(rawResponse);
+    const {
+      chatId,
+      model,
+      usage,
+      messageContent,
+      rawResponse: cleanResponse
+    } = extractOpenAIResponseData(rawResponse);
+
     const timestamp = new Date().toISOString();
 
     const messageToStore: ChatMessage = {
-      content: rawResponse.choices[0].message.content,
+      content: messageContent,
       excel_file_id: fileId,
       is_ai_response: true,
       user_id: userId,
-      chat_id: rawResponse.id,
-      openai_model: rawResponse.model,
-      openai_usage: cleanResponse.usage,
+      chat_id: chatId,
+      openai_model: model,
+      openai_usage: usage,
       raw_response: cleanResponse,
       created_at: timestamp
     };
@@ -296,12 +329,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const response: AnalysisResponse = {
       fileName: fileData.filename,
       fileSize: fileData.file_size,
-      message: rawResponse.choices[0].message.content,
+      message: messageContent,
       openAiResponse: {
-        model: rawResponse.model,
-        usage: rawResponse.usage,
-        responseContent: rawResponse.choices[0].message.content,
-        id: rawResponse.id,
+        model,
+        usage,
+        responseContent: messageContent,
+        id: chatId,
         raw_response: cleanResponse
       },
       timestamp
