@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Send, Loader2 } from "lucide-react";
+import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ExcelPreview } from "./ExcelPreview";
@@ -8,11 +8,8 @@ import { useFileUpload } from "@/hooks/useFileUpload";
 import { supabase } from "@/integrations/supabase/client";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
-import { ScrollArea } from "./ui/scroll-area";
-import { Database } from "@/integrations/supabase/types";
-
-type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
-type ExcelFile = Database['public']['Tables']['excel_files']['Row'];
+import { ChatMessages } from "./ChatMessages";
+import { ProcessingStatus } from "./ProcessingStatus";
 
 const MESSAGES_PER_PAGE = 20;
 
@@ -45,14 +42,13 @@ export function Chat() {
         },
         (payload) => {
           console.log('Real-time update received:', payload);
-          const newFile = payload.new as ExcelFile;
-          const oldFile = payload.old as Partial<ExcelFile>;
+          const newFile = payload.new as any;
+          const oldFile = payload.old as any;
           
           if (newFile && 'upload_progress' in newFile) {
             setUploadProgress(newFile.upload_progress ?? 0);
           }
           
-          // Show toast for completed processing
           if (
             newFile && 
             newFile.processing_status === 'completed' &&
@@ -64,7 +60,6 @@ export function Chat() {
             });
           }
 
-          // Show toast for processing errors
           if (
             newFile && 
             newFile.processing_status === 'error' &&
@@ -117,7 +112,7 @@ export function Chat() {
 
       if (error) throw error;
       return {
-        messages: data as ChatMessage[],
+        messages: data,
         nextPage: data.length === MESSAGES_PER_PAGE ? (pageParam as number) + 1 : undefined,
         count,
       };
@@ -160,86 +155,36 @@ export function Chat() {
     }
   };
 
-  const renderProcessingStatus = () => {
-    if (!fileStatus) return null;
-
-    switch (fileStatus.processing_status) {
-      case 'processing':
-        return (
-          <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg">
-            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-            <p className="text-sm text-blue-700">Processing your Excel file...</p>
-          </div>
-        );
-      case 'error':
-        return (
-          <div className="p-4 bg-red-50 rounded-lg">
-            <p className="text-sm text-red-700">
-              {fileStatus.error_message || "An error occurred while processing your file."}
-            </p>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
       <div className="h-[600px] flex flex-col">
         <div className="flex-1 p-4 overflow-hidden">
-          <ScrollArea className="h-full">
-            <div className="flex flex-col gap-4">
-              <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-                <p className="text-sm">
-                  Hello! Upload an Excel file and I'll help you analyze it.
-                </p>
+          <div className="flex flex-col gap-4">
+            <FileUploadZone
+              onFileUpload={handleFileUpload}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              currentFile={uploadedFile}
+              onReset={resetUpload}
+            />
+
+            {uploadedFile && !isUploading && (
+              <div className="w-full">
+                <ExcelPreview file={uploadedFile} />
+                <ProcessingStatus 
+                  status={fileStatus?.processing_status}
+                  errorMessage={fileStatus?.error_message}
+                />
               </div>
-              
-              <FileUploadZone
-                onFileUpload={handleFileUpload}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                currentFile={uploadedFile}
-                onReset={resetUpload}
-              />
+            )}
 
-              {uploadedFile && !isUploading && (
-                <div className="w-full">
-                  <ExcelPreview file={uploadedFile} />
-                  {renderProcessingStatus()}
-                </div>
-              )}
-
-              {data?.pages.map((page, i) => (
-                <div key={i} className="space-y-4">
-                  {page.messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`p-4 rounded-lg ${
-                        msg.is_ai_response
-                          ? "bg-blue-50 ml-4"
-                          : "bg-gray-50 mr-4"
-                      }`}
-                    >
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    </div>
-                  ))}
-                </div>
-              ))}
-
-              {hasNextPage && (
-                <Button
-                  variant="ghost"
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                  className="w-full"
-                >
-                  {isFetchingNextPage ? "Loading more..." : "Load more messages"}
-                </Button>
-              )}
-            </div>
-          </ScrollArea>
+            <ChatMessages
+              messages={data?.pages || []}
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              fetchNextPage={fetchNextPage}
+            />
+          </div>
         </div>
         
         <form onSubmit={handleSubmit} className="border-t p-4">
