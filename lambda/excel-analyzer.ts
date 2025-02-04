@@ -182,6 +182,8 @@ const sanitizeOpenAIResponse = (rawResponse: any): RawResponse => {
 };
 
 const extractOpenAIResponseData = (rawResponse: any): ExtractedOpenAIResponse => {
+  console.log('Raw OpenAI response:', JSON.stringify(rawResponse, null, 2));
+  
   if (!rawResponse?.choices || !Array.isArray(rawResponse.choices) || rawResponse.choices.length === 0) {
     throw new AnalysisError('Invalid OpenAI response: missing choices', 'OPENAI_RESPONSE_ERROR', 500);
   }
@@ -196,14 +198,14 @@ const extractOpenAIResponseData = (rawResponse: any): ExtractedOpenAIResponse =>
   return {
     chatId: rawResponse.id,
     model: rawResponse.model,
-    usage: cleanResponse.usage, // Using sanitized usage data for consistency
+    usage: cleanResponse.usage,
     messageContent,
     rawResponse: cleanResponse
   };
 };
 
 const storeMessage = async (message: ChatMessage): Promise<void> => {
-  console.log('Attempting to store message:', JSON.stringify(message, null, 2));
+  console.log('Storing message with data:', JSON.stringify(message, null, 2));
   
   try {
     if (!message.content || !message.user_id) {
@@ -217,9 +219,7 @@ const storeMessage = async (message: ChatMessage): Promise<void> => {
       openai_usage: message.openai_usage ? {
         prompt_tokens: message.openai_usage.prompt_tokens,
         completion_tokens: message.openai_usage.completion_tokens,
-        total_tokens: message.openai_usage.total_tokens,
-        prompt_tokens_details: message.openai_usage.prompt_tokens_details,
-        completion_tokens_details: message.openai_usage.completion_tokens_details
+        total_tokens: message.openai_usage.total_tokens
       } : undefined
     };
 
@@ -339,7 +339,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     try {
       const openAiResponse = await openai.chat.completions.create({
-        model: "gpt-4o-mini", // Use the mini model for better token management
+        model: "gpt-4o", // Updated model name
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { 
@@ -366,6 +366,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
       const timestamp = new Date().toISOString();
 
+      // Store AI response
       const messageToStore: ChatMessage = {
         content: messageContent,
         excel_file_id: fileId,
