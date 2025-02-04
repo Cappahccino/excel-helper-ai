@@ -6,7 +6,7 @@ import { ExcelPreview } from "./ExcelPreview";
 import { FileUploadZone } from "./FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { supabase } from "@/integrations/supabase/client";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
 import { Database } from "@/integrations/supabase/types";
