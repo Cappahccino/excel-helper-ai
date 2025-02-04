@@ -6,10 +6,13 @@ import { ExcelPreview } from "./ExcelPreview";
 import { FileUploadZone } from "./FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { supabase } from "@/integrations/supabase/client";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
-import { ChatMessages } from "./ChatMessages";
-import { ProcessingStatus } from "./ProcessingStatus";
+import { ScrollArea } from "./ui/scroll-area";
+import { Database } from "@/integrations/supabase/types";
+
+type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
+type ExcelFile = Database['public']['Tables']['excel_files']['Row'];
 
 const MESSAGES_PER_PAGE = 20;
 
@@ -42,13 +45,14 @@ export function Chat() {
         },
         (payload) => {
           console.log('Real-time update received:', payload);
-          const newFile = payload.new as any;
-          const oldFile = payload.old as any;
+          const newFile = payload.new as ExcelFile;
+          const oldFile = payload.old as Partial<ExcelFile>;
           
           if (newFile && 'upload_progress' in newFile) {
             setUploadProgress(newFile.upload_progress ?? 0);
           }
           
+          // Show toast for completed processing
           if (
             newFile && 
             newFile.processing_status === 'completed' &&
@@ -60,6 +64,7 @@ export function Chat() {
             });
           }
 
+          // Show toast for processing errors
           if (
             newFile && 
             newFile.processing_status === 'error' &&
@@ -80,25 +85,6 @@ export function Chat() {
     };
   }, [fileId, toast, setUploadProgress]);
 
-  // Query to get file status
-  const { data: fileStatus } = useQuery({
-    queryKey: ['file-status', fileId],
-    queryFn: async () => {
-      if (!fileId) return null;
-      const { data, error } = await supabase
-        .from('excel_files')
-        .select('processing_status, error_message')
-        .eq('id', fileId)
-        .single();
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!fileId,
-    refetchInterval: (query) => 
-      query.data?.processing_status === 'processing' ? 5000 : false,
-  });
-
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async ({ pageParam }) => {
@@ -112,7 +98,7 @@ export function Chat() {
 
       if (error) throw error;
       return {
-        messages: data,
+        messages: data as ChatMessage[],
         nextPage: data.length === MESSAGES_PER_PAGE ? (pageParam as number) + 1 : undefined,
         count,
       };
@@ -159,32 +145,57 @@ export function Chat() {
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
       <div className="h-[600px] flex flex-col">
         <div className="flex-1 p-4 overflow-hidden">
-          <div className="flex flex-col gap-4">
-            <FileUploadZone
-              onFileUpload={handleFileUpload}
-              isUploading={isUploading}
-              uploadProgress={uploadProgress}
-              currentFile={uploadedFile}
-              onReset={resetUpload}
-            />
-
-            {uploadedFile && !isUploading && (
-              <div className="w-full">
-                <ExcelPreview file={uploadedFile} />
-                <ProcessingStatus 
-                  status={fileStatus?.processing_status}
-                  errorMessage={fileStatus?.error_message}
-                />
+          <ScrollArea className="h-full">
+            <div className="flex flex-col gap-4">
+              <div className="bg-muted p-3 rounded-lg max-w-[80%]">
+                <p className="text-sm">
+                  Hello! Upload an Excel file and I'll help you analyze it.
+                </p>
               </div>
-            )}
+              
+              <FileUploadZone
+                onFileUpload={handleFileUpload}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                currentFile={uploadedFile}
+                onReset={resetUpload}
+              />
 
-            <ChatMessages
-              messages={data?.pages || []}
-              hasNextPage={hasNextPage}
-              isFetchingNextPage={isFetchingNextPage}
-              fetchNextPage={fetchNextPage}
-            />
-          </div>
+              {uploadedFile && !isUploading && (
+                <div className="w-full">
+                  <ExcelPreview file={uploadedFile} />
+                </div>
+              )}
+
+              {data?.pages.map((page, i) => (
+                <div key={i} className="space-y-4">
+                  {page.messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`p-4 rounded-lg ${
+                        msg.is_ai_response
+                          ? "bg-blue-50 ml-4"
+                          : "bg-gray-50 mr-4"
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {hasNextPage && (
+                <Button
+                  variant="ghost"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="w-full"
+                >
+                  {isFetchingNextPage ? "Loading more..." : "Load more messages"}
+                </Button>
+              )}
+            </div>
+          </ScrollArea>
         </div>
         
         <form onSubmit={handleSubmit} className="border-t p-4">
@@ -201,7 +212,7 @@ export function Chat() {
               type="submit" 
               className="bg-excel hover:bg-excel/90"
               aria-label="Send message"
-              disabled={!fileId || isUploading || fileStatus?.processing_status === 'processing'}
+              disabled={!fileId || isUploading}
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
