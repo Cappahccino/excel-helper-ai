@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -9,12 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
-import { Database } from "@/integrations/supabase/types";
-
-type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
-type ExcelFile = Database['public']['Tables']['excel_files']['Row'];
-
-const MESSAGES_PER_PAGE = 20;
+import { ProcessingStatus } from "./ProcessingStatus";
+import { useProcessingStatus } from "@/hooks/useProcessingStatus";
 
 export function Chat() {
   const [message, setMessage] = useState("");
@@ -29,77 +25,23 @@ export function Chat() {
     setUploadProgress,
   } = useFileUpload();
 
-  // Subscribe to real-time updates for the current file
-  useEffect(() => {
-    if (!fileId) return;
-
-    const channel = supabase
-      .channel('excel_files_updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'excel_files',
-          filter: `id=eq.${fileId}`
-        },
-        (payload) => {
-          console.log('Real-time update received:', payload);
-          const newFile = payload.new as ExcelFile;
-          const oldFile = payload.old as Partial<ExcelFile>;
-          
-          if (newFile && 'upload_progress' in newFile) {
-            setUploadProgress(newFile.upload_progress ?? 0);
-          }
-          
-          // Show toast for completed processing
-          if (
-            newFile && 
-            newFile.processing_status === 'completed' &&
-            oldFile?.processing_status !== 'completed'
-          ) {
-            toast({
-              title: "File Processing Complete",
-              description: "Your Excel file has been processed successfully.",
-            });
-          }
-
-          // Show toast for processing errors
-          if (
-            newFile && 
-            newFile.processing_status === 'error' &&
-            oldFile?.processing_status !== 'error'
-          ) {
-            toast({
-              title: "Processing Error",
-              description: newFile.error_message || "An error occurred while processing your file.",
-              variant: "destructive",
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fileId, toast, setUploadProgress]);
+  const { status, error, isProcessing } = useProcessingStatus(fileId);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async ({ pageParam }) => {
-      const start = (pageParam as number) * MESSAGES_PER_PAGE;
+      const start = (pageParam as number) * 20;
       const { data, error, count } = await supabase
         .from('chat_messages')
         .select('*', { count: 'exact' })
         .eq('excel_file_id', fileId)
         .order('created_at', { ascending: false })
-        .range(start, start + MESSAGES_PER_PAGE - 1);
+        .range(start, start + 20 - 1);
 
       if (error) throw error;
       return {
-        messages: data as ChatMessage[],
-        nextPage: data.length === MESSAGES_PER_PAGE ? (pageParam as number) + 1 : undefined,
+        messages: data,
+        nextPage: data.length === 20 ? (pageParam as number) + 1 : undefined,
         count,
       };
     },
@@ -108,7 +50,6 @@ export function Chat() {
     enabled: !!fileId,
   });
 
-  // Debounced message handler
   const debouncedSetMessage = useCallback(
     debounce((value: string) => {
       setMessage(value);
@@ -118,7 +59,7 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId) return;
+    if (!message.trim() || !fileId || isProcessing) return;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -162,9 +103,12 @@ export function Chat() {
               />
 
               {uploadedFile && !isUploading && (
-                <div className="w-full">
-                  <ExcelPreview file={uploadedFile} />
-                </div>
+                <>
+                  <div className="w-full">
+                    <ExcelPreview file={uploadedFile} />
+                  </div>
+                  <ProcessingStatus status={status} error={error} />
+                </>
               )}
 
               {data?.pages.map((page, i) => (
@@ -212,7 +156,7 @@ export function Chat() {
               type="submit" 
               className="bg-excel hover:bg-excel/90"
               aria-label="Send message"
-              disabled={!fileId || isUploading}
+              disabled={!fileId || isUploading || isProcessing}
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
