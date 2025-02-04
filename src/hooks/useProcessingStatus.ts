@@ -7,7 +7,7 @@ export type ProcessingStatus = "pending" | "uploading" | "processing" | "analyzi
 
 interface FileStatus {
   processing_status: ProcessingStatus;
-  error_message: string;
+  error_message: string | null;
 }
 
 export const useProcessingStatus = (fileId: string | null) => {
@@ -28,9 +28,9 @@ export const useProcessingStatus = (fileId: string | null) => {
       return data as FileStatus;
     },
     enabled: !!fileId,
-    refetchInterval: (data: FileStatus | undefined) => {
-      if (!data) return false;
-      return ["pending", "uploading", "processing", "analyzing"].includes(data.processing_status)
+    refetchInterval: (query) => {
+      const status = query.state.data?.processing_status;
+      return status && ["pending", "uploading", "processing", "analyzing"].includes(status)
         ? 2000  // Poll every 2 seconds while processing
         : false; // Stop polling when complete or error
     },
