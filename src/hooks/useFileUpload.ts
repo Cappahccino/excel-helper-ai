@@ -13,6 +13,7 @@ interface UseFileUploadReturn {
   handleFileUpload: (file: File) => Promise<void>;
   resetUpload: () => void;
   fileId: string | null;
+  setUploadProgress: (progress: number) => void;
 }
 
 export const useFileUpload = (): UseFileUploadReturn => {
@@ -170,5 +171,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
     handleFileUpload,
     resetUpload,
     fileId,
+    setUploadProgress,
   };
 };

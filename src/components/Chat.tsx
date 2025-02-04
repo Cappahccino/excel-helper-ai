@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -25,9 +25,62 @@ export function Chat() {
     handleFileUpload,
     resetUpload,
     fileId,
+    setUploadProgress,
   } = useFileUpload();
 
-  // Fetch messages with pagination
+  // Subscribe to real-time updates for the current file
+  useEffect(() => {
+    if (!fileId) return;
+
+    const channel = supabase
+      .channel('excel_files_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'excel_files',
+          filter: `id=eq.${fileId}`
+        },
+        (payload) => {
+          console.log('Real-time update received:', payload);
+          if (payload.new && 'upload_progress' in payload.new) {
+            setUploadProgress(payload.new.upload_progress);
+          }
+          
+          // Show toast for completed processing
+          if (
+            payload.new && 
+            payload.new.processing_status === 'completed' &&
+            payload.old?.processing_status !== 'completed'
+          ) {
+            toast({
+              title: "File Processing Complete",
+              description: "Your Excel file has been processed successfully.",
+            });
+          }
+
+          // Show toast for processing errors
+          if (
+            payload.new && 
+            payload.new.processing_status === 'error' &&
+            payload.old?.processing_status !== 'error'
+          ) {
+            toast({
+              title: "Processing Error",
+              description: payload.new.error_message || "An error occurred while processing your file.",
+              variant: "destructive",
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fileId, toast, setUploadProgress]);
+
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async ({ pageParam }) => {
