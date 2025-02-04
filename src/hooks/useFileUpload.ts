@@ -35,7 +35,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
     chunk: Blob,
     chunkIndex: number,
     totalChunks: number,
-    filePath: string
+    filePath: string,
+    fileRecord: any
   ) => {
     const { error: uploadError } = await supabase.storage
       .from('excel_files')
@@ -46,8 +47,21 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
     if (uploadError) throw uploadError;
     
+    // Calculate and update progress
     const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
     setUploadProgress(progress);
+
+    // Update progress in database
+    const { error: updateError } = await supabase
+      .from('excel_files')
+      .update({
+        processed_chunks: chunkIndex + 1,
+        upload_progress: progress,
+        processing_status: progress === 100 ? 'processing' : 'uploading'
+      })
+      .eq('id', fileRecord.id);
+
+    if (updateError) throw updateError;
   };
 
   const handleFileUpload = useCallback(async (newFile: File) => {
@@ -98,24 +112,13 @@ export const useFileUpload = (): UseFileUploadReturn => {
       if (dbError) throw dbError;
       setFileId(fileRecord.id);
 
-      // Upload chunks
+      // Upload chunks with progress tracking
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, sanitizedFile.size);
         const chunk = sanitizedFile.slice(start, end);
         
-        await uploadChunk(chunk, i, totalChunks, filePath);
-
-        // Update progress in database
-        const { error: updateError } = await supabase
-          .from('excel_files')
-          .update({
-            processed_chunks: i + 1,
-            upload_progress: Math.round(((i + 1) / totalChunks) * 100)
-          })
-          .eq('id', fileRecord.id);
-
-        if (updateError) throw updateError;
+        await uploadChunk(chunk, i, totalChunks, filePath, fileRecord);
       }
 
       // Update file status to processing
