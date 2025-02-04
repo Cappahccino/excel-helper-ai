@@ -12,6 +12,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Database } from "@/integrations/supabase/types";
 
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row'];
+type ExcelFile = Database['public']['Tables']['excel_files']['Row'];
 
 const MESSAGES_PER_PAGE = 20;
 
@@ -44,15 +45,18 @@ export function Chat() {
         },
         (payload) => {
           console.log('Real-time update received:', payload);
-          if (payload.new && 'upload_progress' in payload.new) {
-            setUploadProgress(payload.new.upload_progress);
+          const newFile = payload.new as ExcelFile;
+          const oldFile = payload.old as Partial<ExcelFile>;
+          
+          if (newFile && 'upload_progress' in newFile) {
+            setUploadProgress(newFile.upload_progress ?? 0);
           }
           
           // Show toast for completed processing
           if (
-            payload.new && 
-            payload.new.processing_status === 'completed' &&
-            payload.old?.processing_status !== 'completed'
+            newFile && 
+            newFile.processing_status === 'completed' &&
+            oldFile?.processing_status !== 'completed'
           ) {
             toast({
               title: "File Processing Complete",
@@ -62,13 +66,13 @@ export function Chat() {
 
           // Show toast for processing errors
           if (
-            payload.new && 
-            payload.new.processing_status === 'error' &&
-            payload.old?.processing_status !== 'error'
+            newFile && 
+            newFile.processing_status === 'error' &&
+            oldFile?.processing_status !== 'error'
           ) {
             toast({
               title: "Processing Error",
-              description: payload.new.error_message || "An error occurred while processing your file.",
+              description: newFile.error_message || "An error occurred while processing your file.",
               variant: "destructive",
             });
           }
