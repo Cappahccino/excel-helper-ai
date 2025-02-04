@@ -28,9 +28,9 @@ export const useProcessingStatus = (fileId: string | null) => {
       return data as FileStatus;
     },
     enabled: !!fileId,
-    refetchInterval: (data) => {
-      const status = data?.processing_status;
-      return status && ["pending", "uploading", "processing", "analyzing"].includes(status)
+    refetchInterval: (data: FileStatus | undefined) => {
+      if (!data) return false;
+      return ["pending", "uploading", "processing", "analyzing"].includes(data.processing_status)
         ? 2000  // Poll every 2 seconds while processing
         : false; // Stop polling when complete or error
     },
