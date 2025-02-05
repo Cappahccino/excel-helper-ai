@@ -13,47 +13,42 @@ const openai = new OpenAI({
   apiKey: Deno.env.get('OPENAI_API_KEY')
 });
 
-// Create or get the assistant
 async function getOrCreateAssistant() {
-  console.log('🔍 Attempting to get or create assistant...');
+  console.log('🔍 Getting or creating assistant...');
   try {
     const assistants = await openai.beta.assistants.list({
       limit: 1,
       order: "desc"
     });
-    console.log('📋 Found existing assistants:', assistants.data.length);
 
     if (assistants.data.length > 0) {
       console.log('✅ Using existing assistant:', assistants.data[0].id);
       return assistants.data[0];
     }
 
-    console.log('🆕 No existing assistant found, creating new one...');
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analyst",
       instructions: `You are an Excel data analyst assistant. Your role is to:
-        - Provide clear, concise insights from Excel data
-        - Focus on relevant patterns and trends
-        - Use numerical evidence to support conclusions
-        - Highlight notable outliers or anomalies
-        - Format responses for readability
-        Please present your analysis in a structured way using clear sections and proper formatting.`,
-      model: "gpt-4",
+        - Analyze Excel data sheet by sheet
+        - Provide clear insights and patterns
+        - Use numerical evidence
+        - Highlight key findings
+        - Format responses clearly
+        Present analysis in structured sections with proper formatting.`,
+      model: "gpt-4o",
     });
 
     console.log('✅ Created new assistant:', assistant.id);
     return assistant;
   } catch (error) {
-    console.error('❌ Error in getOrCreateAssistant:', error);
-    console.error('Stack trace:', error.stack);
+    console.error('❌ Assistant error:', error);
     throw error;
   }
 }
 
 async function getExcelFileContent(supabase: any, fileId: string) {
-  console.log(`📂 Fetching Excel file with ID: ${fileId}`);
+  console.log(`📂 Fetching Excel file ID: ${fileId}`);
   
-  // First, get the file metadata from the database
   const { data: fileData, error: fileError } = await supabase
     .from('excel_files')
     .select('file_path')
@@ -61,30 +56,33 @@ async function getExcelFileContent(supabase: any, fileId: string) {
     .single();
 
   if (fileError) {
-    console.error('❌ Error fetching file metadata:', fileError);
+    console.error('❌ File metadata error:', fileError);
     throw new Error('Failed to fetch file metadata');
   }
 
-  // Download the file from storage
   const { data: fileContent, error: downloadError } = await supabase
     .storage
     .from('excel_files')
     .download(fileData.file_path);
 
   if (downloadError) {
-    console.error('❌ Error downloading file:', downloadError);
-    throw new Error('Failed to download file from storage');
+    console.error('❌ Download error:', downloadError);
+    throw new Error('Failed to download file');
   }
 
-  // Convert the file to ArrayBuffer
   const arrayBuffer = await fileContent.arrayBuffer();
-  
-  // Parse Excel file
   const workbook = read(arrayBuffer);
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const jsonData = utils.sheet_to_json(firstSheet);
+  
+  // Process each sheet
+  const jsonData = workbook.SheetNames.map(sheetName => {
+    const sheet = workbook.Sheets[sheetName];
+    return {
+      sheetName,
+      data: utils.sheet_to_json(sheet)
+    };
+  });
 
-  console.log(`📊 Successfully parsed Excel data with ${jsonData.length} rows`);
+  console.log(`📊 Parsed ${jsonData.length} sheets`);
   return jsonData;
 }
 
@@ -92,65 +90,61 @@ serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] New request received`);
 
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log(`✨ [${requestId}] Handling CORS preflight request`);
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { fileId, query, userId } = await req.json();
-    console.log(`📝 [${requestId}] Processing request for:`, { fileId, userId, queryLength: query?.length });
+    const { fileId, query, userId, threadId } = await req.json();
+    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, hasThread: !!threadId });
 
     if (!fileId || !query || !userId) {
-      console.error(`❌ [${requestId}] Missing required fields`);
       throw new Error('Missing required fields');
     }
 
-    // Initialize Supabase client
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get Excel file content
-    console.log(`📥 [${requestId}] Fetching Excel content`);
-    const excelData = await getExcelFileContent(supabase, fileId);
-
-    // Get or create the assistant
-    console.log(`🤖 [${requestId}] Getting assistant...`);
+    // Get or create assistant
     const assistant = await getOrCreateAssistant();
-    console.log(`✅ [${requestId}] Using assistant:`, assistant.id);
+    
+    // Handle thread creation or reuse
+    const thread = threadId 
+      ? { id: threadId }
+      : await openai.beta.threads.create();
+    
+    console.log(`🧵 [${requestId}] Using thread:`, thread.id);
 
-    // Create a new thread
-    console.log(`🧵 [${requestId}] Creating new thread...`);
-    const thread = await openai.beta.threads.create();
-    console.log(`✅ [${requestId}] Created thread:`, thread.id);
+    // For new threads, get Excel data and add context
+    if (!threadId) {
+      const excelData = await getExcelFileContent(supabase, fileId);
+      await openai.beta.threads.messages.create(thread.id, {
+        role: "user",
+        content: `Excel file context: ${JSON.stringify(excelData)}`
+      });
+    }
 
-    // Add the user's message to the thread
-    console.log(`💬 [${requestId}] Adding user message to thread...`);
+    // Add the user's query
     await openai.beta.threads.messages.create(thread.id, {
       role: "user",
-      content: `Analyze this Excel data: ${JSON.stringify(excelData)}. Query: ${query}`
+      content: query
     });
 
-    // Create a run
-    console.log(`🏃 [${requestId}] Creating run...`);
+    // Run analysis
+    console.log(`🏃 [${requestId}] Starting analysis...`);
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: assistant.id,
     });
 
-    // Wait for the run to complete
-    console.log(`⏳ [${requestId}] Waiting for run to complete...`);
+    // Wait for completion
     let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
     let attempts = 0;
-    const maxAttempts = 60; // Maximum 60 seconds wait
+    const maxAttempts = 60;
     
     while (runStatus.status !== "completed" && attempts < maxAttempts) {
-      console.log(`🔄 [${requestId}] Run status:`, runStatus.status);
-      
       if (runStatus.status === "failed" || runStatus.status === "cancelled") {
-        console.error(`❌ [${requestId}] Run failed:`, runStatus);
         throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
       }
       
@@ -160,17 +154,15 @@ serve(async (req) => {
     }
 
     if (attempts >= maxAttempts) {
-      console.error(`⚠️ [${requestId}] Run timed out after ${maxAttempts} seconds`);
-      throw new Error('Run timed out');
+      throw new Error('Analysis timed out');
     }
 
-    // Get the assistant's response
-    console.log(`📥 [${requestId}] Retrieving messages...`);
+    // Get response
     const messages = await openai.beta.threads.messages.list(thread.id);
     const lastMessage = messages.data[0];
 
-    // Store the message in the database
-    const { error: dbError } = await supabase
+    // Store messages
+    await supabase
       .from('chat_messages')
       .insert([
         {
@@ -191,12 +183,7 @@ serve(async (req) => {
         }
       ]);
 
-    if (dbError) {
-      console.error(`❌ [${requestId}] Database error:`, dbError);
-      throw dbError;
-    }
-
-    console.log(`✅ [${requestId}] Request completed successfully`);
+    console.log(`✅ [${requestId}] Analysis complete`);
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
@@ -207,7 +194,6 @@ serve(async (req) => {
 
   } catch (error) {
     console.error(`❌ [${requestId}] Error:`, error);
-    console.error(`📚 [${requestId}] Stack trace:`, error.stack);
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
