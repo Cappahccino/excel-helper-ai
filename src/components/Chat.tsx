@@ -1,4 +1,4 @@
-```typescript
+
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,15 +30,15 @@ export function Chat() {
   const { status, error, isProcessing } = useProcessingStatus(fileId);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery({
-    queryKey: ['chat-messages', fileId],
+    queryKey: ["chat-messages", fileId],
     queryFn: async ({ pageParam }) => {
       if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
       const start = (pageParam as number) * 20;
       const { data, error, count } = await supabase
-        .from('chat_messages')
-        .select('*', { count: 'exact' })
-        .eq('excel_file_id', fileId)
-        .order('created_at', { ascending: false })
+        .from("chat_messages")
+        .select("*", { count: "exact" })
+        .eq("excel_file_id", fileId)
+        .order("created_at", { ascending: false })
         .range(start, start + 20 - 1);
 
       if (error) throw error;
@@ -68,10 +68,10 @@ export function Chat() {
       setIsAnalyzing(true);
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
+      if (userError || !user) throw new Error("User not authenticated");
 
       const { data: analysis, error } = await supabase.functions
-        .invoke('excel-assistant', {
+        .invoke("excel-assistant", {
           body: { 
             fileId, 
             query: message,
@@ -85,7 +85,7 @@ export function Chat() {
       await refetchMessages();
       setMessage("");
     } catch (error) {
-      console.error('Analysis error:', error);
+      console.error("Analysis error:", error);
       toast({
         title: "Analysis Failed",
         description: error instanceof Error ? error.message : "Failed to analyze Excel file",
@@ -180,4 +180,3 @@ export function Chat() {
     </div>
   );
 }
-```
