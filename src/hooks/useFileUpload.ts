@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +15,7 @@ interface UseFileUploadReturn {
   resetUpload: () => void;
   fileId: string | null;
   setUploadProgress: (progress: number) => void;
+  threadId: string | null;
 }
 
 export const useFileUpload = (): UseFileUploadReturn => {
@@ -22,6 +24,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
@@ -30,40 +33,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setUploadProgress(0);
     setError(null);
     setFileId(null);
+    setThreadId(null);
   }, []);
-
-  const uploadChunk = async (
-    chunk: Blob,
-    chunkIndex: number,
-    totalChunks: number,
-    filePath: string,
-    fileRecord: any
-  ) => {
-    const { error: uploadError } = await supabase.storage
-      .from('excel_files')
-      .upload(`${filePath}_chunk_${chunkIndex}`, chunk, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) throw uploadError;
-    
-    // Calculate and update progress
-    const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
-    setUploadProgress(progress);
-
-    // Update progress in database
-    const { error: updateError } = await supabase
-      .from('excel_files')
-      .update({
-        processed_chunks: chunkIndex + 1,
-        upload_progress: progress,
-        processing_status: progress === 100 ? 'processing' : 'uploading'
-      })
-      .eq('id', fileRecord.id);
-
-    if (updateError) throw updateError;
-  };
 
   const handleFileUpload = useCallback(async (newFile: File) => {
     const validation = validateFile(newFile);
@@ -80,6 +51,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     try {
       setIsUploading(true);
       setError(null);
+      
       const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
         type: newFile.type,
       });
@@ -90,11 +62,20 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Calculate total chunks
-      const totalChunks = Math.ceil(sanitizedFile.size / CHUNK_SIZE);
+      // Create file path
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
 
-      // Create file record in database with initial status
+      // Upload file to storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('excel_files')
+        .upload(filePath, sanitizedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -102,41 +83,32 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: 'uploading',
-          total_chunks: totalChunks,
-          processed_chunks: 0,
-          upload_progress: 0
+          processing_status: 'uploaded',
         })
         .select()
         .single();
 
       if (dbError) throw dbError;
+
+      // Initial analysis request
+      const { data: analysis, error: analysisError } = await supabase.functions
+        .invoke('excel-assistant', {
+          body: { 
+            fileId: fileRecord.id,
+            query: "Please analyze this Excel file and provide a summary of its contents.",
+            userId: user.id
+          }
+        });
+
+      if (analysisError) throw analysisError;
+
       setFileId(fileRecord.id);
-
-      // Upload chunks with progress tracking
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, sanitizedFile.size);
-        const chunk = sanitizedFile.slice(start, end);
-        
-        await uploadChunk(chunk, i, totalChunks, filePath, fileRecord);
-      }
-
-      // Update file status to processing
-      const { error: statusError } = await supabase
-        .from('excel_files')
-        .update({
-          processing_status: 'processing',
-          processing_started_at: new Date().toISOString()
-        })
-        .eq('id', fileRecord.id);
-
-      if (statusError) throw statusError;
-
+      setThreadId(analysis.threadId);
       setFile(sanitizedFile);
+      
       toast({
         title: "Success",
-        description: "File uploaded successfully",
+        description: "File uploaded and analysis started",
       });
 
     } catch (err) {
@@ -147,17 +119,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
         description: err instanceof Error ? err.message : "Failed to upload file",
         variant: "destructive",
       });
-
-      // Update error status in database if we have a fileId
-      if (fileId) {
-        await supabase
-          .from('excel_files')
-          .update({
-            processing_status: 'error',
-            error_message: err instanceof Error ? err.message : "Failed to upload file"
-          })
-          .eq('id', fileId);
-      }
     } finally {
       setIsUploading(false);
     }
@@ -172,5 +133,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
     resetUpload,
     fileId,
     setUploadProgress,
+    threadId,
   };
 };

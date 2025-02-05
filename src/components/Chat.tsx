@@ -1,3 +1,4 @@
+```typescript
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { useProcessingStatus } from "@/hooks/useProcessingStatus";
 
 export function Chat() {
   const [message, setMessage] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const {
     file: uploadedFile,
@@ -22,14 +24,15 @@ export function Chat() {
     handleFileUpload,
     resetUpload,
     fileId,
-    setUploadProgress,
+    threadId,
   } = useFileUpload();
 
   const { status, error, isProcessing } = useProcessingStatus(fileId);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async ({ pageParam }) => {
+      if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
       const start = (pageParam as number) * 20;
       const { data, error, count } = await supabase
         .from('chat_messages')
@@ -59,20 +62,27 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId || isProcessing) return;
+    if (!message.trim() || !fileId || isAnalyzing || !threadId) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      setIsAnalyzing(true);
 
-      // Call the Supabase Edge Function instead of Lambda
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('User not authenticated');
+
       const { data: analysis, error } = await supabase.functions
         .invoke('excel-assistant', {
-          body: { fileId, query: message, userId: user.id }
+          body: { 
+            fileId, 
+            query: message,
+            userId: user.id,
+            threadId 
+          }
         });
 
       if (error) throw error;
 
+      await refetchMessages();
       setMessage("");
     } catch (error) {
       console.error('Analysis error:', error);
@@ -81,6 +91,8 @@ export function Chat() {
         description: error instanceof Error ? error.message : "Failed to analyze Excel file",
         variant: "destructive",
       });
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -168,3 +180,4 @@ export function Chat() {
     </div>
   );
 }
+```
