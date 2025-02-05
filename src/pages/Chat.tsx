@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,8 +20,10 @@ const Chat = () => {
     handleFileUpload,
     resetUpload,
     fileId,
+    threadId, // We now have access to threadId from useFileUpload
   } = useFileUpload();
 
+  // Query to fetch messages for the current conversation
   const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async () => {
@@ -43,25 +46,22 @@ const Chat = () => {
 
     try {
       setIsAnalyzing(true);
-
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
-      // The user message is now stored by the Lambda function
-      // Call analyze-excel function
+      // Send the follow-up question using the existing threadId
       const { data: analysis, error } = await supabase.functions
-        .invoke('analyze-excel', {
+        .invoke('excel-assistant', {
           body: { 
             fileId, 
             query: message,
-            userId: user.id 
+            userId: user.id,
+            threadId // Include threadId for conversation continuity
           }
         });
 
       if (error) throw error;
 
-      // The AI response is now stored by the Lambda function
-      // Refetch messages to show the new ones
       await refetchMessages();
       setMessage("");
     } catch (error) {
@@ -83,6 +83,7 @@ const Chat = () => {
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
             <p className="text-sm">
               Hello! Upload an Excel file and I'll help you analyze it.
+              {fileId && "You can ask follow-up questions about your data!"}
             </p>
           </div>
           
@@ -138,17 +139,16 @@ const Chat = () => {
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Ask about your Excel file..."
+            placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
             className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="Message input"
+            disabled={!fileId || isUploading || isAnalyzing}
           />
           <Button 
             type="submit" 
             className="bg-excel hover:bg-excel/90"
-            aria-label="Send message"
             disabled={!fileId || isUploading || isAnalyzing}
           >
-            <Send className="h-4 w-4" aria-hidden="true" />
+            <Send className="h-4 w-4" />
           </Button>
         </div>
       </form>
