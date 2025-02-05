@@ -89,7 +89,7 @@ export function Chat() {
         .invoke("excel-assistant", {
           body: { 
             fileId, 
-            query: message,
+            query: message.trim(),
             userId: user.id,
             threadId 
           }
@@ -99,6 +99,7 @@ export function Chat() {
 
       await refetchMessages();
       setMessage("");
+      debouncedSetMessage("");  // Clear the debounced input as well
     } catch (error) {
       console.error("Analysis error:", error);
       toast({
@@ -176,16 +177,20 @@ export function Chat() {
             <input
               type="text"
               value={message}
-              onChange={(e) => debouncedSetMessage(e.target.value)}
+              onChange={(e) => {
+                setMessage(e.target.value);
+                debouncedSetMessage(e.target.value);
+              }}
               placeholder="Ask about your Excel file..."
               className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="Message input"
+              disabled={!fileId || isUploading || isProcessing}
             />
             <Button 
               type="submit" 
               className="bg-excel hover:bg-excel/90"
               aria-label="Send message"
-              disabled={!fileId || isUploading || isProcessing}
+              disabled={!fileId || isUploading || isProcessing || !message.trim()}
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
