@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -8,11 +9,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: Deno.env.get('OPENAI_API_KEY')
-});
 
 const SYSTEM_PROMPT = `
 You are an Excel data analyst assistant. Your role is to:
@@ -25,20 +21,18 @@ Please present your analysis in a structured way using clear sections and proper
 `;
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { fileId, query, userId } = await req.json();
-    console.log('Processing request for:', { fileId, userId });
+    const { fileId, query, userId, threadId } = await req.json();
+    console.log('Processing request for:', { fileId, userId, threadId });
 
-    if (!fileId || !query || !userId) {
-      throw new Error('Missing required fields: fileId, query, and userId are required');
+    if (!fileId || !query || !userId || !threadId) {
+      throw new Error('Missing required fields: fileId, query, userId, and threadId are required');
     }
 
-    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
@@ -47,6 +41,9 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const openai = new OpenAI({
+      apiKey: Deno.env.get('OPENAI_API_KEY')
+    });
 
     // Get file metadata from database
     const { data: fileData, error: fileError } = await supabase
@@ -79,19 +76,6 @@ serve(async (req) => {
     const jsonData = XLSX.utils.sheet_to_json(worksheet);
     const limitedData = jsonData.slice(0, 50); // Analyze first 50 rows
 
-    // Create thread for the conversation
-    const { data: thread, error: threadError } = await supabase
-      .from('chat_threads')
-      .insert({
-        title: query.substring(0, 50) + '...',
-        user_id: userId,
-        excel_file_id: fileId
-      })
-      .select()
-      .single();
-
-    if (threadError) throw new Error(`Failed to create thread: ${threadError.message}`);
-
     // Get OpenAI analysis
     console.log('Requesting OpenAI analysis');
     const openAiResponse = await openai.chat.completions.create({
@@ -113,7 +97,7 @@ serve(async (req) => {
       .from('chat_messages')
       .insert([
         {
-          thread_id: thread.id,
+          thread_id: threadId,
           content: query,
           is_ai_response: false,
           user_id: userId,
@@ -121,7 +105,7 @@ serve(async (req) => {
           chat_id: openAiResponse.id
         },
         {
-          thread_id: thread.id,
+          thread_id: threadId,
           content: openAiResponse.choices[0].message.content,
           is_ai_response: true,
           user_id: userId,
@@ -139,7 +123,7 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        threadId: thread.id,
+        threadId: threadId,
         message: openAiResponse.choices[0].message.content,
         model: openAiResponse.model,
         usage: openAiResponse.usage

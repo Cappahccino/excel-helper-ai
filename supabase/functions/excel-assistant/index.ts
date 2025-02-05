@@ -109,9 +109,9 @@ serve(async (req) => {
 
   try {
     const { fileId, query, userId, threadId } = await req.json();
-    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, hasThread: !!threadId });
+    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
 
-    if (!fileId || !query || !userId) {
+    if (!fileId || !query || !userId || !threadId) {
       throw new Error('Missing required fields');
     }
 
@@ -124,21 +124,12 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
+    // Get the assistant
     const assistant = await getOrCreateAssistant(openai);
-    
-    // Create or reuse thread for conversation continuity
-    const thread = threadId ? { id: threadId } : await openai.beta.threads.create();
-    
-    // If this is a new thread, load the Excel data context
-    if (!threadId) {
-      const excelData = await getExcelFileContent(supabase, fileId);
-      await openai.beta.threads.messages.create(thread.id, {
-        role: "user",
-        content: `Here is the Excel file data to analyze: ${JSON.stringify(excelData)}`
-      });
-    }
 
-    const messages = await handleThreadMessage(openai, thread.id, query, assistant);
+    // Load Excel data if this is the initial analysis
+    const excelData = await getExcelFileContent(supabase, fileId);
+    const messages = await handleThreadMessage(openai, threadId, query, assistant);
     const lastMessage = messages.data[0];
 
     // Store both the user query and assistant response
@@ -147,14 +138,14 @@ serve(async (req) => {
         user_id: userId,
         excel_file_id: fileId,
         content: query,
-        thread_id: thread.id,
+        thread_id: threadId,
         is_ai_response: false
       },
       {
         user_id: userId,
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
-        thread_id: thread.id,
+        thread_id: threadId,
         is_ai_response: true,
         openai_model: assistant.model,
         raw_response: lastMessage
@@ -165,7 +156,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId: thread.id
+        threadId: threadId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
