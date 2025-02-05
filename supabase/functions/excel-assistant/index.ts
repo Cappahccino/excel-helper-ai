@@ -65,7 +65,21 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function handleThreadMessage(openai: OpenAI, threadId: string, content: string, assistant: any) {
+async function createThread(openai: OpenAI) {
+  console.log('🧵 Creating new thread');
+  const thread = await openai.beta.threads.create();
+  console.log('✅ Thread created:', thread.id);
+  return thread;
+}
+
+async function handleThreadMessage(openai: OpenAI, threadId: string | null, content: string, assistant: any) {
+  let thread;
+  
+  if (!threadId) {
+    thread = await createThread(openai);
+    threadId = thread.id;
+  }
+  
   console.log(`💬 Creating message in thread ${threadId}`);
   
   await openai.beta.threads.messages.create(threadId, {
@@ -96,7 +110,8 @@ async function handleThreadMessage(openai: OpenAI, threadId: string, content: st
   if (attempts >= maxAttempts) throw new Error('Analysis timed out');
   
   console.log(`✅ Run completed for thread ${threadId}`);
-  return openai.beta.threads.messages.list(threadId);
+  const messages = await openai.beta.threads.messages.list(threadId);
+  return { messages, threadId };
 }
 
 serve(async (req) => {
@@ -111,7 +126,7 @@ serve(async (req) => {
     const { fileId, query, userId, threadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
 
-    if (!fileId || !query || !userId || !threadId) {
+    if (!fileId || !query || !userId) {
       throw new Error('Missing required fields');
     }
 
@@ -129,8 +144,25 @@ serve(async (req) => {
 
     // Load Excel data if this is the initial analysis
     const excelData = await getExcelFileContent(supabase, fileId);
-    const messages = await handleThreadMessage(openai, threadId, query, assistant);
+    const { messages, threadId: newThreadId } = await handleThreadMessage(openai, threadId, query, assistant);
     const lastMessage = messages.data[0];
+
+    // If this is a new thread, create a chat session
+    if (!threadId) {
+      const { error: sessionError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          id: newThreadId,
+          user_id: userId,
+          file_id: fileId,
+          title: `Chat about ${fileId}`,
+          status: 'active'
+        });
+
+      if (sessionError) {
+        throw new Error(`Failed to create chat session: ${sessionError.message}`);
+      }
+    }
 
     // Store both the user query and assistant response
     await supabase.from('chat_messages').insert([
@@ -138,14 +170,14 @@ serve(async (req) => {
         user_id: userId,
         excel_file_id: fileId,
         content: query,
-        thread_id: threadId,
+        thread_id: newThreadId,
         is_ai_response: false
       },
       {
         user_id: userId,
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
-        thread_id: threadId,
+        thread_id: newThreadId,
         is_ai_response: true,
         openai_model: assistant.model,
         raw_response: lastMessage
@@ -156,7 +188,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId: threadId
+        threadId: newThreadId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
