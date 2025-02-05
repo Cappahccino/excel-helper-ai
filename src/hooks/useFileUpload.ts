@@ -83,7 +83,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: 'uploaded',
+          processing_status: "pending" // Changed from "uploaded" to "pending"
         })
         .select()
         .single();
