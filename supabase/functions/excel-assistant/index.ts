@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -14,12 +15,30 @@ interface ExcelData {
   data: Record<string, any>[];
 }
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: Deno.env.get('OPENAI_API_KEY')
-});
+async function getOrCreateAssistant(openai: OpenAI) {
+  const assistants = await openai.beta.assistants.list({ limit: 1, order: "desc" });
+  
+  if (assistants.data.length > 0) {
+    console.log('✅ Using existing assistant:', assistants.data[0].id);
+    return assistants.data[0];
+  }
 
-// Excel file handling
+  const assistant = await openai.beta.assistants.create({
+    name: "Excel Analyst",
+    instructions: `You are an Excel data analyst assistant. Your role is to:
+      - Analyze Excel data sheet by sheet
+      - Provide clear insights and patterns
+      - Use numerical evidence
+      - Highlight key findings
+      - Format responses clearly
+      - Maintain context from previous questions to provide more relevant follow-up responses`,
+    model: "gpt-4o",
+  });
+
+  console.log('✅ Created new assistant:', assistant.id);
+  return assistant;
+}
+
 async function getExcelFileContent(supabase: any, fileId: string): Promise<ExcelData[]> {
   console.log(`📂 Fetching Excel file ID: ${fileId}`);
   
@@ -46,37 +65,15 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-// OpenAI assistant management
-async function getOrCreateAssistant() {
-  const assistants = await openai.beta.assistants.list({ limit: 1, order: "desc" });
+async function handleThreadMessage(openai: OpenAI, threadId: string, content: string, assistant: any) {
+  console.log(`💬 Creating message in thread ${threadId}`);
   
-  if (assistants.data.length > 0) {
-    console.log('✅ Using existing assistant:', assistants.data[0].id);
-    return assistants.data[0];
-  }
-
-  const assistant = await openai.beta.assistants.create({
-    name: "Excel Analyst",
-    instructions: `You are an Excel data analyst assistant. Your role is to:
-      - Analyze Excel data sheet by sheet
-      - Provide clear insights and patterns
-      - Use numerical evidence
-      - Highlight key findings
-      - Format responses clearly`,
-    model: "gpt-4o",
-  });
-
-  console.log('✅ Created new assistant:', assistant.id);
-  return assistant;
-}
-
-// Thread management
-async function handleThreadMessage(threadId: string, content: string, assistant: any) {
   await openai.beta.threads.messages.create(threadId, {
     role: "user",
     content
   });
 
+  console.log(`🏃 Starting run for thread ${threadId}`);
   const run = await openai.beta.threads.runs.create(threadId, {
     assistant_id: assistant.id,
   });
@@ -93,14 +90,15 @@ async function handleThreadMessage(threadId: string, content: string, assistant:
     await new Promise(resolve => setTimeout(resolve, 1000));
     runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
     attempts++;
+    console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
   }
 
   if (attempts >= maxAttempts) throw new Error('Analysis timed out');
-
+  
+  console.log(`✅ Run completed for thread ${threadId}`);
   return openai.beta.threads.messages.list(threadId);
 }
 
-// Main request handler
 serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] New request received`);
@@ -122,20 +120,28 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const assistant = await getOrCreateAssistant();
+    const openai = new OpenAI({
+      apiKey: Deno.env.get('OPENAI_API_KEY')
+    });
+
+    const assistant = await getOrCreateAssistant(openai);
+    
+    // Create or reuse thread for conversation continuity
     const thread = threadId ? { id: threadId } : await openai.beta.threads.create();
     
+    // If this is a new thread, load the Excel data context
     if (!threadId) {
       const excelData = await getExcelFileContent(supabase, fileId);
       await openai.beta.threads.messages.create(thread.id, {
         role: "user",
-        content: `Excel file context: ${JSON.stringify(excelData)}`
+        content: `Here is the Excel file data to analyze: ${JSON.stringify(excelData)}`
       });
     }
 
-    const messages = await handleThreadMessage(thread.id, query, assistant);
+    const messages = await handleThreadMessage(openai, thread.id, query, assistant);
     const lastMessage = messages.data[0];
 
+    // Store both the user query and assistant response
     await supabase.from('chat_messages').insert([
       {
         user_id: userId,
