@@ -45,7 +45,8 @@ export function Chat() {
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery<PaginatedResponse>({
     queryKey: ["chat-messages", fileId],
-    queryFn: async ({ pageParam = 0 }: { pageParam?: number }) => {
+    queryFn: async (context) => {
+      const pageParam = (context.pageParam as number) ?? 0;
       if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
       const start = pageParam * 20;
       const { data, error, count } = await supabase
