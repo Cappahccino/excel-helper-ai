@@ -20,29 +20,29 @@ const Chat = () => {
     handleFileUpload,
     resetUpload,
     fileId,
-    threadId, // We now have access to threadId from useFileUpload
+    threadId,
   } = useFileUpload();
 
   // Query to fetch messages for the current conversation
   const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } = useQuery({
     queryKey: ['chat-messages', fileId],
     queryFn: async () => {
-      if (!fileId) return [];
+      if (!fileId || !threadId) return [];
       const { data, error } = await supabase
         .from('chat_messages')
         .select('*')
-        .eq('excel_file_id', fileId)
+        .eq('thread_id', threadId)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
       return data;
     },
-    enabled: !!fileId,
+    enabled: !!fileId && !!threadId,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId || isAnalyzing) return;
+    if (!message.trim() || !fileId || !threadId || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
@@ -56,7 +56,7 @@ const Chat = () => {
             fileId, 
             query: message,
             userId: user.id,
-            threadId // Include threadId for conversation continuity
+            threadId
           }
         });
 

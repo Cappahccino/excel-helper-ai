@@ -67,15 +67,15 @@ export type Database = {
             foreignKeyName: "chat_messages_thread_id_fkey"
             columns: ["thread_id"]
             isOneToOne: false
-            referencedRelation: "chat_threads"
+            referencedRelation: "chat_sessions"
             referencedColumns: ["id"]
           },
         ]
       }
-      chat_threads: {
+      chat_sessions: {
         Row: {
           created_at: string
-          excel_file_id: string | null
+          file_id: string | null
           id: string
           status: string
           title: string
@@ -84,7 +84,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          excel_file_id?: string | null
+          file_id?: string | null
           id?: string
           status?: string
           title: string
@@ -93,7 +93,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          excel_file_id?: string | null
+          file_id?: string | null
           id?: string
           status?: string
           title?: string
@@ -102,8 +102,8 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "chat_threads_excel_file_id_fkey"
-            columns: ["excel_file_id"]
+            foreignKeyName: "chat_sessions_file_id_fkey"
+            columns: ["file_id"]
             isOneToOne: false
             referencedRelation: "excel_files"
             referencedColumns: ["id"]

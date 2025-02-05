@@ -90,20 +90,35 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       if (dbError) throw dbError;
 
+      // Create a new chat session
+      const { data: chatSession, error: sessionError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          user_id: user.id,
+          file_id: fileRecord.id,
+          title: `Chat about ${sanitizedFile.name}`,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (sessionError) throw sessionError;
+
       // Initial analysis request
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
             fileId: fileRecord.id,
             query: "Please analyze this Excel file and provide a summary of its contents.",
-            userId: user.id
+            userId: user.id,
+            threadId: chatSession.id
           }
         });
 
       if (analysisError) throw analysisError;
 
       setFileId(fileRecord.id);
-      setThreadId(analysis.threadId);
+      setThreadId(chatSession.id);
       setFile(sanitizedFile);
       
       toast({
