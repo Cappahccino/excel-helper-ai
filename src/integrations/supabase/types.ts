@@ -21,8 +21,8 @@ export type Database = {
           openai_model: string | null
           openai_usage: Json | null
           raw_response: Json | null
+          session_id: string | null
           status: string
-          thread_id: string | null
           user_id: string
         }
         Insert: {
@@ -36,8 +36,8 @@ export type Database = {
           openai_model?: string | null
           openai_usage?: Json | null
           raw_response?: Json | null
+          session_id?: string | null
           status?: string
-          thread_id?: string | null
           user_id: string
         }
         Update: {
@@ -51,64 +51,46 @@ export type Database = {
           openai_model?: string | null
           openai_usage?: Json | null
           raw_response?: Json | null
+          session_id?: string | null
           status?: string
-          thread_id?: string | null
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "chat_messages_excel_file_id_fkey"
-            columns: ["excel_file_id"]
-            isOneToOne: false
-            referencedRelation: "excel_files"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chat_messages_thread_id_fkey"
-            columns: ["thread_id"]
+            foreignKeyName: "chat_messages_session_id_fkey"
+            columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "chat_sessions"
-            referencedColumns: ["id"]
+            referencedColumns: ["session_id"]
           },
         ]
       }
       chat_sessions: {
         Row: {
           created_at: string
-          file_id: string | null
-          id: string
+          session_id: string
           status: string
-          title: string
+          thread_id: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
-          file_id?: string | null
-          id?: string
+          session_id?: string
           status?: string
-          title: string
+          thread_id?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
-          file_id?: string | null
-          id?: string
+          session_id?: string
           status?: string
-          title?: string
+          thread_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "chat_sessions_file_id_fkey"
-            columns: ["file_id"]
-            isOneToOne: false
-            referencedRelation: "excel_files"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       excel_files: {
         Row: {
@@ -125,6 +107,7 @@ export type Database = {
           processing_status:
             | Database["public"]["Enums"]["file_processing_status"]
             | null
+          session_id: string | null
           total_chunks: number | null
           upload_progress: number | null
           user_id: string
@@ -143,6 +126,7 @@ export type Database = {
           processing_status?:
             | Database["public"]["Enums"]["file_processing_status"]
             | null
+          session_id?: string | null
           total_chunks?: number | null
           upload_progress?: number | null
           user_id: string
@@ -161,11 +145,20 @@ export type Database = {
           processing_status?:
             | Database["public"]["Enums"]["file_processing_status"]
             | null
+          session_id?: string | null
           total_chunks?: number | null
           upload_progress?: number | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "excel_files_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["session_id"]
+          },
+        ]
       }
       profiles: {
         Row: {

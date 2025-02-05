@@ -15,8 +15,8 @@ interface UseFileUploadReturn {
   resetUpload: () => void;
   fileId: string | null;
   setUploadProgress: (progress: number) => void;
-  threadId: string | null;
-  setThreadId: (id: string | null) => void;
+  sessionId: string | null;
+  setSessionId: (id: string | null) => void;
 }
 
 export const useFileUpload = (): UseFileUploadReturn => {
@@ -25,7 +25,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
-  const [threadId, setThreadId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
@@ -34,7 +34,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setUploadProgress(0);
     setError(null);
     setFileId(null);
-    setThreadId(null);
+    setSessionId(null);
   }, []);
 
   const handleFileUpload = useCallback(async (newFile: File) => {
@@ -98,14 +98,14 @@ export const useFileUpload = (): UseFileUploadReturn => {
             fileId: fileRecord.id,
             query: "Please analyze this Excel file and provide a summary of its contents.",
             userId: user.id,
-            threadId: null // This will trigger creation of a new thread
+            sessionId: null // This will trigger creation of a new session
           }
         });
 
       if (analysisError) throw analysisError;
 
       setFileId(fileRecord.id);
-      setThreadId(analysis.threadId);
+      setSessionId(analysis.sessionId);
       setFile(sanitizedFile);
       
       toast({
@@ -135,7 +135,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     resetUpload,
     fileId,
     setUploadProgress,
-    threadId,
-    setThreadId,
+    sessionId,
+    setSessionId,
   };
 };

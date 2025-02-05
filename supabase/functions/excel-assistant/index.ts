@@ -72,9 +72,30 @@ async function createThread(openai: OpenAI) {
   return thread;
 }
 
-async function handleThreadMessage(openai: OpenAI, threadId: string | null, content: string, assistant: any) {
-  let thread;
+async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, sessionId: string | null) {
+  let threadId: string | null = null;
   
+  // If we have a session ID, get the thread ID from it
+  if (sessionId) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    const { data: session, error: sessionError } = await supabase
+      .from('chat_sessions')
+      .select('thread_id')
+      .eq('session_id', sessionId)
+      .single();
+    
+    if (sessionError) {
+      console.error('Error fetching session:', sessionError);
+    } else if (session) {
+      threadId = session.thread_id;
+    }
+  }
+
+  let thread;
   if (!threadId) {
     thread = await createThread(openai);
     threadId = thread.id;
@@ -123,8 +144,8 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query, userId, threadId } = await req.json();
-    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
+    const { fileId, query, userId, sessionId } = await req.json();
+    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, sessionId });
 
     if (!fileId || !query || !userId) {
       throw new Error('Missing required fields');
@@ -139,28 +160,35 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    // Get the assistant
     const assistant = await getOrCreateAssistant(openai);
-
-    // Load Excel data if this is the initial analysis
     const excelData = await getExcelFileContent(supabase, fileId);
-    const { messages, threadId: newThreadId } = await handleThreadMessage(openai, threadId, query, assistant);
+    const { messages, threadId } = await handleThreadMessage(openai, query, assistant, sessionId);
     const lastMessage = messages.data[0];
 
     // If this is a new thread, create a chat session
-    if (!threadId) {
+    if (!sessionId) {
+      const newSessionId = crypto.randomUUID();
       const { error: sessionError } = await supabase
         .from('chat_sessions')
         .insert({
-          id: newThreadId,
+          session_id: newSessionId,
           user_id: userId,
-          file_id: fileId,
-          title: `Chat about ${fileId}`,
+          thread_id: threadId,
           status: 'active'
         });
 
       if (sessionError) {
         throw new Error(`Failed to create chat session: ${sessionError.message}`);
+      }
+
+      // Update the excel_file with the session_id
+      const { error: fileError } = await supabase
+        .from('excel_files')
+        .update({ session_id: newSessionId })
+        .eq('id', fileId);
+
+      if (fileError) {
+        throw new Error(`Failed to update excel file: ${fileError.message}`);
       }
     }
 
@@ -170,14 +198,14 @@ serve(async (req) => {
         user_id: userId,
         excel_file_id: fileId,
         content: query,
-        thread_id: newThreadId,
+        session_id: sessionId,
         is_ai_response: false
       },
       {
         user_id: userId,
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
-        thread_id: newThreadId,
+        session_id: sessionId,
         is_ai_response: true,
         openai_model: assistant.model,
         raw_response: lastMessage
@@ -188,7 +216,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId: newThreadId
+        sessionId: sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -207,3 +235,4 @@ serve(async (req) => {
     );
   }
 });
+
