@@ -16,6 +16,7 @@ interface UseFileUploadReturn {
   fileId: string | null;
   setUploadProgress: (progress: number) => void;
   threadId: string | null;
+  setThreadId: (id: string | null) => void;
 }
 
 export const useFileUpload = (): UseFileUploadReturn => {
@@ -149,5 +150,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
     fileId,
     setUploadProgress,
     threadId,
+    setThreadId,
   };
 };
