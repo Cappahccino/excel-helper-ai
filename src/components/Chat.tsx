@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,20 @@ import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
 import { ProcessingStatus } from "./ProcessingStatus";
 import { useProcessingStatus } from "@/hooks/useProcessingStatus";
+
+interface ChatMessage {
+  id: string;
+  content: string;
+  is_ai_response: boolean;
+  created_at: string;
+  excel_file_id: string;
+}
+
+interface PaginatedResponse {
+  messages: ChatMessage[];
+  nextPage: number | undefined;
+  count: number;
+}
 
 export function Chat() {
   const [message, setMessage] = useState("");
@@ -28,7 +43,7 @@ export function Chat() {
 
   const { status, error, isProcessing } = useProcessingStatus(fileId);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery({
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery<PaginatedResponse>({
     queryKey: ["chat-messages", fileId],
     queryFn: async ({ pageParam = 0 }) => {
       if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
@@ -38,15 +53,17 @@ export function Chat() {
         .select("*", { count: "exact" })
         .eq("excel_file_id", fileId)
         .order("created_at", { ascending: false })
-        .range(start, start + 20 - 1);
+        .range(start, start + 19);
 
       if (error) throw error;
       return {
-        messages: data,
+        messages: data as ChatMessage[],
         nextPage: data.length === 20 ? pageParam + 1 : undefined,
-        count,
+        count: count || 0,
       };
     },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextPage,
     enabled: !!fileId,
   });
 
