@@ -68,6 +68,23 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
 async function handleThreadMessage(openai: OpenAI, threadId: string, content: string, assistant: any) {
   console.log(`💬 Creating message in thread ${threadId}`);
   
+  // Create a new thread if threadId is not provided
+  let thread;
+  if (!threadId) {
+    thread = await openai.beta.threads.create();
+    threadId = thread.id;
+    console.log(`🆕 Created new thread: ${threadId}`);
+  } else {
+    try {
+      thread = await openai.beta.threads.retrieve(threadId);
+      console.log(`✅ Retrieved existing thread: ${threadId}`);
+    } catch (error) {
+      console.log(`❌ Thread not found, creating new one`);
+      thread = await openai.beta.threads.create();
+      threadId = thread.id;
+    }
+  }
+
   await openai.beta.threads.messages.create(threadId, {
     role: "user",
     content
@@ -96,7 +113,7 @@ async function handleThreadMessage(openai: OpenAI, threadId: string, content: st
   if (attempts >= maxAttempts) throw new Error('Analysis timed out');
   
   console.log(`✅ Run completed for thread ${threadId}`);
-  return openai.beta.threads.messages.list(threadId);
+  return { messages: await openai.beta.threads.messages.list(threadId), threadId };
 }
 
 serve(async (req) => {
@@ -111,7 +128,7 @@ serve(async (req) => {
     const { fileId, query, userId, threadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
 
-    if (!fileId || !query || !userId || !threadId) {
+    if (!fileId || !query || !userId) {
       throw new Error('Missing required fields');
     }
 
@@ -129,7 +146,7 @@ serve(async (req) => {
 
     // Load Excel data if this is the initial analysis
     const excelData = await getExcelFileContent(supabase, fileId);
-    const messages = await handleThreadMessage(openai, threadId, query, assistant);
+    const { messages, threadId: newThreadId } = await handleThreadMessage(openai, threadId, query, assistant);
     const lastMessage = messages.data[0];
 
     // Store both the user query and assistant response
@@ -138,14 +155,14 @@ serve(async (req) => {
         user_id: userId,
         excel_file_id: fileId,
         content: query,
-        thread_id: threadId,
+        thread_id: newThreadId,
         is_ai_response: false
       },
       {
         user_id: userId,
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
-        thread_id: threadId,
+        thread_id: newThreadId,
         is_ai_response: true,
         openai_model: assistant.model,
         raw_response: lastMessage
@@ -156,7 +173,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId: threadId
+        threadId: newThreadId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -175,3 +192,4 @@ serve(async (req) => {
     );
   }
 });
+
