@@ -17,6 +17,7 @@ interface UseFileUploadReturn {
   setUploadProgress: (progress: number) => void;
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
+  threadId: string | null;
 }
 
 export const useFileUpload = (): UseFileUploadReturn => {
@@ -26,6 +27,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
   const [error, setError] = useState<string | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
@@ -35,6 +37,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setError(null);
     setFileId(null);
     setSessionId(null);
+    setThreadId(null);
   }, []);
 
   const handleFileUpload = useCallback(async (newFile: File) => {
@@ -106,6 +109,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       setFileId(fileRecord.id);
       setSessionId(analysis.sessionId);
+      setThreadId(analysis.threadId);
       setFile(sanitizedFile);
       
       toast({
@@ -137,5 +141,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setUploadProgress,
     sessionId,
     setSessionId,
+    threadId,
   };
 };

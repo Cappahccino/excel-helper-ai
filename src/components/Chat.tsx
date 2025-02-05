@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,9 +30,9 @@ export function Chat() {
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery({
     queryKey: ["chat-messages", fileId],
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam = 0 }) => {
       if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
-      const start = (pageParam as number) * 20;
+      const start = pageParam * 20;
       const { data, error, count } = await supabase
         .from("chat_messages")
         .select("*", { count: "exact" })
@@ -44,12 +43,10 @@ export function Chat() {
       if (error) throw error;
       return {
         messages: data,
-        nextPage: data.length === 20 ? (pageParam as number) + 1 : undefined,
+        nextPage: data.length === 20 ? pageParam + 1 : undefined,
         count,
       };
     },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => lastPage.nextPage,
     enabled: !!fileId,
   });
 

@@ -31,7 +31,7 @@ const Chat = () => {
       const { data, error } = await supabase
         .from('chat_messages')
         .select('*')
-        .eq('thread_id', threadId)
+        .eq('excel_file_id', fileId)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
