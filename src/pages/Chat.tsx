@@ -10,7 +10,7 @@ import { ChatWindow } from "@/components/ChatWindow";
 const Chat = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const selectedThreadId = searchParams.get('thread');
+  const selectedThreadId = searchParams.get('id'); // Changed from 'thread' to 'id'
 
   const {
     file: uploadedFile,
