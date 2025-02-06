@@ -71,6 +71,18 @@ async function createThread(openai: OpenAI) {
   return thread;
 }
 
+async function fetchMessages(supabase: any, threadId: string) {
+  console.log(`📝 Fetching messages for thread: ${threadId}`);
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('session_id', threadId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
+  return data;
+}
+
 async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, threadId: string | null) {
   let thread;
   if (!threadId) {
@@ -139,6 +151,25 @@ serve(async (req) => {
   }
 
   try {
+    if (req.method === 'GET') {
+      const url = new URL(req.url);
+      const threadId = url.searchParams.get('thread');
+      
+      if (!threadId) {
+        throw new Error('Missing thread ID');
+      }
+
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      const messages = await fetchMessages(supabase, threadId);
+      return new Response(JSON.stringify({ messages }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
     const { fileId, query, userId, threadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
 
