@@ -21,6 +21,7 @@ export type Database = {
           openai_model: string | null
           openai_usage: Json | null
           raw_response: Json | null
+          role: string
           session_id: string | null
           status: string
           user_id: string
@@ -36,6 +37,7 @@ export type Database = {
           openai_model?: string | null
           openai_usage?: Json | null
           raw_response?: Json | null
+          role?: string
           session_id?: string | null
           status?: string
           user_id: string
@@ -51,6 +53,7 @@ export type Database = {
           openai_model?: string | null
           openai_usage?: Json | null
           raw_response?: Json | null
+          role?: string
           session_id?: string | null
           status?: string
           user_id?: string

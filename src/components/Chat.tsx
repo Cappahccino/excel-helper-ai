@@ -18,6 +18,7 @@ interface ChatMessage {
   is_ai_response: boolean;
   created_at: string;
   excel_file_id: string;
+  role: 'user' | 'assistant';
 }
 
 interface PaginatedResponse {
@@ -100,10 +101,6 @@ export function Chat() {
 
     try {
       setIsAnalyzing(true);
-
-      // Store user's message first
-      await storeChatMessage(fileId, message, false, threadId);
-
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("User not authenticated");
 
@@ -118,12 +115,6 @@ export function Chat() {
         });
 
       if (error) throw error;
-
-      // Store AI's response
-      if (analysis?.message) {
-        await storeChatMessage(fileId, analysis.message, true, threadId);
-      }
-
       await refetchMessages();
       setMessage("");
     } catch (error) {
@@ -173,7 +164,7 @@ export function Chat() {
                     <div
                       key={msg.id}
                       className={`p-4 rounded-lg ${
-                        msg.is_ai_response
+                        msg.role === 'assistant'
                           ? "bg-blue-50 ml-4"
                           : "bg-gray-50 mr-4"
                       }`}

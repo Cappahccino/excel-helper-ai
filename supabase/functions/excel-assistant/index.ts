@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -137,12 +138,27 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
+    // Store user's message first
+    const { error: userMessageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        user_id: userId,
+        excel_file_id: fileId,
+        content: query,
+        session_id: threadId,
+        role: 'user'
+      });
+
+    if (userMessageError) {
+      throw new Error(`Failed to store user message: ${userMessageError.message}`);
+    }
+
     const assistant = await getOrCreateAssistant(openai);
     const excelData = await getExcelFileContent(supabase, fileId);
     const { messages, threadId: newThreadId } = await handleThreadMessage(openai, query, assistant, threadId);
     const lastMessage = messages.data[0];
 
-    // Store the AI response in chat_messages
+    // Store the AI response
     const { error: messageError } = await supabase
       .from('chat_messages')
       .insert({
@@ -150,6 +166,7 @@ serve(async (req) => {
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
         session_id: threadId,
+        role: 'assistant',
         is_ai_response: true,
         openai_model: assistant.model,
         raw_response: lastMessage
