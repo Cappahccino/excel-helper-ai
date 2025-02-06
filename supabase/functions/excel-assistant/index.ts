@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -31,7 +32,7 @@ async function getOrCreateAssistant(openai: OpenAI) {
       - Highlight key findings
       - Format responses clearly
       - Maintain context from previous questions to provide more relevant follow-up responses`,
-    model: "gpt-4o",
+    model: "gpt-4o", // Updated to use the correct model name
   });
 
   console.log('✅ Created new assistant:', assistant.id);
@@ -71,18 +72,6 @@ async function createThread(openai: OpenAI) {
   return thread;
 }
 
-async function fetchMessages(supabase: any, threadId: string) {
-  console.log(`📝 Fetching messages for thread: ${threadId}`);
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .select('*')
-    .eq('session_id', threadId)
-    .order('created_at', { ascending: true });
-
-  if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
-  return data;
-}
-
 async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, threadId: string | null) {
   let thread;
   if (!threadId) {
@@ -92,7 +81,6 @@ async function handleThreadMessage(openai: OpenAI, content: string, assistant: a
   
   console.log(`💬 Creating message in thread ${threadId}`);
   
-  // Send message to OpenAI
   await openai.beta.threads.messages.create(threadId, {
     role: "user",
     content
@@ -103,7 +91,6 @@ async function handleThreadMessage(openai: OpenAI, content: string, assistant: a
     assistant_id: assistant.id,
   });
 
-  // Monitor run status with timeout
   let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
   let attempts = 0;
   const maxAttempts = 60;
@@ -223,3 +210,15 @@ serve(async (req) => {
     );
   }
 });
+
+async function fetchMessages(supabase: any, threadId: string) {
+  console.log(`📝 Fetching messages for thread: ${threadId}`);
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('session_id', threadId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
+  return data;
+}
