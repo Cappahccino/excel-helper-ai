@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -72,29 +71,7 @@ async function createThread(openai: OpenAI) {
   return thread;
 }
 
-async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, sessionId: string | null) {
-  let threadId: string | null = null;
-  
-  // If we have a session ID, get the thread ID from it
-  if (sessionId) {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    const { data: session, error: sessionError } = await supabase
-      .from('chat_sessions')
-      .select('thread_id')
-      .eq('session_id', sessionId)
-      .single();
-    
-    if (sessionError) {
-      console.error('Error fetching session:', sessionError);
-    } else if (session) {
-      threadId = session.thread_id;
-    }
-  }
-
+async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, threadId: string | null) {
   let thread;
   if (!threadId) {
     thread = await createThread(openai);
@@ -144,8 +121,8 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query, userId, sessionId } = await req.json();
-    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, sessionId });
+    const { fileId, query, userId, threadId } = await req.json();
+    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
 
     if (!fileId || !query || !userId) {
       throw new Error('Missing required fields');
@@ -162,61 +139,31 @@ serve(async (req) => {
 
     const assistant = await getOrCreateAssistant(openai);
     const excelData = await getExcelFileContent(supabase, fileId);
-    const { messages, threadId } = await handleThreadMessage(openai, query, assistant, sessionId);
+    const { messages, threadId: newThreadId } = await handleThreadMessage(openai, query, assistant, threadId);
     const lastMessage = messages.data[0];
 
-    // If this is a new thread, create a chat session
-    if (!sessionId) {
-      const newSessionId = crypto.randomUUID();
-      const { error: sessionError } = await supabase
-        .from('chat_sessions')
-        .insert({
-          session_id: newSessionId,
-          user_id: userId,
-          thread_id: threadId,
-          status: 'active'
-        });
-
-      if (sessionError) {
-        throw new Error(`Failed to create chat session: ${sessionError.message}`);
-      }
-
-      // Update the excel_file with the session_id
-      const { error: fileError } = await supabase
-        .from('excel_files')
-        .update({ session_id: newSessionId })
-        .eq('id', fileId);
-
-      if (fileError) {
-        throw new Error(`Failed to update excel file: ${fileError.message}`);
-      }
-    }
-
-    // Store both the user query and assistant response
-    await supabase.from('chat_messages').insert([
-      {
-        user_id: userId,
-        excel_file_id: fileId,
-        content: query,
-        session_id: sessionId,
-        is_ai_response: false
-      },
-      {
+    // Store the AI response in chat_messages
+    const { error: messageError } = await supabase
+      .from('chat_messages')
+      .insert({
         user_id: userId,
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
-        session_id: sessionId,
+        session_id: threadId,
         is_ai_response: true,
         openai_model: assistant.model,
         raw_response: lastMessage
-      }
-    ]);
+      });
+
+    if (messageError) {
+      throw new Error(`Failed to store chat message: ${messageError.message}`);
+    }
 
     console.log(`✅ [${requestId}] Analysis complete`);
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        sessionId: sessionId
+        threadId: newThreadId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -235,4 +182,3 @@ serve(async (req) => {
     );
   }
 });
-

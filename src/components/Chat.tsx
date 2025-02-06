@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +24,26 @@ interface PaginatedResponse {
   messages: ChatMessage[];
   nextPage: number | undefined;
   count: number;
+}
+
+async function storeChatMessage(fileId: string, content: string, isAiResponse: boolean = false, sessionId: string | null = null) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("User not authenticated");
+
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .insert([{ 
+      excel_file_id: fileId,
+      content,
+      is_ai_response: isAiResponse,
+      session_id: sessionId,
+      user_id: user.id
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 export function Chat() {
@@ -82,6 +101,9 @@ export function Chat() {
     try {
       setIsAnalyzing(true);
 
+      // Store user's message first
+      await storeChatMessage(fileId, message, false, threadId);
+
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("User not authenticated");
 
@@ -96,6 +118,11 @@ export function Chat() {
         });
 
       if (error) throw error;
+
+      // Store AI's response
+      if (analysis?.message) {
+        await storeChatMessage(fileId, analysis.message, true, threadId);
+      }
 
       await refetchMessages();
       setMessage("");
