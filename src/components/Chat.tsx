@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,12 +48,13 @@ export function Chat() {
     queryFn: async (context) => {
       const pageParam = (context.pageParam as number) ?? 0;
       if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
+      const start = pageParam * 20;
       const { data, error, count } = await supabase
         .from("chat_messages")
         .select("*", { count: "exact" })
         .eq("excel_file_id", fileId)
         .order("created_at", { ascending: false })
-        .range(pageParam * 20, pageParam * 20 + 19);
+        .range(start, start + 19);
 
       if (error) throw error;
       return {
@@ -75,7 +77,7 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId || isAnalyzing) return;
+    if (!message.trim() || !fileId || isAnalyzing || !threadId) return;
 
     try {
       setIsAnalyzing(true);
@@ -83,18 +85,13 @@ export function Chat() {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("User not authenticated");
 
-      // Ensure we have all required fields
-      if (!fileId || !message.trim() || !user.id || !threadId) {
-        throw new Error("Missing required fields for analysis");
-      }
-
       const { data: analysis, error } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
             fileId, 
-            query: message.trim(),
+            query: message,
             userId: user.id,
-            threadId
+            threadId 
           }
         });
 
@@ -102,7 +99,6 @@ export function Chat() {
 
       await refetchMessages();
       setMessage("");
-      debouncedSetMessage("");
     } catch (error) {
       console.error("Analysis error:", error);
       toast({
@@ -180,20 +176,16 @@ export function Chat() {
             <input
               type="text"
               value={message}
-              onChange={(e) => {
-                setMessage(e.target.value);
-                debouncedSetMessage(e.target.value);
-              }}
+              onChange={(e) => debouncedSetMessage(e.target.value)}
               placeholder="Ask about your Excel file..."
               className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="Message input"
-              disabled={!fileId || isUploading || isProcessing}
             />
             <Button 
               type="submit" 
               className="bg-excel hover:bg-excel/90"
               aria-label="Send message"
-              disabled={!fileId || isUploading || isProcessing || !message.trim()}
+              disabled={!fileId || isUploading || isProcessing}
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>

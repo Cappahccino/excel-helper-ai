@@ -72,7 +72,35 @@ async function createThread(openai: OpenAI) {
   return thread;
 }
 
-async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, threadId: string) {
+async function handleThreadMessage(openai: OpenAI, content: string, assistant: any, sessionId: string | null) {
+  let threadId: string | null = null;
+  
+  // If we have a session ID, get the thread ID from it
+  if (sessionId) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    const { data: session, error: sessionError } = await supabase
+      .from('chat_sessions')
+      .select('thread_id')
+      .eq('session_id', sessionId)
+      .single();
+    
+    if (sessionError) {
+      console.error('Error fetching session:', sessionError);
+    } else if (session) {
+      threadId = session.thread_id;
+    }
+  }
+
+  let thread;
+  if (!threadId) {
+    thread = await createThread(openai);
+    threadId = thread.id;
+  }
+  
   console.log(`💬 Creating message in thread ${threadId}`);
   
   await openai.beta.threads.messages.create(threadId, {
@@ -104,7 +132,7 @@ async function handleThreadMessage(openai: OpenAI, content: string, assistant: a
   
   console.log(`✅ Run completed for thread ${threadId}`);
   const messages = await openai.beta.threads.messages.list(threadId);
-  return messages;
+  return { messages, threadId };
 }
 
 serve(async (req) => {
@@ -116,19 +144,11 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    const { fileId, query, userId, threadId } = body;
-    console.log(`📝 [${requestId}] Processing request with body:`, body);
+    const { fileId, query, userId, sessionId } = await req.json();
+    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, sessionId });
 
-    // Validate all required fields
-    if (!fileId || !query || !userId || !threadId) {
-      const missingFields = [];
-      if (!fileId) missingFields.push('fileId');
-      if (!query) missingFields.push('query');
-      if (!userId) missingFields.push('userId');
-      if (!threadId) missingFields.push('threadId');
-      
-      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    if (!fileId || !query || !userId) {
+      throw new Error('Missing required fields');
     }
 
     const supabase = createClient(
@@ -142,8 +162,35 @@ serve(async (req) => {
 
     const assistant = await getOrCreateAssistant(openai);
     const excelData = await getExcelFileContent(supabase, fileId);
-    const messages = await handleThreadMessage(openai, query, assistant, threadId);
+    const { messages, threadId } = await handleThreadMessage(openai, query, assistant, sessionId);
     const lastMessage = messages.data[0];
+
+    // If this is a new thread, create a chat session
+    if (!sessionId) {
+      const newSessionId = crypto.randomUUID();
+      const { error: sessionError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          session_id: newSessionId,
+          user_id: userId,
+          thread_id: threadId,
+          status: 'active'
+        });
+
+      if (sessionError) {
+        throw new Error(`Failed to create chat session: ${sessionError.message}`);
+      }
+
+      // Update the excel_file with the session_id
+      const { error: fileError } = await supabase
+        .from('excel_files')
+        .update({ session_id: newSessionId })
+        .eq('id', fileId);
+
+      if (fileError) {
+        throw new Error(`Failed to update excel file: ${fileError.message}`);
+      }
+    }
 
     // Store both the user query and assistant response
     await supabase.from('chat_messages').insert([
@@ -151,17 +198,17 @@ serve(async (req) => {
         user_id: userId,
         excel_file_id: fileId,
         content: query,
-        is_ai_response: false,
-        thread_id: threadId
+        session_id: sessionId,
+        is_ai_response: false
       },
       {
         user_id: userId,
         excel_file_id: fileId,
         content: lastMessage.content[0].text.value,
+        session_id: sessionId,
         is_ai_response: true,
         openai_model: assistant.model,
-        raw_response: lastMessage,
-        thread_id: threadId
+        raw_response: lastMessage
       }
     ]);
 
@@ -169,7 +216,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId
+        sessionId: sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -188,3 +235,4 @@ serve(async (req) => {
     );
   }
 });
+
