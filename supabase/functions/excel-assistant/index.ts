@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -81,6 +80,7 @@ async function handleThreadMessage(openai: OpenAI, content: string, assistant: a
   
   console.log(`💬 Creating message in thread ${threadId}`);
   
+  // Send message to OpenAI
   await openai.beta.threads.messages.create(threadId, {
     role: "user",
     content
@@ -91,6 +91,7 @@ async function handleThreadMessage(openai: OpenAI, content: string, assistant: a
     assistant_id: assistant.id,
   });
 
+  // Monitor run status with timeout
   let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
   let attempts = 0;
   const maxAttempts = 60;
@@ -111,6 +112,22 @@ async function handleThreadMessage(openai: OpenAI, content: string, assistant: a
   console.log(`✅ Run completed for thread ${threadId}`);
   const messages = await openai.beta.threads.messages.list(threadId);
   return { messages, threadId };
+}
+
+async function storeChatMessage(supabase: any, userId: string, fileId: string, threadId: string, content: string, role: 'user' | 'assistant', isAiResponse = false, additionalData = {}) {
+  const { error } = await supabase
+    .from('chat_messages')
+    .insert({
+      user_id: userId,
+      excel_file_id: fileId,
+      content,
+      session_id: threadId,
+      role,
+      is_ai_response: isAiResponse,
+      ...additionalData
+    });
+
+  if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
 }
 
 serve(async (req) => {
@@ -138,20 +155,8 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    // Store user's message first
-    const { error: userMessageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        user_id: userId,
-        excel_file_id: fileId,
-        content: query,
-        session_id: threadId,
-        role: 'user'
-      });
-
-    if (userMessageError) {
-      throw new Error(`Failed to store user message: ${userMessageError.message}`);
-    }
+    // Store user's message
+    await storeChatMessage(supabase, userId, fileId, threadId, query, 'user');
 
     const assistant = await getOrCreateAssistant(openai);
     const excelData = await getExcelFileContent(supabase, fileId);
@@ -159,22 +164,10 @@ serve(async (req) => {
     const lastMessage = messages.data[0];
 
     // Store the AI response
-    const { error: messageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        user_id: userId,
-        excel_file_id: fileId,
-        content: lastMessage.content[0].text.value,
-        session_id: threadId,
-        role: 'assistant',
-        is_ai_response: true,
-        openai_model: assistant.model,
-        raw_response: lastMessage
-      });
-
-    if (messageError) {
-      throw new Error(`Failed to store chat message: ${messageError.message}`);
-    }
+    await storeChatMessage(supabase, userId, fileId, threadId, lastMessage.content[0].text.value, 'assistant', true, {
+      openai_model: assistant.model,
+      raw_response: lastMessage
+    });
 
     console.log(`✅ [${requestId}] Analysis complete`);
     return new Response(
