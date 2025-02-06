@@ -103,7 +103,6 @@ export type Database = {
           file_size: number
           filename: string
           id: string
-          last_accessed: string
           processed_chunks: number | null
           processing_completed_at: string | null
           processing_started_at: string | null
@@ -122,7 +121,6 @@ export type Database = {
           file_size: number
           filename: string
           id?: string
-          last_accessed?: string
           processed_chunks?: number | null
           processing_completed_at?: string | null
           processing_started_at?: string | null
@@ -141,7 +139,6 @@ export type Database = {
           file_size?: number
           filename?: string
           id?: string
-          last_accessed?: string
           processed_chunks?: number | null
           processing_completed_at?: string | null
           processing_started_at?: string | null
