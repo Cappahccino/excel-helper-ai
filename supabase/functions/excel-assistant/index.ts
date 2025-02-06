@@ -116,11 +116,19 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query, userId, threadId } = await req.json();
-    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
+    const body = await req.json();
+    const { fileId, query, userId, threadId } = body;
+    console.log(`📝 [${requestId}] Processing request with body:`, body);
 
+    // Validate all required fields
     if (!fileId || !query || !userId || !threadId) {
-      throw new Error('Missing required fields');
+      const missingFields = [];
+      if (!fileId) missingFields.push('fileId');
+      if (!query) missingFields.push('query');
+      if (!userId) missingFields.push('userId');
+      if (!threadId) missingFields.push('threadId');
+      
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
     }
 
     const supabase = createClient(

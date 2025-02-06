@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,13 +47,12 @@ export function Chat() {
     queryFn: async (context) => {
       const pageParam = (context.pageParam as number) ?? 0;
       if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
-      const start = pageParam * 20;
       const { data, error, count } = await supabase
         .from("chat_messages")
         .select("*", { count: "exact" })
         .eq("excel_file_id", fileId)
         .order("created_at", { ascending: false })
-        .range(start, start + 19);
+        .range(pageParam * 20, pageParam * 20 + 19);
 
       if (error) throw error;
       return {
@@ -77,7 +75,7 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId || isAnalyzing || !threadId) return;
+    if (!message.trim() || !fileId || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
@@ -85,13 +83,18 @@ export function Chat() {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("User not authenticated");
 
+      // Ensure we have all required fields
+      if (!fileId || !message.trim() || !user.id || !threadId) {
+        throw new Error("Missing required fields for analysis");
+      }
+
       const { data: analysis, error } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
             fileId, 
             query: message.trim(),
             userId: user.id,
-            threadId 
+            threadId
           }
         });
 
@@ -99,7 +102,7 @@ export function Chat() {
 
       await refetchMessages();
       setMessage("");
-      debouncedSetMessage("");  // Clear the debounced input as well
+      debouncedSetMessage("");
     } catch (error) {
       console.error("Analysis error:", error);
       toast({
