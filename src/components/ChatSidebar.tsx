@@ -29,7 +29,7 @@ export function ChatSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const currentThreadId = searchParams.get('id'); // Changed from 'thread' to 'id'
+  const currentThreadId = searchParams.get('thread');
 
   const { data: threads, isLoading } = useQuery({
     queryKey: ['chat-threads'],
@@ -56,7 +56,7 @@ export function ChatSidebar() {
   });
 
   const handleThreadClick = (threadId: string) => {
-    navigate(`/chat?id=${threadId}`); // Changed from 'thread' to 'id'
+    navigate(`/chat?thread=${threadId}`);
   };
 
   const handleNewThread = () => {
