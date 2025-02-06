@@ -18,8 +18,6 @@ export type Database = {
           id: string
           is_ai_response: boolean | null
           metadata: Json | null
-          openai_model: string | null
-          openai_usage: Json | null
           raw_response: Json | null
           role: string
           session_id: string | null
@@ -34,8 +32,6 @@ export type Database = {
           id?: string
           is_ai_response?: boolean | null
           metadata?: Json | null
-          openai_model?: string | null
-          openai_usage?: Json | null
           raw_response?: Json | null
           role?: string
           session_id?: string | null
@@ -50,8 +46,6 @@ export type Database = {
           id?: string
           is_ai_response?: boolean | null
           metadata?: Json | null
-          openai_model?: string | null
-          openai_usage?: Json | null
           raw_response?: Json | null
           role?: string
           session_id?: string | null
@@ -71,6 +65,8 @@ export type Database = {
       chat_sessions: {
         Row: {
           created_at: string
+          openai_model: string | null
+          openai_usage: Json | null
           session_id: string
           status: string
           thread_id: string | null
@@ -79,6 +75,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          openai_model?: string | null
+          openai_usage?: Json | null
           session_id?: string
           status?: string
           thread_id?: string | null
@@ -87,6 +85,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          openai_model?: string | null
+          openai_usage?: Json | null
           session_id?: string
           status?: string
           thread_id?: string | null
