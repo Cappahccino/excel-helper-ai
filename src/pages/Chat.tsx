@@ -2,13 +2,15 @@
 import { ExcelPreview } from "@/components/ExcelPreview";
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ChatWindow } from "@/components/ChatWindow";
+import { useEffect } from "react";
 
 const Chat = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
 
@@ -19,12 +21,20 @@ const Chat = () => {
     handleFileUpload,
     resetUpload,
     fileId,
+    resetAll,
   } = useFileUpload();
+
+  // Reset state when session ID changes or is removed
+  useEffect(() => {
+    if (!selectedSessionId) {
+      resetAll();
+    }
+  }, [selectedSessionId, resetAll]);
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
-        <ChatSidebar />
+        <ChatSidebar onNewChat={() => navigate('/chat')} />
         <div className="flex-1 p-4">
           <div className="w-full max-w-4xl mx-auto space-y-4">
             {/* File Upload Zone at the top */}
