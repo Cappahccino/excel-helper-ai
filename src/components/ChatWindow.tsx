@@ -118,8 +118,8 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
   const isInputDisabled = !fileId || isAnalyzing;
 
   return (
-    <div className="flex flex-col h-full">
-      <ScrollArea className="flex-1 p-4">
+    <div className="flex flex-col h-full relative">
+      <ScrollArea className="flex-1 p-4 pb-[80px]"> {/* Added padding to bottom to account for fixed input */}
         <div className="flex flex-col gap-4">
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
             <p className="text-sm">
@@ -165,8 +165,11 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
         </div>
       </ScrollArea>
       
-      <form onSubmit={handleSubmit} className="border-t p-4">
-        <div className="flex gap-2 items-center">
+      <form 
+        onSubmit={handleSubmit} 
+        className="absolute bottom-0 left-0 right-0 border-t bg-white/80 backdrop-blur-sm p-4 shadow-lg"
+      >
+        <div className="flex gap-2 items-center max-w-full">
           <input
             type="text"
             value={message}
