@@ -67,19 +67,22 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
 
 async function getOrCreateChatSession(supabase: any, userId: string, threadId: string | null, fileId: string) {
   // First try to find an existing session for this file
-  const { data: existingSession, error: findError } = await supabase
-    .from('chat_sessions')
-    .select('session_id, thread_id')
-    .eq('file_id', fileId)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single();
+  const { data: existingFile, error: findError } = await supabase
+    .from('excel_files')
+    .select('session_id')
+    .eq('id', fileId)
+    .maybeSingle();
 
-  if (findError && findError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-    throw new Error(`Failed to check existing session: ${findError.message}`);
-  }
+  if (findError) throw new Error(`Failed to check existing file: ${findError.message}`);
 
-  if (existingSession) {
+  if (existingFile?.session_id) {
+    // If the file has a session_id, get that session
+    const { data: existingSession } = await supabase
+      .from('chat_sessions')
+      .select('session_id, thread_id')
+      .eq('session_id', existingFile.session_id)
+      .single();
+
     console.log('✅ Using existing session:', existingSession.session_id);
     return {
       sessionId: existingSession.session_id,
@@ -97,13 +100,20 @@ async function getOrCreateChatSession(supabase: any, userId: string, threadId: s
     .insert({
       user_id: userId,
       thread_id: thread.id,
-      file_id: fileId,
       status: 'active'
     })
     .select('session_id')
     .single();
 
   if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
+
+  // Update the excel_file with the new session_id
+  const { error: updateError } = await supabase
+    .from('excel_files')
+    .update({ session_id: newSession.session_id })
+    .eq('id', fileId);
+
+  if (updateError) throw new Error(`Failed to update excel file: ${updateError.message}`);
   
   console.log('✅ Created new session:', newSession.session_id);
   return {

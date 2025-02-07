@@ -23,8 +23,10 @@ import {
 interface Thread {
   session_id: string;
   created_at: string;
-  file_id?: string;
-  filename?: string;
+  excel_file?: {
+    id: string;
+    filename: string;
+  } | null;
 }
 
 export function ChatSidebar() {
@@ -40,21 +42,36 @@ export function ChatSidebar() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // First, get all chat sessions
       const { data, error } = await supabase
         .from("chat_sessions")
         .select(`
           session_id,
           created_at,
-          excel_files (
-            id,
-            filename
-          )
+          thread_id
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data as Thread[];
+
+      // Then, for each session, get the associated Excel file if it exists
+      const sessionsWithFiles = await Promise.all(
+        data.map(async (session) => {
+          const { data: fileData } = await supabase
+            .from("excel_files")
+            .select("id, filename")
+            .eq("session_id", session.session_id)
+            .maybeSingle();
+
+          return {
+            ...session,
+            excel_file: fileData
+          };
+        })
+      );
+
+      return sessionsWithFiles as Thread[];
     },
   });
 
@@ -105,7 +122,7 @@ export function ChatSidebar() {
                           <MessageSquare className="h-4 w-4 text-white" />
                           <div className="flex flex-col items-start">
                             <span className="text-sm font-medium text-white">
-                              {thread.filename || 'Untitled Chat'}
+                              {thread.excel_file?.filename || 'Untitled Chat'}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {format(new Date(thread.created_at), 'MMM d, yyyy')}

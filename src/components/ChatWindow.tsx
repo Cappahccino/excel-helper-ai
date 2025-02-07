@@ -28,16 +28,26 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      const { data, error } = await supabase
-        .from('chat_sessions')
-        .select('session_id, thread_id')
-        .eq('file_id', fileId)
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .single();
+      // First check if there's an existing session for this file
+      const { data: fileData } = await supabase
+        .from('excel_files')
+        .select('session_id')
+        .eq('id', fileId)
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      if (fileData?.session_id) {
+        // If we have a session_id, get the session details
+        const { data: sessionData } = await supabase
+          .from('chat_sessions')
+          .select('session_id, thread_id')
+          .eq('session_id', fileData.session_id)
+          .single();
+
+        return sessionData;
+      }
+
+      // If no session exists, return null
+      return null;
     },
     enabled: !!fileId,
   });
@@ -49,7 +59,7 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
       
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('*, excel_file:excel_file_id(filename)')
+        .select('*, excel_files!inner(filename)')
         .eq('excel_file_id', fileId)
         .order('created_at', { ascending: true });
       
