@@ -9,6 +9,7 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { FileInfo } from "@/components/FileInfo";
 
 const Chat = () => {
   const location = useLocation();
@@ -56,6 +57,10 @@ const Chat = () => {
 
   const shouldShowUploadZone = !selectedSessionId || !sessionFile;
   const shouldShowPreview = (uploadedFile && !isUploading) || sessionFile;
+  const currentFile = sessionFile || (uploadedFile ? {
+    filename: uploadedFile.name,
+    file_size: uploadedFile.size,
+  } : null);
 
   return (
     <SidebarProvider>
@@ -63,6 +68,12 @@ const Chat = () => {
         <ChatSidebar />
         <div className="flex-1 p-4 space-y-4">
           <div className="w-full max-w-4xl mx-auto">
+            {currentFile && (
+              <FileInfo 
+                filename={currentFile.filename}
+                fileSize={currentFile.file_size}
+              />
+            )}
             {shouldShowUploadZone && (
               <FileUploadZone
                 onFileUpload={onFileUpload}
@@ -105,4 +116,3 @@ const Chat = () => {
 };
 
 export default Chat;
-

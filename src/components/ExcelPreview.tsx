@@ -11,9 +11,11 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ExcelPreviewProps {
-  file: File | null;  // Update to make file nullable
+  file?: File | null;
+  sessionFileId?: string;
 }
 
 interface PreviewData {
@@ -21,18 +23,38 @@ interface PreviewData {
   rows: any[][];
 }
 
-export function ExcelPreview({ file }: ExcelPreviewProps) {
+export function ExcelPreview({ file, sessionFileId }: ExcelPreviewProps) {
   const { toast } = useToast();
 
   const { data: previewData, isLoading } = useQuery({
-    queryKey: ['excel-preview', file?.name, file?.lastModified],
+    queryKey: ['excel-preview', file?.name, file?.lastModified, sessionFileId],
     queryFn: async (): Promise<PreviewData> => {
-      if (!file) {
+      if (!file && !sessionFileId) {
         throw new Error("No file provided");
       }
 
       try {
-        const data = await file.arrayBuffer();
+        let data;
+        if (file) {
+          data = await file.arrayBuffer();
+        } else if (sessionFileId) {
+          // Get file from Supabase storage
+          const { data: fileRecord } = await supabase
+            .from('excel_files')
+            .select('file_path')
+            .eq('id', sessionFileId)
+            .single();
+
+          if (!fileRecord) throw new Error("File not found");
+
+          const { data: fileData, error } = await supabase.storage
+            .from('excel_files')
+            .download(fileRecord.file_path);
+
+          if (error) throw error;
+          data = await fileData.arrayBuffer();
+        }
+
         const workbook = XLSX.read(data);
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
@@ -56,13 +78,13 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         throw error;
       }
     },
+    enabled: !!(file || sessionFileId),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-    enabled: !!file, // Only run query when file exists
   });
 
-  if (!file) {
-    return null; // Don't render anything if there's no file
+  if (!file && !sessionFileId) {
+    return null;
   }
 
   if (isLoading) {
@@ -84,7 +106,7 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
   return (
     <div className="rounded-lg border bg-card">
       <div className="p-4 flex justify-between items-center border-b">
-        <h3 className="font-semibold">Preview: {file.name}</h3>
+        <h3 className="font-semibold">Preview: {file?.name}</h3>
         <span className="text-sm text-muted-foreground">First 20 rows</span>
       </div>
       <div className="overflow-x-auto">
@@ -116,4 +138,3 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
     </div>
   );
 }
-
