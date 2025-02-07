@@ -79,7 +79,57 @@ export const SidebarBody = (props: React.ComponentProps<typeof motion.div>) => {
   );
 };
 
-export const DesktopSidebar = ({
+export const SidebarContent = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("flex-1", className)}>{children}</div>
+);
+
+export const SidebarHeader = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("flex items-center", className)}>{children}</div>
+);
+
+export const SidebarGroup = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("space-y-4", className)}>{children}</div>
+);
+
+export const SidebarGroupLabel = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <h3 className={cn("text-sm font-medium text-muted-foreground px-2", className)}>{children}</h3>
+);
+
+export const SidebarGroupContent = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("space-y-1", className)}>{children}</div>
+);
+
+export const SidebarMenu = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("space-y-1", className)}>{children}</div>
+);
+
+export const SidebarMenuItem = ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  <div className={cn("px-2", className)}>{children}</div>
+);
+
+export const SidebarMenuButton = ({ 
+  children, 
+  className,
+  onClick,
+  ...props
+}: { 
+  children: React.ReactNode; 
+  className?: string;
+  onClick?: () => void;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+  <button
+    className={cn(
+      "w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-accent",
+      className
+    )}
+    onClick={onClick}
+    {...props}
+  >
+    {children}
+  </button>
+);
+
+const DesktopSidebar = ({
   className,
   children,
   ...props
@@ -103,7 +153,7 @@ export const DesktopSidebar = ({
   );
 };
 
-export const MobileSidebar = ({
+const MobileSidebar = ({
   className,
   children,
 }: {
@@ -151,40 +201,5 @@ export const MobileSidebar = ({
         </AnimatePresence>
       </div>
     </>
-  );
-};
-
-export const SidebarLink = ({
-  link,
-  className,
-  onClick,
-  ...props
-}: {
-  link: Links;
-  className?: string;
-  onClick?: () => void;
-}) => {
-  const { open, animate } = useSidebar();
-  return (
-    <a
-      href={link.href}
-      className={cn(
-        "flex items-center justify-start gap-2 group/sidebar py-2",
-        className
-      )}
-      onClick={onClick}
-      {...props}
-    >
-      {link.icon}
-      <motion.span
-        animate={{
-          display: animate ? (open ? "inline-block" : "none") : "inline-block",
-          opacity: animate ? (open ? 1 : 0) : 1,
-        }}
-        className="text-white text-sm group-hover/sidebar:translate-x-1 transition duration-150 whitespace-pre"
-      >
-        {link.label}
-      </motion.span>
-    </a>
   );
 };
