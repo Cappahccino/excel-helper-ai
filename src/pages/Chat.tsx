@@ -98,7 +98,7 @@ const Chat = () => {
             )}
 
             <div className="bg-white rounded-lg shadow-sm border">
-              <div className="h-[calc(100vh-24rem)] flex flex-col">
+              <div className="h-[calc(100vh-12rem)] flex flex-col">
                 <div className="flex-1 min-h-0">
                   <ChatWindow 
                     sessionId={selectedSessionId}

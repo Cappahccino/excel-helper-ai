@@ -118,58 +118,60 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
   const isInputDisabled = !fileId || isAnalyzing;
 
   return (
-    <div className="flex flex-col h-full relative">
-      <ScrollArea className="flex-1 p-4 pb-[80px]"> {/* Added padding to bottom to account for fixed input */}
-        <div className="flex flex-col gap-4">
-          <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-            <p className="text-sm">
-              Hello! Upload an Excel file and I'll help you analyze it.
-              {fileId && " You can ask follow-up questions about your data!"}
-            </p>
-          </div>
-
-          {messagesLoading && (
-            <div className="flex items-center justify-center p-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+    <>
+      <div className="flex flex-col h-full relative">
+        <ScrollArea className="flex-1 p-4 pb-24">
+          <div className="flex flex-col gap-4">
+            <div className="bg-muted p-3 rounded-lg max-w-[80%]">
+              <p className="text-sm">
+                Hello! Upload an Excel file and I'll help you analyze it.
+                {fileId && " You can ask follow-up questions about your data!"}
+              </p>
             </div>
-          )}
 
-          {messages && messages.length > 0 && (
-            <div className="space-y-4">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`p-4 rounded-lg ${
-                    msg.role === 'assistant'
-                      ? "bg-blue-50 ml-4"
-                      : "bg-gray-50 mr-4"
-                  }`}
-                >
-                  <div className="flex flex-col gap-1">
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    <span className="text-xs text-gray-500">
-                      {formatTimestamp(msg.created_at)}
-                    </span>
+            {messagesLoading && (
+              <div className="flex items-center justify-center p-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+              </div>
+            )}
+
+            {messages && messages.length > 0 && (
+              <div className="space-y-4">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`p-4 rounded-lg ${
+                      msg.role === 'assistant'
+                        ? "bg-blue-50 ml-4"
+                        : "bg-gray-50 mr-4"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      <span className="text-xs text-gray-500">
+                        {formatTimestamp(msg.created_at)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
 
-          {isAnalyzing && (
-            <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-              <p className="text-sm">Analyzing your Excel file...</p>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+            {isAnalyzing && (
+              <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+                <p className="text-sm">Analyzing your Excel file...</p>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
       
       <form 
         onSubmit={handleSubmit} 
-        className="absolute bottom-0 left-0 right-0 border-t bg-white/80 backdrop-blur-sm p-4 shadow-lg"
+        className="fixed bottom-0 left-0 right-0 mx-auto p-4 max-w-4xl bg-white/80 backdrop-blur-sm shadow-lg border-t"
       >
-        <div className="flex gap-2 items-center max-w-full">
+        <div className="flex gap-2 items-center max-w-full px-4">
           <input
             type="text"
             value={message}
@@ -187,6 +189,6 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
           </Button>
         </div>
       </form>
-    </div>
+    </>
   );
 }
