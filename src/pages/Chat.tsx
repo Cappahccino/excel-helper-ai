@@ -26,27 +26,30 @@ const Chat = () => {
       <div className="flex min-h-screen w-full">
         <ChatSidebar />
         <div className="flex-1 p-4">
-          <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
-            <div className="h-[calc(100vh-2rem)] flex flex-col">
-              {uploadedFile && !isUploading && (
-                <div className="border-b">
-                  <div className="p-4 max-h-[40vh] overflow-y-auto">
-                    <ExcelPreview file={uploadedFile} />
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className="p-4 border-b">
-                  <FileUploadZone
-                    onFileUpload={handleFileUpload}
-                    isUploading={isUploading}
-                    uploadProgress={uploadProgress}
-                    currentFile={uploadedFile}
-                    onReset={resetUpload}
-                  />
-                </div>
+          <div className="w-full max-w-4xl mx-auto space-y-4">
+            {/* File Upload Zone at the top */}
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <FileUploadZone
+                onFileUpload={handleFileUpload}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                currentFile={uploadedFile}
+                onReset={resetUpload}
+              />
+            </div>
 
+            {/* Excel Preview below upload, only shown when there's a file */}
+            {uploadedFile && !isUploading && (
+              <div className="bg-white rounded-lg shadow-sm border">
+                <div className="p-4 max-h-[40vh] overflow-y-auto">
+                  <ExcelPreview file={uploadedFile} />
+                </div>
+              </div>
+            )}
+
+            {/* Chat Window at the bottom */}
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="h-[calc(100vh-24rem)] flex flex-col">
                 <div className="flex-1 min-h-0">
                   <ChatWindow 
                     sessionId={selectedSessionId}
@@ -63,4 +66,3 @@ const Chat = () => {
 };
 
 export default Chat;
-
