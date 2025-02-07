@@ -4,8 +4,9 @@ import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScrollArea } from "./ui/scroll-area";
+import { format } from "date-fns";
 
 interface ChatWindowProps {
   threadId: string | null;
@@ -17,18 +18,31 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
   const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: messages, isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', threadId || fileId],
     queryFn: async () => {
       if (!threadId && !fileId) return [];
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq(threadId ? 'session_id' : 'excel_file_id', threadId || fileId)
-        .order('created_at', { ascending: true });
       
-      if (error) throw error;
+      // Query both by session_id and excel_file_id to get complete history
+      let query = supabase
+        .from('chat_messages')
+        .select('*, excel_files(filename)')
+        .order('created_at', { ascending: true });
+
+      if (threadId) {
+        query = query.eq('session_id', threadId);
+      } else if (fileId) {
+        query = query.eq('excel_file_id', fileId);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching messages:', error);
+        throw error;
+      }
       return data;
     },
     enabled: !!(threadId || fileId),
@@ -56,6 +70,9 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
       if (error) throw error;
       setMessage("");
       onMessageSent?.();
+      
+      // Invalidate the messages query to refresh the chat
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', threadId || fileId] });
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
@@ -68,9 +85,13 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
     }
   };
 
+  const formatTimestamp = (timestamp: string) => {
+    return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <ScrollArea className="flex-1 p-4 h-[calc(100%-4rem)]">
+      <ScrollArea className="flex-1 p-4">
         <div className="flex flex-col gap-4">
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
             <p className="text-sm">
@@ -96,7 +117,12 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
                       : "bg-gray-50 mr-4"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <span className="text-xs text-gray-500">
+                      {formatTimestamp(msg.created_at)}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
