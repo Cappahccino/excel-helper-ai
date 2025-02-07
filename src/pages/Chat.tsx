@@ -25,20 +25,21 @@ const Chat = () => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <ChatSidebar />
-        <div className="flex-1 p-4">
-          <div className="w-full max-w-4xl mx-auto space-y-4">
-            {/* File Upload Zone at the top */}
-            <div className="bg-white rounded-lg shadow-sm border p-4">
-              <FileUploadZone
-                onFileUpload={handleFileUpload}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                currentFile={uploadedFile}
-                onReset={resetUpload}
-              />
-            </div>
+        <div className="flex-1 p-4 space-y-4">
+          {/* File Upload Zone at the top, outside of the main chat container */}
+          <div className="w-full max-w-4xl mx-auto">
+            <FileUploadZone
+              onFileUpload={handleFileUpload}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              currentFile={uploadedFile}
+              onReset={resetUpload}
+            />
+          </div>
 
-            {/* Excel Preview below upload, only shown when there's a file */}
+          {/* Main chat container with preview and messages */}
+          <div className="w-full max-w-4xl mx-auto space-y-4">
+            {/* Excel Preview, only shown when there's a file */}
             {uploadedFile && !isUploading && (
               <div className="bg-white rounded-lg shadow-sm border">
                 <div className="p-4 max-h-[40vh] overflow-y-auto">
@@ -47,7 +48,7 @@ const Chat = () => {
               </div>
             )}
 
-            {/* Chat Window at the bottom */}
+            {/* Chat Window */}
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="h-[calc(100vh-24rem)] flex flex-col">
                 <div className="flex-1 min-h-0">
