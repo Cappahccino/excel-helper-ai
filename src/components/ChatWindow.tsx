@@ -121,8 +121,8 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
   return (
     <>
       <div className="flex flex-col h-full relative">
-        <ScrollArea className="flex-1 p-4 pb-24">
-          <div className="flex flex-col gap-4">
+        <ScrollArea className="flex-1 p-4 pb-32">
+          <div className="flex flex-col gap-4 max-w-4xl mx-auto">
             <MessageContent
               content="Hello! Upload an Excel file and I'll help you analyze it."
               role="assistant"
@@ -160,28 +160,31 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
         <ScrollToTop />
       </div>
       
-      <form 
-        onSubmit={handleSubmit} 
-        className="fixed bottom-0 left-0 right-0 mx-auto p-4 max-w-4xl bg-white/80 backdrop-blur-sm shadow-lg border-t"
-      >
-        <div className="flex gap-2 items-center max-w-full px-4">
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
-            className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            disabled={isInputDisabled}
-          />
-          <Button 
-            type="submit" 
-            className="bg-excel hover:bg-excel/90"
-            disabled={isInputDisabled}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </form>
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white to-white/80 backdrop-blur-sm pb-4">
+        <form 
+          onSubmit={handleSubmit} 
+          className="max-w-4xl mx-auto px-4"
+        >
+          <div className="flex gap-2 items-center w-full bg-white/80 p-4 rounded-lg border shadow-sm">
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
+              className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm"
+              disabled={isInputDisabled}
+            />
+            <Button 
+              type="submit" 
+              size="sm"
+              className="bg-excel hover:bg-excel/90"
+              disabled={isInputDisabled}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        </form>
+      </div>
     </>
   );
 }
