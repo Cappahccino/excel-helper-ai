@@ -14,44 +14,62 @@ interface ChatWindowProps {
   onMessageSent?: () => void;
 }
 
-export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps) {
+export function ChatWindow({ threadId: initialThreadId, fileId, onMessageSent }: ChatWindowProps) {
   const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Query to get or establish session
   const { data: session } = useQuery({
     queryKey: ['chat-session', fileId],
     queryFn: async () => {
       if (!fileId) return null;
       
+      console.log('Fetching session for file:', fileId);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // First check if there's an existing session for this file
-      const { data: fileData } = await supabase
+      // First check if there's an existing session in excel_files
+      const { data: fileData, error: fileError } = await supabase
         .from('excel_files')
         .select('session_id')
         .eq('id', fileId)
         .maybeSingle();
 
+      if (fileError) {
+        console.error('Error fetching file data:', fileError);
+        throw fileError;
+      }
+
       if (fileData?.session_id) {
-        // If we have a session_id, get the session details
-        const { data: sessionData } = await supabase
+        console.log('Found existing session:', fileData.session_id);
+        // Get the session details including thread_id
+        const { data: sessionData, error: sessionError } = await supabase
           .from('chat_sessions')
           .select('session_id, thread_id')
           .eq('session_id', fileData.session_id)
-          .single();
+          .maybeSingle();
 
-        return sessionData;
+        if (sessionError) {
+          console.error('Error fetching session:', sessionError);
+          throw sessionError;
+        }
+
+        if (sessionData) {
+          console.log('Retrieved session data:', sessionData);
+          return sessionData;
+        }
       }
 
-      // If no session exists, return null
+      console.log('No existing session found');
       return null;
     },
     enabled: !!fileId,
+    retry: 1,
   });
 
+  // Query to get messages
   const { data: messages, isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', fileId, session?.session_id],
     queryFn: async () => {
@@ -81,23 +99,28 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
+      console.log('Sending analysis request with session:', session?.session_id, 'thread:', session?.thread_id);
+      
       const { data: analysis, error } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
             fileId, 
             query: message,
             userId: user.id,
-            threadId: session?.thread_id
+            threadId: session?.thread_id,
+            sessionId: session?.session_id
           }
         });
 
       if (error) throw error;
+      
       setMessage("");
       onMessageSent?.();
       
-      // Invalidate both the messages and session queries to refresh the chat
+      // Invalidate both queries to refresh the chat
       queryClient.invalidateQueries({ queryKey: ['chat-messages', fileId] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', fileId] });
+      
     } catch (error) {
       console.error('Analysis error:', error);
       toast({

@@ -65,33 +65,40 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function getOrCreateChatSession(supabase: any, userId: string, threadId: string | null, fileId: string) {
-  // First try to find an existing session for this file
-  const { data: existingFile, error: findError } = await supabase
+async function getOrCreateChatSession(supabase: any, userId: string, fileId: string, existingThreadId: string | null = null) {
+  console.log(`🔍 Checking session for file: ${fileId}`);
+
+  // First try to find an existing session through the excel_files table
+  const { data: fileData, error: fileError } = await supabase
     .from('excel_files')
     .select('session_id')
     .eq('id', fileId)
     .maybeSingle();
 
-  if (findError) throw new Error(`Failed to check existing file: ${findError.message}`);
+  if (fileError) throw new Error(`Failed to check file session: ${fileError.message}`);
 
-  if (existingFile?.session_id) {
-    // If the file has a session_id, get that session
-    const { data: existingSession } = await supabase
+  if (fileData?.session_id) {
+    // If we found a session_id, get the full session details
+    const { data: existingSession, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('session_id, thread_id')
-      .eq('session_id', existingFile.session_id)
-      .single();
+      .eq('session_id', fileData.session_id)
+      .maybeSingle();
 
-    console.log('✅ Using existing session:', existingSession.session_id);
-    return {
-      sessionId: existingSession.session_id,
-      threadId: existingSession.thread_id
-    };
+    if (sessionError) throw new Error(`Failed to get session: ${sessionError.message}`);
+
+    if (existingSession) {
+      console.log('✅ Using existing session:', existingSession.session_id);
+      return {
+        sessionId: existingSession.session_id,
+        threadId: existingSession.thread_id
+      };
+    }
   }
 
-  // If no existing session, create a new thread and session
-  const thread = threadId ? { id: threadId } : await openai.beta.threads.create();
+  // If no existing session was found or if it's invalid, create a new one
+  console.log('Creating new session and thread...');
+  const thread = existingThreadId ? { id: existingThreadId } : await openai.beta.threads.create();
   console.log('✅ Created new thread:', thread.id);
 
   // Create a new session
@@ -154,8 +161,8 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query, userId, threadId } = await req.json();
-    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
+    const { fileId, query, userId, threadId: existingThreadId } = await req.json();
+    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, existingThreadId });
 
     if (!query || !userId || !fileId) {
       throw new Error('Missing required fields');
@@ -171,7 +178,7 @@ serve(async (req) => {
     });
 
     // Get or create chat session and OpenAI thread
-    const { sessionId, threadId: openaiThreadId } = await getOrCreateChatSession(supabase, userId, threadId, fileId);
+    const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId);
     
     // Store user's message
     await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
@@ -180,18 +187,18 @@ serve(async (req) => {
     const excelData = await getExcelFileContent(supabase, fileId);
     
     // Send message to OpenAI
-    await openai.beta.threads.messages.create(openaiThreadId, {
+    await openai.beta.threads.messages.create(threadId, {
       role: "user",
       content: `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
     });
 
     // Start the analysis
-    const run = await openai.beta.threads.runs.create(openaiThreadId, {
+    const run = await openai.beta.threads.runs.create(threadId, {
       assistant_id: assistant.id,
     });
 
     // Monitor the run status
-    let runStatus = await openai.beta.threads.runs.retrieve(openaiThreadId, run.id);
+    let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
     let attempts = 0;
     const maxAttempts = 60;
     
@@ -201,7 +208,7 @@ serve(async (req) => {
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
-      runStatus = await openai.beta.threads.runs.retrieve(openaiThreadId, run.id);
+      runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
       attempts++;
       console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
     }
@@ -209,7 +216,7 @@ serve(async (req) => {
     if (attempts >= maxAttempts) throw new Error('Analysis timed out');
     
     // Get the assistant's response
-    const messages = await openai.beta.threads.messages.list(openaiThreadId);
+    const messages = await openai.beta.threads.messages.list(threadId);
     const lastMessage = messages.data[0];
 
     // Store the AI response
@@ -227,7 +234,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId: openaiThreadId,
+        threadId,
         sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
