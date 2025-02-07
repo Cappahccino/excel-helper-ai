@@ -1,3 +1,4 @@
+
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect } from "react";
@@ -36,14 +37,16 @@ export const useProcessingStatus = (fileId: string | null) => {
     },
   });
 
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates with proper cleanup
   useEffect(() => {
     if (!fileId) return;
 
+    // Create the channel with a unique name based on fileId
+    const channelName = `excel_files_${fileId}`;
     const channel = supabase
-      .channel("excel_files_updates")
+      .channel(channelName)
       .on(
-        "postgres_changes",
+        'postgres_changes',
         {
           event: "*",
           schema: "public",
@@ -73,10 +76,20 @@ export const useProcessingStatus = (fileId: string | null) => {
           await refetch();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`Subscribed to updates for file ${fileId}`);
+        }
+      });
 
+    // Cleanup function
     return () => {
-      supabase.removeChannel(channel);
+      console.log(`Unsubscribing from updates for file ${fileId}`);
+      // First unsubscribe from the channel
+      channel.unsubscribe().then(() => {
+        // Then remove the channel completely
+        supabase.removeChannel(channel);
+      });
     };
   }, [fileId, toast, refetch]);
 
