@@ -69,7 +69,7 @@ export function ChatSidebar() {
   return (
     <Collapsible
       open={!isCollapsed}
-      onOpenChange={(open) => setIsCollapsed(!open)}
+      onOpenChange={setIsCollapsed}
       className="relative"
     >
       <CollapsibleTrigger asChild>
