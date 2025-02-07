@@ -23,6 +23,7 @@ import {
 interface Thread {
   session_id: string;
   created_at: string;
+  thread_id: string;
   excel_file?: {
     id: string;
     filename: string;
@@ -42,8 +43,8 @@ export function ChatSidebar() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // First, get all chat sessions
-      const { data, error } = await supabase
+      // Get all chat sessions for the user
+      const { data: sessions, error: sessionsError } = await supabase
         .from("chat_sessions")
         .select(`
           session_id,
@@ -53,16 +54,24 @@ export function ChatSidebar() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (sessionsError) throw sessionsError;
 
-      // Then, for each session, get the associated Excel file if it exists
+      // Get associated Excel files for each session
       const sessionsWithFiles = await Promise.all(
-        data.map(async (session) => {
-          const { data: fileData } = await supabase
+        sessions.map(async (session) => {
+          const { data: fileData, error: fileError } = await supabase
             .from("excel_files")
             .select("id, filename")
             .eq("session_id", session.session_id)
             .maybeSingle();
+
+          if (fileError) {
+            console.error("Error fetching file data:", fileError);
+            return {
+              ...session,
+              excel_file: null
+            };
+          }
 
           return {
             ...session,
@@ -71,7 +80,7 @@ export function ChatSidebar() {
         })
       );
 
-      return sessionsWithFiles as Thread[];
+      return sessionsWithFiles;
     },
   });
 
