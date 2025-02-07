@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScrollArea } from "./ui/scroll-area";
 import { format } from "date-fns";
+import { MessageContent } from "./MessageContent";
+import { ScrollToTop } from "./ScrollToTop";
 
 interface ChatWindowProps {
   sessionId: string | null;
@@ -54,7 +55,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
       
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('*, excel_files(filename)')
+        .select('*, excel_files(filename, file_size)')
         .eq('session_id', session.session_id)
         .order('created_at', { ascending: true });
       
@@ -114,7 +115,6 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
     return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
 
-  // Determine if input should be enabled
   const isInputDisabled = !fileId || isAnalyzing;
 
   return (
@@ -122,12 +122,11 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
       <div className="flex flex-col h-full relative">
         <ScrollArea className="flex-1 p-4 pb-24">
           <div className="flex flex-col gap-4">
-            <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-              <p className="text-sm">
-                Hello! Upload an Excel file and I'll help you analyze it.
-                {fileId && " You can ask follow-up questions about your data!"}
-              </p>
-            </div>
+            <MessageContent
+              content="Hello! Upload an Excel file and I'll help you analyze it."
+              role="assistant"
+              timestamp={formatTimestamp(new Date().toISOString())}
+            />
 
             {messagesLoading && (
               <div className="flex items-center justify-center p-4">
@@ -138,21 +137,13 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
             {messages && messages.length > 0 && (
               <div className="space-y-4">
                 {messages.map((msg) => (
-                  <div
+                  <MessageContent
                     key={msg.id}
-                    className={`p-4 rounded-lg ${
-                      msg.role === 'assistant'
-                        ? "bg-blue-50 ml-4"
-                        : "bg-gray-50 mr-4"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-1">
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <span className="text-xs text-gray-500">
-                        {formatTimestamp(msg.created_at)}
-                      </span>
-                    </div>
-                  </div>
+                    content={msg.content}
+                    role={msg.role}
+                    timestamp={formatTimestamp(msg.created_at)}
+                    fileInfo={msg.excel_files}
+                  />
                 ))}
               </div>
             )}
@@ -165,6 +156,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
             )}
           </div>
         </ScrollArea>
+        <ScrollToTop />
       </div>
       
       <form 
