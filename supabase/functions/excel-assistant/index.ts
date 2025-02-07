@@ -65,29 +65,53 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function updateChatSession(supabase: any, sessionId: string, openaiModel: string, openaiUsage: any) {
-  const { error } = await supabase
+async function getOrCreateChatSession(supabase: any, userId: string, threadId: string, fileId: string | null = null) {
+  // First try to find an existing session
+  const { data: existingSession, error: findError } = await supabase
     .from('chat_sessions')
-    .update({
-      openai_model: openaiModel,
-      openai_usage: openaiUsage
-    })
-    .eq('session_id', sessionId);
+    .select('session_id')
+    .eq('thread_id', threadId)
+    .single();
 
-  if (error) {
-    console.error('Error updating chat session:', error);
-    throw new Error(`Failed to update chat session: ${error.message}`);
+  if (findError && findError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+    throw new Error(`Failed to check existing session: ${findError.message}`);
   }
+
+  if (existingSession) {
+    return existingSession.session_id;
+  }
+
+  // If no existing session, create a new one
+  const { data: newSession, error: createError } = await supabase
+    .from('chat_sessions')
+    .insert({
+      user_id: userId,
+      thread_id: threadId,
+      status: 'active'
+    })
+    .select('session_id')
+    .single();
+
+  if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
+  return newSession.session_id;
 }
 
-async function storeChatMessage(supabase: any, userId: string, fileId: string | null, threadId: string, content: string, role: 'user' | 'assistant', isAiResponse = false) {
+async function storeChatMessage(
+  supabase: any, 
+  userId: string, 
+  fileId: string | null, 
+  sessionId: string, 
+  content: string, 
+  role: 'user' | 'assistant',
+  isAiResponse = false
+) {
   const { error } = await supabase
     .from('chat_messages')
     .insert({
       user_id: userId,
       excel_file_id: fileId,
+      session_id: sessionId,
       content,
-      session_id: threadId,
       role,
       is_ai_response: isAiResponse
     });
@@ -120,8 +144,18 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
+    // Get or create OpenAI thread
+    let openaiThreadId = threadId;
+    if (!openaiThreadId) {
+      const thread = await openai.beta.threads.create();
+      openaiThreadId = thread.id;
+    }
+
+    // Get or create chat session
+    const sessionId = await getOrCreateChatSession(supabase, userId, openaiThreadId, fileId);
+    
     // Store user's message
-    await storeChatMessage(supabase, userId, fileId, threadId, query, 'user');
+    await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
 
     const assistant = await getOrCreateAssistant(openai);
     let excelData: ExcelData[] = [];
@@ -130,26 +164,19 @@ serve(async (req) => {
       excelData = await getExcelFileContent(supabase, fileId);
     }
 
-    // Create or use existing thread
-    let thread;
-    if (!threadId) {
-      thread = await openai.beta.threads.create();
-      threadId = thread.id;
-    }
-
     // Send message to OpenAI
-    await openai.beta.threads.messages.create(threadId, {
+    await openai.beta.threads.messages.create(openaiThreadId, {
       role: "user",
       content: fileId ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}` : query
     });
 
     // Start the analysis
-    const run = await openai.beta.threads.runs.create(threadId, {
+    const run = await openai.beta.threads.runs.create(openaiThreadId, {
       assistant_id: assistant.id,
     });
 
     // Monitor the run status
-    let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+    let runStatus = await openai.beta.threads.runs.retrieve(openaiThreadId, run.id);
     let attempts = 0;
     const maxAttempts = 60;
     
@@ -159,7 +186,7 @@ serve(async (req) => {
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
-      runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+      runStatus = await openai.beta.threads.runs.retrieve(openaiThreadId, run.id);
       attempts++;
       console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
     }
@@ -167,21 +194,15 @@ serve(async (req) => {
     if (attempts >= maxAttempts) throw new Error('Analysis timed out');
     
     // Get the assistant's response
-    const messages = await openai.beta.threads.messages.list(threadId);
+    const messages = await openai.beta.threads.messages.list(openaiThreadId);
     const lastMessage = messages.data[0];
-
-    // Update chat session with OpenAI model and usage
-    await updateChatSession(supabase, threadId, assistant.model, {
-      run_id: run.id,
-      // Add any other relevant usage data you want to track
-    });
 
     // Store the AI response
     await storeChatMessage(
       supabase,
       userId,
       fileId,
-      threadId,
+      sessionId,
       lastMessage.content[0].text.value,
       'assistant',
       true
@@ -191,7 +212,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId
+        threadId: openaiThreadId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
