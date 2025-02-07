@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -140,7 +141,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
                   <MessageContent
                     key={msg.id}
                     content={msg.content}
-                    role={msg.role}
+                    role={msg.role as 'user' | 'assistant'}
                     timestamp={formatTimestamp(msg.created_at)}
                     fileInfo={msg.excel_files}
                   />
