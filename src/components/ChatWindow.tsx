@@ -1,3 +1,4 @@
+
 import { useState, useRef } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
       
       const { data, error } = await supabase
         .from('chat_messages')
-        .select('*, excel_files(filename)')
+        .select('*, excel_files(filename, file_size)')
         .eq('session_id', session.session_id)
         .order('created_at', { ascending: true });
       
