@@ -69,6 +69,7 @@ export type Database = {
       chat_sessions: {
         Row: {
           created_at: string
+          file_id: string | null
           openai_model: string | null
           openai_usage: Json | null
           session_id: string
@@ -79,6 +80,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          file_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
           session_id?: string
@@ -89,6 +91,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          file_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
           session_id?: string
@@ -97,7 +100,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_sessions_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       excel_files: {
         Row: {

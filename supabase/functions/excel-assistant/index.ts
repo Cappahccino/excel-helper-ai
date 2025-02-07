@@ -65,12 +65,14 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function getOrCreateChatSession(supabase: any, userId: string, threadId: string, fileId: string | null = null) {
-  // First try to find an existing session
+async function getOrCreateChatSession(supabase: any, userId: string, threadId: string | null, fileId: string) {
+  // First try to find an existing session for this file
   const { data: existingSession, error: findError } = await supabase
     .from('chat_sessions')
-    .select('session_id')
-    .eq('thread_id', threadId)
+    .select('session_id, thread_id')
+    .eq('file_id', fileId)
+    .eq('user_id', userId)
+    .eq('status', 'active')
     .single();
 
   if (findError && findError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
@@ -78,28 +80,42 @@ async function getOrCreateChatSession(supabase: any, userId: string, threadId: s
   }
 
   if (existingSession) {
-    return existingSession.session_id;
+    console.log('✅ Using existing session:', existingSession.session_id);
+    return {
+      sessionId: existingSession.session_id,
+      threadId: existingSession.thread_id
+    };
   }
 
-  // If no existing session, create a new one
+  // If no existing session, create a new thread and session
+  const thread = threadId ? { id: threadId } : await openai.beta.threads.create();
+  console.log('✅ Created new thread:', thread.id);
+
+  // Create a new session
   const { data: newSession, error: createError } = await supabase
     .from('chat_sessions')
     .insert({
       user_id: userId,
-      thread_id: threadId,
+      thread_id: thread.id,
+      file_id: fileId,
       status: 'active'
     })
     .select('session_id')
     .single();
 
   if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
-  return newSession.session_id;
+  
+  console.log('✅ Created new session:', newSession.session_id);
+  return {
+    sessionId: newSession.session_id,
+    threadId: thread.id
+  };
 }
 
 async function storeChatMessage(
   supabase: any, 
   userId: string, 
-  fileId: string | null, 
+  fileId: string, 
   sessionId: string, 
   content: string, 
   role: 'user' | 'assistant',
@@ -131,7 +147,7 @@ serve(async (req) => {
     const { fileId, query, userId, threadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, threadId });
 
-    if (!query || !userId) {
+    if (!query || !userId || !fileId) {
       throw new Error('Missing required fields');
     }
 
@@ -144,30 +160,19 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    // Get or create OpenAI thread
-    let openaiThreadId = threadId;
-    if (!openaiThreadId) {
-      const thread = await openai.beta.threads.create();
-      openaiThreadId = thread.id;
-    }
-
-    // Get or create chat session
-    const sessionId = await getOrCreateChatSession(supabase, userId, openaiThreadId, fileId);
+    // Get or create chat session and OpenAI thread
+    const { sessionId, threadId: openaiThreadId } = await getOrCreateChatSession(supabase, userId, threadId, fileId);
     
     // Store user's message
     await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
 
     const assistant = await getOrCreateAssistant(openai);
-    let excelData: ExcelData[] = [];
+    const excelData = await getExcelFileContent(supabase, fileId);
     
-    if (fileId) {
-      excelData = await getExcelFileContent(supabase, fileId);
-    }
-
     // Send message to OpenAI
     await openai.beta.threads.messages.create(openaiThreadId, {
       role: "user",
-      content: fileId ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}` : query
+      content: `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
     });
 
     // Start the analysis
@@ -212,7 +217,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId: openaiThreadId
+        threadId: openaiThreadId,
+        sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

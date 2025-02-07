@@ -20,23 +20,38 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: messages, isLoading: messagesLoading } = useQuery({
-    queryKey: ['chat-messages', threadId || fileId],
+  const { data: session } = useQuery({
+    queryKey: ['chat-session', fileId],
     queryFn: async () => {
-      if (!threadId && !fileId) return [];
+      if (!fileId) return null;
       
-      let query = supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
+        .from('chat_sessions')
+        .select('session_id, thread_id')
+        .eq('file_id', fileId)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+    enabled: !!fileId,
+  });
+
+  const { data: messages, isLoading: messagesLoading } = useQuery({
+    queryKey: ['chat-messages', fileId, session?.session_id],
+    queryFn: async () => {
+      if (!fileId) return [];
+      
+      const { data, error } = await supabase
         .from('chat_messages')
         .select('*, excel_file:excel_file_id(filename)')
+        .eq('excel_file_id', fileId)
         .order('created_at', { ascending: true });
-
-      if (threadId) {
-        query = query.eq('session_id', threadId);
-      } else if (fileId) {
-        query = query.eq('excel_file_id', fileId);
-      }
-
-      const { data, error } = await query;
       
       if (error) {
         console.error('Error fetching messages:', error);
@@ -44,7 +59,7 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
       }
       return data;
     },
-    enabled: !!(threadId || fileId),
+    enabled: !!fileId,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +77,7 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
             fileId, 
             query: message,
             userId: user.id,
-            threadId
+            threadId: session?.thread_id
           }
         });
 
@@ -70,8 +85,9 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
       setMessage("");
       onMessageSent?.();
       
-      // Invalidate the messages query to refresh the chat
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', threadId || fileId] });
+      // Invalidate both the messages and session queries to refresh the chat
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', fileId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', fileId] });
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
