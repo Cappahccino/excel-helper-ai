@@ -10,7 +10,7 @@ import { ChatWindow } from "@/components/ChatWindow";
 const Chat = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const selectedThreadId = searchParams.get('thread');
+  const selectedSessionId = searchParams.get('thread');
 
   const {
     file: uploadedFile,
@@ -19,7 +19,6 @@ const Chat = () => {
     handleFileUpload,
     resetUpload,
     fileId,
-    threadId,
   } = useFileUpload();
 
   return (
@@ -47,7 +46,7 @@ const Chat = () => {
 
               <div className="flex-1 min-h-0">
                 <ChatWindow 
-                  threadId={selectedThreadId} 
+                  sessionId={selectedSessionId}
                   fileId={fileId}
                 />
               </div>
