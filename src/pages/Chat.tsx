@@ -28,8 +28,8 @@ const Chat = () => {
         <ChatSidebar />
         <div className="flex-1">
           <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
-            <div className="h-[600px] flex flex-col">
-              <div className="p-4">
+            <div className="h-[calc(100vh-4rem)] flex flex-col">
+              <div className="flex flex-col space-y-4 p-4 max-h-[40vh]">
                 <FileUploadZone
                   onFileUpload={handleFileUpload}
                   isUploading={isUploading}
@@ -45,7 +45,7 @@ const Chat = () => {
                 )}
               </div>
 
-              <div className="flex-1">
+              <div className="flex-1 min-h-0">
                 <ChatWindow 
                   threadId={selectedThreadId} 
                   fileId={fileId}
