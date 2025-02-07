@@ -4,7 +4,7 @@ import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ChatWindow } from "@/components/ChatWindow";
 
 const Chat = () => {
