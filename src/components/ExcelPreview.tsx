@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 
 interface ExcelPreviewProps {
-  file: File;
+  file: File | null;  // Update to make file nullable
 }
 
 interface PreviewData {
@@ -25,8 +25,12 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
   const { toast } = useToast();
 
   const { data: previewData, isLoading } = useQuery({
-    queryKey: ['excel-preview', file.name, file.lastModified],
+    queryKey: ['excel-preview', file?.name, file?.lastModified],
     queryFn: async (): Promise<PreviewData> => {
+      if (!file) {
+        throw new Error("No file provided");
+      }
+
       try {
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
@@ -54,7 +58,12 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+    enabled: !!file, // Only run query when file exists
   });
+
+  if (!file) {
+    return null; // Don't render anything if there's no file
+  }
 
   if (isLoading) {
     return (
@@ -107,3 +116,4 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
     </div>
   );
 }
+

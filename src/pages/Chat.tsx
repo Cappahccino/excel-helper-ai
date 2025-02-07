@@ -54,13 +54,16 @@ const Chat = () => {
     await handleFileUpload(file, selectedSessionId);
   };
 
+  const shouldShowUploadZone = !selectedSessionId || !sessionFile;
+  const shouldShowPreview = (uploadedFile && !isUploading) || sessionFile;
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <ChatSidebar />
         <div className="flex-1 p-4 space-y-4">
           <div className="w-full max-w-4xl mx-auto">
-            {(!selectedSessionId || !sessionFile) && (
+            {shouldShowUploadZone && (
               <FileUploadZone
                 onFileUpload={onFileUpload}
                 isUploading={isUploading}
@@ -72,7 +75,7 @@ const Chat = () => {
           </div>
 
           <div className="w-full max-w-4xl mx-auto space-y-4">
-            {((uploadedFile && !isUploading) || sessionFile) && (
+            {shouldShowPreview && (
               <div className="bg-white rounded-lg shadow-sm border">
                 <div className="p-4 max-h-[40vh] overflow-y-auto">
                   <ExcelPreview file={uploadedFile} />
@@ -102,3 +105,4 @@ const Chat = () => {
 };
 
 export default Chat;
+
