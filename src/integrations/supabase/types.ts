@@ -11,7 +11,6 @@ export type Database = {
     Tables: {
       chat_messages: {
         Row: {
-          chat_id: string | null
           content: string
           created_at: string
           excel_file_id: string | null
@@ -25,7 +24,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          chat_id?: string | null
           content: string
           created_at?: string
           excel_file_id?: string | null
@@ -39,7 +37,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          chat_id?: string | null
           content?: string
           created_at?: string
           excel_file_id?: string | null
