@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,30 +24,26 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
   const { data: session } = useQuery({
     queryKey: ['chat-session', sessionId, fileId],
     queryFn: async () => {
-      if (!fileId && !sessionId) return null;
+      if (!sessionId) return null;
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      if (sessionId) {
-        // Get existing session
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('chat_sessions')
-          .select('session_id, thread_id')
-          .eq('session_id', sessionId)
-          .maybeSingle();
+      // Get existing session
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('chat_sessions')
+        .select('session_id, thread_id')
+        .eq('session_id', sessionId)
+        .maybeSingle();
 
-        if (sessionError) {
-          console.error('Error fetching session:', sessionError);
-          throw sessionError;
-        }
-
-        return sessionData;
+      if (sessionError) {
+        console.error('Error fetching session:', sessionError);
+        throw sessionError;
       }
 
-      return null;
+      return sessionData;
     },
-    enabled: true,
+    enabled: !!sessionId,
   });
 
   // Query to get messages for the session
@@ -117,6 +114,9 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
     return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
 
+  // Determine if input should be enabled
+  const isInputDisabled = !fileId || isAnalyzing;
+
   return (
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 p-4">
@@ -173,12 +173,12 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
             onChange={(e) => setMessage(e.target.value)}
             placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
             className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            disabled={!fileId || isAnalyzing}
+            disabled={isInputDisabled}
           />
           <Button 
             type="submit" 
             className="bg-excel hover:bg-excel/90"
-            disabled={!fileId || isAnalyzing}
+            disabled={isInputDisabled}
           >
             <Send className="h-4 w-4" />
           </Button>

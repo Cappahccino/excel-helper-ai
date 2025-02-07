@@ -23,7 +23,7 @@ const Chat = () => {
     uploadProgress,
     handleFileUpload,
     resetUpload,
-    fileId,
+    fileId: uploadedFileId,
   } = useFileUpload();
 
   // Query to get session's file
@@ -54,6 +54,9 @@ const Chat = () => {
   const onFileUpload = async (file: File) => {
     await handleFileUpload(file, selectedSessionId);
   };
+
+  // Get the current active file ID (either from session or upload)
+  const activeFileId = sessionFile?.id || uploadedFileId;
 
   const shouldShowUploadZone = !selectedSessionId || !sessionFile;
   const shouldShowPreview = (uploadedFile && !isUploading) || sessionFile;
@@ -99,7 +102,7 @@ const Chat = () => {
                 <div className="flex-1 min-h-0">
                   <ChatWindow 
                     sessionId={selectedSessionId}
-                    fileId={fileId}
+                    fileId={activeFileId}
                     onMessageSent={() => {
                       // Refresh the session file query after a message is sent
                       // in case the file association has changed
