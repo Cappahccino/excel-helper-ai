@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
@@ -12,7 +13,6 @@ interface UseFileUploadReturn {
   error: string | null;
   handleFileUpload: (file: File) => Promise<void>;
   resetUpload: () => void;
-  resetAll: () => void;
   fileId: string | null;
   setUploadProgress: (progress: number) => void;
   sessionId: string | null;
@@ -35,14 +35,10 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setIsUploading(false);
     setUploadProgress(0);
     setError(null);
-  }, []);
-
-  const resetAll = useCallback(() => {
-    resetUpload();
     setFileId(null);
     setSessionId(null);
     setThreadId(null);
-  }, [resetUpload]);
+  }, []);
 
   const handleFileUpload = useCallback(async (newFile: File) => {
     const validation = validateFile(newFile);
@@ -141,7 +137,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
     error,
     handleFileUpload,
     resetUpload,
-    resetAll,
     fileId,
     setUploadProgress,
     sessionId,

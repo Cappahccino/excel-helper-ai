@@ -30,11 +30,7 @@ interface Thread {
   }[];
 }
 
-interface ChatSidebarProps {
-  onNewChat?: () => void;
-}
-
-export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
+export function ChatSidebar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -72,7 +68,7 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
   };
 
   const handleNewThread = () => {
-    onNewChat?.();
+    navigate("/chat");
   };
 
   return (
