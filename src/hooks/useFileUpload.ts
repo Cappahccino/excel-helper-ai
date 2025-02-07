@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +20,7 @@ interface UseFileUploadReturn {
   threadId: string | null;
 }
 
-export const useFileUpload = (currentSessionId?: string | null): UseFileUploadReturn => {
+export const useFileUpload = (): UseFileUploadReturn => {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -29,13 +29,6 @@ export const useFileUpload = (currentSessionId?: string | null): UseFileUploadRe
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const { toast } = useToast();
-
-  // Reset state when session ID changes
-  useEffect(() => {
-    if (currentSessionId === undefined || currentSessionId === null) {
-      resetUpload();
-    }
-  }, [currentSessionId]);
 
   const resetUpload = useCallback(() => {
     setFile(null);
