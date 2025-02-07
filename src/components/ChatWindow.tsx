@@ -25,10 +25,9 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
     queryFn: async () => {
       if (!threadId && !fileId) return [];
       
-      // Query both by session_id and excel_file_id to get complete history
       let query = supabase
         .from('chat_messages')
-        .select('*, excel_files(filename)')
+        .select('*, excel_file:excel_file_id(filename)')
         .order('created_at', { ascending: true });
 
       if (threadId) {
@@ -96,7 +95,7 @@ export function ChatWindow({ threadId, fileId, onMessageSent }: ChatWindowProps)
           <div className="bg-muted p-3 rounded-lg max-w-[80%]">
             <p className="text-sm">
               Hello! Upload an Excel file and I'll help you analyze it.
-              {fileId && "You can ask follow-up questions about your data!"}
+              {fileId && " You can ask follow-up questions about your data!"}
             </p>
           </div>
 

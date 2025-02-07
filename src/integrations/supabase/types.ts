@@ -57,6 +57,13 @@ export type Database = {
             referencedRelation: "chat_sessions"
             referencedColumns: ["session_id"]
           },
+          {
+            foreignKeyName: "fk_chat_messages_excel_files"
+            columns: ["excel_file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
         ]
       }
       chat_sessions: {
