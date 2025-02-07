@@ -42,16 +42,12 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
           throw sessionError;
         }
 
-        if (sessionData) {
-          console.log('Retrieved existing session:', sessionData);
-          return sessionData;
-        }
+        return sessionData;
       }
 
       return null;
     },
-    enabled: !!(sessionId || fileId),
-    retry: 1,
+    enabled: true, // Always enable the query, handle empty cases in the query function
   });
 
   // Query to get messages for the session
@@ -72,7 +68,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
       }
       return data;
     },
-    enabled: !!session?.session_id,
+    enabled: true, // Always enable the query, handle empty cases in the query function
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
