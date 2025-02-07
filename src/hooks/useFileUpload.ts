@@ -4,14 +4,12 @@ import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
-
 interface UseFileUploadReturn {
   file: File | null;
   isUploading: boolean;
   uploadProgress: number;
   error: string | null;
-  handleFileUpload: (file: File) => Promise<void>;
+  handleFileUpload: (file: File, sessionId?: string | null) => Promise<void>;
   resetUpload: () => void;
   fileId: string | null;
   setUploadProgress: (progress: number) => void;
@@ -40,7 +38,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setThreadId(null);
   }, []);
 
-  const handleFileUpload = useCallback(async (newFile: File) => {
+  const handleFileUpload = useCallback(async (newFile: File, currentSessionId?: string | null) => {
     const validation = validateFile(newFile);
     if (!validation.isValid) {
       setError(validation.error);
@@ -87,7 +85,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: "pending"
+          processing_status: "pending",
+          session_id: currentSessionId || null
         })
         .select()
         .single();
@@ -101,7 +100,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
             fileId: fileRecord.id,
             query: "Please analyze this Excel file and provide a summary of its contents.",
             userId: user.id,
-            sessionId: null // This will trigger creation of a new session
+            sessionId: currentSessionId // Use the current session if available
           }
         });
 

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,7 +46,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
 
       return null;
     },
-    enabled: true, // Always enable the query, handle empty cases in the query function
+    enabled: true,
   });
 
   // Query to get messages for the session
@@ -68,7 +67,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
       }
       return data;
     },
-    enabled: true, // Always enable the query, handle empty cases in the query function
+    enabled: !!session?.session_id,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
