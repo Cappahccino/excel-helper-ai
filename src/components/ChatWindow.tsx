@@ -26,7 +26,6 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
     queryFn: async () => {
       if (!fileId && !sessionId) return null;
       
-      console.log('Fetching session:', sessionId);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
@@ -47,29 +46,6 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
           console.log('Retrieved existing session:', sessionData);
           return sessionData;
         }
-      } else if (fileId) {
-        // Check for existing session in excel_files
-        const { data: fileData, error: fileError } = await supabase
-          .from('excel_files')
-          .select('session_id')
-          .eq('id', fileId)
-          .maybeSingle();
-
-        if (fileError) {
-          console.error('Error fetching file data:', fileError);
-          throw fileError;
-        }
-
-        if (fileData?.session_id) {
-          const { data: sessionData, error: sessionError } = await supabase
-            .from('chat_sessions')
-            .select('session_id, thread_id')
-            .eq('session_id', fileData.session_id)
-            .maybeSingle();
-
-          if (sessionError) throw sessionError;
-          if (sessionData) return sessionData;
-        }
       }
 
       return null;
@@ -79,19 +55,14 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
   });
 
   // Query to get messages for the session
-  const { data: messages, isLoading: messagesLoading } = useQuery({
+  const { data: messages = [], isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', session?.session_id],
     queryFn: async () => {
       if (!session?.session_id) return [];
       
       const { data, error } = await supabase
         .from('chat_messages')
-        .select(`
-          *,
-          excel_files (
-            filename
-          )
-        `)
+        .select('*, excel_files(filename)')
         .eq('session_id', session.session_id)
         .order('created_at', { ascending: true });
       

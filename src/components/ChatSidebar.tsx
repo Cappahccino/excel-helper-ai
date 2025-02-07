@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
-import { PlusCircle, MessageSquare, Menu, X } from "lucide-react";
+import { PlusCircle, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import {
   Sidebar,
@@ -49,38 +49,17 @@ export function ChatSidebar() {
         .select(`
           session_id,
           created_at,
-          thread_id
+          thread_id,
+          excel_files (
+            id,
+            filename
+          )
         `)
         .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+        .order("updated_at", { ascending: false });
 
       if (sessionsError) throw sessionsError;
-
-      // Get associated Excel files for each session
-      const sessionsWithFiles = await Promise.all(
-        sessions.map(async (session) => {
-          const { data: fileData, error: fileError } = await supabase
-            .from("excel_files")
-            .select("id, filename")
-            .eq("session_id", session.session_id)
-            .maybeSingle();
-
-          if (fileError) {
-            console.error("Error fetching file data:", fileError);
-            return {
-              ...session,
-              excel_file: null
-            };
-          }
-
-          return {
-            ...session,
-            excel_file: fileData
-          };
-        })
-      );
-
-      return sessionsWithFiles;
+      return sessions;
     },
   });
 
