@@ -19,7 +19,7 @@ const Chat = () => {
     handleFileUpload,
     resetUpload,
     fileId,
-  } = useFileUpload();
+  } = useFileUpload(selectedSessionId);
 
   return (
     <SidebarProvider>
