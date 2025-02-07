@@ -24,10 +24,10 @@ interface Thread {
   session_id: string;
   created_at: string;
   thread_id: string;
-  excel_file?: {
+  excel_files: {
     id: string;
     filename: string;
-  } | null;
+  }[];
 }
 
 export function ChatSidebar() {
@@ -110,7 +110,7 @@ export function ChatSidebar() {
                           <MessageSquare className="h-4 w-4 text-white" />
                           <div className="flex flex-col items-start">
                             <span className="text-sm font-medium text-white">
-                              {thread.excel_file?.filename || 'Untitled Chat'}
+                              {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {format(new Date(thread.created_at), 'MMM d, yyyy')}
