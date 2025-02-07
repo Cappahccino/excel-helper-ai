@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -23,7 +24,6 @@ interface PreviewData {
 export function ExcelPreview({ file }: ExcelPreviewProps) {
   const { toast } = useToast();
 
-  // Use React Query for caching the Excel preview data
   const { data: previewData, isLoading } = useQuery({
     queryKey: ['excel-preview', file.name, file.lastModified],
     queryFn: async (): Promise<PreviewData> => {
@@ -34,7 +34,6 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        // Ensure we have valid data
         if (!Array.isArray(jsonData) || jsonData.length === 0) {
           throw new Error("No data found in Excel file");
         }
@@ -53,8 +52,8 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         throw error;
       }
     },
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
-    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
   if (isLoading) {
@@ -80,28 +79,30 @@ export function ExcelPreview({ file }: ExcelPreviewProps) {
         <span className="text-sm text-muted-foreground">First 20 rows</span>
       </div>
       <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {previewData.headers.map((header, index) => (
-                <TableHead key={index} className="whitespace-nowrap">
-                  {header || `Column ${index + 1}`}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {previewData.rows.map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                {row.map((cell, cellIndex) => (
-                  <TableCell key={cellIndex} className="truncate max-w-[200px]">
-                    {cell?.toString() || "-"}
-                  </TableCell>
+        <div className="inline-block min-w-full align-middle">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {previewData.headers.map((header, index) => (
+                  <TableHead key={index} className="whitespace-nowrap">
+                    {header || `Column ${index + 1}`}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {previewData.rows.map((row, rowIndex) => (
+                <TableRow key={rowIndex}>
+                  {row.map((cell, cellIndex) => (
+                    <TableCell key={cellIndex} className="truncate max-w-[200px]">
+                      {cell?.toString() || "-"}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );
