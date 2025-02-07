@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -65,7 +64,7 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function getOrCreateChatSession(supabase: any, userId: string, fileId: string, existingThreadId: string | null = null) {
+async function getOrCreateChatSession(supabase: any, userId: string, fileId: string, existingThreadId: string | null = null, openai: OpenAI) {
   console.log(`🔍 Checking session for file: ${fileId}`);
 
   // First try to find an existing session through the excel_files table
@@ -178,7 +177,7 @@ serve(async (req) => {
     });
 
     // Get or create chat session and OpenAI thread
-    const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId);
+    const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId, openai);
     
     // Store user's message
     await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
