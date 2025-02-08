@@ -1,7 +1,4 @@
-
 import { useState } from "react";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +8,7 @@ import { MessageContent } from "./MessageContent";
 import { ScrollToTop } from "./ScrollToTop";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileInfo } from "./FileInfo";
+import { ChatInput } from "./ChatInput";
 
 interface ChatWindowProps {
   sessionId: string | null;
@@ -23,7 +21,6 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatWindowProps) {
-  const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -72,9 +69,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     enabled: !!session?.session_id,
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || isAnalyzing) return;
+  const handleSendMessage = async (message: string, file?: File) => {
+    if ((!message.trim() && !file) || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
@@ -96,7 +92,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
       if (error) throw error;
       
-      setMessage("");
       onMessageSent?.();
       
       // Invalidate queries to refresh the messages
@@ -187,36 +182,10 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       </div>
       
       <div className="absolute bottom-0 left-0 right-0">
-        <div className="max-w-4xl mx-auto px-4 pb-4">
-          <form onSubmit={handleSubmit} className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e as any);
-                }
-              }}
-              placeholder="Ask me anything..."
-              className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-              disabled={isAnalyzing}
-            />
-            <Button 
-              type="submit"
-              size="sm"
-              className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </form>
-        </div>
+        <ChatInput 
+          onSendMessage={handleSendMessage}
+          isAnalyzing={isAnalyzing}
+        />
       </div>
     </>
   );
