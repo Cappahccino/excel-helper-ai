@@ -25,7 +25,6 @@ const Chat = () => {
     fileId: uploadedFileId,
   } = useFileUpload();
 
-  // Query to get session's file
   const { data: sessionFile } = useQuery({
     queryKey: ['session-file', selectedSessionId],
     queryFn: async () => {
@@ -43,7 +42,6 @@ const Chat = () => {
     enabled: !!selectedSessionId,
   });
 
-  // Reset file state when navigating to a new chat
   useEffect(() => {
     if (!selectedSessionId) {
       resetUpload();
@@ -66,52 +64,54 @@ const Chat = () => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
         <ChatSidebar />
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex-1 p-4 lg:p-6 space-y-4 overflow-hidden"
-        >
-          <div className="w-full mx-auto">
-            <AnimatePresence mode="wait">
-              {shouldShowUploadZone && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <FileUploadZone
-                    onFileUpload={onFileUpload}
-                    isUploading={isUploading}
-                    uploadProgress={uploadProgress}
-                    currentFile={uploadedFile}
-                    onReset={resetUpload}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
+        <div className="flex-1 transition-all duration-300">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-white rounded-xl shadow-sm border border-gray-100"
+            className="p-4 lg:p-6 space-y-4"
           >
-            <div className="h-[calc(100vh-8rem)] flex flex-col">
-              <div className="flex-1 min-h-0">
-                <ChatWindow 
-                  sessionId={selectedSessionId}
-                  fileId={activeFileId}
-                  fileInfo={currentFile}
-                  onMessageSent={() => {
-                    // Refresh the session file query after a message is sent
-                    // in case the file association has changed
-                  }}
-                />
-              </div>
+            <div className="w-full mx-auto">
+              <AnimatePresence mode="wait">
+                {shouldShowUploadZone && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <FileUploadZone
+                      onFileUpload={onFileUpload}
+                      isUploading={isUploading}
+                      uploadProgress={uploadProgress}
+                      currentFile={uploadedFile}
+                      onReset={resetUpload}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
+
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-white rounded-xl shadow-sm border border-gray-100"
+            >
+              <div className="h-[calc(100vh-8rem)] flex flex-col relative">
+                <div className="flex-1 min-h-0">
+                  <ChatWindow 
+                    sessionId={selectedSessionId}
+                    fileId={activeFileId}
+                    fileInfo={currentFile}
+                    onMessageSent={() => {
+                      // Refresh the session file query after a message is sent
+                      // in case the file association has changed
+                    }}
+                  />
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
-        </motion.div>
+        </div>
       </div>
     </SidebarProvider>
   );

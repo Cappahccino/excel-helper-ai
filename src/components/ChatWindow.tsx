@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -205,13 +204,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         <ScrollToTop />
       </div>
       
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-2"
-      >
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="flex gap-2 items-center w-full bg-white/80 p-2 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
+      <div className="absolute bottom-0 left-0 right-0">
+        <div className="max-w-4xl mx-auto px-4 pb-4">
+          <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
             <input
               type="text"
               value={message}
@@ -236,7 +231,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             </Button>
           </div>
         </div>
-      </motion.div>
+      </div>
     </>
   );
 }
