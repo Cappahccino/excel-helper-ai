@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -116,18 +115,18 @@ const Chat = () => {
         <div className="fixed left-0 top-0 h-full z-10">
           <ChatSidebar />
         </div>
-        <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
+        <div className="flex-1 flex flex-col items-center transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex-grow flex flex-col h-[calc(100vh-80px)]"
+            className="w-full max-w-4xl mx-auto flex-grow flex flex-col h-[calc(100vh-80px)] px-4"
           >
-            <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
+            <div className="w-full flex-grow flex flex-col pt-4">
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
+                className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-6"
               >
                 {!selectedSessionId && (
                   <div className="py-6 text-center">
@@ -150,19 +149,17 @@ const Chat = () => {
                   </div>
                 </ScrollArea>
               </motion.div>
-            </div>
-          </motion.div>
 
-          <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
-            <div className="w-full max-w-7xl mx-auto px-4 pb-4">
-              <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-2">
-                <ChatInput 
-                  onSendMessage={handleSendMessage}
-                  isAnalyzing={false}
-                />
+              <div className="w-full mx-auto mb-4">
+                <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-2">
+                  <ChatInput 
+                    onSendMessage={handleSendMessage}
+                    isAnalyzing={false}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     </SidebarProvider>
