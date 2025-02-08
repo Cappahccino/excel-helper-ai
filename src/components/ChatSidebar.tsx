@@ -7,6 +7,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
 import { PlusCircle, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
 import {
   Sidebar,
   SidebarBody,
@@ -43,7 +44,6 @@ export function ChatSidebar() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Get all chat sessions for the user
       const { data: sessions, error: sessionsError } = await supabase
         .from("chat_sessions")
         .select(`
@@ -77,16 +77,26 @@ export function ChatSidebar() {
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center gap-2"
+            className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >
             <PlusCircle className="h-4 w-4" />
-            New Chat
+            <motion.span
+              animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              New Chat
+            </motion.span>
           </Button>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+            <motion.div
+              animate={{ opacity: open ? 1 : 0, height: open ? 'auto' : 0 }}
+              className="overflow-hidden"
+            >
+              <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+            </motion.div>
             <ScrollArea className="h-[calc(100vh-10rem)]">
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -107,15 +117,21 @@ export function ChatSidebar() {
                             currentThreadId === thread.session_id ? 'bg-accent' : ''
                           }`}
                         >
-                          <MessageSquare className="h-4 w-4 text-white" />
-                          <div className="flex flex-col items-start">
-                            <span className="text-sm font-medium text-white">
+                          <MessageSquare className="h-4 w-4 text-white shrink-0" />
+                          <motion.div
+                            animate={{ 
+                              opacity: open ? 1 : 0,
+                              width: open ? 'auto' : 0,
+                            }}
+                            className="flex flex-col items-start overflow-hidden"
+                          >
+                            <span className="text-sm font-medium text-white truncate">
                               {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {format(new Date(thread.created_at), 'MMM d, yyyy')}
                             </span>
-                          </div>
+                          </motion.div>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))
