@@ -70,9 +70,9 @@ const Chat = () => {
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="p-4 lg:p-6 space-y-4 h-full"
+            className="p-4 lg:p-6 space-y-4 h-full relative"
           >
-            <div className="w-full mx-auto">
+            <div className="w-full mx-auto max-w-4xl">
               <AnimatePresence mode="wait">
                 {shouldShowUploadZone && (
                   <motion.div
@@ -80,7 +80,13 @@ const Chat = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.2 }}
+                    className="mb-8"
                   >
+                    <div className="text-center mb-6">
+                      <p className="text-lg text-gray-600">
+                        Hello! Upload an Excel file and I'll help you analyze it.
+                      </p>
+                    </div>
                     <FileUploadZone
                       onFileUpload={onFileUpload}
                       isUploading={isUploading}
@@ -120,12 +126,15 @@ const Chat = () => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="max-w-4xl mx-auto"
+                  className="absolute bottom-0 left-0 right-0 max-w-4xl mx-auto px-4 pb-4"
                 >
-                  <div className="text-center mb-4">
-                    <p className="text-lg text-gray-600">
-                      Hello! Upload an Excel file and I'll help you analyze it.
-                    </p>
+                  <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
+                    <input
+                      type="text"
+                      placeholder="Ask a question about your Excel file..."
+                      className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
+                      disabled={!activeFileId}
+                    />
                   </div>
                 </motion.div>
               )}
@@ -138,4 +147,3 @@ const Chat = () => {
 };
 
 export default Chat;
-
