@@ -1,6 +1,4 @@
 
-import { FileUploadZone } from "@/components/FileUploadZone";
-import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
@@ -12,6 +10,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MessageContent } from "@/components/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { format } from "date-fns";
+import { FileUploadZone } from "@/components/FileUploadZone";
+import { useFileUpload } from "@/hooks/useFileUpload";
+import { toast } from "@/hooks/use-toast";
 
 const Chat = () => {
   const location = useLocation();
@@ -30,7 +31,7 @@ const Chat = () => {
   } = useFileUpload();
 
   // First, get the session details independently
-  const { data: session } = useQuery({
+  const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ['chat-session', selectedSessionId],
     queryFn: async () => {
       if (!selectedSessionId) return null;
@@ -54,7 +55,7 @@ const Chat = () => {
     enabled: !!selectedSessionId,
   });
 
-  // Then get messages based on session ID directly
+  // Then get messages based on session ID
   const { data: messages = [], isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', selectedSessionId],
     queryFn: async () => {
@@ -78,20 +79,8 @@ const Chat = () => {
     }
   }, [selectedSessionId, resetUpload]);
 
-  const onFileUpload = async (file: File) => {
-    await handleFileUpload(file, selectedSessionId);
-  };
-
-  const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId;
-  const currentFile = session?.excel_files?.[0] || (uploadedFile ? {
-    filename: uploadedFile.name,
-    file_size: uploadedFile.size,
-  } : null);
-
-  const showUploadZone = !selectedSessionId && !activeFileId;
-
   const handleSendMessage = async (message: string, fileId?: string | null) => {
-    if ((!message.trim() && !fileId) ) return;
+    if ((!message.trim() && !fileId)) return;
 
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -100,7 +89,7 @@ const Chat = () => {
       const { data: analysis, error } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
-            fileId: fileId || activeFileId, 
+            fileId: fileId || session?.excel_files?.[0]?.id || uploadedFileId, 
             query: message,
             userId: user.id,
             threadId: session?.thread_id,
@@ -110,17 +99,26 @@ const Chat = () => {
 
       if (error) throw error;
       
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
+      // Invalidate queries to refresh the messages
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', selectedSessionId] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId] });
       
     } catch (error) {
       console.error('Analysis error:', error);
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Failed to analyze request",
+        variant: "destructive",
+      });
     }
   };
 
   const formatTimestamp = (timestamp: string) => {
     return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
+
+  const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId;
+  const showUploadZone = !selectedSessionId && !activeFileId;
 
   return (
     <SidebarProvider>
@@ -129,7 +127,7 @@ const Chat = () => {
           <ChatSidebar />
         </div>
         <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
-          {!selectedSessionId ? (
+          {showUploadZone ? (
             <div className="flex-grow flex items-center justify-center px-4 lg:px-6">
               <div className="w-full max-w-3xl mx-auto">
                 <motion.div 
@@ -170,20 +168,26 @@ const Chat = () => {
                   exit={{ opacity: 0 }}
                   className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
                 >
-                  <ScrollArea className="flex-grow p-4">
-                    <div className="space-y-6">
-                      {messages.map((msg) => (
-                        <MessageContent
-                          key={msg.id}
-                          content={msg.content}
-                          role={msg.role as 'user' | 'assistant'}
-                          timestamp={formatTimestamp(msg.created_at)}
-                          fileInfo={msg.excel_files}
-                          sessionId={msg.session_id}
-                        />
-                      ))}
+                  {(sessionLoading || messagesLoading) ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
                     </div>
-                  </ScrollArea>
+                  ) : (
+                    <ScrollArea className="flex-grow p-4">
+                      <div className="space-y-6">
+                        {messages.map((msg) => (
+                          <MessageContent
+                            key={msg.id}
+                            content={msg.content}
+                            role={msg.role as 'user' | 'assistant'}
+                            timestamp={formatTimestamp(msg.created_at)}
+                            fileInfo={msg.excel_files}
+                            sessionId={msg.session_id}
+                          />
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
                 </motion.div>
               </div>
               <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
