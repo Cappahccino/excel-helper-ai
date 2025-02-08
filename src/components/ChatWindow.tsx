@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -122,8 +123,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   return (
     <>
       <div className="flex flex-col h-full relative">
-        <ScrollArea className="flex-1 p-4 pb-32">
-          <div className="flex flex-col gap-6">
+        <ScrollArea className="flex-1 p-2 pb-28">
+          <div className="flex flex-col gap-3">
             <AnimatePresence>
               {fileInfo && (
                 <motion.div
@@ -131,7 +132,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ duration: 0.2 }}
-                  className="mb-6"
+                  className="mb-3"
                 >
                   <FileInfo 
                     filename={fileInfo.filename}
@@ -155,7 +156,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             </motion.div>
 
             {messagesLoading && (
-              <div className="flex items-center justify-center p-4">
+              <div className="flex items-center justify-center p-2">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
               </div>
             )}
@@ -163,7 +164,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             <AnimatePresence mode="popLayout">
               {messages && messages.length > 0 && (
                 <motion.div 
-                  className="space-y-6"
+                  className="space-y-3"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
@@ -192,7 +193,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
+                  className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg ml-4"
                 >
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
                   <p className="text-sm">Analyzing your Excel file...</p>
@@ -207,13 +208,13 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-4"
+        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-2"
       >
         <form 
           onSubmit={handleSubmit} 
-          className="px-4"
+          className="px-2"
         >
-          <div className="flex gap-3 items-center w-full bg-white/80 p-4 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
+          <div className="flex gap-2 items-center w-full bg-white/80 p-2 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
               type="text"
               value={message}
