@@ -155,7 +155,7 @@ const Chat = () => {
 
           <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
             <div className="w-full max-w-7xl mx-auto px-4 pb-4">
-              <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-4">
+              <div className="bg-white shadow-sm rounded-lg">
                 <ChatInput 
                   onSendMessage={handleSendMessage}
                   isAnalyzing={false}
