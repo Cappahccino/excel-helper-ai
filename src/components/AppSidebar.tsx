@@ -7,6 +7,7 @@ import {
   CreditCard,
   Plus,
   LogOut,
+  Files,
 } from "lucide-react";
 import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar-new";
 import { useState } from "react";
@@ -21,14 +22,14 @@ const links = [
     icon: <Plus className="h-4 w-4 text-white" />,
   },
   {
-    label: "My Chats",
+    label: "Past Chats",
     href: "/chat",
     icon: <MessageSquare className="h-4 w-4 text-white" />,
   },
   {
     label: "My Files",
     href: "/files",
-    icon: <FileText className="h-4 w-4 text-white" />,
+    icon: <Files className="h-4 w-4 text-white" />,
   },
   {
     label: "Documentation",
