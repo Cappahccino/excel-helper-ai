@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -120,10 +121,10 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const isInputDisabled = !fileId || isAnalyzing;
 
   return (
-    <>
-      <div className="flex flex-col h-full relative">
-        <ScrollArea className="flex-1 p-4 pb-32">
-          <div className="flex flex-col gap-6">
+    <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        <ScrollArea className="h-full px-4">
+          <div className="py-4 space-y-6 pb-32">
             <AnimatePresence>
               {fileInfo && (
                 <motion.div
@@ -131,7 +132,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ duration: 0.2 }}
-                  className="mb-6"
                 >
                   <FileInfo 
                     filename={fileInfo.filename}
@@ -142,49 +142,37 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
               )}
             </AnimatePresence>
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <MessageContent
-                content="Hello! Upload an Excel file and I'll help you analyze it."
-                role="assistant"
-                timestamp={formatTimestamp(new Date().toISOString())}
-              />
-            </motion.div>
-
-            {messagesLoading && (
+            {messagesLoading ? (
               <div className="flex items-center justify-center p-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
               </div>
+            ) : (
+              <AnimatePresence mode="popLayout">
+                {messages && messages.length > 0 && (
+                  <motion.div 
+                    className="space-y-6"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                  >
+                    {messages.map((msg, index) => (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                      >
+                        <MessageContent
+                          content={msg.content}
+                          role={msg.role as 'user' | 'assistant'}
+                          timestamp={formatTimestamp(msg.created_at)}
+                          fileInfo={msg.excel_files}
+                        />
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             )}
-
-            <AnimatePresence mode="popLayout">
-              {messages && messages.length > 0 && (
-                <motion.div 
-                  className="space-y-6"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  {messages.map((msg, index) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      <MessageContent
-                        content={msg.content}
-                        role={msg.role as 'user' | 'assistant'}
-                        timestamp={formatTimestamp(msg.created_at)}
-                        fileInfo={msg.excel_files}
-                      />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             <AnimatePresence>
               {isAnalyzing && (
@@ -207,7 +195,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-4"
+        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pb-4 pt-8"
       >
         <form 
           onSubmit={handleSubmit} 
@@ -233,6 +221,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           </div>
         </form>
       </motion.div>
-    </>
+    </div>
   );
 }
