@@ -174,7 +174,7 @@ const Chat = () => {
           </motion.div>
 
           {/* Fixed Chat Input */}
-          <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 to-transparent pt-4">
+          <div className="fixed bottom-0 left-0 right-0 bg-gray-50">
             <div className="w-full max-w-4xl mx-auto px-4 pb-4">
               <ChatInput 
                 onSendMessage={handleSendMessage}
@@ -189,3 +189,4 @@ const Chat = () => {
 };
 
 export default Chat;
+
