@@ -173,13 +173,15 @@ const Chat = () => {
             </div>
           </motion.div>
 
-          {/* Fixed Chat Input */}
-          <div className="fixed bottom-0 left-0 right-0 bg-gray-50">
+          {/* Fixed Chat Input with floating effect */}
+          <div className="fixed bottom-0 left-0 right-0">
             <div className="w-full max-w-4xl mx-auto px-4 pb-4">
-              <ChatInput 
-                onSendMessage={handleSendMessage}
-                isAnalyzing={false}
-              />
+              <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-4">
+                <ChatInput 
+                  onSendMessage={handleSendMessage}
+                  isAnalyzing={false}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -189,4 +191,3 @@ const Chat = () => {
 };
 
 export default Chat;
-
