@@ -3,12 +3,23 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, MessageSquare, ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sidebar, SidebarBody, SidebarContent, SidebarHeader } from "./ui/sidebar-new";
-import { Tree, Folder, File } from "./ui/file-tree";
+import {
+  Sidebar,
+  SidebarBody,
+  SidebarContent,
+  SidebarHeader,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+} from "./ui/sidebar-new";
 
 interface Thread {
   session_id: string;
@@ -22,10 +33,11 @@ interface Thread {
 
 export function ChatSidebar() {
   const [open, setOpen] = useState(false);
+  const [isChatsExpanded, setIsChatsExpanded] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const currentSessionId = searchParams.get("session");
+  const currentThreadId = searchParams.get("thread");
 
   const { data: threads, isLoading } = useQuery({
     queryKey: ["chat-threads"],
@@ -52,74 +64,116 @@ export function ChatSidebar() {
     },
   });
 
-  const handleThreadClick = (sessionId: string) => {
-    navigate(`/chat?session=${sessionId}`);
+  const handleThreadClick = (threadId: string) => {
+    navigate(`/chat?thread=${threadId}`);
   };
 
   const handleNewThread = () => {
     navigate("/chat");
   };
 
+  const toggleChatsExpanded = () => {
+    setIsChatsExpanded(!isChatsExpanded);
+  };
+
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      <SidebarBody className="flex flex-col bg-[#f3f3f3]">
-        <SidebarHeader className="border-b border-gray-200 p-4">
+      <SidebarBody className="flex flex-col bg-gray-900">
+        <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center justify-center gap-2 bg-white text-black hover:bg-gray-100"
+            className="w-full flex items-center justify-center gap-2"
             variant="outline"
           >
-            <PlusCircle className="h-4 w-4 text-black" />
+            <PlusCircle className="h-4 w-4" />
             <motion.span
               animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
-              className="overflow-hidden whitespace-nowrap text-black"
+              className="overflow-hidden whitespace-nowrap"
             >
               New Chat
             </motion.span>
           </Button>
         </SidebarHeader>
         <SidebarContent>
-          <AnimatePresence>
+          <SidebarGroup>
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="h-[calc(100vh-6rem)]"
+              animate={{ opacity: open ? 1 : 0 }}
+              className="overflow-hidden"
             >
-              <Tree>
-                <Folder element="My Chats" value="chats" defaultOpen>
-                  {isLoading ? (
-                    <div className="flex items-center justify-center p-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-                    </div>
-                  ) : threads?.length === 0 ? (
-                    <div className="text-sm text-gray-600 p-4 text-center">
-                      No chats yet
-                    </div>
+              <div 
+                className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-800"
+                onClick={toggleChatsExpanded}
+              >
+                <span className="flex items-center gap-2 text-white">
+                  {isChatsExpanded ? (
+                    <>
+                      <ChevronDown className="h-4 w-4" />
+                      <FolderOpen className="h-4 w-4" />
+                    </>
                   ) : (
-                    threads?.map((thread) => (
-                      <File
-                        key={thread.session_id}
-                        value={thread.session_id}
-                        isSelect={currentSessionId === thread.session_id}
-                        onClick={() => handleThreadClick(thread.session_id)}
-                        className="cursor-pointer"
-                      >
-                        <div className="flex flex-col gap-1">
-                          <span className="text-sm font-medium text-gray-900 truncate">
-                            {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
-                          </span>
-                          <span className="text-xs text-gray-600">
-                            {format(new Date(thread.created_at), 'MMM d, yyyy')}
-                          </span>
-                        </div>
-                      </File>
-                    ))
+                    <>
+                      <ChevronRight className="h-4 w-4" />
+                      <Folder className="h-4 w-4" />
+                    </>
                   )}
-                </Folder>
-              </Tree>
+                  <span className="text-sm font-medium">My Chats</span>
+                </span>
+              </div>
             </motion.div>
-          </AnimatePresence>
+            <AnimatePresence>
+              {isChatsExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ScrollArea className="h-[calc(100vh-10rem)]">
+                    <SidebarGroupContent className="pl-8">
+                      <SidebarMenu>
+                        {isLoading ? (
+                          <div className="flex items-center justify-center p-4">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+                          </div>
+                        ) : threads?.length === 0 ? (
+                          <div className="text-sm text-muted-foreground p-4 text-center">
+                            No chats yet
+                          </div>
+                        ) : (
+                          threads?.map((thread) => (
+                            <SidebarMenuItem key={thread.session_id}>
+                              <SidebarMenuButton
+                                onClick={() => handleThreadClick(thread.session_id)}
+                                className={`w-full justify-start gap-2 ${
+                                  currentThreadId === thread.session_id ? 'bg-accent' : ''
+                                }`}
+                              >
+                                <MessageSquare className="h-4 w-4 text-white shrink-0" />
+                                <motion.div
+                                  animate={{ 
+                                    opacity: open ? 1 : 0,
+                                    width: open ? 'auto' : 0,
+                                  }}
+                                  className="flex flex-col items-start overflow-hidden"
+                                >
+                                  <span className="text-sm font-medium text-white truncate">
+                                    {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {format(new Date(thread.created_at), 'MMM d, yyyy')}
+                                  </span>
+                                </motion.div>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          ))
+                        )}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </ScrollArea>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </SidebarGroup>
         </SidebarContent>
       </SidebarBody>
     </Sidebar>

@@ -4,7 +4,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
 
 interface MessageContentProps {
   content: string;
@@ -14,26 +13,17 @@ interface MessageContentProps {
     filename: string;
     file_size: number;
   };
-  sessionId?: string;
 }
 
-export function MessageContent({ content, role, timestamp, fileInfo, sessionId }: MessageContentProps) {
+export function MessageContent({ content, role, timestamp, fileInfo }: MessageContentProps) {
   const { toast } = useToast();
-  const navigate = useNavigate();
   
-  const copyToClipboard = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent the click from triggering navigation
+  const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
       toast({
         description: "Message copied to clipboard",
       });
     });
-  };
-
-  const handleMessageClick = () => {
-    if (sessionId) {
-      navigate(`/chat?thread=${sessionId}`);
-    }
   };
 
   const getInitials = () => {
@@ -44,7 +34,7 @@ export function MessageContent({ content, role, timestamp, fileInfo, sessionId }
     role === 'assistant'
       ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200'
       : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200'
-  } ${sessionId ? 'cursor-pointer hover:bg-gray-50' : ''}`;
+  }`;
 
   return (
     <motion.div 
@@ -54,7 +44,6 @@ export function MessageContent({ content, role, timestamp, fileInfo, sessionId }
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.2 }}
       layout
-      onClick={handleMessageClick}
     >
       <Avatar className="h-8 w-8 shrink-0 shadow-sm">
         <AvatarFallback className={role === 'assistant' ? 'bg-excel text-white' : 'bg-gray-600 text-white'}>
