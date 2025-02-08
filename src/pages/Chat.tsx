@@ -113,8 +113,10 @@ const Chat = () => {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
-        <ChatSidebar />
-        <div className="flex-1 flex flex-col relative">
+        <div className="fixed left-0 top-0 h-full">
+          <ChatSidebar />
+        </div>
+        <div className="flex-1 flex flex-col relative ml-[60px]">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -173,8 +175,7 @@ const Chat = () => {
             </div>
           </motion.div>
 
-          {/* Fixed Chat Input with floating effect */}
-          <div className="fixed bottom-0 left-0 right-0">
+          <div className="fixed bottom-0 left-[60px] right-0">
             <div className="w-full max-w-4xl mx-auto px-4 pb-4">
               <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-4">
                 <ChatInput 
