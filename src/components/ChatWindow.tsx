@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -122,7 +123,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   return (
     <>
       <div className="flex flex-col h-full relative">
-        <ScrollArea className="flex-1 p-4 pb-32">
+        <ScrollArea className="flex-1 p-4 pb-24">
           <div className="flex flex-col gap-6">
             <AnimatePresence>
               {fileInfo && (
@@ -207,13 +208,13 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-4"
+        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-2"
       >
         <form 
           onSubmit={handleSubmit} 
           className="px-4"
         >
-          <div className="flex gap-3 items-center w-full bg-white/80 p-4 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
+          <div className="flex gap-2 items-center w-full max-w-3xl mx-auto bg-white/80 p-2 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
               type="text"
               value={message}
@@ -225,7 +226,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             <Button 
               type="submit" 
               size="sm"
-              className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm"
+              className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
               disabled={isInputDisabled}
             >
               <Send className="h-4 w-4" />
