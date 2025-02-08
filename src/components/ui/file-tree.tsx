@@ -206,11 +206,12 @@ type FolderProps = {
   element: string
   isSelectable?: boolean
   isSelect?: boolean
-} & FolderComponentProps
+  defaultOpen?: boolean
+} & FolderComponentProps & React.HTMLAttributes<HTMLDivElement>
 
 const Folder = forwardRef<
   HTMLDivElement,
-  FolderProps & React.HTMLAttributes<HTMLDivElement>
+  FolderProps
 >(
   (
     {
@@ -219,6 +220,7 @@ const Folder = forwardRef<
       value,
       isSelectable = true,
       isSelect,
+      defaultOpen,
       children,
       ...props
     },
@@ -233,6 +235,15 @@ const Folder = forwardRef<
       openIcon,
       closeIcon,
     } = useTree()
+
+    useEffect(() => {
+      if (defaultOpen && value && setExpandedItems) {
+        setExpandedItems(prev => {
+          if (prev?.includes(value)) return prev;
+          return [...(prev ?? []), value];
+        });
+      }
+    }, [defaultOpen, value, setExpandedItems]);
 
     return (
       <AccordionPrimitive.Item
