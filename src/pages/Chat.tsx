@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -122,56 +121,45 @@ const Chat = () => {
             animate={{ opacity: 1 }}
             className="flex-grow flex flex-col h-[calc(100vh-80px)]"
           >
-            <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6">
-              <AnimatePresence mode="wait">
-                {showUploadZone && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-6 flex flex-col justify-center items-center flex-grow"
-                  >
-                    <div className="text-center">
-                      <p className="text-lg text-gray-600">
-                        Hello! You can ask me questions directly, or upload an Excel file for analysis.
-                      </p>
-                    </div>
-                    <FileUploadZone
-                      onFileUpload={onFileUpload}
-                      isUploading={isUploading}
-                      uploadProgress={uploadProgress}
-                      currentFile={uploadedFile}
-                      onReset={resetUpload}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence mode="wait">
-                {showChatWindow && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
-                  >
-                    <ScrollArea className="flex-grow p-4">
-                      <div className="space-y-6">
-                        {messages.map((msg) => (
-                          <MessageContent
-                            key={msg.id}
-                            content={msg.content}
-                            role={msg.role as 'user' | 'assistant'}
-                            timestamp={formatTimestamp(msg.created_at)}
-                            fileInfo={msg.excel_files}
-                          />
-                        ))}
+            <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
+              >
+                <ScrollArea className="flex-grow p-4">
+                  <div className="space-y-6">
+                    {!selectedSessionId && (
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <p className="text-gray-600">
+                          Hello! You can ask me questions directly, or upload an Excel file for analysis.
+                        </p>
+                        {showUploadZone && (
+                          <div className="mt-4">
+                            <FileUploadZone
+                              onFileUpload={onFileUpload}
+                              isUploading={isUploading}
+                              uploadProgress={uploadProgress}
+                              currentFile={uploadedFile}
+                              onReset={resetUpload}
+                            />
+                          </div>
+                        )}
                       </div>
-                    </ScrollArea>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    )}
+                    {messages.map((msg) => (
+                      <MessageContent
+                        key={msg.id}
+                        content={msg.content}
+                        role={msg.role as 'user' | 'assistant'}
+                        timestamp={formatTimestamp(msg.created_at)}
+                        fileInfo={msg.excel_files}
+                      />
+                    ))}
+                  </div>
+                </ScrollArea>
+              </motion.div>
             </div>
           </motion.div>
 
@@ -192,4 +180,3 @@ const Chat = () => {
 };
 
 export default Chat;
-
