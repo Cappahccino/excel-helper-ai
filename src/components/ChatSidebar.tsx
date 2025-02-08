@@ -78,7 +78,7 @@ export function ChatSidebar() {
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      <SidebarBody className="flex flex-col bg-gray-50">
+      <SidebarBody className="flex flex-col bg-gray-100">
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
@@ -101,7 +101,7 @@ export function ChatSidebar() {
               className="overflow-hidden"
             >
               <div 
-                className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-100"
+                className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-200"
                 onClick={toggleChatsExpanded}
               >
                 <span className="flex items-center gap-2 text-black">
