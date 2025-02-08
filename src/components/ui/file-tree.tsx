@@ -1,4 +1,3 @@
-
 import React, {
   createContext,
   forwardRef,
@@ -243,7 +242,7 @@ const Folder = forwardRef<
       >
         <AccordionPrimitive.Trigger
           className={cn(
-            `flex items-center gap-1 text-sm rounded-md p-2`,
+            `flex items-center gap-1 text-sm rounded-md p-2 text-black`,
             className,
             {
               "bg-muted rounded-md": isSelect && isSelectable,
@@ -315,7 +314,7 @@ const File = forwardRef<
           disabled={!isSelectable}
           aria-label="File"
           className={cn(
-            "flex items-center gap-1 cursor-pointer text-sm p-2 rtl:pl-1 rtl:pr-0 rounded-md duration-200 ease-in-out w-full text-left",
+            "flex items-center gap-1 cursor-pointer text-sm p-2 rtl:pl-1 rtl:pr-0 rounded-md duration-200 ease-in-out w-full text-left text-black",
             {
               "bg-accent": isSelected && isSelectable,
             },
@@ -325,7 +324,7 @@ const File = forwardRef<
           onClick={() => selectItem(value)}
         >
           {fileIcon ?? <FileIcon className="size-4 text-black" />}
-          <div className="flex flex-col">
+          <div className="flex flex-col text-black">
             {children}
           </div>
         </AccordionPrimitive.Trigger>
