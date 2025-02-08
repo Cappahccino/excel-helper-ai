@@ -30,10 +30,10 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
     return role === 'assistant' ? 'AI' : 'U';
   };
 
-  const messageClassName = `p-3 rounded-xl flex ${
+  const messageClassName = `p-5 rounded-xl flex ${
     role === 'assistant'
-      ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-2 items-start shadow-sm'
-      : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-2 flex-row-reverse items-start shadow-sm'
+      ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm'
+      : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm'
   }`;
 
   return (
@@ -47,7 +47,7 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
           {getInitials()}
         </AvatarFallback>
       </Avatar>
-      <div className={`flex flex-col gap-1 ${role === 'assistant' ? 'ml-3' : 'mr-3'} flex-1`}>
+      <div className={`flex flex-col gap-2 ${role === 'assistant' ? 'ml-3' : 'mr-3'} flex-1`}>
         <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs text-gray-500">{timestamp}</span>
