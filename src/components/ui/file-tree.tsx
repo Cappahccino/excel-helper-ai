@@ -257,7 +257,7 @@ const Folder = forwardRef<
           {expandedItems?.includes(value)
             ? openIcon ?? <FolderOpenIcon className="size-4" />
             : closeIcon ?? <FolderIcon className="size-4" />}
-          <span className="text-white">{element}</span>
+          <span className="text-black">{element}</span>
         </AccordionPrimitive.Trigger>
         <AccordionPrimitive.Content className="text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down relative overflow-hidden h-full">
           {element && indicator && <TreeIndicator aria-hidden="true" />}
