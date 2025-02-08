@@ -1,7 +1,7 @@
 
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ChatWindow } from "@/components/ChatWindow";
@@ -9,11 +9,10 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
 
@@ -56,6 +55,7 @@ const Chat = () => {
   };
 
   const activeFileId = sessionFile?.id || uploadedFileId;
+
   const shouldShowUploadZone = !selectedSessionId || !sessionFile;
   const currentFile = sessionFile || (uploadedFile ? {
     filename: uploadedFile.name,
@@ -69,21 +69,17 @@ const Chat = () => {
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="flex-1 relative overflow-hidden"
+          className="flex-1 p-4 lg:p-6 space-y-4 overflow-hidden"
         >
-          <div className="p-4 lg:p-6 h-[calc(100vh-theme(spacing.16))] overflow-y-auto pb-24">
+          <div className="w-full mx-auto">
             <AnimatePresence mode="wait">
-              {shouldShowUploadZone ? (
+              {shouldShowUploadZone && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
                   transition={{ duration: 0.2 }}
-                  className="flex flex-col items-center justify-center gap-8 h-full max-w-4xl mx-auto"
                 >
-                  <h1 className="text-2xl font-semibold text-gray-800">
-                    Upload an Excel file and I'll help you analyze it
-                  </h1>
                   <FileUploadZone
                     onFileUpload={onFileUpload}
                     isUploading={isUploading}
@@ -92,25 +88,29 @@ const Chat = () => {
                     onReset={resetUpload}
                   />
                 </motion.div>
-              ) : (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="bg-white rounded-xl shadow-sm border border-gray-100 h-full"
-                >
-                  <ChatWindow 
-                    sessionId={selectedSessionId}
-                    fileId={activeFileId}
-                    fileInfo={currentFile}
-                    onMessageSent={() => {
-                      // Refresh the session file query after a message is sent
-                      // in case the file association has changed
-                    }}
-                  />
-                </motion.div>
               )}
             </AnimatePresence>
           </div>
+
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white rounded-xl shadow-sm border border-gray-100"
+          >
+            <div className="h-[calc(100vh-8rem)] flex flex-col">
+              <div className="flex-1 min-h-0">
+                <ChatWindow 
+                  sessionId={selectedSessionId}
+                  fileId={activeFileId}
+                  fileInfo={currentFile}
+                  onMessageSent={() => {
+                    // Refresh the session file query after a message is sent
+                    // in case the file association has changed
+                  }}
+                />
+              </div>
+            </div>
+          </motion.div>
         </motion.div>
       </div>
     </SidebarProvider>
