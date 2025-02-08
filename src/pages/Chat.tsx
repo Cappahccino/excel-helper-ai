@@ -5,16 +5,20 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ChatWindow } from "@/components/ChatWindow";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
+import { Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
+  const [message, setMessage] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const {
     file: uploadedFile,
@@ -62,6 +66,35 @@ const Chat = () => {
 
   const shouldShowChat = selectedSessionId || activeFileId;
 
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!message.trim() || !activeFileId || isAnalyzing) return;
+
+    try {
+      setIsAnalyzing(true);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('User not authenticated');
+      
+      const { data: analysis, error } = await supabase.functions
+        .invoke('excel-assistant', {
+          body: { 
+            fileId: activeFileId, 
+            query: message,
+            userId: user.id,
+            sessionId: selectedSessionId
+          }
+        });
+
+      if (error) throw error;
+      setMessage("");
+      
+    } catch (error) {
+      console.error('Analysis error:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
@@ -80,9 +113,9 @@ const Chat = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.2 }}
-                    className="mb-8"
+                    className="space-y-6"
                   >
-                    <div className="text-center mb-6">
+                    <div className="text-center">
                       <p className="text-lg text-gray-600">
                         Hello! Upload an Excel file and I'll help you analyze it.
                       </p>
@@ -94,13 +127,43 @@ const Chat = () => {
                       currentFile={uploadedFile}
                       onReset={resetUpload}
                     />
+                    
+                    {/* Input box below upload zone */}
+                    <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
+                      <input
+                        type="text"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSubmit();
+                          }
+                        }}
+                        placeholder={activeFileId ? "Ask a question about your Excel file..." : "Upload an Excel file to start analyzing"}
+                        className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
+                        disabled={!activeFileId || isAnalyzing}
+                      />
+                      <Button 
+                        onClick={() => handleSubmit()}
+                        size="sm"
+                        className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
+                        disabled={!activeFileId || isAnalyzing}
+                      >
+                        {isAnalyzing ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
             <AnimatePresence mode="wait">
-              {shouldShowChat ? (
+              {shouldShowChat && (
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -119,22 +182,6 @@ const Chat = () => {
                         }}
                       />
                     </div>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute bottom-0 left-0 right-0 max-w-4xl mx-auto px-4 pb-4"
-                >
-                  <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
-                    <input
-                      type="text"
-                      placeholder="Ask a question about your Excel file..."
-                      className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-                      disabled={!activeFileId}
-                    />
                   </div>
                 </motion.div>
               )}
