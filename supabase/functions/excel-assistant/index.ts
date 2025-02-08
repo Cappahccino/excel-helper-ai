@@ -33,7 +33,8 @@ async function getOrCreateAssistant(openai: OpenAI) {
       - Highlight key findings
       - Format responses clearly
       - Maintain context from previous questions
-      - Be helpful even without Excel data`,
+      - Be helpful even without Excel data
+      - For each analysis, suggest a brief, descriptive title (max 50 chars) in this format: [TITLE]: Your Title Here`,
     model: "gpt-4-turbo",
   });
 
@@ -149,6 +150,24 @@ async function storeChatMessage(
   if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
 }
 
+async function updateChatName(supabase: any, sessionId: string, content: string) {
+  const titleMatch = content.match(/\[TITLE\]:\s*([^\n]+)/);
+  if (titleMatch) {
+    const chatName = titleMatch[1].trim();
+    const { error } = await supabase
+      .from('chat_sessions')
+      .update({ chat_name: chatName })
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('Failed to update chat name:', error);
+      return null;
+    }
+    return chatName;
+  }
+  return null;
+}
+
 serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] New request received`);
@@ -161,8 +180,11 @@ serve(async (req) => {
     const { fileId, query, userId, threadId: existingThreadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, existingThreadId });
 
-    if (!query || !userId) {
-      throw new Error('Missing required fields');
+    if (!query && !fileId) {
+      throw new Error('Either query or fileId is required');
+    }
+    if (!userId) {
+      throw new Error('Missing userId');
     }
 
     const supabase = createClient(
@@ -177,8 +199,14 @@ serve(async (req) => {
     // Get or create chat session and OpenAI thread
     const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId, openai);
     
+    // Prepare the user's message with a title request if it's a new session
+    let userMessage = query || '';
+    if (!existingThreadId) {
+      userMessage += "\n\nBased on our conversation, please suggest a brief, meaningful title (max 50 characters) in the format [TITLE]: Your Title Here";
+    }
+
     // Store user's message
-    await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
+    await storeChatMessage(supabase, userId, fileId, sessionId, query || '', 'user');
 
     const assistant = await getOrCreateAssistant(openai);
     const excelData = await getExcelFileContent(supabase, fileId);
@@ -187,8 +215,8 @@ serve(async (req) => {
     await openai.beta.threads.messages.create(threadId, {
       role: "user",
       content: excelData 
-        ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
-        : query
+        ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${userMessage}`
+        : userMessage
     });
 
     // Start the analysis
@@ -217,6 +245,13 @@ serve(async (req) => {
     // Get the assistant's response
     const messages = await openai.beta.threads.messages.list(threadId);
     const lastMessage = messages.data[0];
+    const messageContent = lastMessage.content[0].text.value;
+
+    // Update chat name if title is present
+    const chatName = await updateChatName(supabase, sessionId, messageContent);
+    
+    // Remove the title from the response if present
+    const cleanedContent = messageContent.replace(/\[TITLE\]:[^\n]+\n?/, '').trim();
 
     // Store the AI response
     await storeChatMessage(
@@ -224,17 +259,18 @@ serve(async (req) => {
       userId,
       fileId,
       sessionId,
-      lastMessage.content[0].text.value,
+      cleanedContent,
       'assistant',
       true
     );
 
-    console.log(`✅ [${requestId}] Analysis complete`);
+    console.log(`✅ [${requestId}] Analysis complete${chatName ? `, chat named: ${chatName}` : ''}`);
     return new Response(
       JSON.stringify({ 
-        message: lastMessage.content[0].text.value,
+        message: cleanedContent,
         threadId,
-        sessionId
+        sessionId,
+        chatName
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -253,3 +289,4 @@ serve(async (req) => {
     );
   }
 });
+
