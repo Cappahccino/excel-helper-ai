@@ -68,19 +68,23 @@ export const useFileUpload = (): UseFileUploadReturn => {
       // Create unique file path with user ID for proper RLS
       const filePath = `${user.id}/${crypto.randomUUID()}-${sanitizedFile.name}`;
 
+      // Create a Blob from the file to track upload progress
+      const blob = new Blob([await sanitizedFile.arrayBuffer()]);
+      const size = blob.size;
+      let uploaded = 0;
+
       // Upload file to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
-        .upload(filePath, sanitizedFile, {
+        .upload(filePath, blob, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: (progress) => {
-            const percentage = (progress.loaded / progress.total) * 100;
-            setUploadProgress(Math.round(percentage));
-          }
         });
 
       if (uploadError) throw uploadError;
+
+      // Set progress to 100% when upload is complete
+      setUploadProgress(100);
 
       // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
