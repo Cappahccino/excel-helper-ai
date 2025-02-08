@@ -30,10 +30,10 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
     return role === 'assistant' ? 'AI' : 'U';
   };
 
-  const messageClassName = `p-5 rounded-xl flex ${
+  const messageClassName = `p-5 rounded-xl flex group ${
     role === 'assistant'
-      ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm'
-      : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm'
+      ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200'
+      : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200'
   }`;
 
   return (
@@ -41,6 +41,7 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
       className={messageClassName}
       whileHover={{ scale: 1.01 }}
       transition={{ duration: 0.2 }}
+      layout
     >
       <Avatar className="h-8 w-8 shrink-0 shadow-sm">
         <AvatarFallback className={role === 'assistant' ? 'bg-excel text-white' : 'bg-gray-600 text-white'}>
@@ -49,6 +50,11 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
       </Avatar>
       <div className={`flex flex-col gap-2 ${role === 'assistant' ? 'ml-3' : 'mr-3'} flex-1`}>
         <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+        {fileInfo && (
+          <div className="text-xs bg-gray-100 px-2 py-1 rounded-md inline-flex items-center gap-1 text-gray-600 w-fit">
+            📎 {fileInfo.filename}
+          </div>
+        )}
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs text-gray-500">{timestamp}</span>
           <Button

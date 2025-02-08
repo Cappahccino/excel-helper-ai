@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,11 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const { data: session } = useQuery({
     queryKey: ['chat-session', sessionId, fileId],
@@ -68,6 +74,11 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     },
     enabled: !!session?.session_id,
   });
+
+  // Auto-scroll when new messages are added
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleSendMessage = async (message: string, file?: File) => {
     if ((!message.trim() && !file) || isAnalyzing) return;
@@ -159,6 +170,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                       />
                     </motion.div>
                   ))}
+                  <div ref={messagesEndRef} />
                 </motion.div>
               )}
             </AnimatePresence>
