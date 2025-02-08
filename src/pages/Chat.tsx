@@ -9,6 +9,8 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
+import { Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const location = useLocation();
@@ -69,7 +71,7 @@ const Chat = () => {
           animate={{ opacity: 1 }}
           className="flex-1 relative overflow-hidden"
         >
-          <div className="p-4 lg:p-6 h-[calc(100vh-theme(spacing.16))] overflow-y-auto">
+          <div className="p-4 lg:p-6 h-[calc(100vh-theme(spacing.16))] overflow-y-auto pb-24">
             <AnimatePresence mode="wait">
               {shouldShowUploadZone ? (
                 <motion.div

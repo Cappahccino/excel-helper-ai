@@ -124,7 +124,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 overflow-hidden relative">
         <ScrollArea className="h-full px-4">
-          <div className="py-4 space-y-6 pb-32">
+          <div className="py-4 space-y-6">
             <AnimatePresence>
               {fileInfo && (
                 <motion.div
@@ -192,14 +192,10 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         <ScrollToTop />
       </div>
       
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pb-4 pt-8"
-      >
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pb-4 pt-8 px-4">
         <form 
           onSubmit={handleSubmit} 
-          className="px-4"
+          className="max-w-4xl mx-auto"
         >
           <div className="flex gap-3 items-center w-full bg-white/80 p-4 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
@@ -220,7 +216,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             </Button>
           </div>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }
