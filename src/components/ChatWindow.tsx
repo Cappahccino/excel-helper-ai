@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +27,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Query to get or establish session
   const { data: session } = useQuery({
     queryKey: ['chat-session', sessionId, fileId],
     queryFn: async () => {
@@ -37,7 +35,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Get existing session
       const { data: sessionData, error: sessionError } = await supabase
         .from('chat_sessions')
         .select('session_id, thread_id')
@@ -54,7 +51,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     enabled: !!sessionId,
   });
 
-  // Query to get messages for the session
   const { data: messages = [], isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', session?.session_id],
     queryFn: async () => {
@@ -102,7 +98,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       setMessage("");
       onMessageSent?.();
       
-      // Invalidate both queries to refresh the chat
       queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId, fileId] });
       
@@ -141,6 +136,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   <FileInfo 
                     filename={fileInfo.filename}
                     fileSize={fileInfo.file_size}
+                    fileId={fileId || undefined}
                   />
                 </motion.div>
               )}

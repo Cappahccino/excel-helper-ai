@@ -1,5 +1,4 @@
 
-import { ExcelPreview } from "@/components/ExcelPreview";
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -58,7 +57,6 @@ const Chat = () => {
   const activeFileId = sessionFile?.id || uploadedFileId;
 
   const shouldShowUploadZone = !selectedSessionId || !sessionFile;
-  const shouldShowPreview = (uploadedFile && !isUploading) || sessionFile;
   const currentFile = sessionFile || (uploadedFile ? {
     filename: uploadedFile.name,
     file_size: uploadedFile.size,
@@ -94,43 +92,25 @@ const Chat = () => {
             </AnimatePresence>
           </div>
 
-          <div className="w-full mx-auto space-y-4">
-            <AnimatePresence mode="wait">
-              {shouldShowPreview && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                  className="bg-white rounded-xl shadow-sm border border-gray-100"
-                >
-                  <div className="p-4 max-h-[40vh] overflow-y-auto custom-scrollbar">
-                    <ExcelPreview file={uploadedFile} />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="bg-white rounded-xl shadow-sm border border-gray-100"
-            >
-              <div className="h-[calc(100vh-8rem)] flex flex-col">
-                <div className="flex-1 min-h-0">
-                  <ChatWindow 
-                    sessionId={selectedSessionId}
-                    fileId={activeFileId}
-                    fileInfo={currentFile}
-                    onMessageSent={() => {
-                      // Refresh the session file query after a message is sent
-                      // in case the file association has changed
-                    }}
-                  />
-                </div>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white rounded-xl shadow-sm border border-gray-100"
+          >
+            <div className="h-[calc(100vh-8rem)] flex flex-col">
+              <div className="flex-1 min-h-0">
+                <ChatWindow 
+                  sessionId={selectedSessionId}
+                  fileId={activeFileId}
+                  fileInfo={currentFile}
+                  onMessageSent={() => {
+                    // Refresh the session file query after a message is sent
+                    // in case the file association has changed
+                  }}
+                />
               </div>
-            </motion.div>
-          </div>
+            </div>
+          </motion.div>
         </motion.div>
       </div>
     </SidebarProvider>

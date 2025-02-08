@@ -1,12 +1,16 @@
 
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, Table } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ExcelPreview } from "./ExcelPreview";
 
 interface FileInfoProps {
   filename: string;
   fileSize?: number;
+  fileId?: string;
 }
 
-export function FileInfo({ filename, fileSize }: FileInfoProps) {
+export function FileInfo({ filename, fileSize, fileId }: FileInfoProps) {
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
     if (bytes === 0) return '0 Bytes';
@@ -29,6 +33,28 @@ export function FileInfo({ filename, fileSize }: FileInfoProps) {
           )}
         </div>
       </div>
+      {fileId && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700"
+            >
+              <Table className="w-4 h-4 mr-2" />
+              View Data
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Preview: {filename}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-hidden">
+              <ExcelPreview sessionFileId={fileId} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

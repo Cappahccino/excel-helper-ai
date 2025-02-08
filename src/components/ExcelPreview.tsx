@@ -65,7 +65,7 @@ export function ExcelPreview({ file, sessionFileId }: ExcelPreviewProps) {
         }
 
         const headers = (jsonData[0] || []) as string[];
-        const rows = jsonData.slice(1, 21) as any[][]; // Limit to 20 rows
+        const rows = jsonData.slice(1, 11) as any[][]; // Limit to 10 rows
 
         return { headers, rows };
       } catch (error) {
@@ -105,10 +105,6 @@ export function ExcelPreview({ file, sessionFileId }: ExcelPreviewProps) {
 
   return (
     <div className="rounded-lg border bg-card">
-      <div className="p-4 flex justify-between items-center border-b">
-        <h3 className="font-semibold">Preview: {file?.name}</h3>
-        <span className="text-sm text-muted-foreground">First 20 rows</span>
-      </div>
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
           <Table>
