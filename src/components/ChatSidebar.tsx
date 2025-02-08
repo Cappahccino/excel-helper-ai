@@ -62,17 +62,17 @@ export function ChatSidebar() {
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      <SidebarBody className="flex flex-col bg-gray-900">
-        <SidebarHeader className="border-b p-4">
+      <SidebarBody className="flex flex-col bg-[#f3f3f3]">
+        <SidebarHeader className="border-b border-gray-200 p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 bg-white text-black hover:bg-gray-100"
             variant="outline"
           >
-            <PlusCircle className="h-4 w-4" />
+            <PlusCircle className="h-4 w-4 text-black" />
             <motion.span
               animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
-              className="overflow-hidden whitespace-nowrap"
+              className="overflow-hidden whitespace-nowrap text-black"
             >
               New Chat
             </motion.span>
@@ -93,7 +93,7 @@ export function ChatSidebar() {
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
                     </div>
                   ) : threads?.length === 0 ? (
-                    <div className="text-sm text-muted-foreground p-4 text-center">
+                    <div className="text-sm text-gray-600 p-4 text-center">
                       No chats yet
                     </div>
                   ) : (
@@ -104,10 +104,10 @@ export function ChatSidebar() {
                         isSelect={currentThreadId === thread.session_id}
                         onClick={() => handleThreadClick(thread.session_id)}
                       >
-                        <span className="text-sm font-medium text-white truncate">
+                        <span className="text-sm font-medium text-gray-900 truncate">
                           {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-gray-600">
                           {format(new Date(thread.created_at), 'MMM d, yyyy')}
                         </span>
                       </File>
