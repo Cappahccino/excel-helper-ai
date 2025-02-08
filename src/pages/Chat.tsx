@@ -1,24 +1,19 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ChatWindow } from "@/components/ChatWindow";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
-  const [message, setMessage] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const {
     file: uploadedFile,
@@ -57,43 +52,13 @@ const Chat = () => {
   };
 
   const activeFileId = sessionFile?.id || uploadedFileId;
-
-  const shouldShowUploadZone = !selectedSessionId || !sessionFile;
   const currentFile = sessionFile || (uploadedFile ? {
     filename: uploadedFile.name,
     file_size: uploadedFile.size,
   } : null);
 
-  const shouldShowChat = selectedSessionId || activeFileId;
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!message.trim() || isAnalyzing) return;
-
-    try {
-      setIsAnalyzing(true);
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
-      
-      const { data: analysis, error } = await supabase.functions
-        .invoke('excel-assistant', {
-          body: { 
-            fileId: activeFileId, // This can now be null
-            query: message,
-            userId: user.id,
-            sessionId: selectedSessionId
-          }
-        });
-
-      if (error) throw error;
-      setMessage("");
-      
-    } catch (error) {
-      console.error('Analysis error:', error);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
+  const showChatWindow = true;
+  const showUploadZone = !selectedSessionId && !activeFileId;
 
   return (
     <SidebarProvider>
@@ -107,7 +72,7 @@ const Chat = () => {
           >
             <div className="w-full mx-auto max-w-4xl">
               <AnimatePresence mode="wait">
-                {shouldShowUploadZone && (
+                {showUploadZone && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -127,42 +92,13 @@ const Chat = () => {
                       currentFile={uploadedFile}
                       onReset={resetUpload}
                     />
-                    
-                    <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
-                      <input
-                        type="text"
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSubmit();
-                          }
-                        }}
-                        placeholder="Ask me anything..."
-                        className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-                        disabled={isAnalyzing}
-                      />
-                      <Button 
-                        onClick={() => handleSubmit()}
-                        size="sm"
-                        className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
-                        disabled={isAnalyzing}
-                      >
-                        {isAnalyzing ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                        ) : (
-                          <Send className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
             <AnimatePresence mode="wait">
-              {shouldShowChat && (
+              {showChatWindow && (
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -193,4 +129,3 @@ const Chat = () => {
 };
 
 export default Chat;
-

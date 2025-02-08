@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -98,6 +99,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       setMessage("");
       onMessageSent?.();
       
+      // Invalidate queries to refresh the messages
       queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId, fileId] });
       
@@ -105,7 +107,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       console.error('Analysis error:', error);
       toast({
         title: "Analysis Failed",
-        description: error instanceof Error ? error.message : "Failed to analyze Excel file",
+        description: error instanceof Error ? error.message : "Failed to analyze request",
         variant: "destructive",
       });
     } finally {
@@ -116,8 +118,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const formatTimestamp = (timestamp: string) => {
     return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
-
-  const isInputDisabled = !fileId || isAnalyzing;
 
   return (
     <>
@@ -188,7 +188,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       <div className="absolute bottom-0 left-0 right-0">
         <div className="max-w-4xl mx-auto px-4 pb-4">
-          <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
+          <form onSubmit={handleSubmit} className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
             <input
               type="text"
               value={message}
@@ -201,17 +201,21 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
               }}
               placeholder="Ask me anything..."
               className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-              disabled={isInputDisabled}
+              disabled={isAnalyzing}
             />
             <Button 
-              onClick={handleSubmit}
+              type="submit"
               size="sm"
               className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
-              disabled={isInputDisabled}
+              disabled={isAnalyzing}
             >
-              <Send className="h-4 w-4" />
+              {isAnalyzing ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </Button>
-          </div>
+          </form>
         </div>
       </div>
     </>
