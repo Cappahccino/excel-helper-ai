@@ -33,8 +33,7 @@ async function getOrCreateAssistant(openai: OpenAI) {
       - Highlight key findings
       - Format responses clearly
       - Maintain context from previous questions
-      - Be helpful even without Excel data
-      - When asked to generate a title, provide it in exactly 40 characters or less`,
+      - Be helpful even without Excel data`,
     model: "gpt-4-turbo",
   });
 
@@ -127,50 +126,6 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
   };
 }
 
-async function generateChatTitle(openai: OpenAI, content: string): Promise<string> {
-  console.log('🏷️ Generating chat title...');
-  
-  // Create a separate thread for title generation
-  const titleThread = await openai.beta.threads.create();
-  
-  // Send the request for title generation
-  await openai.beta.threads.messages.create(titleThread.id, {
-    role: "user",
-    content: `Generate a concise, descriptive title (max 40 chars) that captures the essence of this conversation: ${content}`
-  });
-
-  const assistant = await getOrCreateAssistant(openai);
-  const titleRun = await openai.beta.threads.runs.create(titleThread.id, {
-    assistant_id: assistant.id,
-  });
-
-  // Wait for completion
-  let runStatus = await openai.beta.threads.runs.retrieve(titleThread.id, titleRun.id);
-  let attempts = 0;
-  const maxAttempts = 30;
-
-  while (runStatus.status !== "completed" && attempts < maxAttempts) {
-    if (runStatus.status === "failed" || runStatus.status === "cancelled") {
-      throw new Error(`Title generation ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    runStatus = await openai.beta.threads.runs.retrieve(titleThread.id, titleRun.id);
-    attempts++;
-  }
-
-  if (attempts >= maxAttempts) {
-    throw new Error('Title generation timed out');
-  }
-
-  // Get the generated title
-  const messages = await openai.beta.threads.messages.list(titleThread.id);
-  const title = messages.data[0].content[0].text.value.replace(/["']/g, '').slice(0, 40);
-
-  console.log('✅ Generated title:', title);
-  return title;
-}
-
 async function storeChatMessage(
   supabase: any, 
   userId: string, 
@@ -218,15 +173,6 @@ serve(async (req) => {
     const openai = new OpenAI({
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
-
-    // Check if this is a title generation request
-    if (query.startsWith("Generate a short, descriptive title")) {
-      const title = await generateChatTitle(openai, query);
-      return new Response(
-        JSON.stringify({ title }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Get or create chat session and OpenAI thread
     const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId, openai);
@@ -307,4 +253,3 @@ serve(async (req) => {
     );
   }
 });
-
