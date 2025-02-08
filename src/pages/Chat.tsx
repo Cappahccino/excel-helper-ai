@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { FileInfo } from "@/components/FileInfo";
+import { motion, AnimatePresence } from "framer-motion";
 
 const Chat = () => {
   const location = useLocation();
@@ -67,37 +68,72 @@ const Chat = () => {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-screen w-full bg-gray-50">
         <ChatSidebar />
-        <div className="flex-1 p-4 space-y-4">
-          <div className="w-full max-w-4xl mx-auto">
-            {currentFile && (
-              <FileInfo 
-                filename={currentFile.filename}
-                fileSize={currentFile.file_size}
-              />
-            )}
-            {shouldShowUploadZone && (
-              <FileUploadZone
-                onFileUpload={onFileUpload}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                currentFile={uploadedFile}
-                onReset={resetUpload}
-              />
-            )}
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex-1 p-4 lg:p-6 space-y-4 overflow-hidden"
+        >
+          <div className="w-full max-w-5xl mx-auto">
+            <AnimatePresence mode="wait">
+              {currentFile && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <FileInfo 
+                    filename={currentFile.filename}
+                    fileSize={currentFile.file_size}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            <AnimatePresence mode="wait">
+              {shouldShowUploadZone && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <FileUploadZone
+                    onFileUpload={onFileUpload}
+                    isUploading={isUploading}
+                    uploadProgress={uploadProgress}
+                    currentFile={uploadedFile}
+                    onReset={resetUpload}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <div className="w-full max-w-4xl mx-auto space-y-4">
-            {shouldShowPreview && (
-              <div className="bg-white rounded-lg shadow-sm border">
-                <div className="p-4 max-h-[40vh] overflow-y-auto">
-                  <ExcelPreview file={uploadedFile} />
-                </div>
-              </div>
-            )}
+          <div className="w-full max-w-5xl mx-auto space-y-4">
+            <AnimatePresence mode="wait">
+              {shouldShowPreview && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                  className="bg-white rounded-xl shadow-sm border border-gray-100"
+                >
+                  <div className="p-4 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                    <ExcelPreview file={uploadedFile} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            <div className="bg-white rounded-lg shadow-sm border">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-white rounded-xl shadow-sm border border-gray-100"
+            >
               <div className="h-[calc(100vh-12rem)] flex flex-col">
                 <div className="flex-1 min-h-0">
                   <ChatWindow 
@@ -110,9 +146,9 @@ const Chat = () => {
                   />
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </SidebarProvider>
   );

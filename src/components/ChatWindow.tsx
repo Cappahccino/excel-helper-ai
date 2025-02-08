@@ -9,6 +9,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { format } from "date-fns";
 import { MessageContent } from "./MessageContent";
 import { ScrollToTop } from "./ScrollToTop";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatWindowProps {
   sessionId: string | null;
@@ -122,12 +123,18 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
     <>
       <div className="flex flex-col h-full relative">
         <ScrollArea className="flex-1 p-4 pb-32">
-          <div className="flex flex-col gap-4 max-w-4xl mx-auto">
-            <MessageContent
-              content="Hello! Upload an Excel file and I'll help you analyze it."
-              role="assistant"
-              timestamp={formatTimestamp(new Date().toISOString())}
-            />
+          <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <MessageContent
+                content="Hello! Upload an Excel file and I'll help you analyze it."
+                role="assistant"
+                timestamp={formatTimestamp(new Date().toISOString())}
+              />
+            </motion.div>
 
             {messagesLoading && (
               <div className="flex items-center justify-center p-4">
@@ -135,56 +142,79 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
               </div>
             )}
 
-            {messages && messages.length > 0 && (
-              <div className="space-y-4">
-                {messages.map((msg) => (
-                  <MessageContent
-                    key={msg.id}
-                    content={msg.content}
-                    role={msg.role as 'user' | 'assistant'}
-                    timestamp={formatTimestamp(msg.created_at)}
-                    fileInfo={msg.excel_files}
-                  />
-                ))}
-              </div>
-            )}
+            <AnimatePresence mode="popLayout">
+              {messages && messages.length > 0 && (
+                <motion.div 
+                  className="space-y-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  {messages.map((msg, index) => (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <MessageContent
+                        content={msg.content}
+                        role={msg.role as 'user' | 'assistant'}
+                        timestamp={formatTimestamp(msg.created_at)}
+                        fileInfo={msg.excel_files}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            {isAnalyzing && (
-              <div className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-                <p className="text-sm">Analyzing your Excel file...</p>
-              </div>
-            )}
+            <AnimatePresence>
+              {isAnalyzing && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
+                >
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+                  <p className="text-sm">Analyzing your Excel file...</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </ScrollArea>
         <ScrollToTop />
       </div>
       
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white to-white/80 backdrop-blur-sm pb-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-4"
+      >
         <form 
           onSubmit={handleSubmit} 
           className="max-w-4xl mx-auto px-4"
         >
-          <div className="flex gap-2 items-center w-full bg-white/80 p-4 rounded-lg border shadow-sm">
+          <div className="flex gap-3 items-center w-full bg-white/80 p-4 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
-              className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm"
+              className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
               disabled={isInputDisabled}
             />
             <Button 
               type="submit" 
               size="sm"
-              className="bg-excel hover:bg-excel/90"
+              className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm"
               disabled={isInputDisabled}
             >
               <Send className="h-4 w-4" />
             </Button>
           </div>
         </form>
-      </div>
+      </motion.div>
     </>
   );
 }
