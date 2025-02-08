@@ -26,9 +26,15 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: "smooth",
+        block: "end"
+      });
+    }
   };
 
   const { data: session } = useQuery({
@@ -75,7 +81,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     enabled: !!session?.session_id,
   });
 
-  // Auto-scroll when new messages are added
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -105,7 +110,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       onMessageSent?.();
       
-      // Invalidate queries to refresh the messages
       queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId, fileId] });
       
@@ -126,72 +130,70 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   };
 
   return (
-    <>
-      <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
-        <ScrollArea className="flex-1 p-4 pb-24">
-          <div className="flex flex-col gap-6">
-            <AnimatePresence>
-              {fileInfo && (
-                <motion.div
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.2 }}
-                  className="mb-6"
-                >
-                  <FileInfo 
-                    filename={fileInfo.filename}
-                    fileSize={fileInfo.file_size}
-                    fileId={fileId || undefined}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
+    <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
+      <ScrollArea className="flex-1 p-4 pb-24">
+        <div className="flex flex-col gap-6" ref={chatContainerRef}>
+          <AnimatePresence>
+            {fileInfo && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+                className="mb-6"
+              >
+                <FileInfo 
+                  filename={fileInfo.filename}
+                  fileSize={fileInfo.file_size}
+                  fileId={fileId || undefined}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            <AnimatePresence>
-              {messages && messages.length > 0 && (
-                <motion.div 
-                  className="space-y-6"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  {messages.map((msg, index) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      <MessageContent
-                        content={msg.content}
-                        role={msg.role as 'user' | 'assistant'}
-                        timestamp={formatTimestamp(msg.created_at)}
-                        fileInfo={msg.excel_files}
-                      />
-                    </motion.div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </motion.div>
-              )}
-            </AnimatePresence>
+          <AnimatePresence>
+            {messages && messages.length > 0 && (
+              <motion.div 
+                className="space-y-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                {messages.map((msg, index) => (
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <MessageContent
+                      content={msg.content}
+                      role={msg.role as 'user' | 'assistant'}
+                      timestamp={formatTimestamp(msg.created_at)}
+                      fileInfo={msg.excel_files}
+                    />
+                  </motion.div>
+                ))}
+                <div ref={messagesEndRef} />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            <AnimatePresence>
-              {isAnalyzing && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
-                >
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-                  <p className="text-sm">Processing your request...</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </ScrollArea>
-        <ScrollToTop />
-      </div>
+          <AnimatePresence>
+            {isAnalyzing && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
+              >
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+                <p className="text-sm">Processing your request...</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </ScrollArea>
+      <ScrollToTop />
       
       <div className="absolute bottom-0 left-0 right-0">
         <ChatInput 
@@ -199,6 +201,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           isAnalyzing={isAnalyzing}
         />
       </div>
-    </>
+    </div>
   );
 }

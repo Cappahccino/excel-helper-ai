@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -64,13 +65,13 @@ const Chat = () => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
         <ChatSidebar />
-        <div className="flex-1 transition-all duration-300">
+        <div className="flex-1 flex flex-col">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="p-4 lg:p-6 space-y-4 h-full relative"
+            className="p-4 lg:p-6 flex-grow flex flex-col"
           >
-            <div className="w-full mx-auto max-w-4xl">
+            <div className="w-full mx-auto max-w-4xl flex-grow flex flex-col">
               <AnimatePresence mode="wait">
                 {showUploadZone && (
                   <motion.div
@@ -78,7 +79,7 @@ const Chat = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.2 }}
-                    className="space-y-6"
+                    className="space-y-6 flex flex-col justify-center items-center flex-grow"
                   >
                     <div className="text-center">
                       <p className="text-lg text-gray-600">
@@ -95,32 +96,24 @@ const Chat = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
 
-            <AnimatePresence mode="wait">
-              {showChatWindow && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="bg-white rounded-xl shadow-sm border border-gray-100"
-                >
-                  <div className="h-[calc(100vh-8rem)] flex flex-col relative">
-                    <div className="flex-1 min-h-0">
-                      <ChatWindow 
-                        sessionId={selectedSessionId}
-                        fileId={activeFileId}
-                        fileInfo={currentFile}
-                        onMessageSent={() => {
-                          // Refresh the session file query after a message is sent
-                          // in case the file association has changed
-                        }}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <AnimatePresence mode="wait">
+                {showChatWindow && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 flex-grow flex flex-col relative"
+                  >
+                    <ChatWindow 
+                      sessionId={selectedSessionId}
+                      fileId={activeFileId}
+                      fileInfo={currentFile}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
         </div>
       </div>
