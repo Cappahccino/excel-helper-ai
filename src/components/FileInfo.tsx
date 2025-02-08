@@ -52,7 +52,7 @@ export function FileInfo({ filename, fileSize, fileId }: FileInfoProps) {
                 Showing the first 10 rows of your Excel file
               </DialogDescription>
             </DialogHeader>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden pt-4">
               <ExcelPreview sessionFileId={fileId} />
             </div>
           </DialogContent>
