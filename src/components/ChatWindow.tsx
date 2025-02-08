@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -74,7 +73,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId || isAnalyzing) return;
+    if (!message.trim() || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
@@ -178,7 +177,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
                 >
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-                  <p className="text-sm">Analyzing your Excel file...</p>
+                  <p className="text-sm">Processing your request...</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -200,7 +199,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   handleSubmit(e as any);
                 }
               }}
-              placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
+              placeholder="Ask me anything..."
               className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
               disabled={isInputDisabled}
             />
@@ -218,4 +217,3 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     </>
   );
 }
-

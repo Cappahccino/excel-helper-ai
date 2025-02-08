@@ -68,7 +68,7 @@ const Chat = () => {
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!message.trim() || !activeFileId || isAnalyzing) return;
+    if (!message.trim() || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
@@ -78,7 +78,7 @@ const Chat = () => {
       const { data: analysis, error } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
-            fileId: activeFileId, 
+            fileId: activeFileId, // This can now be null
             query: message,
             userId: user.id,
             sessionId: selectedSessionId
@@ -117,7 +117,7 @@ const Chat = () => {
                   >
                     <div className="text-center">
                       <p className="text-lg text-gray-600">
-                        Hello! Upload an Excel file and I'll help you analyze it.
+                        Hello! You can ask me questions directly, or upload an Excel file for analysis.
                       </p>
                     </div>
                     <FileUploadZone
@@ -128,7 +128,6 @@ const Chat = () => {
                       onReset={resetUpload}
                     />
                     
-                    {/* Input box below upload zone */}
                     <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
                       <input
                         type="text"
@@ -140,15 +139,15 @@ const Chat = () => {
                             handleSubmit();
                           }
                         }}
-                        placeholder={activeFileId ? "Ask a question about your Excel file..." : "Upload an Excel file to start analyzing"}
+                        placeholder="Ask me anything..."
                         className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-                        disabled={!activeFileId || isAnalyzing}
+                        disabled={isAnalyzing}
                       />
                       <Button 
                         onClick={() => handleSubmit()}
                         size="sm"
                         className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
-                        disabled={!activeFileId || isAnalyzing}
+                        disabled={isAnalyzing}
                       >
                         {isAnalyzing ? (
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -194,3 +193,4 @@ const Chat = () => {
 };
 
 export default Chat;
+
