@@ -68,6 +68,7 @@ export type Database = {
       }
       chat_sessions: {
         Row: {
+          chat_name: string | null
           created_at: string
           openai_model: string | null
           openai_usage: Json | null
@@ -78,6 +79,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          chat_name?: string | null
           created_at?: string
           openai_model?: string | null
           openai_usage?: Json | null
@@ -88,6 +90,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          chat_name?: string | null
           created_at?: string
           openai_model?: string | null
           openai_usage?: Json | null
