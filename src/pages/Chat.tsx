@@ -35,7 +35,12 @@ const Chat = () => {
       
       const { data, error } = await supabase
         .from('excel_files')
-        .select('*')
+        .select(`
+          *,
+          chat_sessions:session_id (
+            thread_id
+          )
+        `)
         .eq('session_id', selectedSessionId)
         .maybeSingle();
       
@@ -93,7 +98,7 @@ const Chat = () => {
           fileId: activeFileId, 
           query: message,
           userId: user.id,
-          threadId: sessionFile?.thread_id,
+          threadId: sessionFile?.chat_sessions?.thread_id,
           sessionId: sessionFile?.session_id
         }
       });
