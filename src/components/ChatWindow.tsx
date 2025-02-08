@@ -93,6 +93,19 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
+      // Optimistically add user message to the UI
+      const optimisticUserMessage = {
+        id: Date.now().toString(),
+        content: message,
+        role: 'user',
+        created_at: new Date().toISOString(),
+        session_id: session?.session_id,
+      };
+      
+      queryClient.setQueryData(['chat-messages', session?.session_id], (old: any) => 
+        [...(old || []), optimisticUserMessage]
+      );
+
       console.log('Sending analysis request with session:', session?.session_id, 'thread:', session?.thread_id);
       
       const { data: analysis, error } = await supabase.functions
@@ -110,6 +123,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       onMessageSent?.();
       
+      // Immediately update the messages query to show the latest state
       queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId, fileId] });
       
@@ -173,21 +187,17 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                     />
                   </motion.div>
                 ))}
+                {isAnalyzing && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
+                  >
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+                    <p className="text-sm">Assistant is thinking...</p>
+                  </motion.div>
+                )}
                 <div ref={messagesEndRef} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {isAnalyzing && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
-              >
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-                <p className="text-sm">Processing your request...</p>
               </motion.div>
             )}
           </AnimatePresence>

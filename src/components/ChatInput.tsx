@@ -1,6 +1,6 @@
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send } from "lucide-react";
+import { Paperclip, Send, FileSpreadsheet, X } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { toast } from "@/hooks/use-toast";
 
@@ -60,49 +60,65 @@ export function ChatInput({ onSendMessage, isAnalyzing, sessionId }: ChatInputPr
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-4">
-      <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          disabled={isAnalyzing || isUploading}
-          aria-label="Upload file"
-        >
-          <Paperclip className="w-4 h-4 text-gray-500" />
-        </button>
+      <div className="flex flex-col gap-2">
+        {(isUploading || fileId) && (
+          <div className="flex items-center gap-2 p-2 bg-zinc-900 rounded-lg text-white">
+            <FileSpreadsheet className="h-4 w-4 text-green-500" />
+            {isUploading ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                <span className="text-sm">Uploading file...</span>
+              </div>
+            ) : (
+              <span className="text-sm">Excel file ready</span>
+            )}
+          </div>
+        )}
+        
+        <div className="flex gap-2 items-center w-full bg-white rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300 p-2">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            disabled={isAnalyzing || isUploading}
+            aria-label="Upload file"
+          >
+            <Paperclip className="w-4 h-4 text-gray-500" />
+          </button>
 
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          onChange={handleFileChange}
-          accept=".xlsx,.xls,.csv"
-        />
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={handleFileChange}
+            accept=".xlsx,.xls,.csv"
+          />
 
-        <textarea
-          ref={textareaRef}
-          className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
-          placeholder="Ask me anything..."
-          rows={1}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isAnalyzing || isUploading}
-        />
+          <textarea
+            ref={textareaRef}
+            className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
+            placeholder={isAnalyzing ? "Assistant is thinking..." : "Ask me anything..."}
+            rows={1}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isAnalyzing || isUploading}
+          />
 
-        <button 
-          onClick={handleSubmit}
-          className={`bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0 rounded-lg flex items-center justify-center ${
-            isDisabled ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
-          disabled={isDisabled}
-          aria-label="Send message"
-        >
-          {isAnalyzing || isUploading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-          ) : (
-            <Send className="h-4 w-4 text-white" />
-          )}
-        </button>
+          <button 
+            onClick={handleSubmit}
+            className={`bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0 rounded-lg flex items-center justify-center ${
+              isDisabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            disabled={isDisabled}
+            aria-label="Send message"
+          >
+            {isAnalyzing || isUploading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+            ) : (
+              <Send className="h-4 w-4 text-white" />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
