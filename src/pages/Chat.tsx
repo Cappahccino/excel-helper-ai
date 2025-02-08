@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -128,15 +129,15 @@ const Chat = () => {
                 exit={{ opacity: 0 }}
                 className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
               >
+                {!selectedSessionId && (
+                  <div className="py-6 text-center">
+                    <p className="text-gray-600 font-semibold">
+                      Hello! You can ask me questions directly, or upload an Excel file for analysis using the paperclip button below.
+                    </p>
+                  </div>
+                )}
                 <ScrollArea className="flex-grow p-4">
                   <div className="space-y-6">
-                    {!selectedSessionId && (
-                      <div className="bg-blue-50 p-4 rounded-lg">
-                        <p className="text-gray-600">
-                          Hello! You can ask me questions directly, or upload an Excel file for analysis using the paperclip button below.
-                        </p>
-                      </div>
-                    )}
                     {messages.map((msg) => (
                       <MessageContent
                         key={msg.id}
