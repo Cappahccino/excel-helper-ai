@@ -158,12 +158,19 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, query, userId, threadId: existingThreadId } = await req.json();
-    console.log(`📝 [${requestId}] Processing:`, { fileId, userId, existingThreadId });
+    const body = await req.json();
+    console.log(`📝 [${requestId}] Request body:`, body);
 
-    if (!query || !userId) {
-      throw new Error('Missing required fields');
+    // Validate required fields
+    if (!body.userId) {
+      throw new Error('Missing required field: userId');
     }
+
+    if (!body.query) {
+      throw new Error('Missing required field: query');
+    }
+
+    const { fileId, query, userId, threadId: existingThreadId } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -241,10 +248,13 @@ serve(async (req) => {
 
   } catch (error) {
     console.error(`❌ [${requestId}] Error:`, error);
+    
+    // Return a more detailed error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
-        details: error instanceof Error ? error.stack : undefined
+        details: error instanceof Error ? error.stack : undefined,
+        requestId
       }),
       { 
         status: 500,

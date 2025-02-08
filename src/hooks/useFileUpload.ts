@@ -93,6 +93,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       if (dbError) throw dbError;
 
+      setUploadProgress(100);
+
       // Initial analysis request
       const { data: analysis, error: analysisError } = await supabase.functions
         .invoke('excel-assistant', {
