@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -29,7 +30,7 @@ const Chat = () => {
   } = useFileUpload();
 
   // First, get the session details independently
-  const { data: session } = useQuery({
+  const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ['chat-session', selectedSessionId],
     queryFn: async () => {
       if (!selectedSessionId) return null;
@@ -87,7 +88,6 @@ const Chat = () => {
     file_size: uploadedFile.size,
   } : null);
 
-  const showChatWindow = true;
   const showUploadZone = !selectedSessionId && !activeFileId;
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
@@ -111,7 +111,7 @@ const Chat = () => {
       if (error) throw error;
       
       queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId, fileId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId] });
       
     } catch (error) {
       console.error('Analysis error:', error);
@@ -121,6 +121,8 @@ const Chat = () => {
   const formatTimestamp = (timestamp: string) => {
     return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
+
+  const isLoading = sessionLoading || messagesLoading;
 
   return (
     <SidebarProvider>
@@ -171,18 +173,32 @@ const Chat = () => {
                   className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
                 >
                   <ScrollArea className="flex-grow p-4">
-                    <div className="space-y-6">
-                      {messages.map((msg) => (
-                        <MessageContent
-                          key={msg.id}
-                          content={msg.content}
-                          role={msg.role as 'user' | 'assistant'}
-                          timestamp={formatTimestamp(msg.created_at)}
-                          fileInfo={msg.excel_files}
-                          sessionId={msg.session_id}
-                        />
-                      ))}
-                    </div>
+                    {isLoading ? (
+                      <div className="flex items-center justify-center h-32">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <AnimatePresence>
+                          {messages.map((msg) => (
+                            <motion.div
+                              key={msg.id}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                            >
+                              <MessageContent
+                                content={msg.content}
+                                role={msg.role as 'user' | 'assistant'}
+                                timestamp={formatTimestamp(msg.created_at)}
+                                fileInfo={msg.excel_files}
+                                sessionId={msg.session_id}
+                              />
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    )}
                   </ScrollArea>
                 </motion.div>
               </div>
