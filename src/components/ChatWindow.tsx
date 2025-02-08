@@ -122,7 +122,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
   return (
     <>
-      <div className="flex flex-col h-full relative">
+      <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
         <ScrollArea className="flex-1 p-4 pb-24">
           <div className="flex flex-col gap-6">
             <AnimatePresence>
@@ -210,21 +210,24 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         animate={{ opacity: 1, y: 0 }}
         className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-2"
       >
-        <form 
-          onSubmit={handleSubmit} 
-          className="px-4"
-        >
-          <div className="flex gap-2 items-center w-full max-w-3xl mx-auto bg-white/80 p-2 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="flex gap-2 items-center w-full bg-white/80 p-2 rounded-lg border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e as any);
+                }
+              }}
               placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
               className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
               disabled={isInputDisabled}
             />
             <Button 
-              type="submit" 
+              onClick={handleSubmit}
               size="sm"
               className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0"
               disabled={isInputDisabled}
@@ -232,7 +235,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
               <Send className="h-4 w-4" />
             </Button>
           </div>
-        </form>
+        </div>
       </motion.div>
     </>
   );
