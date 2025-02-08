@@ -113,16 +113,16 @@ const Chat = () => {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
-        <div className="fixed left-0 top-0 h-full">
+        <div className="fixed left-0 top-0 h-full z-10">
           <ChatSidebar />
         </div>
-        <div className="flex-1 flex flex-col relative ml-[60px]">
+        <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex-grow flex flex-col h-[calc(100vh-80px)]"
           >
-            <div className="w-full mx-auto max-w-4xl flex-grow flex flex-col px-4 lg:px-6">
+            <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6">
               <AnimatePresence mode="wait">
                 {showUploadZone && (
                   <motion.div
@@ -175,8 +175,8 @@ const Chat = () => {
             </div>
           </motion.div>
 
-          <div className="fixed bottom-0 left-[60px] right-0">
-            <div className="w-full max-w-4xl mx-auto px-4 pb-4">
+          <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
+            <div className="w-full max-w-7xl mx-auto px-4 pb-4">
               <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-4">
                 <ChatInput 
                   onSendMessage={handleSendMessage}
@@ -192,3 +192,4 @@ const Chat = () => {
 };
 
 export default Chat;
+
