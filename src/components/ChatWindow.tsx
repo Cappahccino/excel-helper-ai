@@ -123,7 +123,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   return (
     <>
       <div className="flex flex-col h-full relative">
-        <ScrollArea className="flex-1 p-2 pb-28">
+        <ScrollArea className="flex-1 p-2">
           <div className="flex flex-col gap-3">
             <AnimatePresence>
               {fileInfo && (
@@ -204,36 +204,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         </ScrollArea>
         <ScrollToTop />
       </div>
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-2"
-      >
-        <form 
-          onSubmit={handleSubmit} 
-          className="px-2"
-        >
-          <div className="flex gap-2 items-center w-full bg-white/80 p-2 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
-              className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-              disabled={isInputDisabled}
-            />
-            <Button 
-              type="submit" 
-              size="sm"
-              className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm"
-              disabled={isInputDisabled}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </form>
-      </motion.div>
     </>
   );
 }
