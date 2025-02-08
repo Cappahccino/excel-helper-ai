@@ -60,6 +60,8 @@ const Chat = () => {
     file_size: uploadedFile.size,
   } : null);
 
+  const shouldShowChat = selectedSessionId || activeFileId;
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
@@ -68,7 +70,7 @@ const Chat = () => {
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="p-4 lg:p-6 space-y-4"
+            className="p-4 lg:p-6 space-y-4 h-full"
           >
             <div className="w-full mx-auto">
               <AnimatePresence mode="wait">
@@ -91,25 +93,43 @@ const Chat = () => {
               </AnimatePresence>
             </div>
 
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="bg-white rounded-xl shadow-sm border border-gray-100"
-            >
-              <div className="h-[calc(100vh-8rem)] flex flex-col relative">
-                <div className="flex-1 min-h-0">
-                  <ChatWindow 
-                    sessionId={selectedSessionId}
-                    fileId={activeFileId}
-                    fileInfo={currentFile}
-                    onMessageSent={() => {
-                      // Refresh the session file query after a message is sent
-                      // in case the file association has changed
-                    }}
-                  />
-                </div>
-              </div>
-            </motion.div>
+            <AnimatePresence mode="wait">
+              {shouldShowChat ? (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-white rounded-xl shadow-sm border border-gray-100"
+                >
+                  <div className="h-[calc(100vh-8rem)] flex flex-col relative">
+                    <div className="flex-1 min-h-0">
+                      <ChatWindow 
+                        sessionId={selectedSessionId}
+                        fileId={activeFileId}
+                        fileInfo={currentFile}
+                        onMessageSent={() => {
+                          // Refresh the session file query after a message is sent
+                          // in case the file association has changed
+                        }}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="max-w-4xl mx-auto"
+                >
+                  <div className="text-center mb-4">
+                    <p className="text-lg text-gray-600">
+                      Hello! Upload an Excel file and I'll help you analyze it.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </div>
       </div>
@@ -118,3 +138,4 @@ const Chat = () => {
 };
 
 export default Chat;
+

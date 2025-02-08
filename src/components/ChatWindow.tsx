@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -142,25 +143,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
               )}
             </AnimatePresence>
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <MessageContent
-                content="Hello! Upload an Excel file and I'll help you analyze it."
-                role="assistant"
-                timestamp={formatTimestamp(new Date().toISOString())}
-              />
-            </motion.div>
-
-            {messagesLoading && (
-              <div className="flex items-center justify-center p-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-              </div>
-            )}
-
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {messages && messages.length > 0 && (
                 <motion.div 
                   className="space-y-6"
@@ -235,3 +218,4 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     </>
   );
 }
+
