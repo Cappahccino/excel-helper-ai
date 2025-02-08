@@ -44,7 +44,7 @@ export function MessageContent({ content, role, timestamp, fileInfo, sessionId }
     role === 'assistant'
       ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200'
       : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200'
-  } ${sessionId ? 'cursor-pointer hover:bg-gray-50/80' : ''}`;
+  } ${sessionId ? 'cursor-pointer hover:bg-gray-50' : ''}`;
 
   return (
     <motion.div 
