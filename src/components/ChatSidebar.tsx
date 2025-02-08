@@ -87,7 +87,7 @@ export function ChatSidebar() {
               className="h-[calc(100vh-6rem)]"
             >
               <Tree>
-                <Folder element="My Chats" value="chats">
+                <Folder element="My Chats" value="chats" defaultOpen>
                   {isLoading ? (
                     <div className="flex items-center justify-center p-4">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
@@ -103,13 +103,16 @@ export function ChatSidebar() {
                         value={thread.session_id}
                         isSelect={currentThreadId === thread.session_id}
                         onClick={() => handleThreadClick(thread.session_id)}
+                        className="cursor-pointer"
                       >
-                        <span className="text-sm font-medium text-gray-900 truncate">
-                          {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
-                        </span>
-                        <span className="text-xs text-gray-600">
-                          {format(new Date(thread.created_at), 'MMM d, yyyy')}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
+                          </span>
+                          <span className="text-xs text-gray-600">
+                            {format(new Date(thread.created_at), 'MMM d, yyyy')}
+                          </span>
+                        </div>
                       </File>
                     ))
                   )}
