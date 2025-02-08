@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -6,7 +5,7 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageContent } from "@/components/MessageContent";
@@ -18,6 +17,7 @@ const Chat = () => {
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
+  const queryClient = useQueryClient();
 
   const {
     file: uploadedFile,
@@ -90,24 +90,32 @@ const Chat = () => {
   const showChatWindow = true;
   const showUploadZone = !selectedSessionId && !activeFileId;
 
-  const handleSendMessage = async (message: string, file?: File) => {
-    if (!message.trim() && !file) return;
+  const handleSendMessage = async (message: string, fileId?: string | null) => {
+    if ((!message.trim() && !fileId) ) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('User not authenticated');
 
-    const { data: analysis, error } = await supabase.functions
-      .invoke('excel-assistant', {
-        body: { 
-          fileId: activeFileId, 
-          query: message,
-          userId: user.id,
-          threadId: session?.thread_id,
-          sessionId: selectedSessionId
-        }
-      });
+      const { data: analysis, error } = await supabase.functions
+        .invoke('excel-assistant', {
+          body: { 
+            fileId: fileId || activeFileId, 
+            query: message,
+            userId: user.id,
+            threadId: session?.thread_id,
+            sessionId: session?.session_id
+          }
+        });
 
-    if (error) throw error;
+      if (error) throw error;
+      
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId, fileId] });
+      
+    } catch (error) {
+      console.error('Analysis error:', error);
+    }
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -143,6 +151,7 @@ const Chat = () => {
                 >
                   <ChatInput 
                     onSendMessage={handleSendMessage}
+                    sessionId={selectedSessionId}
                     isAnalyzing={false}
                   />
                 </motion.div>
@@ -181,6 +190,7 @@ const Chat = () => {
                   <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-2">
                     <ChatInput 
                       onSendMessage={handleSendMessage}
+                      sessionId={selectedSessionId}
                       isAnalyzing={false}
                     />
                   </div>

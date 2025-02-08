@@ -53,18 +53,18 @@ export const useFileUpload = (): UseFileUploadReturn => {
     try {
       setIsUploading(true);
       setError(null);
+      setUploadProgress(0);
       
       const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
         type: newFile.type,
       });
 
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
 
-      // Create file path
+      // Create file path with UUID to ensure uniqueness
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
 
       // Upload file to storage
@@ -76,6 +76,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         });
 
       if (uploadError) throw uploadError;
+      setUploadProgress(50);
 
       // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
@@ -92,30 +93,15 @@ export const useFileUpload = (): UseFileUploadReturn => {
         .single();
 
       if (dbError) throw dbError;
-
       setUploadProgress(100);
 
-      // Initial analysis request
-      const { data: analysis, error: analysisError } = await supabase.functions
-        .invoke('excel-assistant', {
-          body: { 
-            fileId: fileRecord.id,
-            query: "Please analyze this Excel file and provide a summary of its contents.",
-            userId: user.id,
-            sessionId: currentSessionId // Use the current session if available
-          }
-        });
-
-      if (analysisError) throw analysisError;
-
       setFileId(fileRecord.id);
-      setSessionId(analysis.sessionId);
-      setThreadId(analysis.threadId);
+      setSessionId(currentSessionId);
       setFile(sanitizedFile);
       
       toast({
         title: "Success",
-        description: "File uploaded and analysis started",
+        description: "File uploaded successfully",
       });
 
     } catch (err) {

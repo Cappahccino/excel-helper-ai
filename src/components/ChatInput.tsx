@@ -1,17 +1,25 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send } from "lucide-react";
+import { useFileUpload } from "@/hooks/useFileUpload";
+import { toast } from "@/hooks/use-toast";
 
 interface ChatInputProps {
-  onSendMessage: (message: string, file?: File) => void;
+  onSendMessage: (message: string, fileId?: string | null) => void;
   isAnalyzing: boolean;
+  sessionId?: string | null;
 }
 
-export function ChatInput({ onSendMessage, isAnalyzing }: ChatInputProps) {
+export function ChatInput({ onSendMessage, isAnalyzing, sessionId }: ChatInputProps) {
   const [message, setMessage] = useState("");
-  const [file, setFile] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const {
+    handleFileUpload,
+    isUploading,
+    fileId,
+    error: uploadError,
+  } = useFileUpload();
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -20,25 +28,35 @@ export function ChatInput({ onSendMessage, isAnalyzing }: ChatInputProps) {
     }
   }, [message]);
 
-  const sendMessage = () => {
-    if (message.trim() === "" && !file) return;
-    onSendMessage(message, file);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      try {
+        await handleFileUpload(e.target.files[0], sessionId);
+      } catch (error) {
+        console.error('File upload error:', error);
+        toast({
+          title: "Upload Failed",
+          description: error instanceof Error ? error.message : "Failed to upload file",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleSubmit = () => {
+    if ((!message.trim() && !fileId) || isAnalyzing || isUploading) return;
+    onSendMessage(message, fileId);
     setMessage("");
-    setFile(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSubmit();
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
+  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !fileId);
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-4">
@@ -46,7 +64,8 @@ export function ChatInput({ onSendMessage, isAnalyzing }: ChatInputProps) {
         <button
           onClick={() => fileInputRef.current?.click()}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          disabled={isAnalyzing}
+          disabled={isAnalyzing || isUploading}
+          aria-label="Upload file"
         >
           <Paperclip className="w-4 h-4 text-gray-500" />
         </button>
@@ -59,18 +78,6 @@ export function ChatInput({ onSendMessage, isAnalyzing }: ChatInputProps) {
           accept=".xlsx,.xls,.csv"
         />
 
-        {file && (
-          <div className="text-sm bg-gray-50 px-3 py-1 rounded-lg text-gray-700 flex items-center gap-2">
-            <span className="truncate max-w-[200px]">{file.name}</span>
-            <button
-              onClick={() => setFile(null)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              ×
-            </button>
-          </div>
-        )}
-
         <textarea
           ref={textareaRef}
           className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
@@ -79,15 +86,18 @@ export function ChatInput({ onSendMessage, isAnalyzing }: ChatInputProps) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={isAnalyzing}
+          disabled={isAnalyzing || isUploading}
         />
 
         <button 
-          onClick={sendMessage}
-          className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0 rounded-lg flex items-center justify-center"
-          disabled={(!message.trim() && !file) || isAnalyzing}
+          onClick={handleSubmit}
+          className={`bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm h-8 w-8 p-0 rounded-lg flex items-center justify-center ${
+            isDisabled ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+          disabled={isDisabled}
+          aria-label="Send message"
         >
-          {isAnalyzing ? (
+          {isAnalyzing || isUploading ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
           ) : (
             <Send className="h-4 w-4 text-white" />
