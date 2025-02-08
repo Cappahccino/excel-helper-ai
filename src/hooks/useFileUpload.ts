@@ -53,6 +53,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     try {
       setIsUploading(true);
       setError(null);
+      setUploadProgress(0);
       
       const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
         type: newFile.type,
@@ -64,15 +65,19 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Create file path
-      const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
+      // Create unique file path with user ID for proper RLS
+      const filePath = `${user.id}/${crypto.randomUUID()}-${sanitizedFile.name}`;
 
       // Upload file to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
           cacheControl: '3600',
-          upsert: false
+          upsert: false,
+          onUploadProgress: (progress) => {
+            const percentage = (progress.loaded / progress.total) * 100;
+            setUploadProgress(Math.round(percentage));
+          }
         });
 
       if (uploadError) throw uploadError;
@@ -85,7 +90,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: "pending",
+          processing_status: "processing",
           session_id: currentSessionId || null
         })
         .select()
@@ -99,8 +104,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
           body: { 
             fileId: fileRecord.id,
             query: "Please analyze this Excel file and provide a summary of its contents.",
-            userId: user.id,
-            sessionId: currentSessionId // Use the current session if available
+            userId: user.id
           }
         });
 
