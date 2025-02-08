@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -23,14 +24,16 @@ async function getOrCreateAssistant(openai: OpenAI) {
   }
 
   const assistant = await openai.beta.assistants.create({
-    name: "Excel Analyst",
-    instructions: `You are an Excel data analyst assistant. Your role is to:
-      - Analyze Excel data sheet by sheet
+    name: "Excel & Data Analyst",
+    instructions: `You are a versatile data analysis assistant. Your role is to:
+      - Analyze Excel data when provided
+      - Answer general data analysis questions
       - Provide clear insights and patterns
-      - Use numerical evidence
+      - Use numerical evidence when available
       - Highlight key findings
       - Format responses clearly
-      - Maintain context from previous questions to provide more relevant follow-up responses`,
+      - Maintain context from previous questions
+      - Be helpful even without Excel data`,
     model: "gpt-4-turbo",
   });
 
@@ -38,7 +41,9 @@ async function getOrCreateAssistant(openai: OpenAI) {
   return assistant;
 }
 
-async function getExcelFileContent(supabase: any, fileId: string): Promise<ExcelData[]> {
+async function getExcelFileContent(supabase: any, fileId: string): Promise<ExcelData[] | null> {
+  if (!fileId) return null;
+  
   console.log(`📂 Fetching Excel file ID: ${fileId}`);
   
   const { data: fileData, error: fileError } = await supabase
@@ -64,24 +69,15 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function getOrCreateChatSession(supabase: any, userId: string, fileId: string, existingThreadId: string | null = null, openai: OpenAI) {
-  console.log(`🔍 Checking session for file: ${fileId}`);
+async function getOrCreateChatSession(supabase: any, userId: string, fileId: string | null = null, existingThreadId: string | null = null, openai: OpenAI) {
+  console.log(`🔍 Checking session for user: ${userId}`);
 
-  // First try to find an existing session through the excel_files table
-  const { data: fileData, error: fileError } = await supabase
-    .from('excel_files')
-    .select('session_id')
-    .eq('id', fileId)
-    .maybeSingle();
-
-  if (fileError) throw new Error(`Failed to check file session: ${fileError.message}`);
-
-  if (fileData?.session_id) {
-    // If we found a session_id, get the full session details
+  if (existingThreadId) {
+    // If we have an existing thread ID, get its session
     const { data: existingSession, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('session_id, thread_id')
-      .eq('session_id', fileData.session_id)
+      .eq('thread_id', existingThreadId)
       .maybeSingle();
 
     if (sessionError) throw new Error(`Failed to get session: ${sessionError.message}`);
@@ -95,9 +91,9 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
     }
   }
 
-  // If no existing session was found or if it's invalid, create a new one
+  // Create a new thread and session
   console.log('Creating new session and thread...');
-  const thread = existingThreadId ? { id: existingThreadId } : await openai.beta.threads.create();
+  const thread = await openai.beta.threads.create();
   console.log('✅ Created new thread:', thread.id);
 
   // Create a new session
@@ -113,13 +109,15 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
 
   if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
 
-  // Update the excel_file with the new session_id
-  const { error: updateError } = await supabase
-    .from('excel_files')
-    .update({ session_id: newSession.session_id })
-    .eq('id', fileId);
+  // If we have a file ID, update the excel_file with the session_id
+  if (fileId) {
+    const { error: updateError } = await supabase
+      .from('excel_files')
+      .update({ session_id: newSession.session_id })
+      .eq('id', fileId);
 
-  if (updateError) throw new Error(`Failed to update excel file: ${updateError.message}`);
+    if (updateError) throw new Error(`Failed to update excel file: ${updateError.message}`);
+  }
   
   console.log('✅ Created new session:', newSession.session_id);
   return {
@@ -131,7 +129,7 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
 async function storeChatMessage(
   supabase: any, 
   userId: string, 
-  fileId: string, 
+  fileId: string | null, 
   sessionId: string, 
   content: string, 
   role: 'user' | 'assistant',
@@ -163,7 +161,7 @@ serve(async (req) => {
     const { fileId, query, userId, threadId: existingThreadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, existingThreadId });
 
-    if (!query || !userId || !fileId) {
+    if (!query || !userId) {
       throw new Error('Missing required fields');
     }
 
@@ -188,7 +186,9 @@ serve(async (req) => {
     // Send message to OpenAI
     await openai.beta.threads.messages.create(threadId, {
       role: "user",
-      content: `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
+      content: excelData 
+        ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
+        : query
     });
 
     // Start the analysis
