@@ -82,10 +82,10 @@ export function ChatSidebar() {
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center justify-start gap-2 text-black hover:text-black min-w-0"
+            className="w-full flex items-center justify-start gap-2 text-black hover:text-black"
             variant="outline"
           >
-            <PlusCircle className="h-4 w-4 shrink-0" />
+            <PlusCircle className={`h-4 w-4 shrink-0 ${!open && 'mx-auto'}`} />
             <motion.span
               animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
               className="overflow-hidden whitespace-nowrap"
