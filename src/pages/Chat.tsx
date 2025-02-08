@@ -9,7 +9,6 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { FileInfo } from "@/components/FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Chat = () => {
@@ -56,7 +55,6 @@ const Chat = () => {
     await handleFileUpload(file, selectedSessionId);
   };
 
-  // Get the current active file ID (either from session or upload)
   const activeFileId = sessionFile?.id || uploadedFileId;
 
   const shouldShowUploadZone = !selectedSessionId || !sessionFile;
@@ -75,23 +73,7 @@ const Chat = () => {
           animate={{ opacity: 1 }}
           className="flex-1 p-4 lg:p-6 space-y-4 overflow-hidden"
         >
-          <div className="w-full max-w-5xl mx-auto">
-            <AnimatePresence mode="wait">
-              {currentFile && (
-                <motion.div
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <FileInfo 
-                    filename={currentFile.filename}
-                    fileSize={currentFile.file_size}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-            
+          <div className="w-full mx-auto">
             <AnimatePresence mode="wait">
               {shouldShowUploadZone && (
                 <motion.div
@@ -112,7 +94,7 @@ const Chat = () => {
             </AnimatePresence>
           </div>
 
-          <div className="w-full max-w-5xl mx-auto space-y-4">
+          <div className="w-full mx-auto space-y-4">
             <AnimatePresence mode="wait">
               {shouldShowPreview && (
                 <motion.div
@@ -134,11 +116,12 @@ const Chat = () => {
               animate={{ opacity: 1 }}
               className="bg-white rounded-xl shadow-sm border border-gray-100"
             >
-              <div className="h-[calc(100vh-12rem)] flex flex-col">
+              <div className="h-[calc(100vh-8rem)] flex flex-col">
                 <div className="flex-1 min-h-0">
                   <ChatWindow 
                     sessionId={selectedSessionId}
                     fileId={activeFileId}
+                    fileInfo={currentFile}
                     onMessageSent={() => {
                       // Refresh the session file query after a message is sent
                       // in case the file association has changed

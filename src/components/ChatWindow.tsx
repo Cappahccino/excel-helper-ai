@@ -10,14 +10,19 @@ import { format } from "date-fns";
 import { MessageContent } from "./MessageContent";
 import { ScrollToTop } from "./ScrollToTop";
 import { motion, AnimatePresence } from "framer-motion";
+import { FileInfo } from "./FileInfo";
 
 interface ChatWindowProps {
   sessionId: string | null;
   fileId: string | null;
+  fileInfo?: {
+    filename: string;
+    file_size: number;
+  } | null;
   onMessageSent?: () => void;
 }
 
-export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps) {
+export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatWindowProps) {
   const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
@@ -123,7 +128,24 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
     <>
       <div className="flex flex-col h-full relative">
         <ScrollArea className="flex-1 p-4 pb-32">
-          <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+          <div className="flex flex-col gap-6">
+            <AnimatePresence>
+              {fileInfo && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="mb-6"
+                >
+                  <FileInfo 
+                    filename={fileInfo.filename}
+                    fileSize={fileInfo.file_size}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -193,7 +215,7 @@ export function ChatWindow({ sessionId, fileId, onMessageSent }: ChatWindowProps
       >
         <form 
           onSubmit={handleSubmit} 
-          className="max-w-4xl mx-auto px-4"
+          className="px-4"
         >
           <div className="flex gap-3 items-center w-full bg-white/80 p-4 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
