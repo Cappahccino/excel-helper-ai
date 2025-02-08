@@ -78,11 +78,11 @@ export function ChatSidebar() {
 
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      <SidebarBody className="flex flex-col bg-gray-900">
+      <SidebarBody className="flex flex-col bg-gray-50">
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 text-black hover:text-black"
             variant="outline"
           >
             <PlusCircle className="h-4 w-4" />
@@ -101,10 +101,10 @@ export function ChatSidebar() {
               className="overflow-hidden"
             >
               <div 
-                className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-800"
+                className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-100"
                 onClick={toggleChatsExpanded}
               >
-                <span className="flex items-center gap-2 text-white">
+                <span className="flex items-center gap-2 text-black">
                   {isChatsExpanded ? (
                     <>
                       <ChevronDown className="h-4 w-4" />
@@ -136,7 +136,7 @@ export function ChatSidebar() {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
                           </div>
                         ) : threads?.length === 0 ? (
-                          <div className="text-sm text-muted-foreground p-4 text-center">
+                          <div className="text-sm text-gray-600 p-4 text-center">
                             No chats yet
                           </div>
                         ) : (
@@ -144,11 +144,11 @@ export function ChatSidebar() {
                             <SidebarMenuItem key={thread.session_id}>
                               <SidebarMenuButton
                                 onClick={() => handleThreadClick(thread.session_id)}
-                                className={`w-full justify-start gap-2 ${
-                                  currentThreadId === thread.session_id ? 'bg-accent' : ''
+                                className={`w-full justify-start gap-2 text-black hover:text-black ${
+                                  currentThreadId === thread.session_id ? 'bg-gray-200' : ''
                                 }`}
                               >
-                                <MessageSquare className="h-4 w-4 text-white shrink-0" />
+                                <MessageSquare className="h-4 w-4 shrink-0" />
                                 <motion.div
                                   animate={{ 
                                     opacity: open ? 1 : 0,
@@ -156,10 +156,10 @@ export function ChatSidebar() {
                                   }}
                                   className="flex flex-col items-start overflow-hidden"
                                 >
-                                  <span className="text-sm font-medium text-white truncate">
+                                  <span className="text-sm font-medium truncate">
                                     {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
                                   </span>
-                                  <span className="text-xs text-muted-foreground">
+                                  <span className="text-xs text-gray-600">
                                     {format(new Date(thread.created_at), 'MMM d, yyyy')}
                                   </span>
                                 </motion.div>
