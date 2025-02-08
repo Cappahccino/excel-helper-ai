@@ -133,19 +133,8 @@ const Chat = () => {
                     {!selectedSessionId && (
                       <div className="bg-blue-50 p-4 rounded-lg">
                         <p className="text-gray-600">
-                          Hello! You can ask me questions directly, or upload an Excel file for analysis.
+                          Hello! You can ask me questions directly, or upload an Excel file for analysis using the paperclip button below.
                         </p>
-                        {showUploadZone && (
-                          <div className="mt-4">
-                            <FileUploadZone
-                              onFileUpload={onFileUpload}
-                              isUploading={isUploading}
-                              uploadProgress={uploadProgress}
-                              currentFile={uploadedFile}
-                              onReset={resetUpload}
-                            />
-                          </div>
-                        )}
                       </div>
                     )}
                     {messages.map((msg) => (
