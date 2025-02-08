@@ -6,7 +6,7 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageContent } from "@/components/MessageContent";
@@ -16,6 +16,7 @@ import { format } from "date-fns";
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
 
@@ -70,6 +71,50 @@ const Chat = () => {
     },
     enabled: !!selectedSessionId,
   });
+
+  // Function to generate chat name from conversation
+  const generateChatName = async (messages: any[]) => {
+    if (!selectedSessionId || messages.length === 0) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const messageContent = messages
+      .filter(msg => msg.role === 'user')
+      .map(msg => msg.content)
+      .slice(0, 2)
+      .join(' ');
+
+    try {
+      const { data: analysis } = await supabase.functions.invoke('excel-assistant', {
+        body: { 
+          query: "Generate a short, descriptive title (max 40 chars) for this chat based on: " + messageContent,
+          userId: user.id,
+          threadId: session?.thread_id,
+          sessionId: selectedSessionId
+        }
+      });
+
+      if (analysis?.title) {
+        const { error: updateError } = await supabase
+          .from('chat_sessions')
+          .update({ chat_name: analysis.title })
+          .eq('session_id', selectedSessionId);
+
+        if (!updateError) {
+          queryClient.invalidateQueries({ queryKey: ['chat-threads'] });
+        }
+      }
+    } catch (error) {
+      console.error('Error generating chat name:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (messages.length > 0 && (!session?.chat_name || session.chat_name === 'Untitled Chat')) {
+      generateChatName(messages);
+    }
+  }, [messages, session?.chat_name]);
 
   useEffect(() => {
     if (!selectedSessionId) {
