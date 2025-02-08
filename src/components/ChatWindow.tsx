@@ -85,8 +85,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = async (message: string, file?: File) => {
-    if ((!message.trim() && !file) || isAnalyzing) return;
+  const handleSendMessage = async (message: string, fileId?: string | null) => {
+    if ((!message.trim() && !fileId) || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
@@ -98,7 +98,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       const { data: analysis, error } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
-            fileId, 
+            fileId: fileId || null, 
             query: message,
             userId: user.id,
             threadId: session?.thread_id,
@@ -199,6 +199,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         <ChatInput 
           onSendMessage={handleSendMessage}
           isAnalyzing={isAnalyzing}
+          sessionId={sessionId}
         />
       </div>
     </div>
