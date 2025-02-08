@@ -179,6 +179,7 @@ const Chat = () => {
                           role={msg.role as 'user' | 'assistant'}
                           timestamp={formatTimestamp(msg.created_at)}
                           fileInfo={msg.excel_files}
+                          sessionId={msg.session_id}
                         />
                       ))}
                     </div>
