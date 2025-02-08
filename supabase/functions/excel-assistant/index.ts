@@ -26,15 +26,14 @@ async function getOrCreateAssistant(openai: OpenAI) {
   const assistant = await openai.beta.assistants.create({
     name: "Excel & Data Analyst",
     instructions: `You are a versatile data analysis assistant. Your role is to:
-      1. For EVERY response, you MUST suggest a brief, descriptive title (max 50 chars) in this format: [TITLE]: Your Title Here
-      2. When analyzing Excel files:
-         - Provide clear insights and patterns
-         - Use numerical evidence
-         - Highlight key findings
-         - Format responses clearly
-      3. Maintain context from previous questions
-      4. Be helpful even without Excel data
-      5. Always include a title suggestion, even for follow-up questions`,
+      - Analyze Excel data when provided
+      - Answer general data analysis questions
+      - Provide clear insights and patterns
+      - Use numerical evidence when available
+      - Highlight key findings
+      - Format responses clearly
+      - Maintain context from previous questions
+      - Be helpful even without Excel data`,
     model: "gpt-4-turbo",
   });
 
@@ -70,26 +69,11 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function updateFileStatus(supabase: any, fileId: string, status: string, errorMessage?: string) {
-  console.log(`📝 Updating file ${fileId} status to: ${status}`);
-  const { error } = await supabase
-    .from('excel_files')
-    .update({ 
-      processing_status: status,
-      error_message: errorMessage,
-      ...(status === 'completed' ? { processing_completed_at: new Date().toISOString() } : {})
-    })
-    .eq('id', fileId);
-
-  if (error) {
-    console.error('Error updating file status:', error);
-  }
-}
-
 async function getOrCreateChatSession(supabase: any, userId: string, fileId: string | null = null, existingThreadId: string | null = null, openai: OpenAI) {
   console.log(`🔍 Checking session for user: ${userId}`);
 
   if (existingThreadId) {
+    // If we have an existing thread ID, get its session
     const { data: existingSession, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('session_id, thread_id')
@@ -107,10 +91,12 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
     }
   }
 
+  // Create a new thread and session
   console.log('Creating new session and thread...');
   const thread = await openai.beta.threads.create();
   console.log('✅ Created new thread:', thread.id);
 
+  // Create a new session
   const { data: newSession, error: createError } = await supabase
     .from('chat_sessions')
     .insert({
@@ -123,6 +109,7 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
 
   if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
 
+  // If we have a file ID, update the excel_file with the session_id
   if (fileId) {
     const { error: updateError } = await supabase
       .from('excel_files')
@@ -162,25 +149,6 @@ async function storeChatMessage(
   if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
 }
 
-async function updateChatName(supabase: any, sessionId: string, content: string) {
-  const titleMatch = content.match(/\[TITLE\]:\s*([^\n]+)/);
-  if (titleMatch) {
-    const chatName = titleMatch[1].trim();
-    console.log(`🏷️ Updating chat name to: ${chatName}`);
-    const { error } = await supabase
-      .from('chat_sessions')
-      .update({ chat_name: chatName })
-      .eq('session_id', sessionId);
-
-    if (error) {
-      console.error('Failed to update chat name:', error);
-      return null;
-    }
-    return chatName;
-  }
-  return null;
-}
-
 serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] New request received`);
@@ -193,11 +161,8 @@ serve(async (req) => {
     const { fileId, query, userId, threadId: existingThreadId } = await req.json();
     console.log(`📝 [${requestId}] Processing:`, { fileId, userId, existingThreadId });
 
-    if (!query && !fileId) {
-      throw new Error('Either query or fileId is required');
-    }
-    if (!userId) {
-      throw new Error('Missing userId');
+    if (!query || !userId) {
+      throw new Error('Missing required fields');
     }
 
     const supabase = createClient(
@@ -209,23 +174,11 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    if (fileId) {
-      await updateFileStatus(supabase, fileId, 'processing');
-    }
-
     // Get or create chat session and OpenAI thread
     const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId, openai);
     
-    // Prepare the user's message with a title request if it's a new file upload
-    let userMessage = query || '';
-    if (fileId && !existingThreadId) {
-      userMessage = "Please analyze this Excel file and provide a summary of its contents. Remember to include a [TITLE] at the start of your response.";
-    } else if (!existingThreadId) {
-      userMessage += "\n\nBased on our conversation, please suggest a brief, meaningful title (max 50 characters) in the format [TITLE]: Your Title Here";
-    }
-
     // Store user's message
-    await storeChatMessage(supabase, userId, fileId, sessionId, query || '', 'user');
+    await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
 
     const assistant = await getOrCreateAssistant(openai);
     const excelData = await getExcelFileContent(supabase, fileId);
@@ -234,8 +187,8 @@ serve(async (req) => {
     await openai.beta.threads.messages.create(threadId, {
       role: "user",
       content: excelData 
-        ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${userMessage}`
-        : userMessage
+        ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
+        : query
     });
 
     // Start the analysis
@@ -250,9 +203,6 @@ serve(async (req) => {
     
     while (runStatus.status !== "completed" && attempts < maxAttempts) {
       if (runStatus.status === "failed" || runStatus.status === "cancelled") {
-        if (fileId) {
-          await updateFileStatus(supabase, fileId, 'error', runStatus.last_error?.message || 'Analysis failed');
-        }
         throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
       }
       
@@ -262,23 +212,11 @@ serve(async (req) => {
       console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
     }
 
-    if (attempts >= maxAttempts) {
-      if (fileId) {
-        await updateFileStatus(supabase, fileId, 'error', 'Analysis timed out');
-      }
-      throw new Error('Analysis timed out');
-    }
+    if (attempts >= maxAttempts) throw new Error('Analysis timed out');
     
     // Get the assistant's response
     const messages = await openai.beta.threads.messages.list(threadId);
     const lastMessage = messages.data[0];
-    const messageContent = lastMessage.content[0].text.value;
-
-    // Update chat name if title is present
-    const chatName = await updateChatName(supabase, sessionId, messageContent);
-    
-    // Remove the title from the response if present
-    const cleanedContent = messageContent.replace(/\[TITLE\]:[^\n]+\n?/, '').trim();
 
     // Store the AI response
     await storeChatMessage(
@@ -286,23 +224,17 @@ serve(async (req) => {
       userId,
       fileId,
       sessionId,
-      cleanedContent,
+      lastMessage.content[0].text.value,
       'assistant',
       true
     );
 
-    // Update file status to completed if this was a file analysis
-    if (fileId) {
-      await updateFileStatus(supabase, fileId, 'completed');
-    }
-
-    console.log(`✅ [${requestId}] Analysis complete${chatName ? `, chat named: ${chatName}` : ''}`);
+    console.log(`✅ [${requestId}] Analysis complete`);
     return new Response(
       JSON.stringify({ 
-        message: cleanedContent,
+        message: lastMessage.content[0].text.value,
         threadId,
-        sessionId,
-        chatName
+        sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -321,4 +253,3 @@ serve(async (req) => {
     );
   }
 });
-

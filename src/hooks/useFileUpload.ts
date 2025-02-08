@@ -53,7 +53,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
     try {
       setIsUploading(true);
       setError(null);
-      setUploadProgress(0);
       
       const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
         type: newFile.type,
@@ -65,26 +64,18 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Create unique file path with user ID for proper RLS
-      const filePath = `${user.id}/${crypto.randomUUID()}-${sanitizedFile.name}`;
-
-      // Create a Blob from the file to track upload progress
-      const blob = new Blob([await sanitizedFile.arrayBuffer()]);
-      const size = blob.size;
-      let uploaded = 0;
+      // Create file path
+      const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
 
       // Upload file to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
-        .upload(filePath, blob, {
+        .upload(filePath, sanitizedFile, {
           cacheControl: '3600',
-          upsert: false,
+          upsert: false
         });
 
       if (uploadError) throw uploadError;
-
-      // Set progress to 100% when upload is complete
-      setUploadProgress(100);
 
       // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
@@ -94,7 +85,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: "processing",
+          processing_status: "pending",
           session_id: currentSessionId || null
         })
         .select()
@@ -108,7 +99,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
           body: { 
             fileId: fileRecord.id,
             query: "Please analyze this Excel file and provide a summary of its contents.",
-            userId: user.id
+            userId: user.id,
+            sessionId: currentSessionId // Use the current session if available
           }
         });
 
