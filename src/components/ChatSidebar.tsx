@@ -25,7 +25,7 @@ export function ChatSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const currentThreadId = searchParams.get("thread");
+  const currentSessionId = searchParams.get("session");
 
   const { data: threads, isLoading } = useQuery({
     queryKey: ["chat-threads"],
@@ -52,8 +52,8 @@ export function ChatSidebar() {
     },
   });
 
-  const handleThreadClick = (threadId: string) => {
-    navigate(`/chat?thread=${threadId}`);
+  const handleThreadClick = (sessionId: string) => {
+    navigate(`/chat?session=${sessionId}`);
   };
 
   const handleNewThread = () => {
@@ -101,7 +101,7 @@ export function ChatSidebar() {
                       <File
                         key={thread.session_id}
                         value={thread.session_id}
-                        isSelect={currentThreadId === thread.session_id}
+                        isSelect={currentSessionId === thread.session_id}
                         onClick={() => handleThreadClick(thread.session_id)}
                         className="cursor-pointer"
                       >

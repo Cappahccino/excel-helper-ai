@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -16,7 +17,7 @@ const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
-  const selectedSessionId = searchParams.get('thread');
+  const selectedSessionId = searchParams.get('session');
   const queryClient = useQueryClient();
 
   const {
@@ -87,7 +88,6 @@ const Chat = () => {
     file_size: uploadedFile.size,
   } : null);
 
-  const showChatWindow = true;
   const showUploadZone = !selectedSessionId && !activeFileId;
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
@@ -111,7 +111,7 @@ const Chat = () => {
       if (error) throw error;
       
       queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId, fileId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId] });
       
     } catch (error) {
       console.error('Analysis error:', error);
