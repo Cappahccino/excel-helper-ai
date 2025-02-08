@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -126,10 +127,10 @@ const Chat = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100"
+                className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
               >
                 {!selectedSessionId && (
-                  <div className="py-2 text-center">
+                  <div className="py-6 text-center">
                     <p className="text-gray-600 font-semibold">
                       Hello! You can ask me questions directly, or upload an Excel file for analysis using the paperclip button below.
                     </p>
@@ -148,18 +149,20 @@ const Chat = () => {
                     ))}
                   </div>
                 </ScrollArea>
-
-                <div className="px-4 py-2">
-                  <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-2">
-                    <ChatInput 
-                      onSendMessage={handleSendMessage}
-                      isAnalyzing={false}
-                    />
-                  </div>
-                </div>
               </motion.div>
             </div>
           </motion.div>
+
+          <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
+            <div className="w-full max-w-7xl mx-auto px-4 pb-4">
+              <div className="backdrop-blur-sm bg-white/80 shadow-lg rounded-xl py-2">
+                <ChatInput 
+                  onSendMessage={handleSendMessage}
+                  isAnalyzing={false}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </SidebarProvider>
