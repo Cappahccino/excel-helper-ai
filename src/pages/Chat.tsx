@@ -66,55 +66,52 @@ const Chat = () => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
         <ChatSidebar />
-        <div className="flex-1 p-4 lg:p-6 min-h-screen flex flex-col">
-          <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col">
-            <AnimatePresence>
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex-1 p-4 lg:p-6 space-y-4 overflow-hidden"
+        >
+          <div className="w-full mx-auto">
+            <AnimatePresence mode="wait">
               {shouldShowUploadZone && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
+                  exit={{ opacity: 0, y: 20 }}
                   transition={{ duration: 0.2 }}
-                  className="flex flex-col items-center gap-6 mb-8"
                 >
-                  <h1 className="text-2xl font-semibold text-gray-900">
-                    What do you want to analyze today?
-                  </h1>
-                  <div className="w-full">
-                    <FileUploadZone
-                      onFileUpload={onFileUpload}
-                      isUploading={isUploading}
-                      uploadProgress={uploadProgress}
-                      currentFile={uploadedFile}
-                      onReset={resetUpload}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence mode="wait">
-              {(activeFileId || selectedSessionId) && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col"
-                >
-                  <ChatWindow 
-                    sessionId={selectedSessionId}
-                    fileId={activeFileId}
-                    fileInfo={currentFile}
-                    onMessageSent={() => {
-                      // Refresh the session file query after a message is sent
-                      // in case the file association has changed
-                    }}
+                  <FileUploadZone
+                    onFileUpload={onFileUpload}
+                    isUploading={isUploading}
+                    uploadProgress={uploadProgress}
+                    currentFile={uploadedFile}
+                    onReset={resetUpload}
                   />
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-        </div>
+
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white rounded-xl shadow-sm border border-gray-100"
+          >
+            <div className="h-[calc(100vh-8rem)] flex flex-col">
+              <div className="flex-1 min-h-0">
+                <ChatWindow 
+                  sessionId={selectedSessionId}
+                  fileId={activeFileId}
+                  fileInfo={currentFile}
+                  onMessageSent={() => {
+                    // Refresh the session file query after a message is sent
+                    // in case the file association has changed
+                  }}
+                />
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
       </div>
     </SidebarProvider>
   );

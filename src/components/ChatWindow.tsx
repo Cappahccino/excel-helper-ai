@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -121,116 +120,119 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const isInputDisabled = !fileId || isAnalyzing;
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden">
-      <ScrollArea className="flex-1 p-4 pb-24">
-        <div className="flex flex-col gap-6">
-          <AnimatePresence>
-            {fileInfo && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <FileInfo 
-                  filename={fileInfo.filename}
-                  fileSize={fileInfo.file_size}
-                  fileId={fileId || undefined}
-                />
-              </motion.div>
+    <>
+      <div className="flex flex-col h-full relative">
+        <ScrollArea className="flex-1 p-4 pb-32">
+          <div className="flex flex-col gap-6">
+            <AnimatePresence>
+              {fileInfo && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="mb-6"
+                >
+                  <FileInfo 
+                    filename={fileInfo.filename}
+                    fileSize={fileInfo.file_size}
+                    fileId={fileId || undefined}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <MessageContent
+                content="Hello! Upload an Excel file and I'll help you analyze it."
+                role="assistant"
+                timestamp={formatTimestamp(new Date().toISOString())}
+              />
+            </motion.div>
+
+            {messagesLoading && (
+              <div className="flex items-center justify-center p-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+              </div>
             )}
-          </AnimatePresence>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <MessageContent
-              content="Hello! Upload an Excel file and I'll help you analyze it."
-              role="assistant"
-              timestamp={formatTimestamp(new Date().toISOString())}
-            />
-          </motion.div>
+            <AnimatePresence mode="popLayout">
+              {messages && messages.length > 0 && (
+                <motion.div 
+                  className="space-y-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  {messages.map((msg, index) => (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <MessageContent
+                        content={msg.content}
+                        role={msg.role as 'user' | 'assistant'}
+                        timestamp={formatTimestamp(msg.created_at)}
+                        fileInfo={msg.excel_files}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          {messagesLoading && (
-            <div className="flex items-center justify-center p-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-            </div>
-          )}
-
-          <AnimatePresence mode="popLayout">
-            {messages && messages.length > 0 && (
-              <motion.div 
-                className="space-y-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
-                {messages.map((msg, index) => (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <MessageContent
-                      content={msg.content}
-                      role={msg.role as 'user' | 'assistant'}
-                      timestamp={formatTimestamp(msg.created_at)}
-                      fileInfo={msg.excel_files}
-                    />
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {isAnalyzing && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
-              >
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-                <p className="text-sm">Analyzing your Excel file...</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </ScrollArea>
+            <AnimatePresence>
+              {isAnalyzing && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
+                >
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+                  <p className="text-sm">Analyzing your Excel file...</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </ScrollArea>
+        <ScrollToTop />
+      </div>
       
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="fixed bottom-0 left-0 right-0 bg-white border-t"
+        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent backdrop-blur-sm pb-4"
       >
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <form 
-            onSubmit={handleSubmit}
-            className="flex gap-3 items-center w-full bg-white rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300"
-          >
+        <form 
+          onSubmit={handleSubmit} 
+          className="px-4"
+        >
+          <div className="flex gap-3 items-center w-full bg-white/80 p-4 rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-300">
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder={fileId ? "Ask a follow-up question..." : "Upload an Excel file to start analyzing"}
-              className="flex-1 min-w-0 px-4 py-3 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
-              disabled={!fileId || isAnalyzing}
+              className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400"
+              disabled={isInputDisabled}
             />
             <Button 
               type="submit" 
               size="sm"
-              className="mr-2 bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm"
-              disabled={!fileId || isAnalyzing}
+              className="bg-excel hover:bg-excel/90 transition-colors duration-200 shadow-sm"
+              disabled={isInputDisabled}
             >
               <Send className="h-4 w-4" />
             </Button>
-          </form>
-        </div>
+          </div>
+        </form>
       </motion.div>
-      <ScrollToTop />
-    </div>
+    </>
   );
-};
+}
