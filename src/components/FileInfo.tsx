@@ -1,6 +1,6 @@
 
 import { FileSpreadsheet, Table } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ExcelPreview } from "./ExcelPreview";
 
@@ -45,9 +45,12 @@ export function FileInfo({ filename, fileSize, fileId }: FileInfoProps) {
               View Data
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogContent className="max-w-4xl max-h-[70vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>Preview: {filename}</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                Showing the first 10 rows of your Excel file
+              </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-hidden">
               <ExcelPreview sessionFileId={fileId} />
