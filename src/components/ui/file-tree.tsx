@@ -247,7 +247,7 @@ const Folder = forwardRef<
             className,
             {
               "bg-muted rounded-md": isSelect && isSelectable,
-              "cursor-pointer hover:bg-gray-800": isSelectable,
+              "cursor-pointer hover:bg-gray-200": isSelectable,
               "cursor-not-allowed opacity-50": !isSelectable,
             },
           )}
@@ -319,12 +319,12 @@ const File = forwardRef<
             {
               "bg-accent": isSelected && isSelectable,
             },
-            isSelectable ? "cursor-pointer hover:bg-gray-800" : "opacity-50 cursor-not-allowed",
+            isSelectable ? "cursor-pointer hover:bg-gray-200" : "opacity-50 cursor-not-allowed",
             className,
           )}
           onClick={() => selectItem(value)}
         >
-          {fileIcon ?? <FileIcon className="size-4 text-white" />}
+          {fileIcon ?? <FileIcon className="size-4 text-black" />}
           <div className="flex flex-col">
             {children}
           </div>
