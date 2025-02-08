@@ -68,28 +68,30 @@ const Chat = () => {
         <ChatSidebar />
         <div className="flex-1 p-4 lg:p-6 min-h-screen flex flex-col">
           <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col">
-            {shouldShowUploadZone && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                transition={{ duration: 0.2 }}
-                className="flex flex-col items-center gap-6 mb-8"
-              >
-                <h1 className="text-2xl font-semibold text-gray-900">
-                  What do you want to analyze today?
-                </h1>
-                <div className="w-full">
-                  <FileUploadZone
-                    onFileUpload={onFileUpload}
-                    isUploading={isUploading}
-                    uploadProgress={uploadProgress}
-                    currentFile={uploadedFile}
-                    onReset={resetUpload}
-                  />
-                </div>
-              </motion.div>
-            )}
+            <AnimatePresence>
+              {shouldShowUploadZone && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-col items-center gap-6 mb-8"
+                >
+                  <h1 className="text-2xl font-semibold text-gray-900">
+                    What do you want to analyze today?
+                  </h1>
+                  <div className="w-full">
+                    <FileUploadZone
+                      onFileUpload={onFileUpload}
+                      isUploading={isUploading}
+                      uploadProgress={uploadProgress}
+                      currentFile={uploadedFile}
+                      onReset={resetUpload}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence mode="wait">
               {(activeFileId || selectedSessionId) && (

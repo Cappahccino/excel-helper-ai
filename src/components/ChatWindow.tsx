@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -120,9 +121,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const isInputDisabled = !fileId || isAnalyzing;
 
   return (
-    <div className="flex flex-col h-full relative">
-      <ScrollArea className="flex-1 p-4">
-        <div className="flex flex-col gap-6 pb-20">
+    <div className="flex flex-col h-full relative overflow-hidden">
+      <ScrollArea className="flex-1 p-4 pb-24">
+        <div className="flex flex-col gap-6">
           <AnimatePresence>
             {fileInfo && (
               <motion.div
@@ -198,7 +199,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             )}
           </AnimatePresence>
         </div>
-        <ScrollToTop />
       </ScrollArea>
       
       <motion.div 
@@ -230,6 +230,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           </form>
         </div>
       </motion.div>
+      <ScrollToTop />
     </div>
   );
-}
+};
