@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -27,17 +28,20 @@ const Chat = () => {
     fileId: uploadedFileId,
   } = useFileUpload();
 
-  const { data: sessionFile } = useQuery({
-    queryKey: ['session-file', selectedSessionId],
+  // First, get the session details independently
+  const { data: session } = useQuery({
+    queryKey: ['chat-session', selectedSessionId],
     queryFn: async () => {
       if (!selectedSessionId) return null;
       
       const { data, error } = await supabase
-        .from('excel_files')
+        .from('chat_sessions')
         .select(`
           *,
-          chat_sessions:session_id (
-            thread_id
+          excel_files (
+            id,
+            filename,
+            file_size
           )
         `)
         .eq('session_id', selectedSessionId)
@@ -49,21 +53,22 @@ const Chat = () => {
     enabled: !!selectedSessionId,
   });
 
+  // Then get messages based on session ID directly
   const { data: messages = [], isLoading: messagesLoading } = useQuery({
-    queryKey: ['chat-messages', sessionFile?.session_id],
+    queryKey: ['chat-messages', selectedSessionId],
     queryFn: async () => {
-      if (!sessionFile?.session_id) return [];
+      if (!selectedSessionId) return [];
       
       const { data, error } = await supabase
         .from('chat_messages')
         .select('*, excel_files(filename, file_size)')
-        .eq('session_id', sessionFile.session_id)
+        .eq('session_id', selectedSessionId)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
       return data;
     },
-    enabled: !!sessionFile?.session_id,
+    enabled: !!selectedSessionId,
   });
 
   useEffect(() => {
@@ -76,8 +81,8 @@ const Chat = () => {
     await handleFileUpload(file, selectedSessionId);
   };
 
-  const activeFileId = sessionFile?.id || uploadedFileId;
-  const currentFile = sessionFile || (uploadedFile ? {
+  const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId;
+  const currentFile = session?.excel_files?.[0] || (uploadedFile ? {
     filename: uploadedFile.name,
     file_size: uploadedFile.size,
   } : null);
@@ -97,8 +102,8 @@ const Chat = () => {
           fileId: activeFileId, 
           query: message,
           userId: user.id,
-          threadId: sessionFile?.chat_sessions?.thread_id,
-          sessionId: sessionFile?.session_id
+          threadId: session?.thread_id,
+          sessionId: selectedSessionId
         }
       });
 
