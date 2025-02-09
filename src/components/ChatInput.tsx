@@ -59,7 +59,7 @@ export function ChatInput({ onSendMessage, isAnalyzing, sessionId }: ChatInputPr
   const isDisabled = isAnalyzing || isUploading || (!message.trim() && !fileId);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pb-4">
+    <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2">
         {(isUploading || fileId) && (
           <div className="flex items-center gap-2 p-2 bg-zinc-900 rounded-lg text-white">
