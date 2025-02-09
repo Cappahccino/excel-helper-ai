@@ -51,6 +51,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     }
 
     try {
+      setFile(newFile);
       setIsUploading(true);
       setError(null);
       setUploadProgress(0);
@@ -97,7 +98,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       setFileId(fileRecord.id);
       setSessionId(currentSessionId);
-      setFile(sanitizedFile);
       
       toast({
         title: "Success",

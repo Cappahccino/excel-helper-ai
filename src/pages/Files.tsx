@@ -3,7 +3,7 @@ import React from 'react';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { FilesList } from '@/components/FilesList';
 import { useFileUpload } from '@/hooks/useFileUpload';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ChatSidebar } from '@/components/ChatSidebar';
@@ -11,6 +11,7 @@ import { SidebarProvider } from '@/components/ui/sidebar-new';
 
 const Files = () => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const {
     file,
     isUploading,
@@ -40,6 +41,13 @@ const Files = () => {
     },
   });
 
+  const onFileUploadComplete = async () => {
+    // Invalidate the query to refresh the file list
+    await queryClient.invalidateQueries({ queryKey: ['excel-files'] });
+    // Reset the upload state for the next file
+    resetUpload();
+  };
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
@@ -54,6 +62,7 @@ const Files = () => {
                 uploadProgress={uploadProgress}
                 currentFile={file}
                 onReset={resetUpload}
+                onUploadComplete={onFileUploadComplete}
               />
               <FilesList 
                 files={files || []}
@@ -68,4 +77,3 @@ const Files = () => {
 };
 
 export default Files;
-
