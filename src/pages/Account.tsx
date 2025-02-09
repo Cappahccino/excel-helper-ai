@@ -9,6 +9,7 @@ import { SubscriptionTab } from '@/components/account/SubscriptionTab';
 import { UsageTab } from '@/components/account/UsageTab';
 import { ConnectedAppsTab } from '@/components/account/ConnectedAppsTab';
 import { SecurityTab } from '@/components/account/SecurityTab';
+import { ChatSidebar } from '@/components/ChatSidebar';
 
 const TAB_CONTENT = [
   {
@@ -45,30 +46,35 @@ const TAB_CONTENT = [
 
 export default function Account() {
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Account Settings</h1>
-        
-        <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-            {TAB_CONTENT.map(({ title, icon: Icon, key }) => (
-              <TabsTrigger 
-                key={key} 
-                value={key}
-                className="flex items-center gap-2 w-full"
-              >
-                <Icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{title}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <div className="flex h-screen">
+      <ChatSidebar />
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto py-8 px-4">
+          <div className="max-w-4xl mx-auto">
+            <h1 className="text-3xl font-bold mb-8">Account Settings</h1>
+            
+            <Tabs defaultValue="profile" className="w-full">
+              <TabsList className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                {TAB_CONTENT.map(({ title, icon: Icon, key }) => (
+                  <TabsTrigger 
+                    key={key} 
+                    value={key}
+                    className="flex items-center gap-2 w-full"
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="hidden sm:inline">{title}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
-          {TAB_CONTENT.map(({ key, component: Component }) => (
-            <TabsContent key={key} value={key}>
-              <Component />
-            </TabsContent>
-          ))}
-        </Tabs>
+              {TAB_CONTENT.map(({ key, component: Component }) => (
+                <TabsContent key={key} value={key}>
+                  <Component />
+                </TabsContent>
+              ))}
+            </Tabs>
+          </div>
+        </div>
       </div>
     </div>
   );
