@@ -5,7 +5,19 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
-import { PlusCircle, MessageSquare, ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
+import { 
+  PlusCircle, 
+  MessageSquare, 
+  ChevronDown, 
+  ChevronRight, 
+  FolderOpen, 
+  Folder,
+  Files,
+  BookOpen,
+  ArrowUpRight,
+  CreditCard,
+  LogOut
+} from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -30,6 +42,34 @@ interface Thread {
     filename: string;
   }[];
 }
+
+const mainNavLinks = [
+  {
+    label: "Past Chats",
+    href: "/chat",
+    icon: <MessageSquare className="h-4 w-4 text-white" />,
+  },
+  {
+    label: "My Files",
+    href: "/files",
+    icon: <Files className="h-4 w-4 text-white" />,
+  },
+  {
+    label: "Documentation",
+    href: "/docs",
+    icon: <BookOpen className="h-4 w-4 text-white" />,
+  },
+  {
+    label: "Upgrade Account",
+    href: "/upgrade",
+    icon: <ArrowUpRight className="h-4 w-4 text-white" />,
+  },
+  {
+    label: "Account & Billing",
+    href: "/account",
+    icon: <CreditCard className="h-4 w-4 text-white" />,
+  },
+];
 
 export function ChatSidebar() {
   const [open, setOpen] = useState(false);
@@ -76,9 +116,18 @@ export function ChatSidebar() {
     setIsChatsExpanded(!isChatsExpanded);
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
+
+  const handleNavigation = (href: string) => {
+    navigate(href);
+  };
+
   return (
     <Sidebar open={open} setOpen={setOpen}>
-      <SidebarBody className="flex flex-col bg-gray-100">
+      <SidebarBody className="flex flex-col bg-gray-100 h-full">
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
@@ -94,7 +143,7 @@ export function ChatSidebar() {
             </motion.span>
           </Button>
         </SidebarHeader>
-        <SidebarContent>
+        <SidebarContent className="flex-1 flex flex-col">
           <SidebarGroup>
             <motion.div
               animate={{ opacity: open ? 1 : 0 }}
@@ -174,6 +223,52 @@ export function ChatSidebar() {
               )}
             </AnimatePresence>
           </SidebarGroup>
+
+          {/* Main Navigation */}
+          <SidebarGroup className="mt-4">
+            <SidebarMenu className="px-2 space-y-1">
+              {mainNavLinks.map((link) => (
+                <SidebarMenuItem key={link.label}>
+                  <SidebarMenuButton
+                    onClick={() => handleNavigation(link.href)}
+                    className={`w-full justify-start gap-2 p-2 text-black hover:text-black ${
+                      location.pathname === link.href ? 'bg-gray-200' : ''
+                    }`}
+                  >
+                    {React.cloneElement(link.icon, { className: 'h-4 w-4 text-gray-700' })}
+                    <motion.span
+                      animate={{ 
+                        opacity: open ? 1 : 0,
+                        width: open ? 'auto' : 0,
+                      }}
+                      className="text-xs font-medium truncate"
+                    >
+                      {link.label}
+                    </motion.span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+
+          {/* Sign Out Button */}
+          <div className="mt-auto p-2">
+            <SidebarMenuButton
+              onClick={handleSignOut}
+              className="w-full justify-start gap-2 p-2 text-black hover:text-black"
+            >
+              <LogOut className="h-4 w-4 text-gray-700" />
+              <motion.span
+                animate={{ 
+                  opacity: open ? 1 : 0,
+                  width: open ? 'auto' : 0,
+                }}
+                className="text-xs font-medium truncate"
+              >
+                Sign Out
+              </motion.span>
+            </SidebarMenuButton>
+          </div>
         </SidebarContent>
       </SidebarBody>
     </Sidebar>
