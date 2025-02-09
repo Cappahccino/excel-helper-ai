@@ -1,6 +1,5 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
-import { useFileUpload } from "@/hooks/useFileUpload";
+import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
@@ -27,9 +26,8 @@ const Chat = () => {
     handleFileUpload,
     resetUpload,
     fileId: uploadedFileId,
-  } = useFileUpload();
+  } = useChatFileUpload();
 
-  // First, get the session details independently
   const { data: session } = useQuery({
     queryKey: ['chat-session', selectedSessionId],
     queryFn: async () => {
@@ -54,7 +52,6 @@ const Chat = () => {
     enabled: !!selectedSessionId,
   });
 
-  // Then get messages based on session ID directly
   const { data: messages = [], isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', selectedSessionId],
     queryFn: async () => {
@@ -212,4 +209,3 @@ const Chat = () => {
 };
 
 export default Chat;
-

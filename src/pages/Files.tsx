@@ -2,7 +2,7 @@
 import React from 'react';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { FilesList } from '@/components/FilesList';
-import { useFileUpload } from '@/hooks/useFileUpload';
+import { useSimpleFileUpload } from '@/hooks/useSimpleFileUpload';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -18,7 +18,7 @@ const Files = () => {
     uploadProgress,
     handleFileUpload,
     resetUpload,
-  } = useFileUpload();
+  } = useSimpleFileUpload();
 
   const { data: files, isLoading: isLoadingFiles } = useQuery({
     queryKey: ['excel-files'],
