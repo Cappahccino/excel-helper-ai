@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -79,6 +80,12 @@ const Chat = () => {
 
   const onFileUpload = async (file: File) => {
     await handleFileUpload(file, selectedSessionId);
+  };
+
+  const onUploadComplete = () => {
+    queryClient.invalidateQueries({ queryKey: ['chat-messages', selectedSessionId] });
+    queryClient.invalidateQueries({ queryKey: ['chat-session', selectedSessionId] });
+    resetUpload();
   };
 
   const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId;
@@ -205,3 +212,4 @@ const Chat = () => {
 };
 
 export default Chat;
+
