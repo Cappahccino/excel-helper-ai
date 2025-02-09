@@ -128,9 +128,9 @@ export function ChatSidebar() {
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ScrollArea className="h-[calc(100vh-10rem)]">
+                  <ScrollArea className="h-[280px]">
                     <SidebarGroupContent className="pl-8">
-                      <SidebarMenu>
+                      <SidebarMenu className="space-y-0.5">
                         {isLoading ? (
                           <div className="flex items-center justify-center p-4">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
@@ -144,7 +144,7 @@ export function ChatSidebar() {
                             <SidebarMenuItem key={thread.session_id}>
                               <SidebarMenuButton
                                 onClick={() => handleThreadClick(thread.session_id)}
-                                className={`w-full justify-start gap-2 text-black hover:text-black ${
+                                className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black ${
                                   currentThreadId === thread.session_id ? 'bg-gray-200' : ''
                                 }`}
                               >
