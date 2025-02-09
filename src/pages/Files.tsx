@@ -6,6 +6,7 @@ import { useFileUpload } from '@/hooks/useFileUpload';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { AppSidebar } from '@/components/AppSidebar';
 
 const Files = () => {
   const { toast } = useToast();
@@ -39,21 +40,26 @@ const Files = () => {
   });
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">My Files</h1>
-      <div className="space-y-6">
-        <FileUploadZone 
-          onFileUpload={handleFileUpload}
-          isUploading={isUploading}
-          uploadProgress={uploadProgress}
-          currentFile={file}
-          onReset={resetUpload}
-        />
-        <FilesList 
-          files={files || []}
-          isLoading={isLoadingFiles}
-        />
-      </div>
+    <div className="flex h-screen w-full">
+      <AppSidebar />
+      <main className="flex-1">
+        <div className="container mx-auto p-6">
+          <h1 className="text-2xl font-bold mb-6">My Files</h1>
+          <div className="space-y-6">
+            <FileUploadZone 
+              onFileUpload={handleFileUpload}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              currentFile={file}
+              onReset={resetUpload}
+            />
+            <FilesList 
+              files={files || []}
+              isLoading={isLoadingFiles}
+            />
+          </div>
+        </div>
+      </main>
     </div>
   );
 };
