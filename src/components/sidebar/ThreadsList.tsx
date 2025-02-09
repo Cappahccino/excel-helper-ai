@@ -116,7 +116,7 @@ export function ThreadsList() {
                       <SidebarMenuItem key={thread.session_id}>
                         <SidebarMenuButton
                           onClick={() => handleThreadClick(thread.session_id)}
-                          className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black ${
+                          className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black hover:bg-gray-200 ${
                             currentThreadId === thread.session_id ? 'bg-gray-200' : ''
                           }`}
                         >
