@@ -59,7 +59,7 @@ export function NavigationMenu() {
           <SidebarMenuItem key={link.label}>
             <SidebarMenuButton
               onClick={() => handleNavigation(link.href)}
-              className={`w-full justify-start gap-2 p-2 text-black hover:text-black ${
+              className={`w-full justify-start gap-2 p-2 text-black hover:text-black hover:bg-gray-200 ${
                 location.pathname === link.href ? 'bg-gray-200' : ''
               }`}
             >
