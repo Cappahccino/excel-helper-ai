@@ -82,7 +82,7 @@ export function ChatSidebar() {
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center justify-start gap-2 text-black hover:text-black"
+            className="w-full flex items-center justify-start gap-2 text-black hover:text-black text-xs"
             variant="outline"
           >
             <PlusCircle className={`h-4 w-4 shrink-0 ${!open && 'mx-auto'}`} />
@@ -104,19 +104,19 @@ export function ChatSidebar() {
                 className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-200"
                 onClick={toggleChatsExpanded}
               >
-                <span className="flex items-center gap-2 text-black">
+                <span className="flex items-center gap-2 text-black text-xs">
                   {isChatsExpanded ? (
                     <>
-                      <ChevronDown className="h-4 w-4" />
-                      <FolderOpen className="h-4 w-4" />
+                      <ChevronDown className="h-3 w-3" />
+                      <FolderOpen className="h-3 w-3" />
                     </>
                   ) : (
                     <>
-                      <ChevronRight className="h-4 w-4" />
-                      <Folder className="h-4 w-4" />
+                      <ChevronRight className="h-3 w-3" />
+                      <Folder className="h-3 w-3" />
                     </>
                   )}
-                  <span className="text-sm font-medium">My Chats</span>
+                  <span className="font-medium">My Chats</span>
                 </span>
               </div>
             </motion.div>
@@ -136,7 +136,7 @@ export function ChatSidebar() {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
                           </div>
                         ) : threads?.length === 0 ? (
-                          <div className="text-sm text-gray-600 p-4 text-center">
+                          <div className="text-xs text-gray-600 p-4 text-center">
                             No chats yet
                           </div>
                         ) : (
@@ -148,7 +148,7 @@ export function ChatSidebar() {
                                   currentThreadId === thread.session_id ? 'bg-gray-200' : ''
                                 }`}
                               >
-                                <MessageSquare className="h-4 w-4 shrink-0" />
+                                <MessageSquare className="h-3 w-3 shrink-0" />
                                 <motion.div
                                   animate={{ 
                                     opacity: open ? 1 : 0,
@@ -156,10 +156,10 @@ export function ChatSidebar() {
                                   }}
                                   className="flex flex-col items-start overflow-hidden"
                                 >
-                                  <span className="text-sm font-medium truncate">
+                                  <span className="text-xs font-medium truncate">
                                     {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
                                   </span>
-                                  <span className="text-xs text-gray-600">
+                                  <span className="text-[10px] text-gray-600">
                                     {format(new Date(thread.created_at), 'MMM d, yyyy')}
                                   </span>
                                 </motion.div>
