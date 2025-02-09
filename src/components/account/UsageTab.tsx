@@ -1,9 +1,9 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from '@/integrations/supabase/client';
+import { ButtonColorful } from "@/components/ui/button-colorful";
 
 interface UsageStats {
   totalFiles: number;
@@ -89,9 +89,7 @@ export function UsageTab() {
                 <span>Unlimited</span>
               </div>
             </div>
-            <Button variant="outline" className="w-full">
-              Upgrade Plan
-            </Button>
+            <ButtonColorful label="Upgrade Plan" className="w-full" />
           </div>
         </CardContent>
       </Card>

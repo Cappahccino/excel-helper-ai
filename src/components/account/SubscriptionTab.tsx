@@ -1,7 +1,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Check } from 'lucide-react';
+import { ButtonColorful } from "@/components/ui/button-colorful";
 
 export function SubscriptionTab() {
   return (
@@ -27,9 +27,7 @@ export function SubscriptionTab() {
                 </li>
               ))}
             </ul>
-            <Button className="mt-6">
-              Upgrade Plan
-            </Button>
+            <ButtonColorful className="mt-6" label="Upgrade Plan" />
           </div>
         </CardContent>
       </Card>
