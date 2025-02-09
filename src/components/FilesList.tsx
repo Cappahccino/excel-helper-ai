@@ -87,7 +87,7 @@ export function FilesList({ files, isLoading }: FilesListProps) {
   };
 
   const handleChatWithFile = (fileId: string) => {
-    navigate(`/chat?file=${fileId}`);
+    navigate(`/chat?fileId=${fileId}`);
   };
 
   if (isLoading) {

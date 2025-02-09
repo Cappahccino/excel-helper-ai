@@ -8,9 +8,13 @@ interface ChatInputProps {
   onSendMessage: (message: string, fileId?: string | null) => void;
   isAnalyzing: boolean;
   sessionId?: string | null;
+  fileInfo?: {
+    filename: string;
+    file_size: number;
+  } | null;
 }
 
-export function ChatInput({ onSendMessage, isAnalyzing, sessionId }: ChatInputProps) {
+export function ChatInput({ onSendMessage, isAnalyzing, sessionId, fileInfo }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -58,10 +62,18 @@ export function ChatInput({ onSendMessage, isAnalyzing, sessionId }: ChatInputPr
 
   const isDisabled = isAnalyzing || isUploading || (!message.trim() && !fileId);
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2">
-        {(isUploading || fileId) && (
+        {(isUploading || fileInfo) && (
           <div className="flex items-center gap-2 p-2 bg-zinc-900 rounded-lg text-white">
             <FileSpreadsheet className="h-4 w-4 text-green-500" />
             {isUploading ? (
@@ -69,8 +81,10 @@ export function ChatInput({ onSendMessage, isAnalyzing, sessionId }: ChatInputPr
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
                 <span className="text-sm">Uploading file...</span>
               </div>
-            ) : (
-              <span className="text-sm">Excel file ready</span>
+            ) : fileInfo && (
+              <div className="flex items-center justify-between w-full">
+                <span className="text-sm">{fileInfo.filename} ({formatFileSize(fileInfo.file_size)})</span>
+              </div>
             )}
           </div>
         )}

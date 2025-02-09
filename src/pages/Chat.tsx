@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -17,6 +18,7 @@ const Chat = () => {
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
+  const fileIdFromUrl = searchParams.get('fileId');
   const queryClient = useQueryClient();
 
   const {
@@ -27,6 +29,23 @@ const Chat = () => {
     resetUpload,
     fileId: uploadedFileId,
   } = useChatFileUpload();
+
+  const { data: selectedFile } = useQuery({
+    queryKey: ['excel-file', fileIdFromUrl],
+    queryFn: async () => {
+      if (!fileIdFromUrl) return null;
+      
+      const { data, error } = await supabase
+        .from('excel_files')
+        .select('*')
+        .eq('id', fileIdFromUrl)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!fileIdFromUrl && !selectedSessionId,
+  });
 
   const { data: session } = useQuery({
     queryKey: ['chat-session', selectedSessionId],
@@ -85,8 +104,8 @@ const Chat = () => {
     resetUpload();
   };
 
-  const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId;
-  const currentFile = session?.excel_files?.[0] || (uploadedFile ? {
+  const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId || fileIdFromUrl;
+  const currentFile = session?.excel_files?.[0] || selectedFile || (uploadedFile ? {
     filename: uploadedFile.name,
     file_size: uploadedFile.size,
   } : null);
@@ -157,6 +176,7 @@ const Chat = () => {
                     onSendMessage={handleSendMessage}
                     sessionId={selectedSessionId}
                     isAnalyzing={false}
+                    fileInfo={currentFile}
                   />
                 </motion.div>
               </div>
@@ -196,6 +216,7 @@ const Chat = () => {
                       onSendMessage={handleSendMessage}
                       sessionId={selectedSessionId}
                       isAnalyzing={false}
+                      fileInfo={currentFile}
                     />
                   </div>
                 </div>
