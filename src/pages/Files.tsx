@@ -42,11 +42,11 @@ const Files = () => {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-gray-50">
+      <div className="flex min-h-screen w-full">
         <div className="fixed left-0 top-0 h-full z-10">
           <AppSidebar />
         </div>
-        <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
+        <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px] bg-gray-100">
           <div className="container mx-auto p-6">
             <h1 className="text-2xl font-bold mb-6">My Files</h1>
             <div className="space-y-6">
@@ -70,3 +70,4 @@ const Files = () => {
 };
 
 export default Files;
+
