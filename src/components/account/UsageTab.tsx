@@ -89,7 +89,7 @@ export function UsageTab() {
                 <span>Unlimited</span>
               </div>
             </div>
-            <ButtonColorful label="Upgrade Plan" className="w-full" />
+            <ButtonColorful label="Upgrade Plan" className="mt-6" />
           </div>
         </CardContent>
       </Card>
