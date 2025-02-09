@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -129,6 +130,10 @@ export function Chat() {
     }
   };
 
+  const handleUploadComplete = () => {
+    refetchMessages();
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
       <div className="h-[600px] flex flex-col">
@@ -147,6 +152,7 @@ export function Chat() {
                 uploadProgress={uploadProgress}
                 currentFile={uploadedFile}
                 onReset={resetUpload}
+                onUploadComplete={handleUploadComplete}
               />
 
               {uploadedFile && !isUploading && (
