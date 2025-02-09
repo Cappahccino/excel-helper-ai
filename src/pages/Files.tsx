@@ -1,10 +1,14 @@
 
 import React from 'react';
 import { FileUploadZone } from '@/components/FileUploadZone';
-import { FileInfo } from '@/components/FileInfo';
+import { FilesList } from '@/components/FilesList';
 import { useFileUpload } from '@/hooks/useFileUpload';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 const Files = () => {
+  const { toast } = useToast();
   const {
     file,
     isUploading,
@@ -12,6 +16,27 @@ const Files = () => {
     handleFileUpload,
     resetUpload,
   } = useFileUpload();
+
+  const { data: files, isLoading: isLoadingFiles } = useQuery({
+    queryKey: ['excel-files'],
+    queryFn: async () => {
+      const { data: files, error } = await supabase
+        .from('excel_files')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        toast({
+          title: "Error fetching files",
+          description: error.message,
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      return files;
+    },
+  });
 
   return (
     <div className="container mx-auto p-6">
@@ -24,16 +49,13 @@ const Files = () => {
           currentFile={file}
           onReset={resetUpload}
         />
-        {file && (
-          <FileInfo
-            filename={file.name}
-            fileSize={file.size}
-          />
-        )}
+        <FilesList 
+          files={files || []}
+          isLoading={isLoadingFiles}
+        />
       </div>
     </div>
   );
 };
 
 export default Files;
-
