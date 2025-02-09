@@ -12,6 +12,7 @@ import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
 import { ProcessingStatus } from "./ProcessingStatus";
 import { useProcessingStatus } from "@/hooks/useProcessingStatus";
+import { useNavigate } from "react-router-dom";
 
 interface ChatMessage {
   id: string;
@@ -52,6 +53,7 @@ export function Chat() {
   const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
   const {
     file: uploadedFile,
     isUploading,
@@ -118,6 +120,10 @@ export function Chat() {
       if (error) throw error;
       await refetchMessages();
       setMessage("");
+      
+      // Navigate to the chat with the threadId after sending the first message
+      navigate(`/chat?thread=${threadId}`);
+      
     } catch (error) {
       console.error("Analysis error:", error);
       toast({
