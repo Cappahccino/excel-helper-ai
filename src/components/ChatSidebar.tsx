@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
-import { PlusCircle } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Sidebar,
@@ -31,7 +31,7 @@ export function ChatSidebar() {
             className="w-full flex items-center justify-start gap-2 text-black hover:text-black text-xs"
             variant="outline"
           >
-            <PlusCircle className={`h-4 w-4 shrink-0 ${!open && 'mx-auto'}`} />
+            <MessageSquare className={`h-4 w-4 shrink-0 ${!open && 'mx-auto'}`} />
             <motion.span
               animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
               className="overflow-hidden whitespace-nowrap"
