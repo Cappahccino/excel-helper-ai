@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   CreditCard,
   FilePlus,
+  FolderIcon,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import {
@@ -19,8 +20,13 @@ import {
 
 const mainNavLinks = [
   {
-    label: "Workflows",
+    label: "My Workflows",
     href: "/workflows",
+    icon: <FolderIcon className="h-4 w-4 text-white" />,
+  },
+  {
+    label: "Create Workflow",
+    href: "/canvas",
     icon: <FilePlus className="h-4 w-4 text-white" />,
   },
   {
