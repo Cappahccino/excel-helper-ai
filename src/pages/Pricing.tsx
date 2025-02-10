@@ -173,7 +173,6 @@ export default function Pricing() {
                             currency: "USD",
                             minimumFractionDigits: 2,
                           }}
-                          formatter={(value) => `$${value}`}
                           transformTiming={{
                             duration: 500,
                             easing: "ease-out",
