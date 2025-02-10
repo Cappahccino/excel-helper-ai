@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +12,7 @@ import Files from "./pages/Files";
 import Account from "./pages/Account";
 import Pricing from "./pages/Pricing";
 import Workflows from "./pages/Workflows";
+import Canvas from "./pages/Canvas";
 
 const queryClient = new QueryClient();
 
@@ -54,38 +54,11 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route
-            path="/workflows"
-            element={
-              <ProtectedRoute>
-                <Workflows />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/chat"
-            element={
-              <ProtectedRoute>
-                <Chat />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/files"
-            element={
-              <ProtectedRoute>
-                <Files />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/account"
-            element={
-              <ProtectedRoute>
-                <Account />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/workflows" element={<ProtectedRoute><Workflows /></ProtectedRoute>} />
+          <Route path="/canvas" element={<ProtectedRoute><Canvas /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+          <Route path="/files" element={<ProtectedRoute><Files /></ProtectedRoute>} />
+          <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
