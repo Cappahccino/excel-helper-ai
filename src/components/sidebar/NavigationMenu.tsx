@@ -7,6 +7,7 @@ import {
   BookOpen,
   ArrowUpRight,
   CreditCard,
+  FilePlus,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import {
@@ -17,6 +18,11 @@ import {
 } from "@/components/ui/sidebar-new";
 
 const mainNavLinks = [
+  {
+    label: "Workflows",
+    href: "/workflows",
+    icon: <FilePlus className="h-4 w-4 text-white" />,
+  },
   {
     label: "Past Chats",
     href: "/chat",

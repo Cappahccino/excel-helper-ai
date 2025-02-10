@@ -12,6 +12,7 @@ import Chat from "./pages/Chat";
 import Files from "./pages/Files";
 import Account from "./pages/Account";
 import Pricing from "./pages/Pricing";
+import Workflows from "./pages/Workflows";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,14 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route
+            path="/workflows"
+            element={
+              <ProtectedRoute>
+                <Workflows />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/chat"
             element={
