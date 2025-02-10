@@ -66,11 +66,13 @@ const Canvas = () => {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-96 p-4">
-            <Input 
-              placeholder="Search nodes..." 
-              className="mb-3" 
-              icon={<Search className="h-4 w-4" />}
-            />
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search nodes..." 
+                className="pl-8 mb-3"
+              />
+            </div>
             <Tabs defaultValue="nodes">
               <TabsList className="grid grid-cols-4 gap-2">
                 <TabsTrigger value="nodes">Nodes</TabsTrigger>
@@ -120,11 +122,13 @@ const Canvas = () => {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-96 p-4" align="start">
-              <Input 
-                placeholder="Search nodes..." 
-                className="mb-3" 
-                icon={<Search className="h-4 w-4" />}
-              />
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search nodes..." 
+                  className="pl-8 mb-3"
+                />
+              </div>
               <Tabs defaultValue="nodes">
                 <TabsList className="grid grid-cols-4 gap-2">
                   <TabsTrigger value="nodes">Nodes</TabsTrigger>
