@@ -8,7 +8,6 @@ import {
   ArrowUpRight,
   CreditCard,
   FilePlus,
-  PenTool,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import {
@@ -23,11 +22,6 @@ const mainNavLinks = [
     label: "Workflows",
     href: "/workflows",
     icon: <FilePlus className="h-4 w-4 text-white" />,
-  },
-  {
-    label: "Canvas",
-    href: "/canvas",
-    icon: <PenTool className="h-4 w-4 text-white" />,
   },
   {
     label: "Past Chats",
