@@ -33,8 +33,8 @@ const mainNavLinks = [
     icon: <BookOpen className="h-4 w-4 text-white" />,
   },
   {
-    label: "Upgrade Account",
-    href: "/upgrade",
+    label: "Pricing",
+    href: "/pricing",
     icon: <ArrowUpRight className="h-4 w-4 text-white" />,
   },
   {
