@@ -13,6 +13,7 @@ import Files from "./pages/Files";
 import Account from "./pages/Account";
 import Pricing from "./pages/Pricing";
 import Workflows from "./pages/Workflows";
+import Canvas from "./pages/Canvas";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,14 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Workflows />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/canvas"
+            element={
+              <ProtectedRoute>
+                <Canvas />
               </ProtectedRoute>
             }
           />
