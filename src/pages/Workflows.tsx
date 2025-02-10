@@ -5,7 +5,7 @@ import {
   FilePlus, 
   BookOpen, 
   Info,
-  Template
+  LayoutTemplate
 } from "lucide-react";
 
 export default function Workflows() {
@@ -42,17 +42,17 @@ export default function Workflows() {
             {
               title: "Data Cleanup",
               description: "Automatically clean and format Excel data",
-              icon: <Template className="h-6 w-6" />,
+              icon: <LayoutTemplate className="h-6 w-6" />,
             },
             {
               title: "Report Generator",
               description: "Generate reports from Excel data",
-              icon: <Template className="h-6 w-6" />,
+              icon: <LayoutTemplate className="h-6 w-6" />,
             },
             {
               title: "Data Merger",
               description: "Merge multiple Excel files into one",
-              icon: <Template className="h-6 w-6" />,
+              icon: <LayoutTemplate className="h-6 w-6" />,
             },
           ].map((template, index) => (
             <div
