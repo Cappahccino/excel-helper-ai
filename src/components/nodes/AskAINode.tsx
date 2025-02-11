@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectContent, SelectItem } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ChevronDown, Info } from "lucide-react";
@@ -10,7 +9,6 @@ import { Handle, Position } from '@xyflow/react';
 
 export default function AskAINode({ data }: { data: { label: string } }) {
   const [loopMode, setLoopMode] = useState(false);
-  const [showMore, setShowMore] = useState(false);
 
   return (
     <>
@@ -71,18 +69,6 @@ export default function AskAINode({ data }: { data: { label: string } }) {
               </SelectContent>
             </Select>
           </div>
-
-          <div className="flex justify-start">
-            <Button variant="outline" onClick={() => setShowMore(!showMore)}>
-              Show More Options
-            </Button>
-          </div>
-
-          {showMore && (
-            <div className="p-3 mt-2 border rounded-lg bg-gray-50">
-              <p className="text-sm text-gray-600">Advanced settings coming soon...</p>
-            </div>
-          )}
         </CardContent>
       </Card>
       <Handle type="source" position={Position.Right} />
