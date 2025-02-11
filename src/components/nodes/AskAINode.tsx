@@ -15,8 +15,8 @@ export default function AskAINode({ data }: { data: { label: string } }) {
   return (
     <>
       <Handle type="target" position={Position.Left} />
-      <Card className="w-[400px] rounded-2xl border-2 border-pink-300 shadow-md p-4 bg-pink-50">
-        <CardHeader className="flex flex-row justify-between items-center bg-pink-100 p-3 rounded-lg">
+      <Card className="w-[400px] rounded-2xl border-2 border-green-300 shadow-md p-4 bg-green-50">
+        <CardHeader className="flex flex-row justify-between items-center bg-green-100 p-3 rounded-lg">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-white rounded-lg shadow-md">
               🤖
