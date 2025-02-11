@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import {
   ReactFlow,
@@ -14,7 +13,7 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
-import { Menu, PlusCircle, Search, Play, Save, X } from 'lucide-react';
+import { Menu, PlusCircle, Search, Play, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ChatSidebar } from '@/components/ChatSidebar';
 import AskAINode from '@/components/nodes/AskAINode';
@@ -83,9 +82,6 @@ const Canvas = () => {
             <span className="text-pink-600">Node Library</span>{" "}
             <span className="text-gray-400">| Subflow Library</span>
           </h2>
-          <Button variant="ghost" size="icon">
-            <X className="w-5 h-5" />
-          </Button>
         </div>
 
         <div className="relative mt-2">
