@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import {
   ReactFlow,
@@ -5,8 +6,7 @@ import {
   Controls,
   MiniMap,
   Node,
-  Edge,
-  useViewport
+  Edge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
@@ -51,7 +51,6 @@ const Canvas = () => {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
-  const { x, y, zoom } = useViewport();
   
   const onConnect = useCallback((params: any) => {
     setEdges((eds) => [...eds, { ...params, animated: true }]);
