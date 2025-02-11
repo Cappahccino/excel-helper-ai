@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import {
   ReactFlow,
@@ -6,7 +5,8 @@ import {
   Controls,
   MiniMap,
   Node,
-  Edge
+  Edge,
+  useViewport
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Menu, PlusCircle, Search, Play, Save, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ChatSidebar } from '@/components/ChatSidebar';
+import AskAINode from '@/components/nodes/AskAINode';
 
 const nodeCategories = [
   {
@@ -41,22 +42,30 @@ const nodeCategories = [
   },
 ];
 
+const nodeTypes = {
+  askAI: AskAINode,
+};
+
 const Canvas = () => {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
+  const { x, y, zoom } = useViewport();
   
   const onConnect = useCallback((params: any) => {
     setEdges((eds) => [...eds, { ...params, animated: true }]);
   }, []);
 
   const addNewNode = (label: string) => {
+    const centerX = window.innerWidth / 2 - 200; // Half of node width
+    const centerY = window.innerHeight / 2 - 200; // Half of node height
+
     const newNode = {
       id: `${nodes.length + 1}`,
-      position: { x: 250, y: Math.max(...(nodes.map(n => n.position.y) || [0])) + 100 },
+      type: 'askAI',
+      position: { x: centerX, y: centerY },
       data: { label },
-      type: nodes.length === 0 ? 'input' : nodes.length === 1 ? 'default' : 'output',
     };
     setNodes([...nodes, newNode]);
   };
@@ -163,7 +172,8 @@ const Canvas = () => {
         <ReactFlow 
           nodes={nodes} 
           edges={edges} 
-          onConnect={onConnect} 
+          onConnect={onConnect}
+          nodeTypes={nodeTypes}
           fitView
         >
           <Background />
