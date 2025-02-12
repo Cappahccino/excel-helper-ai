@@ -2,6 +2,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { 
+  MessageSquare, 
   Files,
   BookOpen,
   ArrowUpRight,
@@ -11,14 +12,13 @@ import {
   Database,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { ThreadsList } from "./ThreadsList";
 import {
   SidebarGroup,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarGroupLabel,
 } from "@/components/ui/sidebar-new";
-import { Separator } from "@/components/ui/separator";
 
 const workspaceNavLinks = [
   {
@@ -59,7 +59,6 @@ const resourceNavLinks = [
 export function NavigationMenu() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { open } = useSidebar();
 
   const handleNavigation = (href: string) => {
     navigate(href);
@@ -71,22 +70,9 @@ export function NavigationMenu() {
         <div className="px-4 py-2">
           <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
             <Database className="h-3 w-3" />
-            <motion.span
-              animate={{ 
-                opacity: open ? 1 : 0,
-                width: open ? 'auto' : 0,
-                display: open ? 'inline' : 'none'
-              }}
-            >
-              Workspace
-            </motion.span>
+            Workspace
           </span>
         </div>
-
-        {/* Recent Chats */}
-        <ThreadsList />
-
-        {/* Workspace Navigation */}
         <SidebarMenu className="px-2 space-y-1">
           {workspaceNavLinks.map((link) => (
             <SidebarMenuItem key={link.label}>
@@ -99,9 +85,8 @@ export function NavigationMenu() {
                 {link.icon}
                 <motion.span
                   animate={{ 
-                    opacity: open ? 1 : 0,
-                    width: open ? 'auto' : 0,
-                    display: open ? 'inline' : 'none'
+                    opacity: true ? 1 : 0,
+                    width: true ? 'auto' : 0,
                   }}
                   className="text-xs font-medium truncate"
                 >
@@ -113,21 +98,11 @@ export function NavigationMenu() {
         </SidebarMenu>
       </SidebarGroup>
 
-      <Separator className="my-4 bg-gray-200" />
-
-      <SidebarGroup>
+      <SidebarGroup className="mt-4">
         <div className="px-4 py-2">
           <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
             <BookOpen className="h-3 w-3" />
-            <motion.span
-              animate={{ 
-                opacity: open ? 1 : 0,
-                width: open ? 'auto' : 0,
-                display: open ? 'inline' : 'none'
-              }}
-            >
-              Resources
-            </motion.span>
+            Resources
           </span>
         </div>
         <SidebarMenu className="px-2 space-y-1">
@@ -142,9 +117,8 @@ export function NavigationMenu() {
                 {link.icon}
                 <motion.span
                   animate={{ 
-                    opacity: open ? 1 : 0,
-                    width: open ? 'auto' : 0,
-                    display: open ? 'inline' : 'none'
+                    opacity: true ? 1 : 0,
+                    width: true ? 'auto' : 0,
                   }}
                   className="text-xs font-medium truncate"
                 >

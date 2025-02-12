@@ -31,13 +31,9 @@ export function ChatSidebar() {
             className="w-full flex items-center justify-start gap-2 text-black hover:text-black text-xs"
             variant="outline"
           >
-            <MessageSquare className="h-4 w-4 shrink-0" />
+            <MessageSquare className={`h-4 w-4 shrink-0 ${!open && 'mx-auto'}`} />
             <motion.span
-              animate={{ 
-                opacity: open ? 1 : 0,
-                width: open ? 'auto' : 0,
-                display: open ? 'inline' : 'none'
-              }}
+              animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
               className="overflow-hidden whitespace-nowrap"
             >
               New Chat
@@ -45,6 +41,7 @@ export function ChatSidebar() {
           </Button>
         </SidebarHeader>
         <SidebarContent className="flex-1 flex flex-col">
+          <ThreadsList />
           <NavigationMenu />
           <SidebarFooter />
         </SidebarContent>
