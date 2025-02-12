@@ -7,10 +7,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageSquare, ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSidebar } from "@/components/ui/sidebar-new";
 import {
-  SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -30,6 +29,7 @@ export function ThreadsList() {
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const { open } = useSidebar();
   const searchParams = new URLSearchParams(location.search);
   const currentThreadId = searchParams.get("thread");
 
@@ -52,7 +52,7 @@ export function ThreadsList() {
         `)
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false })
-        .limit(5); // Limit to only show the 5 most recent chats
+        .limit(5);
 
       if (sessionsError) throw sessionsError;
       return sessions;
@@ -68,40 +68,43 @@ export function ThreadsList() {
   };
 
   return (
-    <SidebarGroup>
-      <motion.div
-        animate={{ opacity: true ? 1 : 0 }}
-        className="overflow-hidden"
+    <div className="mb-4">
+      <div 
+        className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-200"
+        onClick={toggleChatsExpanded}
       >
-        <div 
-          className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-200"
-          onClick={toggleChatsExpanded}
-        >
-          <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
-            {isChatsExpanded ? (
-              <>
-                <ChevronDown className="h-3 w-3" />
-                <FolderOpen className="h-3 w-3" />
-              </>
-            ) : (
-              <>
-                <ChevronRight className="h-3 w-3" />
-                <Folder className="h-3 w-3" />
-              </>
-            )}
-            <span>Recent Chats</span>
-          </span>
-        </div>
-      </motion.div>
+        <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
+          {isChatsExpanded ? (
+            <>
+              <ChevronDown className="h-3 w-3" />
+              <FolderOpen className="h-3 w-3" />
+            </>
+          ) : (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              <Folder className="h-3 w-3" />
+            </>
+          )}
+          <motion.span
+            animate={{ 
+              opacity: open ? 1 : 0,
+              width: open ? 'auto' : 0,
+              display: open ? 'inline' : 'none'
+            }}
+          >
+            Recent Chats
+          </motion.span>
+        </span>
+      </div>
       <AnimatePresence>
-        {isChatsExpanded && (
+        {isChatsExpanded && open && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <ScrollArea className="h-[280px]">
+            <ScrollArea className="h-[200px]">
               <SidebarGroupContent className="pl-8">
                 <SidebarMenu className="space-y-0.5">
                   {isLoading ? (
@@ -124,8 +127,9 @@ export function ThreadsList() {
                           <MessageSquare className="h-3 w-3 shrink-0" />
                           <motion.div
                             animate={{ 
-                              opacity: true ? 1 : 0,
-                              width: true ? 'auto' : 0,
+                              opacity: open ? 1 : 0,
+                              width: open ? 'auto' : 0,
+                              display: open ? 'inline' : 'none'
                             }}
                             className="flex flex-col items-start overflow-hidden"
                           >
@@ -146,6 +150,6 @@ export function ThreadsList() {
           </motion.div>
         )}
       </AnimatePresence>
-    </SidebarGroup>
+    </div>
   );
 }
