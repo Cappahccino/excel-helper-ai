@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import {
   ReactFlow,
@@ -55,15 +56,39 @@ const Canvas = () => {
     setEdges((eds) => [...eds, { ...params, animated: true }]);
   }, []);
 
+  const onNodesChange = useCallback((changes: any) => {
+    setNodes((nds) => {
+      return changes.reduce((acc: Node[], change: any) => {
+        if (change.type === 'position' && change.dragging) {
+          const nodeIndex = acc.findIndex(n => n.id === change.id);
+          if (nodeIndex !== -1) {
+            acc[nodeIndex] = { ...acc[nodeIndex], position: change.position };
+          }
+        }
+        return acc;
+      }, [...nds]);
+    });
+  }, []);
+
   const addNewNode = (label: string) => {
-    const centerX = window.innerWidth / 2 - 200; // Half of node width
-    const centerY = window.innerHeight / 2 - 200; // Half of node height
+    const offset = 30; // pixels to offset each new node
+    const lastNode = nodes[nodes.length - 1];
+    
+    let centerX = window.innerWidth / 2 - 200; // Default center X
+    let centerY = window.innerHeight / 2 - 200; // Default center Y
+    
+    if (lastNode) {
+      // If there's a previous node, offset from its position
+      centerX = lastNode.position.x + offset;
+      centerY = lastNode.position.y + offset;
+    }
 
     const newNode = {
       id: `${nodes.length + 1}`,
       type: 'askAI',
       position: { x: centerX, y: centerY },
       data: { label },
+      draggable: true, // Explicitly enable dragging
     };
     setNodes([...nodes, newNode]);
   };
@@ -168,6 +193,7 @@ const Canvas = () => {
           nodes={nodes} 
           edges={edges} 
           onConnect={onConnect}
+          onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
           fitView
         >
