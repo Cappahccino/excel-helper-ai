@@ -59,10 +59,22 @@ const Canvas = () => {
   const onNodesChange = useCallback((changes: any) => {
     setNodes((nds) => {
       return changes.reduce((acc: Node[], change: any) => {
-        if (change.type === 'position' && change.dragging) {
+        if (change.type === 'position') {
           const nodeIndex = acc.findIndex(n => n.id === change.id);
           if (nodeIndex !== -1) {
-            acc[nodeIndex] = { ...acc[nodeIndex], position: change.position };
+            acc[nodeIndex] = { 
+              ...acc[nodeIndex], 
+              position: change.position,
+              selected: change.selected
+            };
+          }
+        } else if (change.type === 'select') {
+          const nodeIndex = acc.findIndex(n => n.id === change.id);
+          if (nodeIndex !== -1) {
+            acc[nodeIndex] = { 
+              ...acc[nodeIndex], 
+              selected: change.selected 
+            };
           }
         }
         return acc;
@@ -71,14 +83,13 @@ const Canvas = () => {
   }, []);
 
   const addNewNode = (label: string) => {
-    const offset = 30; // pixels to offset each new node
+    const offset = 30;
     const lastNode = nodes[nodes.length - 1];
     
-    let centerX = window.innerWidth / 2 - 200; // Default center X
-    let centerY = window.innerHeight / 2 - 200; // Default center Y
+    let centerX = window.innerWidth / 2 - 200;
+    let centerY = window.innerHeight / 2 - 200;
     
     if (lastNode) {
-      // If there's a previous node, offset from its position
       centerX = lastNode.position.x + offset;
       centerY = lastNode.position.y + offset;
     }
@@ -88,7 +99,11 @@ const Canvas = () => {
       type: 'askAI',
       position: { x: centerX, y: centerY },
       data: { label },
-      draggable: true, // Explicitly enable dragging
+      draggable: true,
+      selected: false,
+      style: {
+        transition: 'box-shadow 0.2s ease-in-out',
+      }
     };
     setNodes([...nodes, newNode]);
   };
@@ -196,6 +211,7 @@ const Canvas = () => {
           onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
           fitView
+          selectNodesOnDrag={false}
         >
           <Background />
           <Controls />
