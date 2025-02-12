@@ -51,7 +51,8 @@ export function ThreadsList() {
           )
         `)
         .eq("user_id", user.id)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .limit(5); // Limit to only show the 5 most recent chats
 
       if (sessionsError) throw sessionsError;
       return sessions;
@@ -76,7 +77,7 @@ export function ThreadsList() {
           className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-200"
           onClick={toggleChatsExpanded}
         >
-          <span className="flex items-center gap-2 text-black text-xs">
+          <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
             {isChatsExpanded ? (
               <>
                 <ChevronDown className="h-3 w-3" />
@@ -88,7 +89,7 @@ export function ThreadsList() {
                 <Folder className="h-3 w-3" />
               </>
             )}
-            <span className="font-medium">My Chats</span>
+            <span>Recent Chats</span>
           </span>
         </div>
       </motion.div>
