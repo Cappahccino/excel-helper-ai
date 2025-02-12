@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+import ReactMarkdown from 'react-markdown';
 
 interface MessageContentProps {
   content: string;
@@ -51,7 +52,13 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
         </AvatarFallback>
       </Avatar>
       <div className={`flex flex-col gap-2 ${role === 'assistant' ? 'ml-3' : 'mr-3'} flex-1`}>
-        <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+        <div className="prose prose-sm max-w-none dark:prose-invert">
+          {role === 'assistant' ? (
+            <ReactMarkdown>{content}</ReactMarkdown>
+          ) : (
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+          )}
+        </div>
         {fileInfo && (
           <div className="text-xs bg-gray-100 px-2 py-1 rounded-md inline-flex items-center gap-1 text-gray-600 w-fit">
             📎 {fileInfo.filename}

@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -31,7 +30,12 @@ async function getOrCreateAssistant(openai: OpenAI) {
       - Provide clear insights and patterns
       - Use numerical evidence when available
       - Highlight key findings
-      - Format responses clearly
+      - Format your responses using markdown including:
+        * Use ## for section headers
+        * Use bullet points for lists
+        * Use backticks for code or Excel formulas
+        * Use tables when presenting structured data
+        * Use bold and italic for emphasis
       - Maintain context from previous questions
       - Be helpful even without Excel data`,
     model: "gpt-4-turbo",
