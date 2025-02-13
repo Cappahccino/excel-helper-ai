@@ -10,14 +10,6 @@ import { ChatSidebar } from '@/components/ChatSidebar';
 import { SidebarProvider } from '@/components/ui/sidebar-new';
 import { FileStats } from '@/components/files/FileStats';
 import { FileActions } from '@/components/files/FileActions';
-import { 
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 
 const Files = () => {
   const { toast } = useToast();
@@ -71,18 +63,6 @@ const Files = () => {
         <ChatSidebar />
         <main className="flex-1 ml-[60px] transition-all duration-200 sidebar-expanded:ml-[300px]">
           <div className="container mx-auto p-6">
-            <Breadcrumb className="mb-6">
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink href="/">Home</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Files</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-2xl font-bold">My Files</h1>
             </div>
