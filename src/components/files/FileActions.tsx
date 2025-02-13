@@ -1,5 +1,5 @@
 
-import { LayoutGrid, List, Search, SlidersHorizontal } from 'lucide-react';
+import { Download, MessageSquare, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -8,9 +8,20 @@ interface FileActionsProps {
   currentView: 'grid' | 'list';
   onSearch: (query: string) => void;
   searchQuery: string;
+  selectedCount?: number;
+  onBulkDownload?: () => void;
+  onBulkDelete?: () => void;
+  onBulkChat?: () => void;
 }
 
-export function FileActions({ onViewChange, currentView, onSearch, searchQuery }: FileActionsProps) {
+export function FileActions({ 
+  onSearch, 
+  searchQuery, 
+  selectedCount = 0,
+  onBulkDownload,
+  onBulkDelete,
+  onBulkChat
+}: FileActionsProps) {
   return (
     <div className="flex flex-col sm:flex-row gap-4 mb-6 justify-between items-center">
       <div className="relative w-full sm:w-96">
@@ -26,24 +37,32 @@ export function FileActions({ onViewChange, currentView, onSearch, searchQuery }
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onViewChange('list')}
-          className={currentView === 'list' ? 'bg-gray-100' : ''}
+          onClick={onBulkChat}
+          disabled={selectedCount === 0}
+          className="text-gray-600 hover:text-gray-900"
         >
-          <List className="h-4 w-4" />
-          <span className="sr-only">List view</span>
+          <MessageSquare className="h-4 w-4 mr-2" />
+          Chat {selectedCount > 0 && `(${selectedCount})`}
         </Button>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onViewChange('grid')}
-          className={currentView === 'grid' ? 'bg-gray-100' : ''}
+          onClick={onBulkDownload}
+          disabled={selectedCount === 0}
+          className="text-gray-600 hover:text-gray-900"
         >
-          <LayoutGrid className="h-4 w-4" />
-          <span className="sr-only">Grid view</span>
+          <Download className="h-4 w-4 mr-2" />
+          Download {selectedCount > 0 && `(${selectedCount})`}
         </Button>
-        <Button variant="outline" size="sm">
-          <SlidersHorizontal className="h-4 w-4 mr-2" />
-          Filter
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onBulkDelete}
+          disabled={selectedCount === 0}
+          className="text-red-600 hover:text-red-900"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete {selectedCount > 0 && `(${selectedCount})`}
         </Button>
       </div>
     </div>

@@ -16,7 +16,7 @@ const Files = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   
   const {
     file,
@@ -58,6 +58,75 @@ const Files = () => {
 
   const totalStorage = files?.reduce((acc, file) => acc + file.file_size, 0) || 0;
 
+  const handleBulkDownload = async () => {
+    const selectedFilesData = files?.filter(file => selectedFiles.includes(file.id)) || [];
+    
+    for (const file of selectedFilesData) {
+      try {
+        const { data, error } = await supabase.storage
+          .from('excel_files')
+          .download(file.file_path);
+
+        if (error) throw error;
+
+        const url = window.URL.createObjectURL(data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Download error:', error);
+        toast({
+          title: "Download Failed",
+          description: `Failed to download ${file.filename}`,
+          variant: "destructive",
+        });
+      }
+    }
+    
+    toast({
+      title: "Downloads Started",
+      description: `${selectedFiles.length} files are being downloaded`,
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const selectedFilesData = files?.filter(file => selectedFiles.includes(file.id)) || [];
+    
+    try {
+      // Delete files from storage
+      const { error: storageError } = await supabase.storage
+        .from('excel_files')
+        .remove(selectedFilesData.map(file => file.file_path));
+
+      if (storageError) throw storageError;
+
+      // Delete files from database
+      const { error: dbError } = await supabase
+        .from('excel_files')
+        .delete()
+        .in('id', selectedFiles);
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Files Deleted",
+        description: `Successfully deleted ${selectedFiles.length} files`,
+      });
+
+      setSelectedFiles([]);
+      queryClient.invalidateQueries({ queryKey: ['excel-files'] });
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete one or more files",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
@@ -67,7 +136,6 @@ const Files = () => {
         <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
           <div className="flex-grow flex flex-col h-[calc(100vh-80px)]">
             <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
-              {/* Top Section - Fixed */}
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-6">
                   <h1 className="text-2xl font-bold">My Files</h1>
@@ -90,14 +158,14 @@ const Files = () => {
                 </div>
               </div>
 
-              {/* Scrollable Content */}
               <div className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100">
                 <div className="p-4 border-b border-gray-100">
                   <FileActions 
-                    onViewChange={setViewMode}
-                    currentView={viewMode}
                     onSearch={setSearchQuery}
                     searchQuery={searchQuery}
+                    selectedCount={selectedFiles.length}
+                    onBulkDownload={handleBulkDownload}
+                    onBulkDelete={handleBulkDelete}
                   />
                 </div>
                 
@@ -105,6 +173,8 @@ const Files = () => {
                   <FilesList 
                     files={filteredFiles}
                     isLoading={isLoadingFiles}
+                    selectedFiles={selectedFiles}
+                    onSelectionChange={setSelectedFiles}
                   />
                 </ScrollArea>
               </div>
