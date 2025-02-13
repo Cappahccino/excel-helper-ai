@@ -270,8 +270,12 @@ export function FilesList({ files, isLoading }: FilesListProps) {
         <PaginationContent>
           <PaginationItem>
             <PaginationPrevious
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() => {
+                if (table.getCanPreviousPage()) {
+                  table.previousPage();
+                }
+              }}
+              className={!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : ""}
             />
           </PaginationItem>
           {Array.from({ length: table.getPageCount() }, (_, i) => (
@@ -286,8 +290,12 @@ export function FilesList({ files, isLoading }: FilesListProps) {
           ))}
           <PaginationItem>
             <PaginationNext
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => {
+                if (table.getCanNextPage()) {
+                  table.nextPage();
+                }
+              }}
+              className={!table.getCanNextPage() ? "pointer-events-none opacity-50" : ""}
             />
           </PaginationItem>
         </PaginationContent>
