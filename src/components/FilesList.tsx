@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface ExcelFile {
   id: string;
@@ -57,14 +65,12 @@ export function FilesList({ files, isLoading }: FilesListProps) {
 
   const handleDelete = async (file: ExcelFile) => {
     try {
-      // Delete from storage
       const { error: storageError } = await supabase.storage
         .from('excel_files')
         .remove([file.file_path]);
 
       if (storageError) throw storageError;
 
-      // Delete from database
       const { error: dbError } = await supabase
         .from('excel_files')
         .delete()
@@ -109,57 +115,64 @@ export function FilesList({ files, isLoading }: FilesListProps) {
   }
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm">
-      <ul className="divide-y divide-gray-200">
-        {files.map((file) => (
-          <li key={file.id} className="p-4 hover:bg-gray-50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center min-w-0 gap-4">
-                <FileSpreadsheet className="h-8 w-8 text-green-500 flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {file.filename}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <span>{formatFileSize(file.file_size)}</span>
-                    <span>•</span>
-                    <span>{formatDistanceToNow(new Date(file.created_at), { addSuffix: true })}</span>
-                  </div>
+    <div className="rounded-lg border shadow-sm">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>File</TableHead>
+            <TableHead>Size</TableHead>
+            <TableHead>Uploaded</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {files.map((file) => (
+            <TableRow key={file.id}>
+              <TableCell>
+                <div className="flex items-center gap-3">
+                  <FileSpreadsheet className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  <span className="font-medium">{file.filename}</span>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleChatWithFile(file.id)}
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  <span className="sr-only">Chat with file</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDownload(file)}
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  <Download className="h-4 w-4" />
-                  <span className="sr-only">Download file</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(file)}
-                  className="text-red-600 hover:text-red-900"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  <span className="sr-only">Delete file</span>
-                </Button>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
+              </TableCell>
+              <TableCell>{formatFileSize(file.file_size)}</TableCell>
+              <TableCell>
+                {formatDistanceToNow(new Date(file.created_at), { addSuffix: true })}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleChatWithFile(file.id)}
+                    className="text-gray-600 hover:text-gray-900"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    <span className="sr-only">Chat with file</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDownload(file)}
+                    className="text-gray-600 hover:text-gray-900"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Download file</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(file)}
+                    className="text-red-600 hover:text-red-900"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete file</span>
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
