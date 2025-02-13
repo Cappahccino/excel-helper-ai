@@ -10,6 +10,7 @@ import { ChatSidebar } from '@/components/ChatSidebar';
 import { SidebarProvider } from '@/components/ui/sidebar-new';
 import { FileStats } from '@/components/files/FileStats';
 import { FileActions } from '@/components/files/FileActions';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Files = () => {
   const { toast } = useToast();
@@ -59,42 +60,57 @@ const Files = () => {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        <ChatSidebar />
-        <main className="flex-1 ml-[60px] transition-all duration-200 sidebar-expanded:ml-[300px]">
-          <div className="container mx-auto p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold">My Files</h1>
-            </div>
+      <div className="flex min-h-screen w-full bg-gray-50">
+        <div className="fixed left-0 top-0 h-full z-10">
+          <ChatSidebar />
+        </div>
+        <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
+          <div className="flex-grow flex flex-col h-[calc(100vh-80px)]">
+            <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
+              {/* Top Section - Fixed */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h1 className="text-2xl font-bold">My Files</h1>
+                </div>
+                
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+                  <FileStats 
+                    totalFiles={files?.length || 0}
+                    totalStorage={totalStorage}
+                  />
+                  
+                  <FileUploadZone 
+                    onFileUpload={handleFileUpload}
+                    isUploading={isUploading}
+                    uploadProgress={uploadProgress}
+                    currentFile={file}
+                    onReset={resetUpload}
+                    onUploadComplete={onFileUploadComplete}
+                  />
+                </div>
+              </div>
 
-            <FileStats 
-              totalFiles={files?.length || 0}
-              totalStorage={totalStorage}
-            />
-
-            <FileActions 
-              onViewChange={setViewMode}
-              currentView={viewMode}
-              onSearch={setSearchQuery}
-              searchQuery={searchQuery}
-            />
-
-            <div className="space-y-6">
-              <FileUploadZone 
-                onFileUpload={handleFileUpload}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                currentFile={file}
-                onReset={resetUpload}
-                onUploadComplete={onFileUploadComplete}
-              />
-              <FilesList 
-                files={filteredFiles}
-                isLoading={isLoadingFiles}
-              />
+              {/* Scrollable Content */}
+              <div className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100">
+                <div className="p-4 border-b border-gray-100">
+                  <FileActions 
+                    onViewChange={setViewMode}
+                    currentView={viewMode}
+                    onSearch={setSearchQuery}
+                    searchQuery={searchQuery}
+                  />
+                </div>
+                
+                <ScrollArea className="flex-grow p-4">
+                  <FilesList 
+                    files={filteredFiles}
+                    isLoading={isLoadingFiles}
+                  />
+                </ScrollArea>
+              </div>
             </div>
           </div>
-        </main>
+        </div>
       </div>
     </SidebarProvider>
   );
