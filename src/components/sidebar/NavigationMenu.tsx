@@ -104,6 +104,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                   animate={{ 
                     opacity: isOpen ? 1 : 0,
                     width: isOpen ? 'auto' : 0,
+                    marginLeft: isOpen ? '0.75rem' : 0,
                   }}
                   className="overflow-hidden whitespace-nowrap text-sm"
                 >
@@ -146,6 +147,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                   animate={{ 
                     opacity: isOpen ? 1 : 0,
                     width: isOpen ? 'auto' : 0,
+                    marginLeft: isOpen ? '0.75rem' : 0,
                   }}
                   className="overflow-hidden whitespace-nowrap text-sm"
                 >

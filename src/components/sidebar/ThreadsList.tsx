@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -17,14 +16,24 @@ import {
 } from "@/components/ui/sidebar-new";
 
 interface Thread {
-  session_id: string;
+  id: string;
+  title: string;
   created_at: string;
-  thread_id: string;
-  excel_files: {
-    id: string;
-    filename: string;
-  }[];
 }
+
+const fetchThreads = async () => {
+  const { data, error } = await supabase
+    .from('threads')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (error) {
+    console.error("Error fetching threads:", error);
+    return [];
+  }
+  return data as Thread[];
+};
 
 export function ThreadsList() {
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
@@ -33,30 +42,9 @@ export function ThreadsList() {
   const searchParams = new URLSearchParams(location.search);
   const currentThreadId = searchParams.get("thread");
 
-  const { data: threads, isLoading } = useQuery({
-    queryKey: ["chat-threads"],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: sessions, error: sessionsError } = await supabase
-        .from("chat_sessions")
-        .select(`
-          session_id,
-          created_at,
-          thread_id,
-          excel_files (
-            id,
-            filename
-          )
-        `)
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(5);
-
-      if (sessionsError) throw sessionsError;
-      return sessions;
-    },
+  const { data: threads, isLoading, isError } = useQuery({
+    queryKey: ['threads'],
+    queryFn: fetchThreads,
   });
 
   const handleThreadClick = (threadId: string) => {
@@ -79,20 +67,16 @@ export function ThreadsList() {
         >
           <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
             {isChatsExpanded ? (
-              <>
-                <ChevronDown className="h-4 w-4" />
-                <MessagesSquare className="h-4 w-4" />
-              </>
+              <ChevronDown className="h-4 w-4" />
             ) : (
-              <>
-                <ChevronRight className="h-4 w-4" />
-                <MessagesSquare className="h-4 w-4" />
-              </>
+              <ChevronRight className="h-4 w-4" />
             )}
+            <MessagesSquare className="h-4 w-4" />
             <motion.span
               animate={{ 
                 opacity: true ? 1 : 0,
                 width: true ? 'auto' : 0,
+                marginLeft: true ? '0.75rem' : 0,
               }}
               className="overflow-hidden whitespace-nowrap"
             >
@@ -111,42 +95,28 @@ export function ThreadsList() {
           >
             <ScrollArea className="h-[200px]">
               <SidebarMenu className="space-y-1 pl-8">
-                {isLoading ? (
-                  <div className="flex items-center justify-center p-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-                  </div>
-                ) : threads?.length === 0 ? (
-                  <div className="text-sm text-gray-600 p-4 text-center">
-                    No chats yet
-                  </div>
-                ) : (
-                  threads?.map((thread) => (
-                    <SidebarMenuItem key={thread.session_id}>
-                      <SidebarMenuButton
-                        onClick={() => handleThreadClick(thread.session_id)}
-                        className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
-                          currentThreadId === thread.session_id ? 'bg-green-50 text-excel' : ''
-                        }`}
+                {threads?.map((thread) => (
+                  <SidebarMenuItem key={thread.id}>
+                    <SidebarMenuButton
+                      onClick={() => handleThreadClick(thread.id)}
+                      className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
+                        currentThreadId === thread.id ? 'bg-green-50 text-excel font-medium' : ''
+                      }`}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      <motion.span
+                        animate={{ 
+                          opacity: true ? 1 : 0,
+                          width: true ? 'auto' : 0,
+                          marginLeft: true ? '0.75rem' : 0,
+                        }}
+                        className="overflow-hidden whitespace-nowrap text-sm"
                       >
-                        <MessageSquare className="h-4 w-4 shrink-0" />
-                        <motion.div
-                          animate={{ 
-                            opacity: true ? 1 : 0,
-                            width: true ? 'auto' : 0,
-                          }}
-                          className="flex flex-col items-start overflow-hidden"
-                        >
-                          <span className="text-sm font-medium truncate">
-                            {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {format(new Date(thread.created_at), 'MMM d, yyyy')}
-                          </span>
-                        </motion.div>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))
-                )}
+                        {thread.title || format(new Date(thread.created_at), 'MMM d, yyyy')}
+                      </motion.span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
               </SidebarMenu>
             </ScrollArea>
           </motion.div>
