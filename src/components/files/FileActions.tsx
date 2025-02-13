@@ -4,8 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 interface FileActionsProps {
-  onViewChange: (view: 'grid' | 'list') => void;
-  currentView: 'grid' | 'list';
   onSearch: (query: string) => void;
   searchQuery: string;
   selectedCount?: number;

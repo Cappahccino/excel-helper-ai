@@ -43,9 +43,11 @@ interface ExcelFile {
 interface FilesListProps {
   files: ExcelFile[];
   isLoading: boolean;
+  selectedFiles: string[];
+  onSelectionChange: (selectedFiles: string[]) => void;
 }
 
-export function FilesList({ files, isLoading }: FilesListProps) {
+export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }: FilesListProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -201,6 +203,15 @@ export function FilesList({ files, isLoading }: FilesListProps) {
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    state: {
+      rowSelection: Object.fromEntries(selectedFiles.map(id => [id, true])),
+    },
+    onRowSelectionChange: (updater) => {
+      if (typeof updater === 'function') {
+        const newSelection = updater(Object.fromEntries(selectedFiles.map(id => [id, true])));
+        onSelectionChange(Object.keys(newSelection).filter(key => newSelection[key]));
+      }
+    },
     initialState: {
       pagination: {
         pageSize: 6,
