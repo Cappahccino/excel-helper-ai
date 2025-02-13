@@ -23,8 +23,8 @@ export function ChatSidebar() {
   };
 
   return (
-    <Sidebar open={open} setOpen={setOpen} className="z-50">
-      <SidebarBody className="flex flex-col bg-gray-100 h-full border-r">
+    <Sidebar open={open} setOpen={setOpen}>
+      <SidebarBody className="flex flex-col bg-gray-100 h-full border-r z-50">
         <SidebarHeader className="border-b p-4">
           <Button 
             onClick={handleNewThread}
