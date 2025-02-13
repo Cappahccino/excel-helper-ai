@@ -54,9 +54,33 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
       <div className={`flex flex-col gap-2 ${role === 'assistant' ? 'ml-3' : 'mr-3'} flex-1`}>
         <div className="prose prose-sm max-w-none dark:prose-invert">
           {role === 'assistant' ? (
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <div className="leading-relaxed [&>p]:mb-4 [&>p:last-child]:mb-0">
+              <ReactMarkdown
+                components={{
+                  p: ({ children }) => <p className="text-sm text-gray-800 whitespace-pre-wrap">{children}</p>,
+                  h1: ({ children }) => <h1 className="text-2xl font-semibold mb-4 mt-6">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-xl font-semibold mb-3 mt-5">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>,
+                  ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-2">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-2">{children}</ol>,
+                  li: ({ children }) => <li className="text-sm text-gray-800">{children}</li>,
+                  code: ({ children }) => (
+                    <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">
+                      {children}
+                    </code>
+                  ),
+                  pre: ({ children }) => (
+                    <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4">
+                      {children}
+                    </pre>
+                  ),
+                }}
+              >
+                {content}
+              </ReactMarkdown>
+            </div>
           ) : (
-            <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+            <p className="text-sm whitespace-pre-wrap leading-relaxed text-gray-800">{content}</p>
           )}
         </div>
         {fileInfo && (
