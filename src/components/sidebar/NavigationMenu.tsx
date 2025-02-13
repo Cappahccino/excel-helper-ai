@@ -18,6 +18,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "@/components/ui/sidebar-new";
+import { Separator } from "@/components/ui/separator";
 import { ThreadsList } from "./ThreadsList";
 
 const workspaceNavLinks = [
@@ -85,6 +86,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
             </motion.span>
           </span>
         </div>
+        <Separator className="mb-2 opacity-50" />
         
         <ThreadsList />
 
@@ -128,6 +130,8 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
             </motion.span>
           </span>
         </div>
+        <Separator className="mb-2 opacity-50" />
+        
         <SidebarMenu className="px-2 space-y-1">
           {resourceNavLinks.map((link) => (
             <SidebarMenuItem key={link.label}>
