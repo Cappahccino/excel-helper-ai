@@ -121,43 +121,45 @@ export default function Workflows() {
   ];
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Workflows</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Time Saved</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">24.5h</div>
-            <p className="text-xs text-muted-foreground">This month</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-            <Star className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">98.5%</div>
-            <p className="text-xs text-muted-foreground">Last 30 days</p>
-          </CardContent>
-        </Card>
-      </div>
+    <div className="space-y-8">
+      {/* Quick Stats Section */}
+      <section className="container mx-auto px-4 py-8 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Workflows</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">12</div>
+              <p className="text-xs text-muted-foreground">+2 from last month</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Time Saved</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">24.5h</div>
+              <p className="text-xs text-muted-foreground">This month</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+              <Star className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">98.5%</div>
+              <p className="text-xs text-muted-foreground">Last 30 days</p>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
-      {/* Create New Section */}
-      <section className="mb-12">
+      {/* My Workflows Section */}
+      <section className="container mx-auto px-4 py-8 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">My Workflows</h2>
           <div className="flex gap-4">
@@ -179,7 +181,6 @@ export default function Workflows() {
           </div>
         </div>
 
-        {/* Search and Filter */}
         <div className="flex gap-4 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
@@ -203,7 +204,6 @@ export default function Workflows() {
           </Select>
         </div>
 
-        {/* Workflows List */}
         <ScrollArea className="h-[400px]">
           <div className="grid grid-cols-1 gap-4">
             {filteredWorkflows.map((workflow) => (
@@ -247,7 +247,7 @@ export default function Workflows() {
       </section>
 
       {/* Templates Section */}
-      <section className="mb-12">
+      <section className="container mx-auto px-4 py-8 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <h2 className="text-2xl font-bold mb-6">Templates</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {templates.map((template, index) => (
@@ -274,7 +274,7 @@ export default function Workflows() {
       </section>
 
       {/* Resources Section */}
-      <section>
+      <section className="container mx-auto px-4 py-8 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <h2 className="text-2xl font-bold mb-6">Resources</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <a
