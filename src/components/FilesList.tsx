@@ -1,10 +1,11 @@
 
 import { formatDistanceToNow } from 'date-fns';
-import { FileSpreadsheet, Download, Trash2, MessageSquare } from 'lucide-react';
+import { FileSpreadsheet, Download, Trash2, MessageSquare, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -13,6 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getExpandedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
+import { Fragment } from 'react';
 
 interface ExcelFile {
   id: string;
@@ -96,6 +105,88 @@ export function FilesList({ files, isLoading }: FilesListProps) {
     navigate(`/chat?fileId=${fileId}`);
   };
 
+  const columns: ColumnDef<ExcelFile>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      ),
+    },
+    {
+      header: "File",
+      accessorKey: "filename",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <FileSpreadsheet className="h-5 w-5 text-green-500 flex-shrink-0" />
+          <span className="font-medium">{row.getValue("filename")}</span>
+        </div>
+      ),
+    },
+    {
+      header: "Size",
+      accessorKey: "file_size",
+      cell: ({ row }) => formatFileSize(row.getValue("file_size")),
+    },
+    {
+      header: "Uploaded",
+      accessorKey: "created_at",
+      cell: ({ row }) => formatDistanceToNow(new Date(row.getValue("created_at")), { addSuffix: true }),
+    },
+    {
+      id: "actions",
+      header: () => <div className="text-right">Actions</div>,
+      cell: ({ row }) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleChatWithFile(row.original.id)}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span className="sr-only">Chat with file</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDownload(row.original)}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            <Download className="h-4 w-4" />
+            <span className="sr-only">Download file</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDelete(row.original)}
+            className="text-red-600 hover:text-red-900"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="sr-only">Delete file</span>
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const table = useReactTable({
+    data: files,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -118,59 +209,38 @@ export function FilesList({ files, isLoading }: FilesListProps) {
     <div className="rounded-lg border shadow-sm">
       <Table>
         <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>File</TableHead>
-            <TableHead>Size</TableHead>
-            <TableHead>Uploaded</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {files.map((file) => (
-            <TableRow key={file.id}>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <FileSpreadsheet className="h-5 w-5 text-green-500 flex-shrink-0" />
-                  <span className="font-medium">{file.filename}</span>
-                </div>
-              </TableCell>
-              <TableCell>{formatFileSize(file.file_size)}</TableCell>
-              <TableCell>
-                {formatDistanceToNow(new Date(file.created_at), { addSuffix: true })}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleChatWithFile(file.id)}
-                    className="text-gray-600 hover:text-gray-900"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    <span className="sr-only">Chat with file</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDownload(file)}
-                    className="text-gray-600 hover:text-gray-900"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span className="sr-only">Download file</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(file)}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Delete file</span>
-                  </Button>
-                </div>
-              </TableCell>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id} className="hover:bg-transparent">
+              {headerGroup.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(header.column.columnDef.header, header.getContext())}
+                </TableHead>
+              ))}
             </TableRow>
           ))}
+        </TableHeader>
+        <TableBody>
+          {table.getRowModel().rows?.length ? (
+            table.getRowModel().rows.map((row) => (
+              <Fragment key={row.id}>
+                <TableRow data-state={row.getIsSelected() && "selected"}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </Fragment>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="h-24 text-center">
+                No results.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>
