@@ -4,11 +4,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { 
   MessageSquare, 
   Files,
-  BookOpen,
+  Glasses,
   ArrowUpRight,
   CreditCard,
   FilePlus,
-  FolderIcon,
+  Bolt,
   Database,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -25,7 +25,7 @@ const workspaceNavLinks = [
   {
     label: "My Workflows",
     href: "/workflows",
-    icon: <FolderIcon className="h-4 w-4 text-gray-600" />,
+    icon: <Bolt className="h-4 w-4 text-gray-600" />,
   },
   {
     label: "Create Workflow",
@@ -43,7 +43,7 @@ const resourceNavLinks = [
   {
     label: "Documentation",
     href: "/docs",
-    icon: <BookOpen className="h-4 w-4 text-gray-600" />,
+    icon: <MessageSquare className="h-4 w-4 text-gray-600" />,
   },
   {
     label: "Pricing",
@@ -118,7 +118,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
       <SidebarGroup className="mt-6">
         <div className="px-4 py-3">
           <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
-            <BookOpen className="h-4 w-4" />
+            <Glasses className="h-4 w-4" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,

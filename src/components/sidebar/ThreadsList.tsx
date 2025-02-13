@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
+import { MessageSquare, ChevronDown, ChevronRight, MessagesSquare } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -81,12 +81,12 @@ export function ThreadsList() {
             {isChatsExpanded ? (
               <>
                 <ChevronDown className="h-4 w-4" />
-                <FolderOpen className="h-4 w-4" />
+                <MessagesSquare className="h-4 w-4" />
               </>
             ) : (
               <>
                 <ChevronRight className="h-4 w-4" />
-                <Folder className="h-4 w-4" />
+                <MessagesSquare className="h-4 w-4" />
               </>
             )}
             <motion.span
