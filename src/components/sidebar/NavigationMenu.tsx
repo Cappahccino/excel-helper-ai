@@ -17,7 +17,6 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarGroupLabel,
 } from "@/components/ui/sidebar-new";
 import { ThreadsList } from "./ThreadsList";
 
@@ -25,17 +24,17 @@ const workspaceNavLinks = [
   {
     label: "My Workflows",
     href: "/workflows",
-    icon: <FolderIcon className="h-3 w-3 text-gray-700" />,
+    icon: <FolderIcon className="h-4 w-4 text-gray-600" />,
   },
   {
     label: "Create Workflow",
     href: "/canvas",
-    icon: <FilePlus className="h-3 w-3 text-gray-700" />,
+    icon: <FilePlus className="h-4 w-4 text-gray-600" />,
   },
   {
     label: "My Files",
     href: "/files",
-    icon: <Files className="h-3 w-3 text-gray-700" />,
+    icon: <Files className="h-4 w-4 text-gray-600" />,
   },
 ];
 
@@ -43,17 +42,17 @@ const resourceNavLinks = [
   {
     label: "Documentation",
     href: "/docs",
-    icon: <BookOpen className="h-3 w-3 text-gray-700" />,
+    icon: <BookOpen className="h-4 w-4 text-gray-600" />,
   },
   {
     label: "Pricing",
     href: "/pricing",
-    icon: <ArrowUpRight className="h-3 w-3 text-gray-700" />,
+    icon: <ArrowUpRight className="h-4 w-4 text-gray-600" />,
   },
   {
     label: "Account & Billing",
     href: "/account",
-    icon: <CreditCard className="h-3 w-3 text-gray-700" />,
+    icon: <CreditCard className="h-4 w-4 text-gray-600" />,
   },
 ];
 
@@ -72,9 +71,9 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
   return (
     <>
       <SidebarGroup>
-        <div className="px-4 py-2">
-          <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
-            <Database className="h-3 w-3" />
+        <div className="px-4 py-3">
+          <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
+            <Database className="h-4 w-4" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,
@@ -87,7 +86,6 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
           </span>
         </div>
         
-        {/* Recent Chats moved to top */}
         <ThreadsList />
 
         <SidebarMenu className="px-2 space-y-1">
@@ -95,8 +93,8 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
             <SidebarMenuItem key={link.label}>
               <SidebarMenuButton
                 onClick={() => handleNavigation(link.href)}
-                className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black hover:bg-gray-200 ${
-                  location.pathname === link.href ? 'bg-gray-200' : ''
+                className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
+                  location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''
                 }`}
               >
                 {link.icon}
@@ -105,7 +103,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                     opacity: isOpen ? 1 : 0,
                     width: isOpen ? 'auto' : 0,
                   }}
-                  className="overflow-hidden whitespace-nowrap text-xs font-medium"
+                  className="overflow-hidden whitespace-nowrap text-sm"
                 >
                   {link.label}
                 </motion.span>
@@ -115,10 +113,10 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
         </SidebarMenu>
       </SidebarGroup>
 
-      <SidebarGroup className="mt-4">
-        <div className="px-4 py-2">
-          <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
-            <BookOpen className="h-3 w-3" />
+      <SidebarGroup className="mt-6">
+        <div className="px-4 py-3">
+          <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
+            <BookOpen className="h-4 w-4" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,
@@ -135,8 +133,8 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
             <SidebarMenuItem key={link.label}>
               <SidebarMenuButton
                 onClick={() => handleNavigation(link.href)}
-                className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black hover:bg-gray-200 ${
-                  location.pathname === link.href ? 'bg-gray-200' : ''
+                className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
+                  location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''
                 }`}
               >
                 {link.icon}
@@ -145,7 +143,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                     opacity: isOpen ? 1 : 0,
                     width: isOpen ? 'auto' : 0,
                   }}
-                  className="overflow-hidden whitespace-nowrap text-xs font-medium"
+                  className="overflow-hidden whitespace-nowrap text-sm"
                 >
                   {link.label}
                 </motion.span>

@@ -74,19 +74,19 @@ export function ThreadsList() {
         className="overflow-hidden"
       >
         <div 
-          className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-200"
+          className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-100/80 transition-colors"
           onClick={toggleChatsExpanded}
         >
-          <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
+          <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
             {isChatsExpanded ? (
               <>
-                <ChevronDown className="h-3 w-3" />
-                <FolderOpen className="h-3 w-3" />
+                <ChevronDown className="h-4 w-4" />
+                <FolderOpen className="h-4 w-4" />
               </>
             ) : (
               <>
-                <ChevronRight className="h-3 w-3" />
-                <Folder className="h-3 w-3" />
+                <ChevronRight className="h-4 w-4" />
+                <Folder className="h-4 w-4" />
               </>
             )}
             <motion.span
@@ -110,13 +110,13 @@ export function ThreadsList() {
             transition={{ duration: 0.2 }}
           >
             <ScrollArea className="h-[200px]">
-              <SidebarMenu className="space-y-0.5 pl-8">
+              <SidebarMenu className="space-y-1 pl-8">
                 {isLoading ? (
                   <div className="flex items-center justify-center p-4">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
                   </div>
                 ) : threads?.length === 0 ? (
-                  <div className="text-xs text-gray-600 p-4 text-center">
+                  <div className="text-sm text-gray-600 p-4 text-center">
                     No chats yet
                   </div>
                 ) : (
@@ -124,11 +124,11 @@ export function ThreadsList() {
                     <SidebarMenuItem key={thread.session_id}>
                       <SidebarMenuButton
                         onClick={() => handleThreadClick(thread.session_id)}
-                        className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black hover:bg-gray-200 ${
-                          currentThreadId === thread.session_id ? 'bg-gray-200' : ''
+                        className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
+                          currentThreadId === thread.session_id ? 'bg-green-50 text-excel' : ''
                         }`}
                       >
-                        <MessageSquare className="h-3 w-3 shrink-0" />
+                        <MessageSquare className="h-4 w-4 shrink-0" />
                         <motion.div
                           animate={{ 
                             opacity: true ? 1 : 0,
@@ -136,10 +136,10 @@ export function ThreadsList() {
                           }}
                           className="flex flex-col items-start overflow-hidden"
                         >
-                          <span className="text-xs font-medium truncate">
+                          <span className="text-sm font-medium truncate">
                             {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
                           </span>
-                          <span className="text-[10px] text-gray-600">
+                          <span className="text-xs text-gray-500">
                             {format(new Date(thread.created_at), 'MMM d, yyyy')}
                           </span>
                         </motion.div>
