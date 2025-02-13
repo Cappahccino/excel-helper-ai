@@ -182,9 +182,9 @@ const Canvas = () => {
 
   if (nodes.length === 0) {
     return (
-      <div className="flex h-screen w-screen">
+      <div className="flex h-screen w-full">
         <ChatSidebar />
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 ml-[60px] transition-all duration-200 sidebar-expanded:ml-[300px]">
           <NodeLibraryDialog />
         </div>
       </div>
@@ -192,9 +192,9 @@ const Canvas = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen">
+    <div className="flex h-screen w-full">
       <ChatSidebar />
-      <div className="flex-1 relative">
+      <div className="flex-1 relative ml-[60px] transition-all duration-200 sidebar-expanded:ml-[300px]">
         <div className="absolute top-4 left-4 z-10 flex gap-2">
           <NodeLibraryDialog />
           <Button variant="outline" size="icon" onClick={() => toast({ title: 'Workflow Started' })}>

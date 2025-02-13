@@ -42,9 +42,7 @@ const Files = () => {
   });
 
   const onFileUploadComplete = async () => {
-    // Invalidate the query to refresh the file list
     await queryClient.invalidateQueries({ queryKey: ['excel-files'] });
-    // Reset the upload state for the next file
     resetUpload();
   };
 
@@ -52,7 +50,7 @@ const Files = () => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <ChatSidebar />
-        <main className="flex-1">
+        <main className="flex-1 ml-[60px] transition-all duration-200 sidebar-expanded:ml-[300px]">
           <div className="container mx-auto p-6">
             <h1 className="text-2xl font-bold mb-6">My Files</h1>
             <div className="space-y-6">
