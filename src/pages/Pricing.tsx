@@ -147,13 +147,13 @@ export default function Pricing() {
                 delay: index * 0.1,
               }}
               className={cn(
-                "rounded-2xl border p-6 bg-white",
+                "rounded-2xl border p-6 bg-white relative",
                 plan.isPopular ? "border-excel border-2 shadow-lg" : "border-gray-200",
                 "flex flex-col"
               )}
             >
               {plan.isPopular && (
-                <div className="absolute top-0 right-0 bg-excel py-1 px-3 rounded-bl-xl rounded-tr-xl">
+                <div className="absolute -right-[2px] -top-[2px] bg-excel py-1 px-3 rounded-tr-2xl rounded-bl-xl">
                   <Star className="text-white h-4 w-4 inline-block mr-1" />
                   <span className="text-white text-sm font-semibold">Popular</span>
                 </div>
