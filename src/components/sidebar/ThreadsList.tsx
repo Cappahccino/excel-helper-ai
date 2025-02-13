@@ -52,7 +52,7 @@ export function ThreadsList() {
         `)
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false })
-        .limit(5); // Limit to only show the 5 most recent chats
+        .limit(5);
 
       if (sessionsError) throw sessionsError;
       return sessions;
@@ -68,9 +68,9 @@ export function ThreadsList() {
   };
 
   return (
-    <SidebarGroup>
+    <SidebarGroupContent>
       <motion.div
-        animate={{ opacity: true ? 1 : 0 }}
+        animate={{ opacity: 1 }}
         className="overflow-hidden"
       >
         <div 
@@ -89,7 +89,15 @@ export function ThreadsList() {
                 <Folder className="h-3 w-3" />
               </>
             )}
-            <span>Recent Chats</span>
+            <motion.span
+              animate={{ 
+                opacity: true ? 1 : 0,
+                width: true ? 'auto' : 0,
+              }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              Recent Chats
+            </motion.span>
           </span>
         </div>
       </motion.div>
@@ -101,51 +109,49 @@ export function ThreadsList() {
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <ScrollArea className="h-[280px]">
-              <SidebarGroupContent className="pl-8">
-                <SidebarMenu className="space-y-0.5">
-                  {isLoading ? (
-                    <div className="flex items-center justify-center p-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
-                    </div>
-                  ) : threads?.length === 0 ? (
-                    <div className="text-xs text-gray-600 p-4 text-center">
-                      No chats yet
-                    </div>
-                  ) : (
-                    threads?.map((thread) => (
-                      <SidebarMenuItem key={thread.session_id}>
-                        <SidebarMenuButton
-                          onClick={() => handleThreadClick(thread.session_id)}
-                          className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black hover:bg-gray-200 ${
-                            currentThreadId === thread.session_id ? 'bg-gray-200' : ''
-                          }`}
+            <ScrollArea className="h-[200px]">
+              <SidebarMenu className="space-y-0.5 pl-8">
+                {isLoading ? (
+                  <div className="flex items-center justify-center p-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-excel"></div>
+                  </div>
+                ) : threads?.length === 0 ? (
+                  <div className="text-xs text-gray-600 p-4 text-center">
+                    No chats yet
+                  </div>
+                ) : (
+                  threads?.map((thread) => (
+                    <SidebarMenuItem key={thread.session_id}>
+                      <SidebarMenuButton
+                        onClick={() => handleThreadClick(thread.session_id)}
+                        className={`w-full justify-start gap-2 p-1.5 text-black hover:text-black hover:bg-gray-200 ${
+                          currentThreadId === thread.session_id ? 'bg-gray-200' : ''
+                        }`}
+                      >
+                        <MessageSquare className="h-3 w-3 shrink-0" />
+                        <motion.div
+                          animate={{ 
+                            opacity: true ? 1 : 0,
+                            width: true ? 'auto' : 0,
+                          }}
+                          className="flex flex-col items-start overflow-hidden"
                         >
-                          <MessageSquare className="h-3 w-3 shrink-0" />
-                          <motion.div
-                            animate={{ 
-                              opacity: true ? 1 : 0,
-                              width: true ? 'auto' : 0,
-                            }}
-                            className="flex flex-col items-start overflow-hidden"
-                          >
-                            <span className="text-xs font-medium truncate">
-                              {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
-                            </span>
-                            <span className="text-[10px] text-gray-600">
-                              {format(new Date(thread.created_at), 'MMM d, yyyy')}
-                            </span>
-                          </motion.div>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))
-                  )}
-                </SidebarMenu>
-              </SidebarGroupContent>
+                          <span className="text-xs font-medium truncate">
+                            {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
+                          </span>
+                          <span className="text-[10px] text-gray-600">
+                            {format(new Date(thread.created_at), 'MMM d, yyyy')}
+                          </span>
+                        </motion.div>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))
+                )}
+              </SidebarMenu>
             </ScrollArea>
           </motion.div>
         )}
       </AnimatePresence>
-    </SidebarGroup>
+    </SidebarGroupContent>
   );
 }

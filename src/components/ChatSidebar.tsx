@@ -41,8 +41,7 @@ export function ChatSidebar() {
           </Button>
         </SidebarHeader>
         <SidebarContent className="flex-1 flex flex-col">
-          <ThreadsList />
-          <NavigationMenu />
+          <NavigationMenu isOpen={open} />
           <SidebarFooter />
         </SidebarContent>
       </SidebarBody>

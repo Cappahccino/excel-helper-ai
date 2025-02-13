@@ -19,6 +19,7 @@ import {
   SidebarMenuButton,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar-new";
+import { ThreadsList } from "./ThreadsList";
 
 const workspaceNavLinks = [
   {
@@ -56,7 +57,11 @@ const resourceNavLinks = [
   },
 ];
 
-export function NavigationMenu() {
+interface NavigationMenuProps {
+  isOpen: boolean;
+}
+
+export function NavigationMenu({ isOpen }: NavigationMenuProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -70,9 +75,21 @@ export function NavigationMenu() {
         <div className="px-4 py-2">
           <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
             <Database className="h-3 w-3" />
-            Workspace
+            <motion.span
+              animate={{ 
+                opacity: isOpen ? 1 : 0,
+                width: isOpen ? 'auto' : 0,
+              }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              Workspace
+            </motion.span>
           </span>
         </div>
+        
+        {/* Recent Chats moved to top */}
+        <ThreadsList />
+
         <SidebarMenu className="px-2 space-y-1">
           {workspaceNavLinks.map((link) => (
             <SidebarMenuItem key={link.label}>
@@ -85,10 +102,10 @@ export function NavigationMenu() {
                 {link.icon}
                 <motion.span
                   animate={{ 
-                    opacity: true ? 1 : 0,
-                    width: true ? 'auto' : 0,
+                    opacity: isOpen ? 1 : 0,
+                    width: isOpen ? 'auto' : 0,
                   }}
-                  className="text-xs font-medium truncate"
+                  className="overflow-hidden whitespace-nowrap text-xs font-medium"
                 >
                   {link.label}
                 </motion.span>
@@ -102,7 +119,15 @@ export function NavigationMenu() {
         <div className="px-4 py-2">
           <span className="flex items-center gap-2 text-xs font-medium text-gray-900">
             <BookOpen className="h-3 w-3" />
-            Resources
+            <motion.span
+              animate={{ 
+                opacity: isOpen ? 1 : 0,
+                width: isOpen ? 'auto' : 0,
+              }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              Resources
+            </motion.span>
           </span>
         </div>
         <SidebarMenu className="px-2 space-y-1">
@@ -117,10 +142,10 @@ export function NavigationMenu() {
                 {link.icon}
                 <motion.span
                   animate={{ 
-                    opacity: true ? 1 : 0,
-                    width: true ? 'auto' : 0,
+                    opacity: isOpen ? 1 : 0,
+                    width: isOpen ? 'auto' : 0,
                   }}
-                  className="text-xs font-medium truncate"
+                  className="overflow-hidden whitespace-nowrap text-xs font-medium"
                 >
                   {link.label}
                 </motion.span>
