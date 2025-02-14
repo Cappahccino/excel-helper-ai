@@ -72,8 +72,11 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
   return (
     <>
       <SidebarGroup>
-        <div className="px-4 py-3">
-          <span className="flex items-center text-sm font-semibold text-gray-900">
+        <div className={`${isOpen ? 'px-4' : 'px-2'} py-3`}>
+          <span className={`
+            flex items-center text-sm font-semibold text-gray-900
+            ${isOpen ? '' : 'justify-center'}
+          `}>
             <Database className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ 
@@ -120,8 +123,11 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
       </SidebarGroup>
 
       <SidebarGroup className="mt-6">
-        <div className="px-4 py-3">
-          <span className="flex items-center text-sm font-semibold text-gray-900">
+        <div className={`${isOpen ? 'px-4' : 'px-2'} py-3`}>
+          <span className={`
+            flex items-center text-sm font-semibold text-gray-900
+            ${isOpen ? '' : 'justify-center'}
+          `}>
             <Glasses className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ 
