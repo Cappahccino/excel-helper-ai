@@ -65,10 +65,8 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Create file path with UUID to ensure uniqueness
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
 
-      // Upload file to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
@@ -79,7 +77,6 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
       if (uploadError) throw uploadError;
       setUploadProgress(50);
 
-      // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -95,7 +92,6 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
 
       if (dbError) throw dbError;
       setUploadProgress(100);
-
       setFileId(fileRecord.id);
       setSessionId(currentSessionId);
       
@@ -104,6 +100,8 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         description: "File uploaded successfully",
       });
 
+      // Don't reset the file state after successful upload
+      setIsUploading(false);
     } catch (err) {
       console.error('Upload error:', err);
       setError(err instanceof Error ? err.message : "Failed to upload file");
@@ -112,8 +110,8 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         description: err instanceof Error ? err.message : "Failed to upload file",
         variant: "destructive",
       });
-    } finally {
       setIsUploading(false);
+      setFile(null);
     }
   }, [toast]);
 
