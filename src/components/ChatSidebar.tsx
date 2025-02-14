@@ -25,10 +25,15 @@ export function ChatSidebar() {
   return (
     <Sidebar open={open} setOpen={setOpen}>
       <SidebarBody className="flex flex-col h-full border-r z-50 bg-gradient-to-b from-white to-gray-50">
-        <SidebarHeader className="border-b border-gray-200 p-2">
+        <SidebarHeader className="border-b border-gray-200 p-4">
           <Button 
             onClick={handleNewThread}
-            className="w-full flex items-center justify-center gap-3 text-excel hover:text-excel hover:bg-green-50/80 transition-colors text-sm"
+            className={`
+              w-full flex items-center justify-center gap-3 
+              text-excel hover:text-excel hover:bg-green-50/80 
+              transition-colors text-sm
+              ${open ? 'px-4' : 'px-2'}
+            `}
             variant="outline"
           >
             <MessageSquare className="h-4 w-4 shrink-0" />
