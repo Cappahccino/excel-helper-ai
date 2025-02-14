@@ -29,17 +29,17 @@ export function ChatSidebar() {
           <Button 
             onClick={handleNewThread}
             className={`
-              w-full flex items-center justify-center
+              w-full flex items-center
               text-excel hover:text-excel hover:bg-green-50/80 
               transition-colors text-sm min-h-[36px]
-              ${open ? 'px-4 py-2' : 'p-2.5'}
+              ${open ? 'justify-start px-3 py-2' : 'justify-center p-2'}
             `}
             variant="outline"
           >
             <MessageSquare className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ opacity: open ? 1 : 0, width: open ? 'auto' : 0 }}
-              className="overflow-hidden whitespace-nowrap font-medium ml-3"
+              className="overflow-hidden whitespace-nowrap font-medium ml-2"
             >
               New Chat
             </motion.span>

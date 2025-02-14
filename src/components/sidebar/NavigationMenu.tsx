@@ -73,14 +73,14 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
     <>
       <SidebarGroup>
         <div className="px-4 py-3">
-          <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
+          <span className="flex items-center text-sm font-semibold text-gray-900">
             <Database className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,
                 width: isOpen ? 'auto' : 0,
               }}
-              className="overflow-hidden whitespace-nowrap"
+              className="overflow-hidden whitespace-nowrap ml-2"
             >
               Workspace
             </motion.span>
@@ -95,9 +95,13 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
             <SidebarMenuItem key={link.label}>
               <SidebarMenuButton
                 onClick={() => handleNavigation(link.href)}
-                className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
-                  location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''
-                }`}
+                className={`
+                  w-full flex items-center
+                  ${isOpen ? 'justify-start px-3' : 'justify-center'}
+                  py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 
+                  transition-all
+                  ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''}
+                `}
               >
                 <span className="shrink-0">{link.icon}</span>
                 <motion.span
@@ -105,7 +109,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                     opacity: isOpen ? 1 : 0,
                     width: isOpen ? 'auto' : 0,
                   }}
-                  className="overflow-hidden whitespace-nowrap text-sm"
+                  className="overflow-hidden whitespace-nowrap text-sm ml-2"
                 >
                   {link.label}
                 </motion.span>
@@ -117,14 +121,14 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
 
       <SidebarGroup className="mt-6">
         <div className="px-4 py-3">
-          <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
+          <span className="flex items-center text-sm font-semibold text-gray-900">
             <Glasses className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,
                 width: isOpen ? 'auto' : 0,
               }}
-              className="overflow-hidden whitespace-nowrap"
+              className="overflow-hidden whitespace-nowrap ml-2"
             >
               Resources
             </motion.span>
@@ -137,9 +141,13 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
             <SidebarMenuItem key={link.label}>
               <SidebarMenuButton
                 onClick={() => handleNavigation(link.href)}
-                className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
-                  location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''
-                }`}
+                className={`
+                  w-full flex items-center
+                  ${isOpen ? 'justify-start px-3' : 'justify-center'}
+                  py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 
+                  transition-all
+                  ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''}
+                `}
               >
                 <span className="shrink-0">{link.icon}</span>
                 <motion.span
@@ -147,7 +155,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                     opacity: isOpen ? 1 : 0,
                     width: isOpen ? 'auto' : 0,
                   }}
-                  className="overflow-hidden whitespace-nowrap text-sm"
+                  className="overflow-hidden whitespace-nowrap text-sm ml-2"
                 >
                   {link.label}
                 </motion.span>
