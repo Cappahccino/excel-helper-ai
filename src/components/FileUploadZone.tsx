@@ -108,8 +108,8 @@ export function FileUploadZone({
             <div className="w-24">
               <Progress 
                 value={uploadProgress} 
-                className="h-1.5 bg-green-100" 
-                indicatorClassName="bg-green-500 transition-all duration-200"
+                className="h-1.5 bg-green-100"
+                indicatorClassName="bg-green-500"
                 aria-label="Upload progress"
               />
             </div>
