@@ -97,9 +97,9 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                 onClick={() => handleNavigation(link.href)}
                 className={`
                   w-full flex items-center
-                  ${isOpen ? 'justify-start px-3' : 'justify-center'}
+                  ${isOpen ? 'justify-start px-3' : 'justify-center px-2'}
                   py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 
-                  transition-all
+                  transition-all rounded-md
                   ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''}
                 `}
               >
@@ -143,9 +143,9 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                 onClick={() => handleNavigation(link.href)}
                 className={`
                   w-full flex items-center
-                  ${isOpen ? 'justify-start px-3' : 'justify-center'}
+                  ${isOpen ? 'justify-start px-3' : 'justify-center px-2'}
                   py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 
-                  transition-all
+                  transition-all rounded-md
                   ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''}
                 `}
               >

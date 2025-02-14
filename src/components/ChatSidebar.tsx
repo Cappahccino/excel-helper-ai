@@ -32,7 +32,9 @@ export function ChatSidebar() {
               w-full flex items-center
               text-excel hover:text-excel hover:bg-green-50/80 
               transition-colors text-sm min-h-[36px]
-              ${open ? 'justify-start px-3 py-2' : 'justify-center p-2'}
+              ${open 
+                ? 'justify-start px-3 py-2 border' 
+                : 'justify-center p-2 border-0'}
             `}
             variant="outline"
           >
