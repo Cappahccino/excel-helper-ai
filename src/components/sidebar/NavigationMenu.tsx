@@ -93,22 +93,20 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
         
         <ThreadsList />
 
-        <SidebarMenu className="space-y-1">
+        <SidebarMenu className="px-2 space-y-1">
           {workspaceNavLinks.map((link) => (
-            <SidebarMenuItem key={link.label} className="px-2">
+            <SidebarMenuItem key={link.label}>
               <SidebarMenuButton
                 onClick={() => handleNavigation(link.href)}
                 className={`
                   w-full flex items-center
-                  ${isOpen ? 'justify-start px-3' : 'justify-center'}
+                  ${isOpen ? 'justify-start px-3' : 'justify-center px-2'}
                   py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 
                   transition-all rounded-md
-                  ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium w-full' : ''}
+                  ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''}
                 `}
               >
-                <span className={`shrink-0 ${!isOpen ? 'w-8 flex justify-center' : ''}`}>
-                  {link.icon}
-                </span>
+                <span className="shrink-0">{link.icon}</span>
                 <motion.span
                   animate={{ 
                     opacity: isOpen ? 1 : 0,
@@ -144,22 +142,20 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
         </div>
         <Separator className="mb-2 opacity-50" />
         
-        <SidebarMenu className="space-y-1">
+        <SidebarMenu className="px-2 space-y-1">
           {resourceNavLinks.map((link) => (
-            <SidebarMenuItem key={link.label} className="px-2">
+            <SidebarMenuItem key={link.label}>
               <SidebarMenuButton
                 onClick={() => handleNavigation(link.href)}
                 className={`
                   w-full flex items-center
-                  ${isOpen ? 'justify-start px-3' : 'justify-center'}
+                  ${isOpen ? 'justify-start px-3' : 'justify-center px-2'}
                   py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 
                   transition-all rounded-md
-                  ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium w-full' : ''}
+                  ${location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''}
                 `}
               >
-                <span className={`shrink-0 ${!isOpen ? 'w-8 flex justify-center' : ''}`}>
-                  {link.icon}
-                </span>
+                <span className="shrink-0">{link.icon}</span>
                 <motion.span
                   animate={{ 
                     opacity: isOpen ? 1 : 0,
