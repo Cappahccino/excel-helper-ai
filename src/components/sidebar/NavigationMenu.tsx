@@ -74,7 +74,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
       <SidebarGroup>
         <div className="px-4 py-3">
           <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
-            <Database className="h-4 w-4" />
+            <Database className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,
@@ -99,7 +99,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                   location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''
                 }`}
               >
-                {link.icon}
+                <span className="shrink-0">{link.icon}</span>
                 <motion.span
                   animate={{ 
                     opacity: isOpen ? 1 : 0,
@@ -118,7 +118,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
       <SidebarGroup className="mt-6">
         <div className="px-4 py-3">
           <span className="flex items-center gap-3 text-sm font-semibold text-gray-900">
-            <Glasses className="h-4 w-4" />
+            <Glasses className="h-4 w-4 shrink-0" />
             <motion.span
               animate={{ 
                 opacity: isOpen ? 1 : 0,
@@ -141,7 +141,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
                   location.pathname === link.href ? 'bg-green-50 text-excel font-medium' : ''
                 }`}
               >
-                {link.icon}
+                <span className="shrink-0">{link.icon}</span>
                 <motion.span
                   animate={{ 
                     opacity: isOpen ? 1 : 0,
