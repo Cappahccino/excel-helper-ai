@@ -5,6 +5,8 @@ import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import ReactMarkdown from 'react-markdown';
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
 interface MessageContentProps {
   content: string;
@@ -36,6 +38,41 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
       ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200'
       : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200'
   }`;
+
+  // Process content to handle LaTeX expressions
+  const processContent = (text: string) => {
+    const parts = [];
+    let lastIndex = 0;
+    let inBlockMath = false;
+    let currentMath = '';
+    
+    // First handle block math ($$...$$)
+    const blockRegex = /\$\$(.*?)\$\$/gs;
+    text = text.replace(blockRegex, (match, latex) => {
+      return `\n\nBLOCKMATH{${latex.trim()}}\n\n`;
+    });
+
+    // Then handle inline math ($...$)
+    const inlineRegex = /\$([^\$]+?)\$/g;
+    text = text.replace(inlineRegex, (match, latex) => {
+      return `INLINEMATH{${latex.trim()}}`;
+    });
+
+    return text;
+  };
+
+  const renderLatex = (latex: string, isBlock: boolean = false) => {
+    try {
+      return isBlock ? (
+        <BlockMath math={latex} />
+      ) : (
+        <InlineMath math={latex} />
+      );
+    } catch (error) {
+      console.error('LaTeX rendering error:', error);
+      return <code className="text-red-500">{latex}</code>;
+    }
+  };
 
   return (
     <motion.div 
@@ -74,9 +111,29 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
                       {children}
                     </pre>
                   ),
+                  p: ({ children }) => {
+                    if (typeof children === 'string') {
+                      const parts = children.split(/(INLINEMATH{.*?}|BLOCKMATH{.*?})/g);
+                      return (
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                          {parts.map((part, index) => {
+                            if (part.startsWith('INLINEMATH{')) {
+                              const latex = part.slice(11, -1);
+                              return <span key={index}>{renderLatex(latex)}</span>;
+                            } else if (part.startsWith('BLOCKMATH{')) {
+                              const latex = part.slice(10, -1);
+                              return <div key={index}>{renderLatex(latex, true)}</div>;
+                            }
+                            return part;
+                          })}
+                        </p>
+                      );
+                    }
+                    return <p className="text-sm text-gray-800 whitespace-pre-wrap">{children}</p>;
+                  },
                 }}
               >
-                {content}
+                {processContent(content)}
               </ReactMarkdown>
             </div>
           ) : (
