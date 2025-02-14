@@ -94,7 +94,6 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
             <div className="leading-relaxed [&>p]:mb-4 [&>p:last-child]:mb-0">
               <ReactMarkdown
                 components={{
-                  p: ({ children }) => <p className="text-sm text-gray-800 whitespace-pre-wrap">{children}</p>,
                   h1: ({ children }) => <h1 className="text-2xl font-semibold mb-4 mt-6">{children}</h1>,
                   h2: ({ children }) => <h2 className="text-xl font-semibold mb-3 mt-5">{children}</h2>,
                   h3: ({ children }) => <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>,
