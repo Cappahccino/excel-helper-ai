@@ -195,7 +195,7 @@ const Chat = () => {
               </div>
               <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
                 <div className="w-full max-w-7xl mx-auto px-4 pb-4">
-                  <div className="backdrop-blur-sm shadow-lg bg-transparent rounded-none mx-[13px] px-[40px] py-0 my-0">
+                  <div className="backdrop-blur-sm shadow-lg bg-transparent rounded-none mx-[13px] py-0 my-0 px-0">
                     <ChatInput onSendMessage={handleSendMessage} sessionId={selectedSessionId} isAnalyzing={false} fileInfo={currentFile} />
                   </div>
                 </div>
