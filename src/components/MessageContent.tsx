@@ -35,8 +35,8 @@ export function MessageContent({
   const [isTyping, setIsTyping] = useState(false);
   const [isThinking, setIsThinking] = useState(role === "assistant" && isStreaming && !content);
   const contentRef = useRef(content);
-  const typeIndexRef = useRef(0);
-  const typingSpeedRef = useRef(20);
+  const typingIndexRef = useRef(0);
+  const words = useRef<string[]>([]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -50,7 +50,7 @@ export function MessageContent({
     return role === "assistant" ? "AI" : "U";
   };
 
-  // Enhanced typing effect
+  // Enhanced typing effect with word-by-word approach
   useEffect(() => {
     if (role !== "assistant" || !isStreaming) {
       setDisplayedText(content);
@@ -72,36 +72,41 @@ export function MessageContent({
     // Reset if content has completely changed
     if (content !== contentRef.current) {
       contentRef.current = content;
+      words.current = content.split(/\s+/);
+      
       if (content.startsWith(displayedText)) {
-        typeIndexRef.current = displayedText.length;
+        const displayedWords = displayedText.split(/\s+/);
+        typingIndexRef.current = displayedWords.length;
       } else {
-        typeIndexRef.current = 0;
+        typingIndexRef.current = 0;
         setDisplayedText("");
       }
     }
 
-    const typeNextCharacter = () => {
-      if (typeIndexRef.current < content.length) {
-        setDisplayedText(content.slice(0, typeIndexRef.current + 1));
-        typeIndexRef.current += 1;
+    const typeNextWord = () => {
+      if (typingIndexRef.current < words.current.length) {
+        setDisplayedText((prev) =>
+          prev ? `${prev} ${words.current[typingIndexRef.current]}` : words.current[typingIndexRef.current]
+        );
+        typingIndexRef.current += 1;
 
-        const nextChar = content[typeIndexRef.current];
-        if (nextChar === '.' || nextChar === '!' || nextChar === '?') {
-          typingSpeedRef.current = 50;
-        } else if (nextChar === ',' || nextChar === ';') {
-          typingSpeedRef.current = 35;
-        } else {
-          typingSpeedRef.current = 20;
+        // Simulated OpenAI speed
+        const lastWord = words.current[typingIndexRef.current - 1] || "";
+        let delay = Math.random() * (120 - 80) + 80; // Base delay 80-120ms
+
+        if (/[.!?]/.test(lastWord)) {
+          delay = Math.random() * (400 - 250) + 250; // Pause at sentence endings
+        } else if (/[,;]/.test(lastWord)) {
+          delay = Math.random() * (180 - 120) + 120; // Pause slightly at commas
         }
 
-        const typingTimeout = setTimeout(typeNextCharacter, typingSpeedRef.current);
-        return () => clearTimeout(typingTimeout);
+        setTimeout(typeNextWord, delay);
       } else {
         setIsTyping(false);
       }
     };
 
-    const initialDelay = setTimeout(typeNextCharacter, typingSpeedRef.current);
+    const initialDelay = setTimeout(typeNextWord, 50); // Small initial delay
     return () => clearTimeout(initialDelay);
   }, [content, role, isStreaming, displayedText]);
 
