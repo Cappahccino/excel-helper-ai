@@ -32,6 +32,7 @@ const Files = () => {
       const { data: files, error } = await supabase
         .from('excel_files')
         .select('*')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -41,6 +42,18 @@ const Files = () => {
           variant: "destructive",
         });
         throw error;
+      }
+
+      // Trigger storage verification for unverified files
+      const unverifiedFiles = files?.filter(f => !f.storage_verified);
+      if (unverifiedFiles?.length > 0) {
+        try {
+          await supabase.functions.invoke('verify-storage');
+          // Invalidate the query to refresh the list
+          queryClient.invalidateQueries({ queryKey: ['excel-files'] });
+        } catch (error) {
+          console.error('Storage verification error:', error);
+        }
       }
 
       return files;
@@ -63,6 +76,15 @@ const Files = () => {
     
     for (const file of selectedFilesData) {
       try {
+        if (!file.storage_verified) {
+          toast({
+            title: "File Unavailable",
+            description: `${file.filename} is not available for download`,
+            variant: "destructive",
+          });
+          continue;
+        }
+
         const { data, error } = await supabase.storage
           .from('excel_files')
           .download(file.file_path);
@@ -95,17 +117,10 @@ const Files = () => {
     const selectedFilesData = files?.filter(file => selectedFiles.includes(file.id)) || [];
     
     try {
-      // Delete files from storage
-      const { error: storageError } = await supabase.storage
-        .from('excel_files')
-        .remove(selectedFilesData.map(file => file.file_path));
-
-      if (storageError) throw storageError;
-
-      // Delete files from database
+      // Soft delete files
       const { error: dbError } = await supabase
         .from('excel_files')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .in('id', selectedFiles);
 
       if (dbError) throw dbError;
