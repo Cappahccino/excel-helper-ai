@@ -33,7 +33,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const { 
     messages, 
@@ -45,20 +46,24 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     groupMessagesByDate,
   } = useChatMessages(sessionId);
 
-  // Auto-scroll function
+  // Improved auto-scroll function that works with Radix UI ScrollArea
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior,
-        block: "end"
+    // Get the viewport element from Radix UI ScrollArea
+    const viewport = viewportRef.current || scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      const scrollHeight = viewport.scrollHeight;
+      viewport.scrollTo({
+        top: scrollHeight,
+        behavior
       });
     }
   };
 
-  // Handle scroll events
+  // Handle scroll events with improved detection
   const handleScroll = () => {
-    if (chatContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const viewport = viewportRef.current || scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      const { scrollTop, scrollHeight, clientHeight } = viewport;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
       setHasScrolledUp(!isNearBottom);
     }
@@ -71,7 +76,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     }
   }, [messages, hasScrolledUp]);
 
-  // Set up realtime subscription
+  // Set up realtime subscription with improved streaming support
   useEffect(() => {
     if (!session?.session_id) return;
 
@@ -86,19 +91,28 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           filter: `session_id=eq.${session.session_id}`,
         },
         async (payload: any) => {
-          if (payload.new && payload.new.role === 'assistant') {
-            setLatestMessageId(payload.new.id);
-            setIsAnalyzing(false);
-            setPendingResponseId(null);
-          }
-          await queryClient.invalidateQueries({ 
-            queryKey: ['chat-messages', session.session_id] 
-          });
-          await queryClient.invalidateQueries({ 
-            queryKey: ['chat-session', session.session_id] 
-          });
-          if (!hasScrolledUp) {
-            scrollToBottom();
+          if (payload.new) {
+            // Handle both complete messages and streaming updates
+            if (payload.new.role === 'assistant') {
+              setLatestMessageId(payload.new.id);
+              if (!payload.new.is_streaming) {
+                setIsAnalyzing(false);
+                setPendingResponseId(null);
+              }
+            }
+
+            // Update the messages in the query cache
+            await queryClient.invalidateQueries({ 
+              queryKey: ['chat-messages', session.session_id] 
+            });
+
+            // Scroll to bottom for new messages or streaming updates
+            if (!hasScrolledUp) {
+              // Use requestAnimationFrame to ensure DOM is updated
+              requestAnimationFrame(() => {
+                scrollToBottom();
+              });
+            }
           }
         }
       )
@@ -136,7 +150,29 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         currentSessionId = newSession.session_id;
       }
 
-      // Store the message
+      // Optimistically add user message
+      const optimisticMessage = {
+        id: crypto.randomUUID(),
+        content: message,
+        role: 'user' as const,
+        created_at: new Date().toISOString(),
+        session_id: currentSessionId,
+        excel_file_id: fileId || null,
+        user_id: user.id,
+        temp: true
+      };
+
+      // Update the cache with optimistic message
+      queryClient.setQueryData(['chat-messages', currentSessionId], (old: any[]) => 
+        [...(old || []), optimisticMessage]
+      );
+
+      // Immediately scroll to bottom after adding optimistic message
+      requestAnimationFrame(() => {
+        scrollToBottom("smooth");
+      });
+
+      // Store the actual message
       const { data: storedMessage, error: messageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -151,6 +187,11 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         .single();
       
       if (messageError) throw messageError;
+
+      // Replace optimistic message with stored message
+      queryClient.setQueryData(['chat-messages', currentSessionId], (old: any[]) => 
+        old?.map(msg => msg.id === optimisticMessage.id ? storedMessage : msg) || []
+      );
       
       // Call edge function
       const { error } = await supabase.functions
@@ -167,9 +208,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       if (error) throw error;
       
       onMessageSent?.();
-      
-      // Scroll to bottom after sending
-      scrollToBottom();
       
     } catch (error) {
       console.error('Analysis error:', error);
@@ -193,10 +231,14 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
       <ScrollArea 
         className="flex-1 p-4 pb-24"
+        ref={scrollAreaRef}
         onScroll={handleScroll}
-        ref={chatContainerRef}
+        scrollHideDelay={0}
       >
-        <div className="flex flex-col gap-6">
+        <div
+          className="flex flex-col gap-6"
+          ref={viewportRef}
+        >
           <AnimatePresence>
             {fileInfo && (
               <motion.div
