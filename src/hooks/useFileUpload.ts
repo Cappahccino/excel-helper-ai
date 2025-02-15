@@ -3,7 +3,7 @@ import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import crypto from 'crypto';
+import { v4 as uuidv4 } from "uuid";
 
 interface UseFileUploadReturn {
   file: File | null;
@@ -41,7 +41,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
   const calculateFileHash = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', arrayBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     return hashHex;
@@ -96,7 +96,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         return;
       }
 
-      const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
+      const filePath = `${uuidv4()}-${sanitizedFile.name}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
