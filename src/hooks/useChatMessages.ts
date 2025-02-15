@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
@@ -15,6 +14,7 @@ interface Message {
     file_size: number;
   } | null;
   temp?: boolean;
+  isStreaming?: boolean;
 }
 
 export function useChatMessages(sessionId: string | null) {
@@ -63,7 +63,8 @@ export function useChatMessages(sessionId: string | null) {
       // Ensure the role is either 'user' or 'assistant'
       return data?.map(msg => ({
         ...msg,
-        role: msg.role === 'assistant' ? 'assistant' : 'user'
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        isStreaming: msg.is_streaming || false
       })) as Message[];
     },
     enabled: !!session?.session_id,

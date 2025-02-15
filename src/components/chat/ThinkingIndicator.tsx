@@ -1,5 +1,6 @@
 
 import { motion } from "framer-motion";
+import { Spinner } from "@/components/ui/spinner";
 
 export function ThinkingIndicator() {
   return (
@@ -10,7 +11,7 @@ export function ThinkingIndicator() {
       className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4 shadow-sm"
     >
       <div className="flex items-center gap-2">
-        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
+        <Spinner variant="ring" className="text-excel" />
         <div className="flex flex-col">
           <p className="text-sm text-gray-700">Assistant is thinking...</p>
           <p className="text-xs text-gray-500">This may take a few seconds</p>
