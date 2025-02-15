@@ -12,15 +12,22 @@ export function useChatScroll({ messages, messagesEndRef, chatContainerRef }: Us
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior });
+      // Find the ScrollArea Viewport element
+      const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        const scrollTarget = messagesEndRef.current;
+        viewport.scrollTop = scrollTarget.offsetTop;
+      }
     }
   };
 
   const handleScroll = () => {
-    const chatContainer = chatContainerRef.current;
-    if (!chatContainer) return;
+    // Get the ScrollArea Viewport element
+    const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = chatContainer;
+    // Calculate scroll position using the viewport element
+    const { scrollTop, scrollHeight, clientHeight } = viewport as HTMLElement;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
     setHasScrolledUp(!isAtBottom);
   };

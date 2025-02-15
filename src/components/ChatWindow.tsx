@@ -53,7 +53,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     sessionId: session?.session_id || null,
     onAssistantMessage: () => {
       setIsAnalyzing(false);
-      scrollToBottom("smooth");
+      if (!hasScrolledUp) {
+        scrollToBottom("smooth");
+      }
     }
   });
 
@@ -132,22 +134,23 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
   return (
     <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
-      <ScrollArea 
-        className="flex-1 p-4 pb-24"
-        onScroll={handleScroll}
-        ref={chatContainerRef}
-      >
-        <ChatContent
-          isLoading={isLoading}
-          fileInfo={fileInfo}
-          fileId={fileId}
-          messageGroups={messageGroups}
-          formatTimestamp={formatTimestamp}
-          latestMessageId={latestMessageId}
-          isAnalyzing={isAnalyzing}
-          messagesEndRef={messagesEndRef}
-        />
-      </ScrollArea>
+      <div className="flex-1" ref={chatContainerRef}>
+        <ScrollArea 
+          className="h-full p-4 pb-24"
+          onScroll={handleScroll}
+        >
+          <ChatContent
+            isLoading={isLoading}
+            fileInfo={fileInfo}
+            fileId={fileId}
+            messageGroups={messageGroups}
+            formatTimestamp={formatTimestamp}
+            latestMessageId={latestMessageId}
+            isAnalyzing={isAnalyzing}
+            messagesEndRef={messagesEndRef}
+          />
+        </ScrollArea>
+      </div>
 
       {hasScrolledUp && (
         <Button
