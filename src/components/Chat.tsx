@@ -131,14 +131,15 @@ export function Chat() {
       if (userError || !user) throw new Error("User not authenticated");
 
       let newSessionId = sessionId;
+      let newFileId = fileId || null;
 
-      // Create a new chat session if one doesn't exist
+      // ✅ Step 1: Create a new session if one doesn't exist
       if (!sessionId) {
         const { data: newSession, error: sessionError } = await supabase
           .from("chat_sessions")
           .insert([{ 
             user_id: user.id, 
-            excel_file_id: fileId || null,
+            excel_file_id: newFileId,
             status: "active",
             thread_id: crypto.randomUUID()
           }])
@@ -148,32 +149,21 @@ export function Chat() {
         if (sessionError) throw sessionError;
         newSessionId = newSession.session_id;
 
-        // Redirect immediately to new session's chat page
+        // ✅ Step 2: Redirect user to the new chat session before sending the message
         const queryParams = new URLSearchParams();
         queryParams.set('thread', newSessionId);
-        if (fileId) queryParams.set('fileId', fileId);
+        if (newFileId) queryParams.set('fileId', newFileId);
         navigate(`/chat?${queryParams.toString()}`, { replace: true });
+
+        // ✅ Step 3: Wait for React Router to update the URL before continuing
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      // Store the user message in the new session
-      const { error: messageError } = await supabase
-        .from("chat_messages")
-        .insert([{ 
-          content: message, 
-          role: "user", 
-          excel_file_id: fileId || null,
-          session_id: newSessionId,
-          is_ai_response: false,
-          user_id: user.id
-        }]);
-
-      if (messageError) throw messageError;
-
-      // Send message to OpenAI via Supabase Function
+      // ✅ Step 4: Send message to OpenAI via Supabase Function
       const { data: analysis, error: aiError } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
-            fileId: fileId || null,
+            fileId: newFileId,
             query: message,
             userId: user.id,
             threadId: newSessionId,
@@ -183,14 +173,28 @@ export function Chat() {
 
       if (aiError) throw aiError;
 
+      // ✅ Step 5: Store the message under the correct session
+      const { error: messageError } = await supabase
+        .from("chat_messages")
+        .insert([{ 
+          content: message, 
+          role: "user", 
+          excel_file_id: newFileId,
+          session_id: newSessionId,
+          is_ai_response: false,
+          user_id: user.id
+        }]);
+
+      if (messageError) throw messageError;
+
       setMessage("");
       
-      // Refetch messages for the new session
+      // ✅ Step 6: Refetch messages for the new session
       queryClient.invalidateQueries({ 
         queryKey: ["chat-messages", newSessionId] 
       });
       queryClient.invalidateQueries({ 
-        queryKey: ["chat-session", newSessionId, fileId] 
+        queryKey: ["chat-session", newSessionId, newFileId] 
       });
 
       scrollToBottom();
