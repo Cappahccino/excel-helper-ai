@@ -12,13 +12,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MessageContent } from "@/components/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const searchParams = new URLSearchParams(location.search);
-  const selectedSessionId = searchParams.get('thread');
+  const selectedSessionId = searchParams.get('sessionId');
   const fileIdFromUrl = searchParams.get('fileId');
 
   const {
@@ -90,67 +92,71 @@ const Chat = () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
-      let newSessionId = selectedSessionId;
+      let currentSessionId = selectedSessionId;
       const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
 
-      // Step 1: Create a new session if one doesn't exist
-      if (!selectedSessionId) {
+      // Create a new session if one doesn't exist
+      if (!currentSessionId) {
         const { data: newSession, error: sessionError } = await supabase
           .from("chat_sessions")
-          .insert([{ 
+          .insert({ 
             user_id: user.id, 
-            status: "active",
-            thread_id: crypto.randomUUID()
-          }])
+            status: "active"
+          })
           .select()
           .single();
 
-        if (sessionError) throw sessionError;
-        newSessionId = newSession.session_id;
+        if (sessionError) {
+          toast({
+            title: "Error",
+            description: "Failed to create chat session",
+            variant: "destructive"
+          });
+          throw sessionError;
+        }
+        
+        currentSessionId = newSession.session_id;
 
-        // Step 2: Redirect to the new chat session immediately
+        // Update URL with new session ID
         const queryParams = new URLSearchParams();
-        queryParams.set('thread', newSessionId);
+        queryParams.set('sessionId', currentSessionId);
         if (activeFileId) queryParams.set('fileId', activeFileId);
         navigate(`/chat?${queryParams.toString()}`, { replace: true });
-
-        // Step 3: Wait for URL update
-        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      // Step 4: Store the user message with file association
+      // Store the user message
       const { error: messageError } = await supabase
         .from("chat_messages")
         .insert([{ 
           content: message, 
           role: "user", 
           excel_file_id: activeFileId,
-          session_id: newSessionId,
+          session_id: currentSessionId,
           is_ai_response: false,
           user_id: user.id
         }]);
 
       if (messageError) throw messageError;
 
-      // Step 5: Send to OpenAI via Edge Function
+      // Call OpenAI via Edge Function
       const { error } = await supabase.functions.invoke('excel-assistant', {
         body: {
           fileId: activeFileId,
           query: message,
           userId: user.id,
-          threadId: newSessionId,
-          sessionId: newSessionId
+          sessionId: currentSessionId,
+          threadId: session?.thread_id
         }
       });
 
       if (error) throw error;
       
-      // Step 6: Update queries to reflect changes
+      // Update queries to reflect changes
       queryClient.invalidateQueries({
-        queryKey: ['chat-messages', newSessionId]
+        queryKey: ['chat-messages', currentSessionId]
       });
       queryClient.invalidateQueries({
-        queryKey: ['chat-session', newSessionId]
+        queryKey: ['chat-session', currentSessionId]
       });
 
       // Reset upload after successful message send
@@ -158,6 +164,11 @@ const Chat = () => {
       
     } catch (error) {
       console.error('Analysis error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to process message",
+        variant: "destructive"
+      });
     }
   };
 
