@@ -1,8 +1,8 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import OpenAI from 'npm:openai';
-import * as XLSX from 'npm:xlsx';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,65 +12,6 @@ const corsHeaders = {
 interface ExcelData {
   sheetName: string;
   data: Record<string, any>[];
-}
-
-async function getOrCreateAssistant(openai: OpenAI) {
-  const assistants = await openai.beta.assistants.list({ limit: 1, order: "desc" });
-  
-  if (assistants.data.length > 0) {
-    console.log('✅ Using existing assistant:', assistants.data[0].id);
-    return assistants.data[0];
-  }
-
-  const assistant = await openai.beta.assistants.create({
-    name: "Excel & Data Analyst",
-    instructions: `You are a versatile data analysis assistant. Your role is to:
-      - Analyze Excel data when provided
-      - Answer general data analysis questions
-      - Provide clear insights and patterns
-      - Use numerical evidence when available
-      - Highlight key findings
-      - Format your responses using markdown including:
-        * Use ## for section headers
-        * Use bullet points for lists
-        * Use backticks for code or Excel formulas
-        * Use tables when presenting structured data
-        * Use bold and italic for emphasis
-      - Maintain context from previous questions
-      - Be helpful even without Excel data`,
-    model: "gpt-4-turbo",
-  });
-
-  console.log('✅ Created new assistant:', assistant.id);
-  return assistant;
-}
-
-async function getExcelFileContent(supabase: any, fileId: string): Promise<ExcelData[] | null> {
-  if (!fileId) return null;
-  
-  console.log(`📂 Fetching Excel file ID: ${fileId}`);
-  
-  const { data: fileData, error: fileError } = await supabase
-    .from('excel_files')
-    .select('file_path')
-    .eq('id', fileId)
-    .single();
-
-  if (fileError) throw new Error(`File metadata error: ${fileError.message}`);
-
-  const { data: fileContent, error: downloadError } = await supabase.storage
-    .from('excel_files')
-    .download(fileData.file_path);
-
-  if (downloadError) throw new Error(`Download error: ${downloadError.message}`);
-
-  const arrayBuffer = await fileContent.arrayBuffer();
-  const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-  
-  return workbook.SheetNames.map(sheetName => ({
-    sheetName,
-    data: XLSX.utils.sheet_to_json(workbook.Sheets[sheetName])
-  }));
 }
 
 async function updateStreamingMessage(supabase: any, messageId: string, content: string, isComplete: boolean) {
@@ -104,6 +45,21 @@ async function createInitialMessage(supabase: any, userId: string, sessionId: st
   return message;
 }
 
+async function getFileContent(supabase: any, fileId: string): Promise<string | null> {
+  if (!fileId) return null;
+  
+  console.log(`📂 Fetching file ID: ${fileId}`);
+  
+  const { data: fileData, error: fileError } = await supabase
+    .from('excel_files')
+    .select('content_preview')
+    .eq('id', fileId)
+    .single();
+
+  if (fileError) throw new Error(`File metadata error: ${fileError.message}`);
+  return fileData?.content_preview || null;
+}
+
 serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] New request received`);
@@ -112,16 +68,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const controller = new AbortController();
+  const signal = controller.signal;
+
   try {
     const body = await req.json();
     console.log(`📝 [${requestId}] Request body:`, body);
 
-    if (!body.userId || !body.sessionId) {
-      throw new Error('Missing required fields: userId and sessionId are required');
-    }
-
-    if (!body.query) {
-      throw new Error('Missing required field: query');
+    if (!body.userId || !body.sessionId || !body.query) {
+      throw new Error('Missing required fields');
     }
 
     const { fileId, query, userId, sessionId } = body;
@@ -139,16 +94,16 @@ serve(async (req) => {
     const message = await createInitialMessage(supabase, userId, sessionId, fileId);
     let accumulatedContent = '';
 
-    // Get Excel data if needed
-    const excelData = await getExcelFileContent(supabase, fileId);
+    // Get file content if needed (using optimized preview)
+    const fileContent = await getFileContent(supabase, fileId);
     
     // Prepare the system message and user query
-    const systemMessage = excelData 
-      ? "You are a data analysis assistant. Analyze the provided Excel data and answer questions about it."
+    const systemMessage = fileContent 
+      ? "You are a data analysis assistant. Analyze the provided data and answer questions about it."
       : "You are a helpful Excel assistant. Answer questions about Excel and data analysis.";
 
-    const userMessage = excelData 
-      ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
+    const userMessage = fileContent 
+      ? `Analyze this data:\n${fileContent}\n\n${query}`
       : query;
 
     // Create completion with streaming
@@ -159,21 +114,42 @@ serve(async (req) => {
         { role: "user", content: userMessage }
       ],
       stream: true,
-    });
+      max_tokens: 1000, // Limit response length
+    }, { signal });
 
     console.log(`✨ [${requestId}] Starting stream processing`);
 
-    // Process the stream
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || '';
-      if (content) {
-        accumulatedContent += content;
-        await updateStreamingMessage(supabase, message.id, accumulatedContent, false);
-      }
-    }
+    try {
+      // Process the stream with chunking
+      let updateBuffer = '';
+      const updateInterval = 100; // ms
+      let lastUpdate = Date.now();
 
-    // Mark message as complete
-    await updateStreamingMessage(supabase, message.id, accumulatedContent, true);
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        if (content) {
+          updateBuffer += content;
+          accumulatedContent += content;
+
+          // Update database less frequently to reduce load
+          const now = Date.now();
+          if (now - lastUpdate >= updateInterval) {
+            await updateStreamingMessage(supabase, message.id, accumulatedContent, false);
+            updateBuffer = '';
+            lastUpdate = now;
+          }
+        }
+      }
+
+      // Final update
+      if (updateBuffer) {
+        await updateStreamingMessage(supabase, message.id, accumulatedContent, true);
+      }
+    } catch (streamError) {
+      console.error(`Stream error:`, streamError);
+      controller.abort();
+      throw streamError;
+    }
     
     console.log(`✅ [${requestId}] Stream processing complete`);
     return new Response(
@@ -187,10 +163,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error(`❌ [${requestId}] Error:`, error);
+    controller.abort();
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
-        details: error instanceof Error ? error.stack : undefined,
         requestId
       }),
       { 
