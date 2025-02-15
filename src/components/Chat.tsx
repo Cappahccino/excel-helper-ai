@@ -24,6 +24,12 @@ interface ChatMessage {
   role: "user" | "assistant";
 }
 
+interface QueryResponse {
+  messages: ChatMessage[];
+  nextPage: number | undefined;
+  count: number;
+}
+
 export function Chat() {
   const [message, setMessage] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -33,10 +39,9 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Extract threadId from the URL
   const urlParams = new URLSearchParams(location.search);
   const threadId = urlParams.get("thread");
-  const sessionId = threadId; // Using threadId as sessionId for consistency
+  const sessionId = threadId;
 
   const {
     file: uploadedFile,
@@ -58,11 +63,11 @@ export function Chat() {
   }, []);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } =
-    useInfiniteQuery({
+    useInfiniteQuery<QueryResponse>({
       queryKey: ["chat-messages", fileId, sessionId],
       queryFn: async ({ pageParam = 0 }) => {
-        if (!fileId) return { messages: [], nextPage: undefined };
-        const start = pageParam * 20;
+        if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
+        const start = Number(pageParam) * 20;
         const { data, error, count } = await supabase
           .from("chat_messages")
           .select("*", { count: "exact" })
@@ -73,15 +78,15 @@ export function Chat() {
         if (error) throw error;
         return {
           messages: data as ChatMessage[],
-          nextPage: data.length === 20 ? pageParam + 1 : undefined,
+          nextPage: data.length === 20 ? Number(pageParam) + 1 : undefined,
           count: count || 0,
         };
       },
       getNextPageParam: (lastPage) => lastPage.nextPage,
+      initialPageParam: 0,
       enabled: !!fileId,
     });
 
-  // Set up real-time subscription for new messages
   useEffect(() => {
     if (!sessionId) return;
 
@@ -95,8 +100,7 @@ export function Chat() {
           table: 'chat_messages',
           filter: `session_id=eq.${sessionId}`,
         },
-        async (payload) => {
-          // Update messages in real-time
+        async () => {
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-messages', fileId, sessionId] 
           });
@@ -135,7 +139,7 @@ export function Chat() {
           .from("chat_sessions")
           .insert([{
             user_id: user.id,
-            excel_file_id: fileId,
+            thread_id: crypto.randomUUID(), // Generate a new thread_id
             status: "active"
           }])
           .select()
@@ -145,17 +149,17 @@ export function Chat() {
         currentSessionId = newSession.session_id;
         currentThreadId = newSession.thread_id;
 
-        // Navigate to new chat URL before proceeding
         navigate(`/chat?thread=${currentSessionId}`);
       }
 
-      // Store user message immediately (optimistic update)
+      // Store user message immediately
       const userMessage = {
         content: message,
         role: "user",
         excel_file_id: fileId,
         session_id: currentSessionId,
         is_ai_response: false,
+        user_id: user.id,
       };
 
       const { error: messageError } = await supabase
@@ -164,7 +168,6 @@ export function Chat() {
 
       if (messageError) throw messageError;
 
-      // Send to OpenAI via Edge Function
       const { data: analysis, error: aiError } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
@@ -178,7 +181,6 @@ export function Chat() {
 
       if (aiError) throw aiError;
 
-      // Clear input and refresh messages
       setMessage("");
       await refetchMessages();
       scrollToBottom();
@@ -195,6 +197,11 @@ export function Chat() {
     }
   };
 
+  const handleUploadComplete = () => {
+    // Handle upload completion if needed
+    console.log("Upload completed");
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border">
       <div className="h-[600px] flex flex-col">
@@ -207,6 +214,7 @@ export function Chat() {
                 uploadProgress={uploadProgress}
                 currentFile={uploadedFile}
                 onReset={resetUpload}
+                onUploadComplete={handleUploadComplete}
               />
 
               {uploadedFile && !isUploading && (
