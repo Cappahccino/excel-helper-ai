@@ -7,9 +7,10 @@ interface MessageGroupProps {
   date: string;
   messages: any[];
   formatTimestamp: (timestamp: string) => string;
+  latestMessageId?: string;
 }
 
-export function MessageGroup({ date, messages, formatTimestamp }: MessageGroupProps) {
+export function MessageGroup({ date, messages, formatTimestamp, latestMessageId }: MessageGroupProps) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -33,6 +34,7 @@ export function MessageGroup({ date, messages, formatTimestamp }: MessageGroupPr
             role={msg.role as 'user' | 'assistant'}
             timestamp={formatTimestamp(msg.created_at)}
             fileInfo={msg.excel_files}
+            isNewMessage={msg.id === latestMessageId}
           />
         </motion.div>
       ))}

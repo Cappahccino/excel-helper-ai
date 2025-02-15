@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +26,7 @@ interface ChatWindowProps {
 export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatWindowProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasScrolledUp, setHasScrolledUp] = useState(false);
+  const [latestMessageId, setLatestMessageId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -78,7 +78,10 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           table: 'chat_messages',
           filter: `session_id=eq.${session.session_id}`,
         },
-        async () => {
+        async (payload: any) => {
+          if (payload.new && payload.new.role === 'assistant') {
+            setLatestMessageId(payload.new.id);
+          }
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-messages', session.session_id] 
           });
@@ -186,6 +189,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   date={date}
                   messages={groupMessages}
                   formatTimestamp={formatTimestamp}
+                  latestMessageId={latestMessageId}
                 />
               ))}
               {isAnalyzing && (

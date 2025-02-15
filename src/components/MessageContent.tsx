@@ -17,12 +17,13 @@ interface MessageContentProps {
     filename: string;
     file_size: number;
   };
+  isNewMessage?: boolean;
 }
 
-export function MessageContent({ content, role, timestamp, fileInfo }: MessageContentProps) {
+export function MessageContent({ content, role, timestamp, fileInfo, isNewMessage = false }: MessageContentProps) {
   const { toast } = useToast();
   const [displayedText, setDisplayedText] = useState("");
-  const [isTyping, setIsTyping] = useState(role === "assistant");
+  const [isTyping, setIsTyping] = useState(role === "assistant" && isNewMessage);
   const [processedContent, setProcessedContent] = useState("");
   
   const copyToClipboard = () => {
@@ -73,7 +74,7 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
   };
 
   useEffect(() => {
-    if (role === "assistant") {
+    if (role === "assistant" && isNewMessage) {
       const processed = processContent(content);
       let words = processed.split(" ");
       let currentIndex = 0;
@@ -98,10 +99,11 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
         if (timeoutId) clearTimeout(timeoutId);
       };
     } else {
+      // For non-new messages or user messages, display content immediately
       setDisplayedText(content);
       setIsTyping(false);
     }
-  }, [content, role]);
+  }, [content, role, isNewMessage]);
 
   const messageClassName = `p-5 rounded-xl flex group ${
     role === 'assistant'
