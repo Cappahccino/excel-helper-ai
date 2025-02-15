@@ -45,20 +45,24 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     groupMessagesByDate,
   } = useChatMessages(sessionId);
 
-  // Auto-scroll function
+  // Enhanced scrollToBottom function
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior,
-        block: "end"
-      });
-    }
+    requestAnimationFrame(() => {
+      const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior
+        });
+      }
+    });
   };
 
   // Handle scroll events
   const handleScroll = () => {
-    if (chatContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      const { scrollTop, scrollHeight, clientHeight } = viewport;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
       setHasScrolledUp(!isNearBottom);
     }
@@ -66,10 +70,17 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
-    if (!hasScrolledUp) {
+    if (messages.length > 0 && !hasScrolledUp) {
       scrollToBottom();
     }
   }, [messages, hasScrolledUp]);
+
+  // Initial scroll and message updates
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToBottom("auto");
+    }
+  }, []);
 
   // Set up realtime subscription
   useEffect(() => {
@@ -90,6 +101,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             setLatestMessageId(payload.new.id);
             setIsAnalyzing(false);
             setPendingResponseId(null);
+            // Force scroll to bottom when receiving new assistant message
+            scrollToBottom();
           }
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-messages', session.session_id] 
@@ -97,9 +110,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-session', session.session_id] 
           });
-          if (!hasScrolledUp) {
-            scrollToBottom();
-          }
         }
       )
       .subscribe();
@@ -107,7 +117,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session?.session_id, queryClient, hasScrolledUp]);
+  }, [session?.session_id, queryClient]);
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if ((!message.trim() && !fileId) || isAnalyzing) return;
@@ -152,6 +162,10 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       if (messageError) throw messageError;
       
+      // Force scroll to bottom after sending message
+      setHasScrolledUp(false);
+      scrollToBottom();
+      
       // Call edge function
       const { error } = await supabase.functions
         .invoke('excel-assistant', {
@@ -167,9 +181,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       if (error) throw error;
       
       onMessageSent?.();
-      
-      // Scroll to bottom after sending
-      scrollToBottom();
       
     } catch (error) {
       console.error('Analysis error:', error);
@@ -238,8 +249,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       {hasScrolledUp && (
         <Button
           onClick={() => {
-            scrollToBottom();
             setHasScrolledUp(false);
+            scrollToBottom();
           }}
           className="absolute bottom-24 right-4 bg-excel hover:bg-excel/90 text-white shadow-lg"
           size="sm"
