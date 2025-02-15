@@ -10,6 +10,7 @@ interface UseChatRealtimeProps {
 
 export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealtimeProps) {
   const [latestMessageId, setLatestMessageId] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -29,12 +30,17 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
           if (payload.new) {
             setLatestMessageId(payload.new.id);
             
-            // Trigger callback only when assistant message is complete
-            if (payload.new.role === 'assistant' && !payload.new.is_streaming) {
-              onAssistantMessage();
+            // Update streaming state
+            if (payload.new.role === 'assistant') {
+              setIsStreaming(payload.new.is_streaming);
+              
+              // Trigger callback only when message is complete
+              if (!payload.new.is_streaming) {
+                onAssistantMessage();
+              }
             }
 
-            // Invalidate queries to update UI
+            // Invalidate queries to update UI immediately
             await queryClient.invalidateQueries({ queryKey: ['chat-messages', sessionId] });
             await queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] });
           }
@@ -47,5 +53,5 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
     };
   }, [sessionId, queryClient, onAssistantMessage]);
 
-  return { latestMessageId };
+  return { latestMessageId, isStreaming };
 }

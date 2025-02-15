@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FileInfo } from "../FileInfo";
 import { MessageGroup } from "./MessageGroup";
 import { LoadingMessages } from "./LoadingMessages";
-import { ThinkingIndicator } from "./ThinkingIndicator";
+import { LoadingState } from "./LoadingState";
 
 interface ChatContentProps {
   isLoading: boolean;
@@ -59,7 +59,7 @@ export function ChatContent({
               latestMessageId={latestMessageId}
             />
           ))}
-          {isAnalyzing && <ThinkingIndicator />}
+          {isAnalyzing && <LoadingState />}
           <div ref={messagesEndRef} />
         </AnimatePresence>
       )}

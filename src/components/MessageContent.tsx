@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Copy } from "lucide-react";
@@ -8,6 +8,7 @@ import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import "katex/dist/katex.min.css";
 import { InlineMath, BlockMath } from "react-katex";
+import { Spinner } from "./ui/spinner";
 
 interface MessageContentProps {
   content: string;
@@ -30,7 +31,9 @@ export function MessageContent({
   isStreaming = false,
 }: MessageContentProps) {
   const { toast } = useToast();
-  const [displayedText, setDisplayedText] = useState(content);
+  const [displayedText, setDisplayedText] = useState("");
+  const contentRef = useRef(content);
+  const typeIndexRef = useRef(0);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -44,10 +47,36 @@ export function MessageContent({
     return role === "assistant" ? "AI" : "U";
   };
 
-  // Update displayed text when content changes
+  // Typing effect
   useEffect(() => {
-    setDisplayedText(content);
-  }, [content]);
+    if (role !== "assistant" || !isStreaming) {
+      setDisplayedText(content);
+      return;
+    }
+
+    // Reset if content has changed
+    if (content !== contentRef.current) {
+      contentRef.current = content;
+      typeIndexRef.current = displayedText.length; // Continue from current position
+    }
+
+    const typeNextCharacter = () => {
+      if (typeIndexRef.current < content.length) {
+        setDisplayedText(content.slice(0, typeIndexRef.current + 1));
+        typeIndexRef.current += 1;
+      }
+    };
+
+    const typingInterval = setInterval(typeNextCharacter, 30);
+    return () => clearInterval(typingInterval);
+  }, [content, role, isStreaming]);
+
+  // Reset typing when streaming ends
+  useEffect(() => {
+    if (!isStreaming) {
+      setDisplayedText(content);
+    }
+  }, [isStreaming, content]);
 
   const messageClassName = `p-5 rounded-xl flex group ${
     role === "assistant"
@@ -156,7 +185,10 @@ export function MessageContent({
                 {displayedText}
               </ReactMarkdown>
               {isStreaming && (
-                <span className="inline-block w-2 h-4 ml-1 bg-excel animate-pulse" />
+                <span className="inline-flex items-center gap-2 mt-2">
+                  <Spinner variant="ring" className="h-4 w-4 text-excel" />
+                  <span className="text-sm text-gray-500">Thinking...</span>
+                </span>
               )}
             </div>
           ) : (
