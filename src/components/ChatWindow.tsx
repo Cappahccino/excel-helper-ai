@@ -1,19 +1,16 @@
 
-import { useState, useRef, useEffect } from "react";
+import { useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { ScrollArea } from "./ui/scroll-area";
-import { MessageGroup } from "./chat/MessageGroup";
-import { LoadingMessages } from "./chat/LoadingMessages";
 import { ChatError } from "./chat/ChatError";
 import { ScrollToTop } from "./ScrollToTop";
-import { motion, AnimatePresence } from "framer-motion";
-import { FileInfo } from "./FileInfo";
 import { ChatInput } from "./ChatInput";
 import { Button } from "./ui/button";
 import { useChatMessages } from "@/hooks/useChatMessages";
-import { ThinkingIndicator } from "./chat/ThinkingIndicator";
+import { useChatScroll } from "@/hooks/useChatScroll";
+import { useChatRealtime } from "@/hooks/useChatRealtime";
+import { ChatContent } from "./chat/ChatContent";
 
 interface ChatWindowProps {
   sessionId: string | null;
@@ -27,10 +24,7 @@ interface ChatWindowProps {
 
 export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatWindowProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [hasScrolledUp, setHasScrolledUp] = useState(false);
-  const [latestMessageId, setLatestMessageId] = useState<string | null>(null);
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -44,70 +38,24 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     groupMessagesByDate,
   } = useChatMessages(sessionId);
 
-  // Improved scrollToBottom function with native scrollIntoView
-  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior });
+  const {
+    hasScrolledUp,
+    setHasScrolledUp,
+    scrollToBottom,
+    handleScroll
+  } = useChatScroll({
+    messages,
+    messagesEndRef,
+    chatContainerRef
+  });
+
+  const { latestMessageId } = useChatRealtime({
+    sessionId: session?.session_id || null,
+    onAssistantMessage: () => {
+      setIsAnalyzing(false);
+      scrollToBottom("smooth");
     }
-  };
-
-  // Improved scroll detection with reduced threshold
-  const handleScroll = () => {
-    const chatContainer = chatContainerRef.current;
-    if (!chatContainer) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = chatContainer;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    setHasScrolledUp(!isAtBottom);
-  };
-
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (!hasScrolledUp) {
-      scrollToBottom();
-    }
-  }, [messages]);
-
-  // Initial load scroll behavior
-  useEffect(() => {
-    scrollToBottom("auto");
-  }, []);
-
-  // Set up realtime subscription
-  useEffect(() => {
-    if (!session?.session_id) return;
-
-    const channel = supabase
-      .channel(`chat_${session.session_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chat_messages',
-          filter: `session_id=eq.${session.session_id}`,
-        },
-        async (payload: any) => {
-          if (payload.new && payload.new.role === 'assistant') {
-            setLatestMessageId(payload.new.id);
-            setIsAnalyzing(false);
-            // Smooth scroll for AI responses
-            scrollToBottom("smooth");
-          }
-          await queryClient.invalidateQueries({ 
-            queryKey: ['chat-messages', session.session_id] 
-          });
-          await queryClient.invalidateQueries({ 
-            queryKey: ['chat-session', session.session_id] 
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [session?.session_id, queryClient]);
+  });
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if ((!message.trim() && !fileId) || isAnalyzing) return;
@@ -118,7 +66,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
-      // Create or get session
       let currentSessionId = session?.session_id;
       
       if (!currentSessionId) {
@@ -135,8 +82,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         currentSessionId = newSession.session_id;
       }
 
-      // Store the message
-      const { data: storedMessage, error: messageError } = await supabase
+      const { error: messageError } = await supabase
         .from('chat_messages')
         .insert({
           content: message,
@@ -145,17 +91,13 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           excel_file_id: fileId || null,
           is_ai_response: false,
           user_id: user.id
-        })
-        .select()
-        .single();
+        });
       
       if (messageError) throw messageError;
       
-      // Force scroll to bottom after sending message
       setHasScrolledUp(false);
       scrollToBottom("smooth");
       
-      // Call edge function
       const { error } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
@@ -195,43 +137,16 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         onScroll={handleScroll}
         ref={chatContainerRef}
       >
-        <div className="flex flex-col gap-6">
-          <AnimatePresence>
-            {fileInfo && (
-              <motion.div
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.2 }}
-                className="mb-6"
-              >
-                <FileInfo 
-                  filename={fileInfo.filename}
-                  fileSize={fileInfo.file_size}
-                  fileId={fileId || undefined}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {isLoading ? (
-            <LoadingMessages />
-          ) : (
-            <AnimatePresence>
-              {Object.entries(messageGroups).map(([date, groupMessages]) => (
-                <MessageGroup
-                  key={date}
-                  date={date}
-                  messages={groupMessages}
-                  formatTimestamp={formatTimestamp}
-                  latestMessageId={latestMessageId}
-                />
-              ))}
-              {isAnalyzing && <ThinkingIndicator />}
-              <div ref={messagesEndRef} />
-            </AnimatePresence>
-          )}
-        </div>
+        <ChatContent
+          isLoading={isLoading}
+          fileInfo={fileInfo}
+          fileId={fileId}
+          messageGroups={messageGroups}
+          formatTimestamp={formatTimestamp}
+          latestMessageId={latestMessageId}
+          isAnalyzing={isAnalyzing}
+          messagesEndRef={messagesEndRef}
+        />
       </ScrollArea>
 
       {hasScrolledUp && (
