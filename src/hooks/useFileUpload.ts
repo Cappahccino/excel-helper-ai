@@ -77,14 +77,14 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Check if file with same hash exists
+      // Check if file with same hash exists - using maybeSingle() instead of single()
       const { data: existingFiles } = await supabase
         .from('excel_files')
         .select('*')
         .eq('file_hash', fileHash)
         .eq('user_id', user.id)
         .is('deleted_at', null)
-        .single();
+        .maybeSingle();
 
       if (existingFiles) {
         toast({
