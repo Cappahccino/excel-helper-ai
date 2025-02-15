@@ -1,4 +1,3 @@
-
 import { formatDistanceToNow } from 'date-fns';
 import { FileSpreadsheet, Download, Trash2, MessageSquare, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,6 +37,12 @@ interface ExcelFile {
   file_size: number;
   created_at: string;
   file_path: string;
+  storage_verified: boolean;
+  last_accessed_at: string | null;
+  mime_type: string | null;
+  deleted_at: string | null;
+  file_version: number;
+  processing_status: string;
 }
 
 interface FilesListProps {
@@ -61,11 +66,21 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
 
   const handleDownload = async (file: ExcelFile) => {
     try {
+      if (!file.storage_verified) {
+        throw new Error("File not available in storage");
+      }
+
       const { data, error } = await supabase.storage
         .from('excel_files')
         .download(file.file_path);
 
       if (error) throw error;
+
+      // Update last_accessed_at
+      await supabase
+        .from('excel_files')
+        .update({ last_accessed_at: new Date().toISOString() })
+        .eq('id', file.id);
 
       const url = window.URL.createObjectURL(data);
       const a = document.createElement('a');
@@ -85,15 +100,10 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
 
   const handleDelete = async (file: ExcelFile) => {
     try {
-      const { error: storageError } = await supabase.storage
-        .from('excel_files')
-        .remove([file.file_path]);
-
-      if (storageError) throw storageError;
-
+      // Soft delete - update deleted_at timestamp
       const { error: dbError } = await supabase
         .from('excel_files')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', file.id);
 
       if (dbError) throw dbError;

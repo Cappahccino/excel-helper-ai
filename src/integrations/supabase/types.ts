@@ -105,54 +105,78 @@ export type Database = {
       excel_files: {
         Row: {
           created_at: string
+          deleted_at: string | null
           error_message: string | null
+          file_hash: string | null
           file_path: string
           file_size: number
+          file_version: number | null
           filename: string
           id: string
+          last_accessed_at: string | null
+          max_retries: number | null
+          mime_type: string | null
           processed_chunks: number | null
           processing_completed_at: string | null
           processing_started_at: string | null
           processing_status:
             | Database["public"]["Enums"]["file_processing_status"]
             | null
+          retry_count: number | null
           session_id: string | null
+          storage_verified: boolean | null
           total_chunks: number | null
           upload_progress: number | null
           user_id: string
         }
         Insert: {
           created_at?: string
+          deleted_at?: string | null
           error_message?: string | null
+          file_hash?: string | null
           file_path: string
           file_size: number
+          file_version?: number | null
           filename: string
           id?: string
+          last_accessed_at?: string | null
+          max_retries?: number | null
+          mime_type?: string | null
           processed_chunks?: number | null
           processing_completed_at?: string | null
           processing_started_at?: string | null
           processing_status?:
             | Database["public"]["Enums"]["file_processing_status"]
             | null
+          retry_count?: number | null
           session_id?: string | null
+          storage_verified?: boolean | null
           total_chunks?: number | null
           upload_progress?: number | null
           user_id: string
         }
         Update: {
           created_at?: string
+          deleted_at?: string | null
           error_message?: string | null
+          file_hash?: string | null
           file_path?: string
           file_size?: number
+          file_version?: number | null
           filename?: string
           id?: string
+          last_accessed_at?: string | null
+          max_retries?: number | null
+          mime_type?: string | null
           processed_chunks?: number | null
           processing_completed_at?: string | null
           processing_started_at?: string | null
           processing_status?:
             | Database["public"]["Enums"]["file_processing_status"]
             | null
+          retry_count?: number | null
           session_id?: string | null
+          storage_verified?: boolean | null
           total_chunks?: number | null
           upload_progress?: number | null
           user_id?: string

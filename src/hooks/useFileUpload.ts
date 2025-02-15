@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import crypto from 'crypto';
 
 interface UseFileUploadReturn {
   file: File | null;
@@ -38,6 +39,14 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setThreadId(null);
   }, []);
 
+  const calculateFileHash = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  };
+
   const handleFileUpload = useCallback(async (newFile: File, currentSessionId?: string | null) => {
     const validation = validateFile(newFile);
     if (!validation.isValid) {
@@ -60,15 +69,35 @@ export const useFileUpload = (): UseFileUploadReturn => {
         type: newFile.type,
       });
 
+      // Calculate file hash
+      const fileHash = await calculateFileHash(sanitizedFile);
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("User not authenticated");
       }
 
-      // Create file path with UUID to ensure uniqueness
+      // Check if file with same hash exists
+      const { data: existingFiles } = await supabase
+        .from('excel_files')
+        .select('*')
+        .eq('file_hash', fileHash)
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .single();
+
+      if (existingFiles) {
+        toast({
+          title: "Duplicate File",
+          description: "This file has already been uploaded. Using existing version.",
+        });
+        setFileId(existingFiles.id);
+        setUploadProgress(100);
+        return;
+      }
+
       const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
 
-      // Upload file to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
@@ -79,7 +108,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
       if (uploadError) throw uploadError;
       setUploadProgress(50);
 
-      // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -88,14 +116,16 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_size: sanitizedFile.size,
           user_id: user.id,
           processing_status: "pending",
-          session_id: currentSessionId || null
+          session_id: currentSessionId || null,
+          mime_type: sanitizedFile.type,
+          file_hash: fileHash,
+          storage_verified: true,
         })
         .select()
         .single();
 
       if (dbError) throw dbError;
       setUploadProgress(100);
-
       setFileId(fileRecord.id);
       setSessionId(currentSessionId);
       
