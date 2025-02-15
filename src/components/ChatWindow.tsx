@@ -134,21 +134,23 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
   return (
     <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
-      <div className="flex-1" ref={chatContainerRef}>
+      <div className="flex-1 overflow-hidden" ref={chatContainerRef}>
         <ScrollArea 
-          className="h-full p-4 pb-24"
+          className="h-full"
           onScroll={handleScroll}
         >
-          <ChatContent
-            isLoading={isLoading}
-            fileInfo={fileInfo}
-            fileId={fileId}
-            messageGroups={messageGroups}
-            formatTimestamp={formatTimestamp}
-            latestMessageId={latestMessageId}
-            isAnalyzing={isAnalyzing}
-            messagesEndRef={messagesEndRef}
-          />
+          <div className="p-4 pb-24">
+            <ChatContent
+              isLoading={isLoading}
+              fileInfo={fileInfo}
+              fileId={fileId}
+              messageGroups={messageGroups}
+              formatTimestamp={formatTimestamp}
+              latestMessageId={latestMessageId}
+              isAnalyzing={isAnalyzing}
+              messagesEndRef={messagesEndRef}
+            />
+          </div>
         </ScrollArea>
       </div>
 

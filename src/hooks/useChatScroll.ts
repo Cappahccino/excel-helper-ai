@@ -15,8 +15,9 @@ export function useChatScroll({ messages, messagesEndRef, chatContainerRef }: Us
       // Find the ScrollArea Viewport element
       const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
       if (viewport) {
-        const scrollTarget = messagesEndRef.current;
-        viewport.scrollTop = scrollTarget.offsetTop;
+        // Use scrollHeight to ensure we scroll to the absolute bottom
+        const viewportElement = viewport as HTMLElement;
+        viewportElement.scrollTop = viewportElement.scrollHeight;
       }
     }
   };
@@ -28,7 +29,7 @@ export function useChatScroll({ messages, messagesEndRef, chatContainerRef }: Us
 
     // Calculate scroll position using the viewport element
     const { scrollTop, scrollHeight, clientHeight } = viewport as HTMLElement;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    const isAtBottom = (scrollHeight - scrollTop) <= (clientHeight + 1);
     setHasScrolledUp(!isAtBottom);
   };
 
