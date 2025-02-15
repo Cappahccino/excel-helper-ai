@@ -74,7 +74,7 @@ export type Database = {
           openai_usage: Json | null
           session_id: string
           status: string
-          thread_id: string
+          thread_id: string | null
           updated_at: string
           user_id: string
         }
@@ -85,7 +85,7 @@ export type Database = {
           openai_usage?: Json | null
           session_id?: string
           status?: string
-          thread_id: string
+          thread_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -96,7 +96,7 @@ export type Database = {
           openai_usage?: Json | null
           session_id?: string
           status?: string
-          thread_id?: string
+          thread_id?: string | null
           updated_at?: string
           user_id?: string
         }

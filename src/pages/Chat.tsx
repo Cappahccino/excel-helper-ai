@@ -99,9 +99,11 @@ const Chat = () => {
       if (!currentSessionId) {
         const { data: newSession, error: sessionError } = await supabase
           .from("chat_sessions")
-          .insert({ 
-            user_id: user.id, 
-            status: "active"
+          .insert({
+            user_id: user.id,
+            status: "active",
+            thread_id: null, // Explicitly set to null since we made it nullable
+            chat_name: "New Chat" // Add a default chat name
           })
           .select()
           .single();
@@ -127,14 +129,14 @@ const Chat = () => {
       // Store the user message
       const { error: messageError } = await supabase
         .from("chat_messages")
-        .insert([{ 
+        .insert({ 
           content: message, 
           role: "user", 
           excel_file_id: activeFileId,
           session_id: currentSessionId,
           is_ai_response: false,
           user_id: user.id
-        }]);
+        });
 
       if (messageError) throw messageError;
 
@@ -145,7 +147,7 @@ const Chat = () => {
           query: message,
           userId: user.id,
           sessionId: currentSessionId,
-          threadId: session?.thread_id
+          threadId: session?.thread_id // This is now safely optional
         }
       });
 
