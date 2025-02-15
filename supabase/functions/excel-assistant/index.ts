@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -138,10 +137,9 @@ async function storeChatMessage(
   sessionId: string, 
   content: string, 
   role: 'user' | 'assistant',
-  isAiResponse = false,
-  isStreaming = false
+  isAiResponse = false
 ) {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('chat_messages')
     .insert({
       user_id: userId,
@@ -149,14 +147,20 @@ async function storeChatMessage(
       session_id: sessionId,
       content,
       role,
-      is_ai_response: isAiResponse,
-      is_streaming: isStreaming
-    })
-    .select()
-    .single();
+      is_ai_response: isAiResponse
+    });
 
   if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
-  return data;
+}
+
+async function updateSessionWithThread(supabase: any, sessionId: string, threadId: string) {
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({ thread_id: threadId })
+    .eq('session_id', sessionId);
+
+  if (error) throw new Error(`Failed to update session with thread: ${error.message}`);
+  console.log(`✅ Updated session ${sessionId} with thread ${threadId}`);
 }
 
 serve(async (req) => {
@@ -171,6 +175,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log(`📝 [${requestId}] Request body:`, body);
 
+    // Validate required fields
     if (!body.userId || !body.sessionId) {
       throw new Error('Missing required fields: userId and sessionId are required');
     }
@@ -190,18 +195,20 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
+    // Get or create OpenAI thread
     const assistant = await getOrCreateAssistant(openai);
     const thread = existingThreadId 
       ? { id: existingThreadId }
       : await openai.beta.threads.create();
 
+    // Update session with thread ID if it's new
     if (!existingThreadId) {
       await updateSessionWithThread(supabase, sessionId, thread.id);
     }
     
     const excelData = await getExcelFileContent(supabase, fileId);
     
-    // Create message in thread
+    // Send message to OpenAI
     await openai.beta.threads.messages.create(thread.id, {
       role: "user",
       content: excelData 
@@ -209,21 +216,7 @@ serve(async (req) => {
         : query
     });
 
-    // Create initial streaming message
-    const initialMessage = await storeChatMessage(
-      supabase,
-      userId,
-      fileId,
-      sessionId,
-      "",
-      'assistant',
-      true,
-      true
-    );
-
-    console.log(`📨 [${requestId}] Initial message created:`, initialMessage);
-
-    // Start the run
+    // Start the analysis
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: assistant.id,
     });
@@ -232,77 +225,39 @@ serve(async (req) => {
     let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
     let attempts = 0;
     const maxAttempts = 60;
-    let messageContent = "";
     
     while (runStatus.status !== "completed" && attempts < maxAttempts) {
-      console.log(`🔄 [${requestId}] Run status: ${runStatus.status} (attempt ${attempts + 1}/${maxAttempts})`);
-
       if (runStatus.status === "failed" || runStatus.status === "cancelled") {
         throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
-      }
-
-      // Get any new message content
-      const messages = await openai.beta.threads.messages.list(thread.id);
-      const latestMessage = messages.data[0];
-      
-      // Safely extract message content
-      let newContent = "";
-      if (latestMessage?.content?.[0]?.type === 'text') {
-        newContent = latestMessage.content[0].text.value || "";
-      } else {
-        console.log(`⚠️ [${requestId}] Unexpected message format:`, latestMessage);
-        newContent = messageContent; // Keep existing content if format is unexpected
-      }
-
-      if (newContent && newContent !== messageContent) {
-        messageContent = newContent;
-        console.log(`📝 [${requestId}] Updating message content, length: ${messageContent.length}`);
-        
-        // Update the streaming message
-        await supabase
-          .from('chat_messages')
-          .update({
-            content: messageContent,
-            is_streaming: true
-          })
-          .eq('id', initialMessage.id);
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
       runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       attempts++;
+      console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
     }
 
-    if (attempts >= maxAttempts) {
-      throw new Error('Analysis timed out');
-    }
-
-    // Get the final message and mark as complete
+    if (attempts >= maxAttempts) throw new Error('Analysis timed out');
+    
+    // Get the assistant's response
     const messages = await openai.beta.threads.messages.list(thread.id);
     const lastMessage = messages.data[0];
-    
-    // Safely extract final message content
-    let finalContent = "";
-    if (lastMessage?.content?.[0]?.type === 'text') {
-      finalContent = lastMessage.content[0].text.value || "";
-    } else {
-      console.error(`❌ [${requestId}] Final message has unexpected format:`, lastMessage);
-      finalContent = messageContent; // Use last known content if format is unexpected
-    }
 
-    // Update the message as complete
-    await supabase
-      .from('chat_messages')
-      .update({
-        content: finalContent,
-        is_streaming: false
-      })
-      .eq('id', initialMessage.id);
+    // Store the AI response
+    await storeChatMessage(
+      supabase,
+      userId,
+      fileId,
+      sessionId,
+      lastMessage.content[0].text.value,
+      'assistant',
+      true
+    );
 
     console.log(`✅ [${requestId}] Analysis complete`);
     return new Response(
       JSON.stringify({ 
-        message: finalContent,
+        message: lastMessage.content[0].text.value,
         threadId: thread.id,
         sessionId
       }),
