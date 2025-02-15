@@ -213,6 +213,7 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
     getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     enableRowSelection: true,
+    getRowId: (row) => row.id, // This is the crucial change - explicitly use file UUID
     state: {
       rowSelection: Object.fromEntries(selectedFiles.map(id => [id, true])),
     },
@@ -223,7 +224,12 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
         const selectedIds = Object.entries(newSelection)
           .filter(([_, selected]) => selected)
           .map(([id]) => id);
-        onSelectionChange(selectedIds);
+        
+        // Validate that we only have valid UUIDs
+        const validUUIDs = selectedIds.filter(id => 
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+        );
+        onSelectionChange(validUUIDs);
       }
     },
     initialState: {
