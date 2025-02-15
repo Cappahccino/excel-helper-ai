@@ -1,10 +1,11 @@
 
+import { useState, useEffect } from "react";
 import { Copy } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown from "react-markdown";
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
 
@@ -20,6 +21,9 @@ interface MessageContentProps {
 
 export function MessageContent({ content, role, timestamp, fileInfo }: MessageContentProps) {
   const { toast } = useToast();
+  const [displayedText, setDisplayedText] = useState("");
+  const [isTyping, setIsTyping] = useState(role === "assistant");
+  const [processedContent, setProcessedContent] = useState("");
   
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -32,12 +36,6 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
   const getInitials = () => {
     return role === 'assistant' ? 'AI' : 'U';
   };
-
-  const messageClassName = `p-5 rounded-xl flex group ${
-    role === 'assistant'
-      ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200'
-      : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200'
-  }`;
 
   // Process content to handle LaTeX expressions
   const processContent = (text: string) => {
@@ -73,6 +71,43 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
       return <code className="text-red-500">{latex}</code>;
     }
   };
+
+  useEffect(() => {
+    if (role === "assistant") {
+      const processed = processContent(content);
+      let words = processed.split(" ");
+      let currentIndex = 0;
+      let timeoutId: NodeJS.Timeout;
+
+      const typeWord = () => {
+        if (currentIndex < words.length) {
+          setDisplayedText(prev => prev + (currentIndex === 0 ? "" : " ") + words[currentIndex]);
+          currentIndex++;
+
+          // Random delay between 50ms and 200ms for natural typing feel
+          const delay = Math.random() * (200 - 50) + 50;
+          timeoutId = setTimeout(typeWord, delay);
+        } else {
+          setIsTyping(false);
+        }
+      };
+
+      typeWord();
+
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    } else {
+      setDisplayedText(content);
+      setIsTyping(false);
+    }
+  }, [content, role]);
+
+  const messageClassName = `p-5 rounded-xl flex group ${
+    role === 'assistant'
+      ? 'bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200'
+      : 'bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200'
+  }`;
 
   return (
     <motion.div 
@@ -125,6 +160,7 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
                             }
                             return part;
                           })}
+                          {isTyping && <span className="animate-pulse">|</span>}
                         </p>
                       );
                     }
@@ -132,7 +168,7 @@ export function MessageContent({ content, role, timestamp, fileInfo }: MessageCo
                   },
                 }}
               >
-                {processContent(content)}
+                {displayedText}
               </ReactMarkdown>
             </div>
           ) : (
