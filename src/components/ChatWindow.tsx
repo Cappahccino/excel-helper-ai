@@ -29,7 +29,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasScrolledUp, setHasScrolledUp] = useState(false);
   const [latestMessageId, setLatestMessageId] = useState<string | null>(null);
-  const [pendingResponseId, setPendingResponseId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -45,41 +44,33 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     groupMessagesByDate,
   } = useChatMessages(sessionId);
 
-  // Enhanced scrollToBottom function
+  // Improved scrollToBottom function with native scrollIntoView
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    requestAnimationFrame(() => {
-      const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-      if (viewport) {
-        viewport.scrollTo({
-          top: viewport.scrollHeight,
-          behavior
-        });
-      }
-    });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
+    }
   };
 
-  // Handle scroll events
+  // Improved scroll detection with reduced threshold
   const handleScroll = () => {
-    const viewport = chatContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (viewport) {
-      const { scrollTop, scrollHeight, clientHeight } = viewport;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setHasScrolledUp(!isNearBottom);
-    }
+    const chatContainer = chatContainerRef.current;
+    if (!chatContainer) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = chatContainer;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    setHasScrolledUp(!isAtBottom);
   };
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messages.length > 0 && !hasScrolledUp) {
+    if (!hasScrolledUp) {
       scrollToBottom();
     }
-  }, [messages, hasScrolledUp]);
+  }, [messages]);
 
-  // Initial scroll and message updates
+  // Initial load scroll behavior
   useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom("auto");
-    }
+    scrollToBottom("auto");
   }, []);
 
   // Set up realtime subscription
@@ -100,9 +91,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           if (payload.new && payload.new.role === 'assistant') {
             setLatestMessageId(payload.new.id);
             setIsAnalyzing(false);
-            setPendingResponseId(null);
-            // Force scroll to bottom when receiving new assistant message
-            scrollToBottom();
+            // Smooth scroll for AI responses
+            scrollToBottom("smooth");
           }
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-messages', session.session_id] 
@@ -124,7 +114,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
     try {
       setIsAnalyzing(true);
-      setPendingResponseId(Date.now().toString());
       
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
@@ -164,7 +153,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       // Force scroll to bottom after sending message
       setHasScrolledUp(false);
-      scrollToBottom();
+      scrollToBottom("smooth");
       
       // Call edge function
       const { error } = await supabase.functions
@@ -185,7 +174,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     } catch (error) {
       console.error('Analysis error:', error);
       setIsAnalyzing(false);
-      setPendingResponseId(null);
       toast({
         title: "Analysis Failed",
         description: error instanceof Error ? error.message : "Failed to analyze request",
@@ -250,7 +238,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         <Button
           onClick={() => {
             setHasScrolledUp(false);
-            scrollToBottom();
+            scrollToBottom("smooth");
           }}
           className="absolute bottom-24 right-4 bg-excel hover:bg-excel/90 text-white shadow-lg"
           size="sm"
