@@ -1,50 +1,20 @@
 
-import { formatDistanceToNow } from 'date-fns';
+import { FileListTable } from './files/FileListTable';
+import { FileListPagination } from './files/FileListPagination';
+import { EmptyFilesList } from './files/EmptyFilesList';
+import { useFileOperations } from './files/useFileOperations';
+import { ExcelFile } from '@/types/files';
 import { FileSpreadsheet, Download, Trash2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { formatDistanceToNow } from 'date-fns';
 import {
   ColumnDef,
-  flexRender,
   getCoreRowModel,
   getExpandedRowModel,
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Fragment } from 'react';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-
-interface ExcelFile {
-  id: string;
-  filename: string;
-  file_size: number;
-  created_at: string;
-  file_path: string;
-  storage_verified: boolean;
-  last_accessed_at: string | null;
-  mime_type: string | null;
-  deleted_at: string | null;
-  file_version: number;
-  processing_status: string;
-}
 
 interface FilesListProps {
   files: ExcelFile[];
@@ -54,76 +24,7 @@ interface FilesListProps {
 }
 
 export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }: FilesListProps) {
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const handleDownload = async (file: ExcelFile) => {
-    try {
-      if (!file.storage_verified) {
-        throw new Error("File not available in storage");
-      }
-
-      const { data, error } = await supabase.storage
-        .from('excel_files')
-        .download(file.file_path);
-
-      if (error) throw error;
-
-      await supabase
-        .from('excel_files')
-        .update({ last_accessed_at: new Date().toISOString() })
-        .eq('id', file.id);
-
-      const url = window.URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.filename;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Download error:', error);
-      toast({
-        title: "Download Failed",
-        description: "Failed to download the file. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDelete = async (file: ExcelFile) => {
-    try {
-      const { error: dbError } = await supabase
-        .from('excel_files')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', file.id);
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "File Deleted",
-        description: "The file has been successfully deleted.",
-      });
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete the file. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleChatWithFile = (fileId: string) => {
-    navigate(`/chat?fileId=${fileId}`);
-  };
+  const { handleDownload, handleDelete, handleChatWithFile, formatFileSize } = useFileOperations();
 
   const columns: ColumnDef<ExcelFile>[] = [
     {
@@ -213,7 +114,7 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
     getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     enableRowSelection: true,
-    getRowId: (row) => row.id, // This is the crucial change - explicitly use file UUID
+    getRowId: (row) => row.id,
     state: {
       rowSelection: Object.fromEntries(selectedFiles.map(id => [id, true])),
     },
@@ -248,89 +149,13 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
   }
 
   if (files.length === 0) {
-    return (
-      <div className="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
-        <FileSpreadsheet className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-4 text-sm font-medium text-gray-900">No files</h3>
-        <p className="mt-1 text-sm text-gray-500">Upload a file to get started</p>
-      </div>
-    );
+    return <EmptyFilesList />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border shadow-sm">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="hover:bg-transparent">
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <Fragment key={row.id}>
-                  <TableRow data-state={row.getIsSelected() && "selected"}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </Fragment>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      <Pagination>
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              onClick={() => {
-                if (table.getCanPreviousPage()) {
-                  table.previousPage();
-                }
-              }}
-              className={!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : ""}
-            />
-          </PaginationItem>
-          {Array.from({ length: table.getPageCount() }, (_, i) => (
-            <PaginationItem key={i}>
-              <PaginationLink
-                onClick={() => table.setPageIndex(i)}
-                isActive={table.getState().pagination.pageIndex === i}
-              >
-                {i + 1}
-              </PaginationLink>
-            </PaginationItem>
-          ))}
-          <PaginationItem>
-            <PaginationNext
-              onClick={() => {
-                if (table.getCanNextPage()) {
-                  table.nextPage();
-                }
-              }}
-              className={!table.getCanNextPage() ? "pointer-events-none opacity-50" : ""}
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+      <FileListTable table={table} columns={columns} />
+      <FileListPagination table={table} />
     </div>
   );
 }

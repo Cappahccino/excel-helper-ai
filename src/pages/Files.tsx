@@ -1,16 +1,13 @@
 
 import React, { useState } from 'react';
-import { FileUploadZone } from '@/components/FileUploadZone';
-import { FilesList } from '@/components/FilesList';
 import { useSimpleFileUpload } from '@/hooks/useSimpleFileUpload';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ChatSidebar } from '@/components/ChatSidebar';
 import { SidebarProvider } from '@/components/ui/sidebar-new';
-import { FileStats } from '@/components/files/FileStats';
-import { FileActions } from '@/components/files/FileActions';
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { FilesHeader } from '@/components/files/FilesHeader';
+import { FilesContent } from '@/components/files/FilesContent';
 
 const Files = () => {
   const { toast } = useToast();
@@ -49,7 +46,6 @@ const Files = () => {
       if (unverifiedFiles?.length > 0) {
         try {
           await supabase.functions.invoke('verify-storage');
-          // Invalidate the query to refresh the list
           queryClient.invalidateQueries({ queryKey: ['excel-files'] });
         } catch (error) {
           console.error('Storage verification error:', error);
@@ -166,48 +162,27 @@ const Files = () => {
         <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
           <div className="flex-grow flex flex-col h-[calc(100vh-80px)]">
             <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h1 className="text-2xl font-bold">My Files</h1>
-                </div>
-                
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-                  <FileStats 
-                    totalFiles={files?.length || 0}
-                    totalStorage={totalStorage}
-                  />
-                  
-                  <FileUploadZone 
-                    onFileUpload={handleFileUpload}
-                    isUploading={isUploading}
-                    uploadProgress={uploadProgress}
-                    currentFile={file}
-                    onReset={resetUpload}
-                    onUploadComplete={onFileUploadComplete}
-                  />
-                </div>
-              </div>
-
-              <div className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100">
-                <div className="p-4 border-b border-gray-100">
-                  <FileActions 
-                    onSearch={setSearchQuery}
-                    searchQuery={searchQuery}
-                    selectedCount={selectedFiles.length}
-                    onBulkDownload={handleBulkDownload}
-                    onBulkDelete={handleBulkDelete}
-                  />
-                </div>
-                
-                <ScrollArea className="flex-grow p-4">
-                  <FilesList 
-                    files={filteredFiles}
-                    isLoading={isLoadingFiles}
-                    selectedFiles={selectedFiles}
-                    onSelectionChange={setSelectedFiles}
-                  />
-                </ScrollArea>
-              </div>
+              <FilesHeader 
+                totalFiles={files?.length || 0}
+                totalStorage={totalStorage}
+                onFileUpload={handleFileUpload}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                currentFile={file}
+                onReset={resetUpload}
+                onUploadComplete={onFileUploadComplete}
+              />
+              
+              <FilesContent 
+                files={filteredFiles}
+                isLoading={isLoadingFiles}
+                searchQuery={searchQuery}
+                selectedFiles={selectedFiles}
+                onSearch={setSearchQuery}
+                onSelectionChange={setSelectedFiles}
+                onBulkDownload={handleBulkDownload}
+                onBulkDelete={handleBulkDelete}
+              />
             </div>
           </div>
         </div>
