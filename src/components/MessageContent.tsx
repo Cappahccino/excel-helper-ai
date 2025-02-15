@@ -32,9 +32,11 @@ export function MessageContent({
 }: MessageContentProps) {
   const { toast } = useToast();
   const [displayedText, setDisplayedText] = useState("");
+  const [isTyping, setIsTyping] = useState(role === "assistant" && isStreaming);
   const contentRef = useRef(content);
-  const typeIndexRef = useRef(0);
-  const typingSpeedRef = useRef(20); // Typing speed in milliseconds
+  const typingIndexRef = useRef(0);
+  const words = useRef(content.split(" ")); // Store words instead of characters
+  const typingSpeedRef = useRef(100); // Default speed in ms
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -44,55 +46,78 @@ export function MessageContent({
     });
   };
 
-  const getInitials = () => {
-    return role === "assistant" ? "AI" : "U";
-  };
+  const getInitials = () => (role === "assistant" ? "AI" : "U");
 
-  // Enhanced typing effect
+  // Improved Typing Effect (Streams Word-by-Word)
   useEffect(() => {
     if (role !== "assistant" || !isStreaming) {
       setDisplayedText(content);
+      setIsTyping(false);
       return;
     }
 
-    // Reset if content has completely changed
+    setIsTyping(true);
+
+    // Reset if content has changed significantly
     if (content !== contentRef.current) {
       contentRef.current = content;
+      words.current = content.split(" ");
       if (content.startsWith(displayedText)) {
         // If new content includes current display, continue from current position
-        typeIndexRef.current = displayedText.length;
+        const displayedWords = displayedText.split(" ");
+        typingIndexRef.current = displayedWords.length;
       } else {
         // Complete reset if content doesn't match
-        typeIndexRef.current = 0;
+        typingIndexRef.current = 0;
         setDisplayedText("");
       }
     }
 
-    const typeNextCharacter = () => {
-      if (typeIndexRef.current < content.length) {
-        setDisplayedText(content.slice(0, typeIndexRef.current + 1));
-        typeIndexRef.current += 1;
+    const typeNextWord = () => {
+      if (typingIndexRef.current < words.current.length) {
+        setDisplayedText((prev) =>
+          prev ? `${prev} ${words.current[typingIndexRef.current]}` : words.current[typingIndexRef.current]
+        );
+        typingIndexRef.current += 1;
 
-        // Adjust typing speed based on content
-        const nextChar = content[typeIndexRef.current];
-        if (nextChar === '.' || nextChar === '!' || nextChar === '?') {
-          typingSpeedRef.current = 50; // Slower at sentence ends
-        } else if (nextChar === ',' || nextChar === ';') {
-          typingSpeedRef.current = 35; // Slightly slower at commas
+        // Adjust typing speed based on punctuation and content
+        const currentWord = words.current[typingIndexRef.current - 1] || "";
+        if (/[.!?]$/.test(currentWord)) {
+          typingSpeedRef.current = 400; // Longer pause at sentence end
+        } else if (/[,;:]$/.test(currentWord)) {
+          typingSpeedRef.current = 250; // Medium pause at commas
+        } else if (/\n/.test(currentWord)) {
+          typingSpeedRef.current = 300; // Pause at newlines
         } else {
-          typingSpeedRef.current = 20; // Normal speed
+          // Random speed between 80-150ms for natural variation
+          typingSpeedRef.current = Math.random() * (150 - 80) + 80;
         }
+
+        return true; // Continue typing
+      }
+      return false; // Stop typing
+    };
+
+    const continueTyping = () => {
+      if (typeNextWord()) {
+        setTimeout(continueTyping, typingSpeedRef.current);
+      } else {
+        setIsTyping(false); // Typing complete
       }
     };
 
-    const typingTimeout = setTimeout(typeNextCharacter, typingSpeedRef.current);
-    return () => clearTimeout(typingTimeout);
+    setTimeout(continueTyping, typingSpeedRef.current);
+
+    return () => {
+      setIsTyping(false);
+    };
   }, [content, role, isStreaming, displayedText]);
 
-  // Reset typing when streaming ends
+  // Reset when streaming ends
   useEffect(() => {
     if (!isStreaming) {
       setDisplayedText(content);
+      setIsTyping(false);
     }
   }, [isStreaming, content]);
 
@@ -202,10 +227,9 @@ export function MessageContent({
               >
                 {displayedText}
               </ReactMarkdown>
-              {isStreaming && (
+              {isTyping && (
                 <span className="inline-flex items-center gap-2 mt-2">
-                  <Spinner variant="ring" className="h-4 w-4 text-excel" />
-                  <span className="text-sm text-gray-500">Thinking...</span>
+                  <span className="text-sm text-gray-500 animate-blink">|</span>
                 </span>
               )}
             </div>
