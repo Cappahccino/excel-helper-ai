@@ -12,6 +12,7 @@ import { MessageContent } from "@/components/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useChatMessages } from "@/hooks/useChatMessages";
 
 const Chat = () => {
   const location = useLocation();

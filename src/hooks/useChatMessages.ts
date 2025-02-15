@@ -44,7 +44,7 @@ export function useChatMessages(sessionId: string | null) {
     enabled: !!sessionId,
   });
 
-  const { data: messages = [], isLoading: messagesLoading, isError } = useQuery({
+  const { data: messages = [], isLoading: messagesLoading, isError, refetch } = useQuery({
     queryKey: ['chat-messages', session?.session_id],
     queryFn: async () => {
       if (!session?.session_id) return [];
@@ -59,7 +59,12 @@ export function useChatMessages(sessionId: string | null) {
         console.error('Error fetching messages:', error);
         throw error;
       }
-      return data;
+
+      // Ensure the role is either 'user' or 'assistant'
+      return data?.map(msg => ({
+        ...msg,
+        role: msg.role === 'assistant' ? 'assistant' : 'user'
+      })) as Message[];
     },
     enabled: !!session?.session_id,
   });
@@ -93,7 +98,7 @@ export function useChatMessages(sessionId: string | null) {
         .from('chat_messages')
         .insert({
           content,
-          role: 'user',
+          role: 'user' as const,
           session_id: currentSessionId,
           excel_file_id: fileId,
           is_ai_response: false,
@@ -135,7 +140,7 @@ export function useChatMessages(sessionId: string | null) {
       await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
 
       // Get current messages
-      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]) || [];
+      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]) as Message[] || [];
 
       // Optimistically update messages
       queryClient.setQueryData(['chat-messages', sessionId], (old: Message[] = []) => {
@@ -149,7 +154,7 @@ export function useChatMessages(sessionId: string | null) {
       queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
         return old.map(msg => 
           msg.temp && msg.content === context?.optimisticMessage.content
-            ? { ...storedMessage, temp: false }
+            ? { ...storedMessage, role: storedMessage.role as 'user' | 'assistant', temp: false }
             : msg
         );
       });
@@ -206,5 +211,6 @@ export function useChatMessages(sessionId: string | null) {
     sendMessage,
     formatTimestamp,
     groupMessagesByDate,
+    refetch
   };
 }
