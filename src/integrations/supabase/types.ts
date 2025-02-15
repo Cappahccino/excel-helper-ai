@@ -16,6 +16,7 @@ export type Database = {
           excel_file_id: string | null
           id: string
           is_ai_response: boolean | null
+          is_streaming: boolean | null
           metadata: Json | null
           raw_response: Json | null
           role: string
@@ -29,6 +30,7 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
+          is_streaming?: boolean | null
           metadata?: Json | null
           raw_response?: Json | null
           role?: string
@@ -42,6 +44,7 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
+          is_streaming?: boolean | null
           metadata?: Json | null
           raw_response?: Json | null
           role?: string
