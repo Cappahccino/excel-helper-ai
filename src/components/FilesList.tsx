@@ -1,5 +1,6 @@
+
 import { formatDistanceToNow } from 'date-fns';
-import { FileSpreadsheet, Download, Trash2, MessageSquare, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { FileSpreadsheet, Download, Trash2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -76,7 +77,6 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
 
       if (error) throw error;
 
-      // Update last_accessed_at
       await supabase
         .from('excel_files')
         .update({ last_accessed_at: new Date().toISOString() })
@@ -100,7 +100,6 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
 
   const handleDelete = async (file: ExcelFile) => {
     try {
-      // Soft delete - update deleted_at timestamp
       const { error: dbError } = await supabase
         .from('excel_files')
         .update({ deleted_at: new Date().toISOString() })
@@ -213,13 +212,18 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    enableRowSelection: true,
     state: {
       rowSelection: Object.fromEntries(selectedFiles.map(id => [id, true])),
     },
     onRowSelectionChange: (updater) => {
       if (typeof updater === 'function') {
-        const newSelection = updater(Object.fromEntries(selectedFiles.map(id => [id, true])));
-        onSelectionChange(Object.keys(newSelection).filter(key => newSelection[key]));
+        const currentSelection = Object.fromEntries(selectedFiles.map(id => [id, true]));
+        const newSelection = updater(currentSelection);
+        const selectedIds = Object.entries(newSelection)
+          .filter(([_, selected]) => selected)
+          .map(([id]) => id);
+        onSelectionChange(selectedIds);
       }
     },
     initialState: {

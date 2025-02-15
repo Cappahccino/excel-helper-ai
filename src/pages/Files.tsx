@@ -72,6 +72,15 @@ const Files = () => {
   const totalStorage = files?.reduce((acc, file) => acc + file.file_size, 0) || 0;
 
   const handleBulkDownload = async () => {
+    if (!selectedFiles.length) {
+      toast({
+        title: "No Files Selected",
+        description: "Please select files to download",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const selectedFilesData = files?.filter(file => selectedFiles.includes(file.id)) || [];
     
     for (const file of selectedFilesData) {
@@ -114,10 +123,16 @@ const Files = () => {
   };
 
   const handleBulkDelete = async () => {
-    const selectedFilesData = files?.filter(file => selectedFiles.includes(file.id)) || [];
-    
+    if (!selectedFiles.length) {
+      toast({
+        title: "No Files Selected",
+        description: "Please select files to delete",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      // Soft delete files
       const { error: dbError } = await supabase
         .from('excel_files')
         .update({ deleted_at: new Date().toISOString() })
