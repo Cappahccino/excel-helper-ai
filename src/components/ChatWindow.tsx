@@ -302,3 +302,4 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     </div>
   );
 }
+
