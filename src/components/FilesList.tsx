@@ -15,6 +15,7 @@ import {
   getPaginationRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface FilesListProps {
   files: ExcelFile[];
@@ -24,7 +25,8 @@ interface FilesListProps {
 }
 
 export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }: FilesListProps) {
-  const { handleDownload, handleDelete, handleChatWithFile, formatFileSize } = useFileOperations();
+  const queryClient = useQueryClient();
+  const { handleDownload, handleDelete, handleChatWithFile, formatFileSize } = useFileOperations({ queryClient });
 
   const columns: ColumnDef<ExcelFile>[] = [
     {

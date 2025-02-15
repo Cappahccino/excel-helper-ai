@@ -3,8 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ExcelFile } from '@/types/files';
+import { QueryClient } from '@tanstack/react-query';
 
-export function useFileOperations() {
+interface UseFileOperationsProps {
+  queryClient: QueryClient;
+}
+
+export function useFileOperations({ queryClient }: UseFileOperationsProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -57,6 +62,9 @@ export function useFileOperations() {
         .eq('id', file.id);
 
       if (dbError) throw dbError;
+
+      // Invalidate and refetch queries after successful deletion
+      await queryClient.invalidateQueries({ queryKey: ['excel-files'] });
 
       toast({
         title: "File Deleted",
