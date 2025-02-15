@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -47,119 +46,30 @@ const Chat = () => {
     enabled: !!fileIdFromUrl && !selectedSessionId
   });
 
-  const { data: session } = useQuery({
-    queryKey: ['chat-session', selectedSessionId],
-    queryFn: async () => {
-      if (!selectedSessionId) return null;
-      const { data, error } = await supabase
-        .from('chat_sessions')
-        .select(`*, 
-          chat_messages!inner (
-            excel_files (
-              id,
-              filename,
-              file_size
-            )
-          )
-        `)
-        .eq('session_id', selectedSessionId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedSessionId
-  });
-
-  const { data: messages = [], isLoading: messagesLoading } = useQuery({
-    queryKey: ['chat-messages', selectedSessionId],
-    queryFn: async () => {
-      if (!selectedSessionId) return [];
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*, excel_files(filename, file_size)')
-        .eq('session_id', selectedSessionId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!selectedSessionId
-  });
+  const { 
+    messages, 
+    sendMessage, 
+    isLoading: messagesLoading,
+    formatTimestamp
+  } = useChatMessages(selectedSessionId);
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
     
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
-
-      let currentSessionId = selectedSessionId;
       const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
+      const result = await sendMessage.mutateAsync({ 
+        content: message, 
+        fileId: activeFileId 
+      });
 
-      // Create a new session if one doesn't exist
-      if (!currentSessionId) {
-        const { data: newSession, error: sessionError } = await supabase
-          .from("chat_sessions")
-          .insert({
-            user_id: user.id,
-            status: "active",
-            thread_id: null, // Explicitly set to null since we made it nullable
-            chat_name: "New Chat" // Add a default chat name
-          })
-          .select()
-          .single();
-
-        if (sessionError) {
-          toast({
-            title: "Error",
-            description: "Failed to create chat session",
-            variant: "destructive"
-          });
-          throw sessionError;
-        }
-        
-        currentSessionId = newSession.session_id;
-
-        // Update URL with new session ID
+      // Update URL if new session was created
+      if (!selectedSessionId && result.newSessionId) {
         const queryParams = new URLSearchParams();
-        queryParams.set('sessionId', currentSessionId);
+        queryParams.set('sessionId', result.newSessionId);
         if (activeFileId) queryParams.set('fileId', activeFileId);
         navigate(`/chat?${queryParams.toString()}`, { replace: true });
       }
-
-      // Store the user message
-      const { error: messageError } = await supabase
-        .from("chat_messages")
-        .insert({ 
-          content: message, 
-          role: "user", 
-          excel_file_id: activeFileId,
-          session_id: currentSessionId,
-          is_ai_response: false,
-          user_id: user.id
-        });
-
-      if (messageError) throw messageError;
-
-      // Call OpenAI via Edge Function
-      const { error } = await supabase.functions.invoke('excel-assistant', {
-        body: {
-          fileId: activeFileId,
-          query: message,
-          userId: user.id,
-          sessionId: currentSessionId,
-          threadId: session?.thread_id // This is now safely optional
-        }
-      });
-
-      if (error) throw error;
-      
-      // Update queries to reflect changes
-      queryClient.invalidateQueries({
-        queryKey: ['chat-messages', currentSessionId]
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['chat-session', currentSessionId]
-      });
 
       // Reset upload after successful message send
       resetUpload();
@@ -172,10 +82,6 @@ const Chat = () => {
         variant: "destructive"
       });
     }
-  };
-
-  const formatTimestamp = (timestamp: string) => {
-    return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
 
   const activeFileId = uploadedFileId || fileIdFromUrl;
