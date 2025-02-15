@@ -221,6 +221,8 @@ serve(async (req) => {
       true
     );
 
+    console.log(`📨 [${requestId}] Initial message created:`, initialMessage);
+
     // Start the run
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: assistant.id,
@@ -233,6 +235,8 @@ serve(async (req) => {
     let messageContent = "";
     
     while (runStatus.status !== "completed" && attempts < maxAttempts) {
+      console.log(`🔄 [${requestId}] Run status: ${runStatus.status} (attempt ${attempts + 1}/${maxAttempts})`);
+
       if (runStatus.status === "failed" || runStatus.status === "cancelled") {
         throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
       }
@@ -240,8 +244,19 @@ serve(async (req) => {
       // Get any new message content
       const messages = await openai.beta.threads.messages.list(thread.id);
       const latestMessage = messages.data[0];
-      if (latestMessage && latestMessage.content[0].text.value !== messageContent) {
-        messageContent = latestMessage.content[0].text.value;
+      
+      // Safely extract message content
+      let newContent = "";
+      if (latestMessage?.content?.[0]?.type === 'text') {
+        newContent = latestMessage.content[0].text.value || "";
+      } else {
+        console.log(`⚠️ [${requestId}] Unexpected message format:`, latestMessage);
+        newContent = messageContent; // Keep existing content if format is unexpected
+      }
+
+      if (newContent && newContent !== messageContent) {
+        messageContent = newContent;
+        console.log(`📝 [${requestId}] Updating message content, length: ${messageContent.length}`);
         
         // Update the streaming message
         await supabase
@@ -256,20 +271,30 @@ serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       attempts++;
-      console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
     }
 
-    if (attempts >= maxAttempts) throw new Error('Analysis timed out');
+    if (attempts >= maxAttempts) {
+      throw new Error('Analysis timed out');
+    }
 
     // Get the final message and mark as complete
     const messages = await openai.beta.threads.messages.list(thread.id);
     const lastMessage = messages.data[0];
+    
+    // Safely extract final message content
+    let finalContent = "";
+    if (lastMessage?.content?.[0]?.type === 'text') {
+      finalContent = lastMessage.content[0].text.value || "";
+    } else {
+      console.error(`❌ [${requestId}] Final message has unexpected format:`, lastMessage);
+      finalContent = messageContent; // Use last known content if format is unexpected
+    }
 
     // Update the message as complete
     await supabase
       .from('chat_messages')
       .update({
-        content: lastMessage.content[0].text.value,
+        content: finalContent,
         is_streaming: false
       })
       .eq('id', initialMessage.id);
@@ -277,7 +302,7 @@ serve(async (req) => {
     console.log(`✅ [${requestId}] Analysis complete`);
     return new Response(
       JSON.stringify({ 
-        message: lastMessage.content[0].text.value,
+        message: finalContent,
         threadId: thread.id,
         sessionId
       }),
