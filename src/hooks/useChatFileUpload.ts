@@ -65,7 +65,7 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
+      const filePath = `${window.crypto.randomUUID()}-${sanitizedFile.name}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
@@ -100,7 +100,6 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         description: "File uploaded successfully",
       });
 
-      // Don't reset the file state after successful upload
       setIsUploading(false);
     } catch (err) {
       console.error('Upload error:', err);
