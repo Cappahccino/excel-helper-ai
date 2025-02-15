@@ -153,6 +153,16 @@ async function storeChatMessage(
   if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
 }
 
+async function updateSessionWithThread(supabase: any, sessionId: string, threadId: string) {
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({ thread_id: threadId })
+    .eq('session_id', sessionId);
+
+  if (error) throw new Error(`Failed to update session with thread: ${error.message}`);
+  console.log(`✅ Updated session ${sessionId} with thread ${threadId}`);
+}
+
 serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] New request received`);
@@ -166,15 +176,15 @@ serve(async (req) => {
     console.log(`📝 [${requestId}] Request body:`, body);
 
     // Validate required fields
-    if (!body.userId) {
-      throw new Error('Missing required field: userId');
+    if (!body.userId || !body.sessionId) {
+      throw new Error('Missing required fields: userId and sessionId are required');
     }
 
     if (!body.query) {
       throw new Error('Missing required field: query');
     }
 
-    const { fileId, query, userId, threadId: existingThreadId } = body;
+    const { fileId, query, userId, sessionId, threadId: existingThreadId } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -185,17 +195,21 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    // Get or create chat session and OpenAI thread
-    const { sessionId, threadId } = await getOrCreateChatSession(supabase, userId, fileId, existingThreadId, openai);
-    
-    // Store user's message
-    await storeChatMessage(supabase, userId, fileId, sessionId, query, 'user');
-
+    // Get or create OpenAI thread
     const assistant = await getOrCreateAssistant(openai);
+    const thread = existingThreadId 
+      ? { id: existingThreadId }
+      : await openai.beta.threads.create();
+
+    // Update session with thread ID if it's new
+    if (!existingThreadId) {
+      await updateSessionWithThread(supabase, sessionId, thread.id);
+    }
+    
     const excelData = await getExcelFileContent(supabase, fileId);
     
     // Send message to OpenAI
-    await openai.beta.threads.messages.create(threadId, {
+    await openai.beta.threads.messages.create(thread.id, {
       role: "user",
       content: excelData 
         ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
@@ -203,12 +217,12 @@ serve(async (req) => {
     });
 
     // Start the analysis
-    const run = await openai.beta.threads.runs.create(threadId, {
+    const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: assistant.id,
     });
 
     // Monitor the run status
-    let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
     let attempts = 0;
     const maxAttempts = 60;
     
@@ -218,7 +232,7 @@ serve(async (req) => {
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
-      runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       attempts++;
       console.log(`⏳ Run status: ${runStatus.status} (attempt ${attempts}/${maxAttempts})`);
     }
@@ -226,7 +240,7 @@ serve(async (req) => {
     if (attempts >= maxAttempts) throw new Error('Analysis timed out');
     
     // Get the assistant's response
-    const messages = await openai.beta.threads.messages.list(threadId);
+    const messages = await openai.beta.threads.messages.list(thread.id);
     const lastMessage = messages.data[0];
 
     // Store the AI response
@@ -244,7 +258,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         message: lastMessage.content[0].text.value,
-        threadId,
+        threadId: thread.id,
         sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -253,7 +267,6 @@ serve(async (req) => {
   } catch (error) {
     console.error(`❌ [${requestId}] Error:`, error);
     
-    // Return a more detailed error response
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',

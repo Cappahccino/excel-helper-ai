@@ -90,6 +90,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-messages', session.session_id] 
           });
+          await queryClient.invalidateQueries({ 
+            queryKey: ['chat-session', session.session_id] 
+          });
           if (!hasScrolledUp) {
             scrollToBottom();
           }
@@ -112,16 +115,34 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
+      // Create or get session
+      let currentSessionId = session?.session_id;
+      
+      if (!currentSessionId) {
+        const { data: newSession, error: sessionError } = await supabase
+          .from('chat_sessions')
+          .insert([{ 
+            user_id: user.id,
+            status: 'active'
+            // No thread_id here - it will be set by the edge function
+          }])
+          .select('session_id')
+          .single();
+
+        if (sessionError) throw sessionError;
+        currentSessionId = newSession.session_id;
+      }
+
       // Optimistically add user message to the UI
       const optimisticUserMessage = {
         id: Date.now().toString(),
         content: message,
         role: 'user',
         created_at: new Date().toISOString(),
-        session_id: session?.session_id,
+        session_id: currentSessionId,
       };
       
-      queryClient.setQueryData(['chat-messages', session?.session_id], (old: any) => 
+      queryClient.setQueryData(['chat-messages', currentSessionId], (old: any) => 
         [...(old || []), optimisticUserMessage]
       );
       
@@ -131,8 +152,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
             fileId: fileId || null, 
             query: message,
             userId: user.id,
-            threadId: session?.thread_id,
-            sessionId: session?.session_id
+            sessionId: currentSessionId,
+            threadId: session?.thread_id // Pass existing thread_id if it exists
           }
         });
 
@@ -140,8 +161,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       onMessageSent?.();
       
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', session?.session_id] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId, fileId] });
+      // Update queries to reflect changes
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', currentSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-session', currentSessionId] });
       
     } catch (error) {
       console.error('Analysis error:', error);
