@@ -45,7 +45,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     groupMessagesByDate,
   } = useChatMessages(sessionId);
 
-  const scrollToBottom = (behavior: "auto" | "smooth" = "smooth") => {
+  // Auto-scroll function
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ 
         behavior,
@@ -54,20 +55,23 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     }
   };
 
+  // Handle scroll events
   const handleScroll = () => {
     if (chatContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setHasScrolledUp(!isAtBottom);
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setHasScrolledUp(!isNearBottom);
     }
   };
 
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     if (!hasScrolledUp) {
-      scrollToBottom("auto");
+      scrollToBottom();
     }
   }, [messages, hasScrolledUp]);
 
+  // Set up realtime subscription
   useEffect(() => {
     if (!session?.session_id) return;
 
@@ -124,7 +128,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           .insert([{ 
             user_id: user.id,
             status: 'active'
-            // No thread_id here - it will be set by the edge function
           }])
           .select('session_id')
           .single();
@@ -133,27 +136,31 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         currentSessionId = newSession.session_id;
       }
 
-      // Optimistically add user message to the UI
-      const optimisticUserMessage = {
-        id: Date.now().toString(),
-        content: message,
-        role: 'user',
-        created_at: new Date().toISOString(),
-        session_id: currentSessionId,
-      };
+      // Store the message
+      const { data: storedMessage, error: messageError } = await supabase
+        .from('chat_messages')
+        .insert({
+          content: message,
+          role: 'user',
+          session_id: currentSessionId,
+          excel_file_id: fileId || null,
+          is_ai_response: false,
+          user_id: user.id
+        })
+        .select()
+        .single();
       
-      queryClient.setQueryData(['chat-messages', currentSessionId], (old: any) => 
-        [...(old || []), optimisticUserMessage]
-      );
+      if (messageError) throw messageError;
       
-      const { data: analysis, error } = await supabase.functions
+      // Call edge function
+      const { error } = await supabase.functions
         .invoke('excel-assistant', {
           body: { 
             fileId: fileId || null, 
             query: message,
             userId: user.id,
             sessionId: currentSessionId,
-            threadId: session?.thread_id // Pass existing thread_id if it exists
+            threadId: session?.thread_id
           }
         });
 
@@ -161,9 +168,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
       onMessageSent?.();
       
-      // Update queries to reflect changes
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', currentSessionId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-session', currentSessionId] });
+      // Scroll to bottom after sending
+      scrollToBottom();
       
     } catch (error) {
       console.error('Analysis error:', error);
@@ -188,8 +194,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       <ScrollArea 
         className="flex-1 p-4 pb-24"
         onScroll={handleScroll}
+        ref={chatContainerRef}
       >
-        <div className="flex flex-col gap-6" ref={chatContainerRef}>
+        <div className="flex flex-col gap-6">
           <AnimatePresence>
             {fileInfo && (
               <motion.div
