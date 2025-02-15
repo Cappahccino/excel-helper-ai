@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -77,7 +78,6 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
   console.log(`🔍 Checking session for user: ${userId}`);
 
   if (existingThreadId) {
-    // If we have an existing thread ID, get its session
     const { data: existingSession, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('session_id, thread_id')
@@ -95,12 +95,10 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
     }
   }
 
-  // Create a new thread and session
   console.log('Creating new session and thread...');
   const thread = await openai.beta.threads.create();
   console.log('✅ Created new thread:', thread.id);
 
-  // Create a new session
   const { data: newSession, error: createError } = await supabase
     .from('chat_sessions')
     .insert({
@@ -113,7 +111,6 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
 
   if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
 
-  // If we have a file ID, update the excel_file with the session_id
   if (fileId) {
     const { error: updateError } = await supabase
       .from('excel_files')
@@ -128,29 +125,6 @@ async function getOrCreateChatSession(supabase: any, userId: string, fileId: str
     sessionId: newSession.session_id,
     threadId: thread.id
   };
-}
-
-async function storeChatMessage(
-  supabase: any, 
-  userId: string, 
-  fileId: string | null, 
-  sessionId: string, 
-  content: string, 
-  role: 'user' | 'assistant',
-  isAiResponse = false
-) {
-  const { error } = await supabase
-    .from('chat_messages')
-    .insert({
-      user_id: userId,
-      excel_file_id: fileId,
-      session_id: sessionId,
-      content,
-      role,
-      is_ai_response: isAiResponse
-    });
-
-  if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
 }
 
 async function updateSessionWithThread(supabase: any, sessionId: string, threadId: string) {
@@ -249,14 +223,17 @@ serve(async (req) => {
       const messages = await openai.beta.threads.messages.list(thread.id);
       const lastMessage = messages.data[0];
       
-      if (lastMessage && lastMessage.content[0].text.value !== content) {
-        content = lastMessage.content[0].text.value;
-        
-        // Update the streaming message with new content
-        await supabase
-          .from('chat_messages')
-          .update({ content })
-          .eq('id', streamingMessage.id);
+      if (lastMessage && lastMessage.content && lastMessage.content.length > 0) {
+        const messageContent = lastMessage.content[0];
+        if (messageContent.type === 'text' && messageContent.text.value !== content) {
+          content = messageContent.text.value;
+          
+          // Update the streaming message with new content
+          await supabase
+            .from('chat_messages')
+            .update({ content })
+            .eq('id', streamingMessage.id);
+        }
       }
 
       await new Promise(resolve => setTimeout(resolve, 1000));
