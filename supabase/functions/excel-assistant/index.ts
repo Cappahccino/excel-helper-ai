@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -74,87 +73,34 @@ async function getExcelFileContent(supabase: any, fileId: string): Promise<Excel
   }));
 }
 
-async function getOrCreateChatSession(supabase: any, userId: string, fileId: string | null = null, existingThreadId: string | null = null, openai: OpenAI) {
-  console.log(`🔍 Checking session for user: ${userId}`);
-
-  if (existingThreadId) {
-    // If we have an existing thread ID, get its session
-    const { data: existingSession, error: sessionError } = await supabase
-      .from('chat_sessions')
-      .select('session_id, thread_id')
-      .eq('thread_id', existingThreadId)
-      .maybeSingle();
-
-    if (sessionError) throw new Error(`Failed to get session: ${sessionError.message}`);
-
-    if (existingSession) {
-      console.log('✅ Using existing session:', existingSession.session_id);
-      return {
-        sessionId: existingSession.session_id,
-        threadId: existingSession.thread_id
-      };
-    }
-  }
-
-  // Create a new thread and session
-  console.log('Creating new session and thread...');
-  const thread = await openai.beta.threads.create();
-  console.log('✅ Created new thread:', thread.id);
-
-  // Create a new session
-  const { data: newSession, error: createError } = await supabase
-    .from('chat_sessions')
-    .insert({
-      user_id: userId,
-      thread_id: thread.id,
-      status: 'active'
+async function updateStreamingMessage(supabase: any, messageId: string, content: string, isComplete: boolean) {
+  const { error } = await supabase
+    .from('chat_messages')
+    .update({
+      content,
+      is_streaming: !isComplete
     })
-    .select('session_id')
-    .single();
+    .eq('id', messageId);
 
-  if (createError) throw new Error(`Failed to create chat session: ${createError.message}`);
-
-  // If we have a file ID, update the excel_file with the session_id
-  if (fileId) {
-    const { error: updateError } = await supabase
-      .from('excel_files')
-      .update({ session_id: newSession.session_id })
-      .eq('id', fileId);
-
-    if (updateError) throw new Error(`Failed to update excel file: ${updateError.message}`);
-  }
-  
-  console.log('✅ Created new session:', newSession.session_id);
-  return {
-    sessionId: newSession.session_id,
-    threadId: thread.id
-  };
+  if (error) console.error('Error updating message:', error);
 }
 
-async function storeChatMessage(
-  supabase: any, 
-  userId: string, 
-  fileId: string | null, 
-  sessionId: string, 
-  content: string, 
-  role: 'user' | 'assistant',
-  isAiResponse = false
-) {
+async function createInitialMessage(supabase: any, userId: string, sessionId: string, fileId: string | null) {
   const { data: message, error } = await supabase
     .from('chat_messages')
     .insert({
       user_id: userId,
-      excel_file_id: fileId,
       session_id: sessionId,
-      content,
-      role,
-      is_ai_response: isAiResponse,
-      is_streaming: role === 'assistant'
+      excel_file_id: fileId,
+      content: '',
+      role: 'assistant',
+      is_ai_response: true,
+      is_streaming: true
     })
     .select()
     .single();
 
-  if (error) throw new Error(`Failed to store ${role} message: ${error.message}`);
+  if (error) throw new Error(`Failed to create initial message: ${error.message}`);
   return message;
 }
 
@@ -178,7 +124,7 @@ serve(async (req) => {
       throw new Error('Missing required field: query');
     }
 
-    const { fileId, query, userId, sessionId, threadId: existingThreadId } = body;
+    const { fileId, query, userId, sessionId } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -189,88 +135,51 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    const assistant = await getOrCreateAssistant(openai);
-    const thread = existingThreadId 
-      ? { id: existingThreadId }
-      : await openai.beta.threads.create();
+    // Create initial empty message
+    const message = await createInitialMessage(supabase, userId, sessionId, fileId);
+    let accumulatedContent = '';
 
-    if (!existingThreadId) {
-      await updateSessionWithThread(supabase, sessionId, thread.id);
-    }
-    
+    // Get Excel data if needed
     const excelData = await getExcelFileContent(supabase, fileId);
     
-    await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content: excelData 
-        ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
-        : query
+    // Prepare the system message and user query
+    const systemMessage = excelData 
+      ? "You are a data analysis assistant. Analyze the provided Excel data and answer questions about it."
+      : "You are a helpful Excel assistant. Answer questions about Excel and data analysis.";
+
+    const userMessage = excelData 
+      ? `Analyze this Excel data:\n${JSON.stringify(excelData)}\n\n${query}`
+      : query;
+
+    // Create completion with streaming
+    const stream = await openai.chat.completions.create({
+      model: "gpt-4-turbo",
+      messages: [
+        { role: "system", content: systemMessage },
+        { role: "user", content: userMessage }
+      ],
+      stream: true,
     });
 
-    // Create initial streaming message
-    const message = await storeChatMessage(
-      supabase,
-      userId,
-      fileId,
-      sessionId,
-      "",
-      'assistant',
-      true
-    );
+    console.log(`✨ [${requestId}] Starting stream processing`);
 
-    // Start the run with streaming enabled
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: assistant.id,
-    });
-
-    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-    let attempts = 0;
-    const maxAttempts = 60;
-    let accumulatedContent = "";
-    
-    while (runStatus.status !== "completed" && attempts < maxAttempts) {
-      if (runStatus.status === "failed" || runStatus.status === "cancelled") {
-        throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
+    // Process the stream
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        accumulatedContent += content;
+        await updateStreamingMessage(supabase, message.id, accumulatedContent, false);
       }
-
-      const messages = await openai.beta.threads.messages.list(thread.id);
-      const latestMessage = messages.data[0];
-      
-      if (latestMessage?.content?.[0]?.text?.value && 
-          latestMessage.content[0].text.value !== accumulatedContent) {
-        accumulatedContent = latestMessage.content[0].text.value;
-        
-        // Update message with new content
-        await supabase
-          .from('chat_messages')
-          .update({
-            content: accumulatedContent,
-            is_streaming: true
-          })
-          .eq('id', message.id);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      attempts++;
     }
 
-    if (attempts >= maxAttempts) throw new Error('Analysis timed out');
-
     // Mark message as complete
-    await supabase
-      .from('chat_messages')
-      .update({
-        content: accumulatedContent,
-        is_streaming: false
-      })
-      .eq('id', message.id);
-
-    console.log(`✅ [${requestId}] Analysis complete`);
+    await updateStreamingMessage(supabase, message.id, accumulatedContent, true);
+    
+    console.log(`✅ [${requestId}] Stream processing complete`);
     return new Response(
       JSON.stringify({ 
         message: accumulatedContent,
-        threadId: thread.id,
+        messageId: message.id,
         sessionId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
