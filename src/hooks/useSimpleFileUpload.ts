@@ -58,10 +58,8 @@ export const useSimpleFileUpload = (): UseSimpleFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Create file path with UUID to ensure uniqueness
-      const filePath = `${crypto.randomUUID()}-${sanitizedFile.name}`;
+      const filePath = `${window.crypto.randomUUID()}-${sanitizedFile.name}`;
 
-      // Upload file to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, sanitizedFile, {
@@ -72,7 +70,6 @@ export const useSimpleFileUpload = (): UseSimpleFileUploadReturn => {
       if (uploadError) throw uploadError;
       setUploadProgress(50);
 
-      // Create file record in database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
