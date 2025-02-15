@@ -123,70 +123,76 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isAnalyzing) return; // Removed fileId check
+    if (!message.trim() || isAnalyzing) return;
 
     try {
       setIsAnalyzing(true);
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("User not authenticated");
 
-      let currentSessionId = sessionId;
-      let currentThreadId = threadId;
+      let newSessionId = sessionId;
 
-      // If no session exists, create one and navigate
-      if (!currentSessionId) {
-        const newThreadId = crypto.randomUUID();
+      // Create a new chat session if one doesn't exist
+      if (!sessionId) {
         const { data: newSession, error: sessionError } = await supabase
           .from("chat_sessions")
-          .insert([{
-            user_id: user.id,
-            thread_id: newThreadId,
-            status: "active"
+          .insert([{ 
+            user_id: user.id, 
+            excel_file_id: fileId || null,
+            status: "active",
+            thread_id: crypto.randomUUID()
           }])
           .select()
           .single();
 
         if (sessionError) throw sessionError;
-        
-        currentSessionId = newSession.session_id;
-        currentThreadId = newThreadId;
+        newSessionId = newSession.session_id;
 
-        // Navigate and wait for navigation to complete
-        navigate(`/chat?thread=${currentSessionId}`, { replace: true });
+        // Redirect immediately to new session's chat page
+        const queryParams = new URLSearchParams();
+        queryParams.set('thread', newSessionId);
+        if (fileId) queryParams.set('fileId', fileId);
+        navigate(`/chat?${queryParams.toString()}`, { replace: true });
       }
 
-      // Store user message with the correct session
-      const userMessage = {
-        content: message,
-        role: "user",
-        excel_file_id: fileId || null, // Make file ID optional
-        session_id: currentSessionId,
-        is_ai_response: false,
-        user_id: user.id,
-      };
-
+      // Store the user message in the new session
       const { error: messageError } = await supabase
         .from("chat_messages")
-        .insert([userMessage]);
+        .insert([{ 
+          content: message, 
+          role: "user", 
+          excel_file_id: fileId || null,
+          session_id: newSessionId,
+          is_ai_response: false,
+          user_id: user.id
+        }]);
 
       if (messageError) throw messageError;
 
-      // Proceed with AI analysis using the new session
+      // Send message to OpenAI via Supabase Function
       const { data: analysis, error: aiError } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
-            fileId: fileId || null, // Make file ID optional
+            fileId: fileId || null,
             query: message,
             userId: user.id,
-            threadId: currentThreadId,
-            sessionId: currentSessionId
+            threadId: newSessionId,
+            sessionId: newSessionId
           }
         });
 
       if (aiError) throw aiError;
 
       setMessage("");
-      await refetchMessages();
+      
+      // Refetch messages for the new session
+      queryClient.invalidateQueries({ 
+        queryKey: ["chat-messages", newSessionId] 
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ["chat-session", newSessionId, fileId] 
+      });
+
       scrollToBottom();
 
     } catch (err) {
