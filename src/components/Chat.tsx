@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -7,12 +7,12 @@ import { ExcelPreview } from "./ExcelPreview";
 import { FileUploadZone } from "./FileUploadZone";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { supabase } from "@/integrations/supabase/client";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { debounce } from "lodash";
 import { ScrollArea } from "./ui/scroll-area";
 import { ProcessingStatus } from "./ProcessingStatus";
 import { useProcessingStatus } from "@/hooks/useProcessingStatus";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface ChatMessage {
   id: string;
@@ -20,33 +20,8 @@ interface ChatMessage {
   is_ai_response: boolean;
   created_at: string;
   excel_file_id: string;
-  role: 'user' | 'assistant';
-}
-
-interface PaginatedResponse {
-  messages: ChatMessage[];
-  nextPage: number | undefined;
-  count: number;
-}
-
-async function storeChatMessage(fileId: string, content: string, isAiResponse: boolean = false, sessionId: string | null = null) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("User not authenticated");
-
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .insert([{ 
-      excel_file_id: fileId,
-      content,
-      is_ai_response: isAiResponse,
-      session_id: sessionId,
-      user_id: user.id
-    }])
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  session_id: string;
+  role: "user" | "assistant";
 }
 
 export function Chat() {
@@ -54,6 +29,15 @@ export function Chat() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  // Extract threadId from the URL
+  const urlParams = new URLSearchParams(location.search);
+  const threadId = urlParams.get("thread");
+  const sessionId = threadId; // Using threadId as sessionId for consistency
+
   const {
     file: uploadedFile,
     isUploading,
@@ -61,35 +45,70 @@ export function Chat() {
     handleFileUpload,
     resetUpload,
     fileId,
-    threadId,
   } = useFileUpload();
 
   const { status, error, isProcessing } = useProcessingStatus(fileId);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } = useInfiniteQuery<PaginatedResponse>({
-    queryKey: ["chat-messages", fileId],
-    queryFn: async (context) => {
-      const pageParam = (context.pageParam as number) ?? 0;
-      if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
-      const start = pageParam * 20;
-      const { data, error, count } = await supabase
-        .from("chat_messages")
-        .select("*", { count: "exact" })
-        .eq("excel_file_id", fileId)
-        .order("created_at", { ascending: false })
-        .range(start, start + 19);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
-      if (error) throw error;
-      return {
-        messages: data as ChatMessage[],
-        nextPage: data.length === 20 ? pageParam + 1 : undefined,
-        count: count || 0,
-      };
-    },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage) => lastPage.nextPage,
-    enabled: !!fileId,
-  });
+  useEffect(() => {
+    scrollToBottom();
+  }, []);
+
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch: refetchMessages } =
+    useInfiniteQuery({
+      queryKey: ["chat-messages", fileId, sessionId],
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!fileId) return { messages: [], nextPage: undefined };
+        const start = pageParam * 20;
+        const { data, error, count } = await supabase
+          .from("chat_messages")
+          .select("*", { count: "exact" })
+          .eq(sessionId ? "session_id" : "excel_file_id", sessionId ? sessionId : fileId)
+          .order("created_at", { ascending: false })
+          .range(start, start + 19);
+
+        if (error) throw error;
+        return {
+          messages: data as ChatMessage[],
+          nextPage: data.length === 20 ? pageParam + 1 : undefined,
+          count: count || 0,
+        };
+      },
+      getNextPageParam: (lastPage) => lastPage.nextPage,
+      enabled: !!fileId,
+    });
+
+  // Set up real-time subscription for new messages
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const channel = supabase
+      .channel(`chat_${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        async (payload) => {
+          // Update messages in real-time
+          await queryClient.invalidateQueries({ 
+            queryKey: ['chat-messages', fileId, sessionId] 
+          });
+          scrollToBottom();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sessionId, queryClient, fileId]);
 
   const debouncedSetMessage = useCallback(
     debounce((value: string) => {
@@ -100,44 +119,80 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !fileId || isAnalyzing || !threadId) return;
+    if (!message.trim() || isAnalyzing || !fileId) return;
 
     try {
       setIsAnalyzing(true);
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("User not authenticated");
 
-      const { data: analysis, error } = await supabase.functions
+      let currentSessionId = sessionId;
+      let currentThreadId = threadId;
+
+      // Create new session if none exists
+      if (!currentSessionId) {
+        const { data: newSession, error: sessionError } = await supabase
+          .from("chat_sessions")
+          .insert([{
+            user_id: user.id,
+            excel_file_id: fileId,
+            status: "active"
+          }])
+          .select()
+          .single();
+
+        if (sessionError) throw sessionError;
+        currentSessionId = newSession.session_id;
+        currentThreadId = newSession.thread_id;
+
+        // Navigate to new chat URL before proceeding
+        navigate(`/chat?thread=${currentSessionId}`);
+      }
+
+      // Store user message immediately (optimistic update)
+      const userMessage = {
+        content: message,
+        role: "user",
+        excel_file_id: fileId,
+        session_id: currentSessionId,
+        is_ai_response: false,
+      };
+
+      const { error: messageError } = await supabase
+        .from("chat_messages")
+        .insert([userMessage]);
+
+      if (messageError) throw messageError;
+
+      // Send to OpenAI via Edge Function
+      const { data: analysis, error: aiError } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
             fileId, 
             query: message,
             userId: user.id,
-            threadId 
+            threadId: currentThreadId,
+            sessionId: currentSessionId
           }
         });
 
-      if (error) throw error;
-      await refetchMessages();
+      if (aiError) throw aiError;
+
+      // Clear input and refresh messages
       setMessage("");
-      
-      // Navigate to the chat with the threadId after sending the first message
-      navigate(`/chat?thread=${threadId}`);
-      
-    } catch (error) {
-      console.error("Analysis error:", error);
+      await refetchMessages();
+      scrollToBottom();
+
+    } catch (err) {
+      console.error("Analysis error:", err);
       toast({
         title: "Analysis Failed",
-        description: error instanceof Error ? error.message : "Failed to analyze Excel file",
+        description: err instanceof Error ? err.message : "Failed to analyze request",
         variant: "destructive",
       });
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const handleUploadComplete = () => {
-    refetchMessages();
   };
 
   return (
@@ -146,19 +201,12 @@ export function Chat() {
         <div className="flex-1 p-4 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="flex flex-col gap-4">
-              <div className="bg-muted p-3 rounded-lg max-w-[80%]">
-                <p className="text-sm">
-                  Hello! Upload an Excel file and I'll help you analyze it.
-                </p>
-              </div>
-              
               <FileUploadZone
                 onFileUpload={handleFileUpload}
                 isUploading={isUploading}
                 uploadProgress={uploadProgress}
                 currentFile={uploadedFile}
                 onReset={resetUpload}
-                onUploadComplete={handleUploadComplete}
               />
 
               {uploadedFile && !isUploading && (
@@ -176,9 +224,7 @@ export function Chat() {
                     <div
                       key={msg.id}
                       className={`p-4 rounded-lg ${
-                        msg.role === 'assistant'
-                          ? "bg-blue-50 ml-4"
-                          : "bg-gray-50 mr-4"
+                        msg.role === "assistant" ? "bg-blue-50 ml-4" : "bg-gray-50 mr-4"
                       }`}
                     >
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -187,20 +233,17 @@ export function Chat() {
                 </div>
               ))}
 
-              {hasNextPage && (
-                <Button
-                  variant="ghost"
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                  className="w-full"
-                >
-                  {isFetchingNextPage ? "Loading more..." : "Load more messages"}
-                </Button>
+              {isAnalyzing && (
+                <div className="p-4 bg-blue-50 ml-4 rounded-lg animate-pulse">
+                  <p className="text-sm text-gray-600">Assistant is thinking...</p>
+                </div>
               )}
+              
+              <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="border-t p-4">
           <div className="flex gap-2 items-center">
             <input
@@ -209,15 +252,14 @@ export function Chat() {
               onChange={(e) => debouncedSetMessage(e.target.value)}
               placeholder="Ask about your Excel file..."
               className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Message input"
+              disabled={isAnalyzing || isUploading || isProcessing}
             />
             <Button 
               type="submit" 
               className="bg-excel hover:bg-excel/90"
-              aria-label="Send message"
-              disabled={!fileId || isUploading || isProcessing}
+              disabled={!message.trim() || isAnalyzing || isUploading || isProcessing}
             >
-              <Send className="h-4 w-4" aria-hidden="true" />
+              <Send className="h-4 w-4" />
             </Button>
           </div>
         </form>
