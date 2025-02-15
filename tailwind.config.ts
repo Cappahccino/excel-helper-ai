@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -94,12 +95,17 @@ export default {
           "0%": { "background-position": "0%" },
           "100%": { "background-position": "200%" },
         },
+        blink: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-up": "fade-up 0.5s ease-out",
         rainbow: "rainbow var(--speed, 2s) infinite linear",
+        blink: "blink 1s step-start infinite",
       },
     },
   },

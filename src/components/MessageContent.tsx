@@ -32,9 +32,11 @@ export function MessageContent({
 }: MessageContentProps) {
   const { toast } = useToast();
   const [displayedText, setDisplayedText] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [isThinking, setIsThinking] = useState(role === "assistant" && isStreaming && !content);
   const contentRef = useRef(content);
   const typeIndexRef = useRef(0);
-  const typingSpeedRef = useRef(20); // Typing speed in milliseconds
+  const typingSpeedRef = useRef(20);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -52,17 +54,27 @@ export function MessageContent({
   useEffect(() => {
     if (role !== "assistant" || !isStreaming) {
       setDisplayedText(content);
+      setIsTyping(false);
+      setIsThinking(false);
       return;
     }
+
+    // If content is empty, show thinking state
+    if (!content) {
+      setIsThinking(true);
+      setIsTyping(false);
+      return;
+    }
+
+    setIsThinking(false);
+    setIsTyping(true);
 
     // Reset if content has completely changed
     if (content !== contentRef.current) {
       contentRef.current = content;
       if (content.startsWith(displayedText)) {
-        // If new content includes current display, continue from current position
         typeIndexRef.current = displayedText.length;
       } else {
-        // Complete reset if content doesn't match
         typeIndexRef.current = 0;
         setDisplayedText("");
       }
@@ -73,26 +85,32 @@ export function MessageContent({
         setDisplayedText(content.slice(0, typeIndexRef.current + 1));
         typeIndexRef.current += 1;
 
-        // Adjust typing speed based on content
         const nextChar = content[typeIndexRef.current];
         if (nextChar === '.' || nextChar === '!' || nextChar === '?') {
-          typingSpeedRef.current = 50; // Slower at sentence ends
+          typingSpeedRef.current = 50;
         } else if (nextChar === ',' || nextChar === ';') {
-          typingSpeedRef.current = 35; // Slightly slower at commas
+          typingSpeedRef.current = 35;
         } else {
-          typingSpeedRef.current = 20; // Normal speed
+          typingSpeedRef.current = 20;
         }
+
+        const typingTimeout = setTimeout(typeNextCharacter, typingSpeedRef.current);
+        return () => clearTimeout(typingTimeout);
+      } else {
+        setIsTyping(false);
       }
     };
 
-    const typingTimeout = setTimeout(typeNextCharacter, typingSpeedRef.current);
-    return () => clearTimeout(typingTimeout);
+    const initialDelay = setTimeout(typeNextCharacter, typingSpeedRef.current);
+    return () => clearTimeout(initialDelay);
   }, [content, role, isStreaming, displayedText]);
 
   // Reset typing when streaming ends
   useEffect(() => {
     if (!isStreaming) {
       setDisplayedText(content);
+      setIsTyping(false);
+      setIsThinking(false);
     }
   }, [isStreaming, content]);
 
@@ -202,11 +220,13 @@ export function MessageContent({
               >
                 {displayedText}
               </ReactMarkdown>
-              {isStreaming && (
+              {isThinking ? (
                 <span className="inline-flex items-center gap-2 mt-2">
                   <Spinner variant="ring" className="h-4 w-4 text-excel" />
                   <span className="text-sm text-gray-500">Thinking...</span>
                 </span>
+              ) : isTyping && (
+                <span className="inline-block h-4 w-[2px] bg-excel animate-blink ml-1" />
               )}
             </div>
           ) : (
