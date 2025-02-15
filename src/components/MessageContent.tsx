@@ -34,6 +34,7 @@ export function MessageContent({
   const [displayedText, setDisplayedText] = useState("");
   const contentRef = useRef(content);
   const typeIndexRef = useRef(0);
+  const typingSpeedRef = useRef(20); // Typing speed in milliseconds
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -47,29 +48,46 @@ export function MessageContent({
     return role === "assistant" ? "AI" : "U";
   };
 
-  // Typing effect
+  // Enhanced typing effect
   useEffect(() => {
     if (role !== "assistant" || !isStreaming) {
       setDisplayedText(content);
       return;
     }
 
-    // Reset if content has changed
+    // Reset if content has completely changed
     if (content !== contentRef.current) {
       contentRef.current = content;
-      typeIndexRef.current = displayedText.length; // Continue from current position
+      if (content.startsWith(displayedText)) {
+        // If new content includes current display, continue from current position
+        typeIndexRef.current = displayedText.length;
+      } else {
+        // Complete reset if content doesn't match
+        typeIndexRef.current = 0;
+        setDisplayedText("");
+      }
     }
 
     const typeNextCharacter = () => {
       if (typeIndexRef.current < content.length) {
         setDisplayedText(content.slice(0, typeIndexRef.current + 1));
         typeIndexRef.current += 1;
+
+        // Adjust typing speed based on content
+        const nextChar = content[typeIndexRef.current];
+        if (nextChar === '.' || nextChar === '!' || nextChar === '?') {
+          typingSpeedRef.current = 50; // Slower at sentence ends
+        } else if (nextChar === ',' || nextChar === ';') {
+          typingSpeedRef.current = 35; // Slightly slower at commas
+        } else {
+          typingSpeedRef.current = 20; // Normal speed
+        }
       }
     };
 
-    const typingInterval = setInterval(typeNextCharacter, 30);
-    return () => clearInterval(typingInterval);
-  }, [content, role, isStreaming]);
+    const typingTimeout = setTimeout(typeNextCharacter, typingSpeedRef.current);
+    return () => clearTimeout(typingTimeout);
+  }, [content, role, isStreaming, displayedText]);
 
   // Reset typing when streaming ends
   useEffect(() => {

@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -159,7 +158,7 @@ serve(async (req) => {
     try {
       // Process the stream with chunking
       let updateBuffer = '';
-      const updateInterval = 100; // ms
+      const updateInterval = 25; // Reduced from 100ms to 25ms for smoother updates
       let lastUpdate = Date.now();
 
       for await (const chunk of stream) {
@@ -168,9 +167,9 @@ serve(async (req) => {
           updateBuffer += content;
           accumulatedContent += content;
 
-          // Update database less frequently to reduce load
+          // Send updates more frequently
           const now = Date.now();
-          if (now - lastUpdate >= updateInterval) {
+          if (now - lastUpdate >= updateInterval || content.includes('\n')) {
             await updateStreamingMessage(supabase, message.id, accumulatedContent, false);
             updateBuffer = '';
             lastUpdate = now;
