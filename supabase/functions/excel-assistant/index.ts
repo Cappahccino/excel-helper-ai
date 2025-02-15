@@ -3,6 +3,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import OpenAI from 'npm:openai';
+import * as XLSX from 'npm:xlsx';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,19 +46,53 @@ async function createInitialMessage(supabase: any, userId: string, sessionId: st
   return message;
 }
 
-async function getFileContent(supabase: any, fileId: string): Promise<string | null> {
+async function processExcelFile(supabase: any, fileId: string): Promise<ExcelData[] | null> {
   if (!fileId) return null;
   
-  console.log(`📂 Fetching file ID: ${fileId}`);
+  console.log(`📂 Processing file ID: ${fileId}`);
   
+  // Get file metadata from database
   const { data: fileData, error: fileError } = await supabase
     .from('excel_files')
-    .select('content_preview')
+    .select('file_path')
     .eq('id', fileId)
     .single();
 
   if (fileError) throw new Error(`File metadata error: ${fileError.message}`);
-  return fileData?.content_preview || null;
+  
+  // Download file from storage
+  const { data: fileBuffer, error: downloadError } = await supabase.storage
+    .from('excel_files')
+    .download(fileData.file_path);
+
+  if (downloadError) throw new Error(`File download error: ${downloadError.message}`);
+
+  // Process Excel file
+  try {
+    const arrayBuffer = await fileBuffer.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer);
+    
+    const results: ExcelData[] = [];
+    
+    // Process each sheet
+    for (const sheetName of workbook.SheetNames) {
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      
+      // Limit data to first 1000 rows to avoid token limits
+      const limitedData = jsonData.slice(0, 1000);
+      
+      results.push({
+        sheetName,
+        data: limitedData
+      });
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('Excel processing error:', error);
+    throw new Error(`Failed to process Excel file: ${error.message}`);
+  }
 }
 
 serve(async (req) => {
@@ -94,16 +129,17 @@ serve(async (req) => {
     const message = await createInitialMessage(supabase, userId, sessionId, fileId);
     let accumulatedContent = '';
 
-    // Get file content if needed (using optimized preview)
-    const fileContent = await getFileContent(supabase, fileId);
+    // Process Excel file if provided
+    const excelData = await processExcelFile(supabase, fileId);
     
-    // Prepare the system message and user query
-    const systemMessage = fileContent 
-      ? "You are a data analysis assistant. Analyze the provided data and answer questions about it."
+    // Prepare system message based on context
+    const systemMessage = excelData 
+      ? "You are an Excel data analyst assistant. Analyze the provided Excel data and answer questions about it. Focus on providing clear insights and explanations. If data seems incomplete or unclear, mention this in your response."
       : "You are a helpful Excel assistant. Answer questions about Excel and data analysis.";
 
-    const userMessage = fileContent 
-      ? `Analyze this data:\n${fileContent}\n\n${query}`
+    // Prepare user message with Excel data context if available
+    const userMessage = excelData 
+      ? `Analyzing Excel file with ${excelData.length} sheet(s):\n\n${JSON.stringify(excelData, null, 2)}\n\nUser Query: ${query}`
       : query;
 
     // Create completion with streaming
@@ -114,7 +150,8 @@ serve(async (req) => {
         { role: "user", content: userMessage }
       ],
       stream: true,
-      max_tokens: 1000, // Limit response length
+      temperature: 0.7,
+      max_tokens: 2000, // Increased token limit for complex Excel analysis
     }, { signal });
 
     console.log(`✨ [${requestId}] Starting stream processing`);
