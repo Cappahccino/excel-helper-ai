@@ -26,12 +26,18 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
           filter: `session_id=eq.${sessionId}`,
         },
         async (payload: any) => {
-          if (payload.new && payload.new.role === 'assistant') {
+          if (payload.new) {
             setLatestMessageId(payload.new.id);
-            onAssistantMessage();
+            
+            // Only trigger onAssistantMessage when the message is complete
+            if (payload.new.role === 'assistant' && !payload.new.is_streaming) {
+              onAssistantMessage();
+            }
+
+            // Always invalidate queries to update UI
+            await queryClient.invalidateQueries({ queryKey: ['chat-messages', sessionId] });
+            await queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] });
           }
-          await queryClient.invalidateQueries({ queryKey: ['chat-messages', sessionId] });
-          await queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] });
         }
       )
       .subscribe();
