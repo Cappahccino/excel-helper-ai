@@ -51,12 +51,13 @@ const Chat = () => {
       if (!selectedSessionId) return null;
       const { data, error } = await supabase
         .from('chat_sessions')
-        .select(`
-          *,
-          excel_files (
-            id,
-            filename,
-            file_size
+        .select(`*, 
+          chat_messages!inner (
+            excel_files (
+              id,
+              filename,
+              file_size
+            )
           )
         `)
         .eq('session_id', selectedSessionId)
@@ -98,7 +99,6 @@ const Chat = () => {
           .from("chat_sessions")
           .insert([{ 
             user_id: user.id, 
-            excel_file_id: activeFileId,
             status: "active",
             thread_id: crypto.randomUUID()
           }])
@@ -118,7 +118,7 @@ const Chat = () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      // Step 4: Store the user message first
+      // Step 4: Store the user message with file association
       const { error: messageError } = await supabase
         .from("chat_messages")
         .insert([{ 
@@ -150,7 +150,7 @@ const Chat = () => {
         queryKey: ['chat-messages', newSessionId]
       });
       queryClient.invalidateQueries({
-        queryKey: ['chat-session', newSessionId, activeFileId]
+        queryKey: ['chat-session', newSessionId]
       });
 
       // Reset upload after successful message send
@@ -165,14 +165,13 @@ const Chat = () => {
     return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
 
-  const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId || fileIdFromUrl;
+  const activeFileId = uploadedFileId || fileIdFromUrl;
   
-  const currentFile = session?.excel_files?.[0] || selectedFile || (uploadedFile ? {
+  const currentFile = selectedFile || (uploadedFile ? {
     filename: uploadedFile.name,
     file_size: uploadedFile.size
   } : null);
 
-  const showChatWindow = true;
   const showUploadZone = !selectedSessionId && !activeFileId;
 
   return (
