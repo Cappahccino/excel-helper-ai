@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -19,7 +18,7 @@ import {
 interface Thread {
   session_id: string;
   created_at: string;
-  thread_id: string;
+  thread_id: string | null;
   excel_files: {
     id: string;
     filename: string;
@@ -31,7 +30,7 @@ export function ThreadsList() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const currentThreadId = searchParams.get("thread");
+  const currentSessionId = searchParams.get("sessionId");
 
   const { data: threads, isLoading } = useQuery({
     queryKey: ["chat-threads"],
@@ -59,8 +58,8 @@ export function ThreadsList() {
     },
   });
 
-  const handleThreadClick = (threadId: string) => {
-    navigate(`/chat?thread=${threadId}`);
+  const handleThreadClick = (sessionId: string) => {
+    navigate(`/chat?sessionId=${sessionId}`);
   };
 
   const toggleChatsExpanded = () => {
@@ -125,7 +124,7 @@ export function ThreadsList() {
                       <SidebarMenuButton
                         onClick={() => handleThreadClick(thread.session_id)}
                         className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
-                          currentThreadId === thread.session_id ? 'bg-green-50 text-excel' : ''
+                          currentSessionId === thread.session_id ? 'bg-green-50 text-excel' : ''
                         }`}
                       >
                         <MessageSquare className="h-4 w-4 shrink-0" />
