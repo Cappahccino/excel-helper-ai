@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { v4 as uuidv4 } from "uuid";
 
 interface UseSimpleFileUploadReturn {
   file: File | null;
@@ -58,26 +59,26 @@ export const useSimpleFileUpload = (): UseSimpleFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      const filePath = `${window.crypto.randomUUID()}-${sanitizedFile.name}`;
+      const filePath = `${uuidv4()}-${sanitizedFile.name}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('excel_files')
+        .from("excel_files")
         .upload(filePath, sanitizedFile, {
-          cacheControl: '3600',
-          upsert: false
+          cacheControl: "3600",
+          upsert: false,
         });
 
       if (uploadError) throw uploadError;
       setUploadProgress(50);
 
       const { data: fileRecord, error: dbError } = await supabase
-        .from('excel_files')
+        .from("excel_files")
         .insert({
           filename: sanitizedFile.name,
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: "pending"
+          processing_status: "pending",
         })
         .select()
         .single();
@@ -93,7 +94,7 @@ export const useSimpleFileUpload = (): UseSimpleFileUploadReturn => {
       });
 
     } catch (err) {
-      console.error('Upload error:', err);
+      console.error("Upload error:", err);
       setError(err instanceof Error ? err.message : "Failed to upload file");
       toast({
         title: "Upload Failed",

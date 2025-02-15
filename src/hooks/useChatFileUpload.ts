@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { validateFile, sanitizeFileName } from "@/utils/fileUtils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { v4 as uuidv4 } from "uuid";
 
 interface UseChatFileUploadReturn {
   file: File | null;
@@ -65,7 +66,7 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      const filePath = `${window.crypto.randomUUID()}-${sanitizedFile.name}`;
+      const filePath = `${uuidv4()}-${sanitizedFile.name}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('excel_files')
