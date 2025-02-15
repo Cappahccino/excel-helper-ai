@@ -13,6 +13,7 @@ interface ChatContentProps {
   formatTimestamp: (timestamp: string) => string;
   latestMessageId: string | null;
   isAnalyzing: boolean;
+  isStreaming: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -24,6 +25,7 @@ export function ChatContent({
   formatTimestamp,
   latestMessageId,
   isAnalyzing,
+  isStreaming,
   messagesEndRef
 }: ChatContentProps) {
   return (
@@ -57,6 +59,7 @@ export function ChatContent({
               messages={groupMessages}
               formatTimestamp={formatTimestamp}
               latestMessageId={latestMessageId}
+              isStreaming={isStreaming}
             />
           ))}
           {isAnalyzing && <LoadingState />}

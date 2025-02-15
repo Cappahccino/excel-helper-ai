@@ -30,7 +30,7 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
           if (payload.new) {
             setLatestMessageId(payload.new.id);
             
-            // Update streaming state
+            // Update streaming state for assistant messages
             if (payload.new.role === 'assistant') {
               setIsStreaming(payload.new.is_streaming);
               

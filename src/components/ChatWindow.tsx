@@ -49,7 +49,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     chatContainerRef
   });
 
-  const { latestMessageId } = useChatRealtime({
+  const { latestMessageId, isStreaming } = useChatRealtime({
     sessionId: session?.session_id || null,
     onAssistantMessage: () => {
       setIsAnalyzing(false);
@@ -148,6 +148,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
               formatTimestamp={formatTimestamp}
               latestMessageId={latestMessageId}
               isAnalyzing={isAnalyzing}
+              isStreaming={isStreaming}
               messagesEndRef={messagesEndRef}
             />
           </div>
