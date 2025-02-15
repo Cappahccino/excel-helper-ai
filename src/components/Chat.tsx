@@ -66,7 +66,7 @@ export function Chat() {
     useInfiniteQuery<QueryResponse>({
       queryKey: ["chat-messages", fileId, sessionId],
       queryFn: async ({ pageParam = 0 }) => {
-        if (!fileId) return { messages: [], nextPage: undefined, count: 0 };
+        if (!fileId && !sessionId) return { messages: [], nextPage: undefined, count: 0 };
         const start = Number(pageParam) * 20;
         const { data, error, count } = await supabase
           .from("chat_messages")
@@ -84,7 +84,7 @@ export function Chat() {
       },
       getNextPageParam: (lastPage) => lastPage.nextPage,
       initialPageParam: 0,
-      enabled: !!fileId,
+      enabled: !!(fileId || sessionId),
     });
 
   useEffect(() => {
@@ -123,7 +123,7 @@ export function Chat() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isAnalyzing || !fileId) return;
+    if (!message.trim() || isAnalyzing) return; // Removed fileId check
 
     try {
       setIsAnalyzing(true);
@@ -133,7 +133,7 @@ export function Chat() {
       let currentSessionId = sessionId;
       let currentThreadId = threadId;
 
-      // If no session exists, create one and wait for navigation
+      // If no session exists, create one and navigate
       if (!currentSessionId) {
         const newThreadId = crypto.randomUUID();
         const { data: newSession, error: sessionError } = await supabase
@@ -151,21 +151,15 @@ export function Chat() {
         currentSessionId = newSession.session_id;
         currentThreadId = newThreadId;
 
-        // Navigate and wait for the navigation to complete
-        await new Promise<void>((resolve) => {
-          navigate(`/chat?thread=${currentSessionId}`, {
-            replace: true // Replace current history entry
-          });
-          // Give the navigation a moment to complete
-          setTimeout(resolve, 100);
-        });
+        // Navigate and wait for navigation to complete
+        navigate(`/chat?thread=${currentSessionId}`, { replace: true });
       }
 
       // Store user message with the correct session
       const userMessage = {
         content: message,
         role: "user",
-        excel_file_id: fileId,
+        excel_file_id: fileId || null, // Make file ID optional
         session_id: currentSessionId,
         is_ai_response: false,
         user_id: user.id,
@@ -181,7 +175,7 @@ export function Chat() {
       const { data: analysis, error: aiError } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
-            fileId, 
+            fileId: fileId || null, // Make file ID optional
             query: message,
             userId: user.id,
             threadId: currentThreadId,
@@ -208,7 +202,6 @@ export function Chat() {
   };
 
   const handleUploadComplete = () => {
-    // Handle upload completion if needed
     console.log("Upload completed");
   };
 
