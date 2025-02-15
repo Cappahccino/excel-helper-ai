@@ -133,26 +133,35 @@ export function Chat() {
       let currentSessionId = sessionId;
       let currentThreadId = threadId;
 
-      // Create new session if none exists
+      // If no session exists, create one and wait for navigation
       if (!currentSessionId) {
+        const newThreadId = crypto.randomUUID();
         const { data: newSession, error: sessionError } = await supabase
           .from("chat_sessions")
           .insert([{
             user_id: user.id,
-            thread_id: crypto.randomUUID(), // Generate a new thread_id
+            thread_id: newThreadId,
             status: "active"
           }])
           .select()
           .single();
 
         if (sessionError) throw sessionError;
+        
         currentSessionId = newSession.session_id;
-        currentThreadId = newSession.thread_id;
+        currentThreadId = newThreadId;
 
-        navigate(`/chat?thread=${currentSessionId}`);
+        // Navigate and wait for the navigation to complete
+        await new Promise<void>((resolve) => {
+          navigate(`/chat?thread=${currentSessionId}`, {
+            replace: true // Replace current history entry
+          });
+          // Give the navigation a moment to complete
+          setTimeout(resolve, 100);
+        });
       }
 
-      // Store user message immediately
+      // Store user message with the correct session
       const userMessage = {
         content: message,
         role: "user",
@@ -168,6 +177,7 @@ export function Chat() {
 
       if (messageError) throw messageError;
 
+      // Proceed with AI analysis using the new session
       const { data: analysis, error: aiError } = await supabase.functions
         .invoke("excel-assistant", {
           body: { 
