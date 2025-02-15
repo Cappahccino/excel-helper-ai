@@ -30,8 +30,7 @@ export function MessageContent({
   isStreaming = false,
 }: MessageContentProps) {
   const { toast } = useToast();
-  const [displayedText, setDisplayedText] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [displayedText, setDisplayedText] = useState(content);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -45,40 +44,10 @@ export function MessageContent({
     return role === "assistant" ? "AI" : "U";
   };
 
-  // Process content to handle LaTeX expressions
-  const processContent = (text: string) => {
-    const parts = [];
-    let lastIndex = 0;
-
-    // First handle block math ($$...$$)
-    const blockRegex = /\$\$(.*?)\$\$/gs;
-    text = text.replace(blockRegex, (match, latex) => {
-      return `\n\nBLOCKMATH{${latex.trim()}}\n\n`;
-    });
-
-    // Then handle inline math ($...$)
-    const inlineRegex = /\$([^\$]+?)\$/g;
-    text = text.replace(inlineRegex, (match, latex) => {
-      return `INLINEMATH{${latex.trim()}}`;
-    });
-
-    return text;
-  };
-
+  // Update displayed text when content changes
   useEffect(() => {
-    if (isStreaming && isNewMessage) {
-      const words = content.split(" ");
-      if (currentIndex < words.length) {
-        const timer = setTimeout(() => {
-          setDisplayedText(words.slice(0, currentIndex + 1).join(" "));
-          setCurrentIndex(prev => prev + 1);
-        }, 50); // Adjust timing for natural feel
-        return () => clearTimeout(timer);
-      }
-    } else {
-      setDisplayedText(content);
-    }
-  }, [content, isStreaming, isNewMessage, currentIndex]);
+    setDisplayedText(content);
+  }, [content]);
 
   const messageClassName = `p-5 rounded-xl flex group ${
     role === "assistant"
@@ -173,7 +142,6 @@ export function MessageContent({
                             }
                             return part;
                           })}
-                          {isStreaming && <span className="animate-pulse">|</span>}
                         </p>
                       );
                     }
@@ -187,6 +155,9 @@ export function MessageContent({
               >
                 {displayedText}
               </ReactMarkdown>
+              {isStreaming && (
+                <span className="inline-block w-2 h-4 ml-1 bg-excel animate-pulse" />
+              )}
             </div>
           ) : (
             <p className="text-sm whitespace-pre-wrap leading-relaxed text-gray-800">
