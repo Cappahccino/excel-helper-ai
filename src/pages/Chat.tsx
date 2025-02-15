@@ -16,10 +16,10 @@ import { format } from "date-fns";
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('thread');
   const fileIdFromUrl = searchParams.get('fileId');
-  const queryClient = useQueryClient();
 
   const {
     file: uploadedFile,
@@ -82,25 +82,87 @@ const Chat = () => {
     enabled: !!selectedSessionId
   });
 
-  useEffect(() => {
-    if (!selectedSessionId) {
-      // Only reset upload when changing sessions, not after successful upload
-      resetUpload();
-    }
-  }, [selectedSessionId, resetUpload]);
+  const handleSendMessage = async (message: string, fileId?: string | null) => {
+    if (!message.trim() && !fileId) return;
+    
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('User not authenticated');
 
-  const onFileUpload = async (file: File) => {
-    await handleFileUpload(file, selectedSessionId);
+      let newSessionId = selectedSessionId;
+      const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
+
+      // Step 1: Create a new session if one doesn't exist
+      if (!selectedSessionId) {
+        const { data: newSession, error: sessionError } = await supabase
+          .from("chat_sessions")
+          .insert([{ 
+            user_id: user.id, 
+            excel_file_id: activeFileId,
+            status: "active",
+            thread_id: crypto.randomUUID()
+          }])
+          .select()
+          .single();
+
+        if (sessionError) throw sessionError;
+        newSessionId = newSession.session_id;
+
+        // Step 2: Redirect to the new chat session immediately
+        const queryParams = new URLSearchParams();
+        queryParams.set('thread', newSessionId);
+        if (activeFileId) queryParams.set('fileId', activeFileId);
+        navigate(`/chat?${queryParams.toString()}`, { replace: true });
+
+        // Step 3: Wait for URL update
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // Step 4: Store the user message first
+      const { error: messageError } = await supabase
+        .from("chat_messages")
+        .insert([{ 
+          content: message, 
+          role: "user", 
+          excel_file_id: activeFileId,
+          session_id: newSessionId,
+          is_ai_response: false,
+          user_id: user.id
+        }]);
+
+      if (messageError) throw messageError;
+
+      // Step 5: Send to OpenAI via Edge Function
+      const { error } = await supabase.functions.invoke('excel-assistant', {
+        body: {
+          fileId: activeFileId,
+          query: message,
+          userId: user.id,
+          threadId: newSessionId,
+          sessionId: newSessionId
+        }
+      });
+
+      if (error) throw error;
+      
+      // Step 6: Update queries to reflect changes
+      queryClient.invalidateQueries({
+        queryKey: ['chat-messages', newSessionId]
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['chat-session', newSessionId, activeFileId]
+      });
+
+      // Reset upload after successful message send
+      resetUpload();
+      
+    } catch (error) {
+      console.error('Analysis error:', error);
+    }
   };
 
-  const onUploadComplete = () => {
-    queryClient.invalidateQueries({
-      queryKey: ['chat-messages', selectedSessionId]
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['chat-session', selectedSessionId]
-    });
-    // Don't reset upload here anymore
+  const formatTimestamp = (timestamp: string) => {
+    return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
   };
 
   const activeFileId = session?.excel_files?.[0]?.id || uploadedFileId || fileIdFromUrl;
@@ -112,43 +174,6 @@ const Chat = () => {
 
   const showChatWindow = true;
   const showUploadZone = !selectedSessionId && !activeFileId;
-
-  const handleSendMessage = async (message: string, fileId?: string | null) => {
-    if (!message.trim() && !fileId) return;
-    
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
-
-      const { data: analysis, error } = await supabase.functions.invoke('excel-assistant', {
-        body: {
-          fileId: fileId || activeFileId,
-          query: message,
-          userId: user.id,
-          threadId: session?.thread_id,
-          sessionId: session?.session_id
-        }
-      });
-
-      if (error) throw error;
-
-      // Only reset the upload after the message is successfully sent
-      resetUpload();
-      
-      queryClient.invalidateQueries({
-        queryKey: ['chat-messages', session?.session_id]
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['chat-session', selectedSessionId, fileId]
-      });
-    } catch (error) {
-      console.error('Analysis error:', error);
-    }
-  };
-
-  const formatTimestamp = (timestamp: string) => {
-    return format(new Date(timestamp), 'MMM d, yyyy HH:mm');
-  };
 
   return (
     <SidebarProvider>
