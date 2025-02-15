@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,6 +13,7 @@ import { FileInfo } from "./FileInfo";
 import { ChatInput } from "./ChatInput";
 import { Button } from "./ui/button";
 import { useChatMessages } from "@/hooks/useChatMessages";
+import { ThinkingIndicator } from "./chat/ThinkingIndicator";
 
 interface ChatWindowProps {
   sessionId: string | null;
@@ -27,6 +29,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasScrolledUp, setHasScrolledUp] = useState(false);
   const [latestMessageId, setLatestMessageId] = useState<string | null>(null);
+  const [pendingResponseId, setPendingResponseId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -81,6 +84,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
         async (payload: any) => {
           if (payload.new && payload.new.role === 'assistant') {
             setLatestMessageId(payload.new.id);
+            setIsAnalyzing(false);
+            setPendingResponseId(null);
           }
           await queryClient.invalidateQueries({ 
             queryKey: ['chat-messages', session.session_id] 
@@ -102,6 +107,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
     try {
       setIsAnalyzing(true);
+      setPendingResponseId(Date.now().toString());
+      
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
@@ -138,13 +145,13 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
     } catch (error) {
       console.error('Analysis error:', error);
+      setIsAnalyzing(false);
+      setPendingResponseId(null);
       toast({
         title: "Analysis Failed",
         description: error instanceof Error ? error.message : "Failed to analyze request",
         variant: "destructive",
       });
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -192,16 +199,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
                   latestMessageId={latestMessageId}
                 />
               ))}
-              {isAnalyzing && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-2 p-4 bg-blue-50 rounded-lg ml-4"
-                >
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-excel"></div>
-                  <p className="text-sm">Assistant is thinking...</p>
-                </motion.div>
-              )}
+              {isAnalyzing && <ThinkingIndicator />}
               <div ref={messagesEndRef} />
             </AnimatePresence>
           )}
