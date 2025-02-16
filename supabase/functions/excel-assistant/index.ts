@@ -49,45 +49,26 @@ serve(async (req) => {
     const message = await createInitialMessage(supabase, userId, sessionId, fileId);
 
     try {
-      let threadId = session.thread_id;
+      const thread = await openai.beta.threads.create();
+      const threadId = thread.id;
       
-      // Create a new thread if one doesn't exist
-      if (!threadId) {
-        console.log(`🧵 [${requestId}] Creating new thread for session ${sessionId}`);
-        const thread = await openai.beta.threads.create();
-        threadId = thread.id;
-        
-        await updateSession(supabase, sessionId, { 
-          thread_id: threadId,
-          assistant_id: assistantId
-        });
-      } else {
-        console.log(`🧵 [${requestId}] Using existing thread ${threadId}`);
-      }
+      await updateSession(supabase, sessionId, { 
+        thread_id: threadId,
+        assistant_id: assistantId
+      });
 
       const excelContext = excelData 
         ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
         : '';
 
-      // Add the new message to the thread
       const threadMessage = await openai.beta.threads.messages.create(threadId, {
         role: 'user',
         content: `${excelContext}${query}`
       });
 
-      // Create a new run with context-aware instructions
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId,
-        instructions: `
-          You are an expert Excel assistant. Your responses should:
-          1. Maintain awareness of the conversation history for context
-          2. Specifically focus on answering the most recent question asked
-          3. Only reference previous context when it directly relates to the current question
-          4. Be clear and concise in your responses
-          
-          While you can use context from previous messages to better understand the user's needs,
-          make sure your response directly addresses their latest query.
-        `
+        instructions: "Focus only on answering the current question. Do not reference or use context from previous messages."
       });
 
       await supabase
@@ -102,8 +83,6 @@ serve(async (req) => {
         await updateStreamingMessage(supabase, message.id, content, isComplete);
       };
 
-      console.log(`⚡ [${requestId}] Starting response stream for run ${run.id}`);
-      
       const finalContent = await streamAssistantResponse(
         openai,
         threadId,
@@ -128,7 +107,7 @@ serve(async (req) => {
       );
 
     } catch (streamError) {
-      console.error(`❌ [${requestId}] Stream error:`, streamError);
+      console.error(`Stream error:`, streamError);
       controller.abort();
       throw streamError;
     }
