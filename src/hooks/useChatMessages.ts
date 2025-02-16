@@ -218,7 +218,7 @@ export function useChatMessages(sessionId: string | null) {
           query: content,
           userId: user.id,
           sessionId: sessionId,
-          threadId: session?.thread_id
+          threadId: session?.pages?.[0]?.thread_id || null
         }
       });
 

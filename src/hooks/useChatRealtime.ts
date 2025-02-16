@@ -117,14 +117,14 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
       });
 
     // Automatic reconnection using error event listener
-    const handleError = () => {
-      console.log('Channel error, attempting to reconnect...');
+    const handleError = (event: string, error: Error) => {
+      console.log('Channel error:', event, error);
       setTimeout(() => {
         channel.subscribe();
       }, 5000);
     };
 
-    channel.on('error', handleError);
+    channel.on('error', handleError, { eventListener: true });
 
     return () => {
       channel.unsubscribe();
