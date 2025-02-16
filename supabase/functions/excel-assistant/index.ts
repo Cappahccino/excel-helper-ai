@@ -69,12 +69,15 @@ serve(async (req) => {
         ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
         : '';
 
+      console.log(`📤 [${requestId}] Creating message in thread ${threadId}`);
       // Add the new message to the thread
       const threadMessage = await openai.beta.threads.messages.create(threadId, {
         role: 'user',
         content: `${excelContext}${query}`
       });
+      console.log(`✅ [${requestId}] Message created: ${threadMessage.id}`);
 
+      console.log(`🎯 [${requestId}] Creating run with assistant ${assistantId}`);
       // Create a new run with context-aware instructions
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId,
@@ -89,7 +92,9 @@ serve(async (req) => {
           make sure your response directly addresses their latest query.
         `
       });
+      console.log(`✅ [${requestId}] Run created: ${run.id}`);
 
+      console.log(`📝 [${requestId}] Updating message with run details`);
       await supabase
         .from('chat_messages')
         .update({ 
@@ -99,7 +104,14 @@ serve(async (req) => {
         .eq('id', message.id);
 
       const updateMessageCallback = async (content: string, isComplete: boolean) => {
-        await updateStreamingMessage(supabase, message.id, content, isComplete);
+        console.log(`📤 [${requestId}] Updating message ${message.id} - Complete: ${isComplete}`);
+        try {
+          await updateStreamingMessage(supabase, message.id, content, isComplete);
+          console.log(`✅ [${requestId}] Message update successful`);
+        } catch (error) {
+          console.error(`❌ [${requestId}] Message update failed:`, error);
+          throw error;
+        }
       };
 
       console.log(`⚡ [${requestId}] Starting response stream for run ${run.id}`);
@@ -111,6 +123,7 @@ serve(async (req) => {
         updateMessageCallback
       );
 
+      console.log(`🔄 [${requestId}] Updating session with run details`);
       await updateSession(supabase, sessionId, { 
         last_run_id: run.id,
         excel_file_id: fileId || session.excel_file_id
