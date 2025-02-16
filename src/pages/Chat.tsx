@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation } from "react-router-dom";
@@ -54,7 +55,7 @@ const Chat = () => {
     fetchNextPage
   } = useChatMessages(selectedSessionId);
 
-  const { latestMessageId, isProcessing, status } = useChatRealtime({
+  const { latestMessageId, status } = useChatRealtime({
     sessionId: selectedSessionId,
     onAssistantMessage: () => {
       resetUpload();
@@ -129,7 +130,7 @@ const Chat = () => {
                   <ChatInput
                     onSendMessage={handleSendMessage}
                     sessionId={selectedSessionId}
-                    isAnalyzing={isProcessing}
+                    isAnalyzing={status === 'in_progress'}
                     fileInfo={currentFile}
                   />
                 </motion.div>
@@ -174,7 +175,7 @@ const Chat = () => {
                     <ChatInput
                       onSendMessage={handleSendMessage}
                       sessionId={selectedSessionId}
-                      isAnalyzing={isProcessing}
+                      isAnalyzing={status === 'in_progress'}
                       fileInfo={currentFile}
                     />
                   </div>

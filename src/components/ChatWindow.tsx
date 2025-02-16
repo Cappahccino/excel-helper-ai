@@ -48,7 +48,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     chatContainerRef
   });
 
-  const { latestMessageId, isProcessing } = useChatRealtime({
+  const { latestMessageId, status } = useChatRealtime({
     sessionId: session?.session_id || null,
     onAssistantMessage: () => {
       if (!hasScrolledUp) {
@@ -58,7 +58,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   });
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
-    if ((!message.trim() && !fileId) || isProcessing) return;
+    if ((!message.trim() && !fileId) || status === 'in_progress') return;
 
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -143,7 +143,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
               messageGroups={messageGroups}
               formatTimestamp={formatTimestamp}
               latestMessageId={latestMessageId}
-              isProcessing={isProcessing}
+              status={status}
               messagesEndRef={messagesEndRef}
             />
           </div>
@@ -168,7 +168,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       <div className="absolute bottom-0 left-0 right-0">
         <ChatInput 
           onSendMessage={handleSendMessage}
-          isAnalyzing={isProcessing}
+          isAnalyzing={status === 'in_progress'}
           sessionId={sessionId}
         />
       </div>

@@ -1,9 +1,12 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
 const MESSAGES_PER_PAGE = 50;
+
+type MessageStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
 
 interface Message {
   id: string;
@@ -16,8 +19,8 @@ interface Message {
     filename: string;
     file_size: number;
   } | null;
+  status: MessageStatus;
   temp?: boolean;
-  isStreaming?: boolean;
 }
 
 interface SessionData {
@@ -62,7 +65,7 @@ export function useChatMessages(sessionId: string | null) {
 
   const { 
     data, 
-    isLoading: messagesLoading, 
+    isLoading, 
     isError, 
     refetch,
     hasNextPage,
@@ -93,7 +96,7 @@ export function useChatMessages(sessionId: string | null) {
       const messages = data?.map(msg => ({
         ...msg,
         role: msg.role === 'assistant' ? 'assistant' : 'user',
-        isStreaming: msg.is_streaming || false
+        status: msg.status as MessageStatus
       })) as Message[];
 
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
@@ -160,8 +163,7 @@ export function useChatMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: true,
           user_id: user.id,
-          status: 'processing',
-          is_streaming: false
+          status: 'queued'
         })
         .select('*, excel_files(filename, file_size)')
         .single();
@@ -255,7 +257,7 @@ export function useChatMessages(sessionId: string | null) {
   return {
     messages,
     session: session?.pages?.[0],
-    isLoading: messagesLoading,
+    isLoading,
     isError,
     sendMessage,
     formatTimestamp,

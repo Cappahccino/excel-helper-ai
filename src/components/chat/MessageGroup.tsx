@@ -8,7 +8,7 @@ interface MessageGroupProps {
   messages: any[];
   formatTimestamp: (timestamp: string) => string;
   latestMessageId?: string;
-  isProcessing?: boolean;
+  status?: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
 }
 
 export function MessageGroup({ 
@@ -16,7 +16,7 @@ export function MessageGroup({
   messages, 
   formatTimestamp, 
   latestMessageId, 
-  isProcessing 
+  status = 'completed'
 }: MessageGroupProps) {
   return (
     <motion.div 
@@ -42,7 +42,7 @@ export function MessageGroup({
             timestamp={formatTimestamp(msg.created_at)}
             fileInfo={msg.excel_files}
             isNewMessage={msg.id === latestMessageId}
-            isProcessing={msg.id === latestMessageId && isProcessing && msg.role === 'assistant'}
+            status={msg.id === latestMessageId ? status : 'completed'}
           />
         </motion.div>
       ))}
