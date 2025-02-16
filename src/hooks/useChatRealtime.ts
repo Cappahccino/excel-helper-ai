@@ -34,16 +34,31 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
           if (payload.new) {
             const message = payload.new;
             
-            setStreamingState(prev => ({
-              messageId: message.id,
-              isStreaming: message.is_streaming,
-              streamingProgress: message.is_streaming ? prev.streamingProgress + 1 : 100,
-              isAnalyzing: !message.is_streaming && message.status === 'processing'
-            }));
+            // Only update state for assistant messages
+            if (message.role === 'assistant') {
+              const isComplete = message.status === 'completed';
+              const isProcessing = message.status === 'processing';
+              
+              setStreamingState(prev => ({
+                messageId: message.id,
+                isStreaming: message.is_streaming,
+                streamingProgress: message.is_streaming ? prev.streamingProgress + 1 : 100,
+                // Only show analyzing state if we're processing and not streaming
+                isAnalyzing: !message.is_streaming && isProcessing
+              }));
 
-            // Only trigger the callback when message is complete
-            if (!message.is_streaming && message.role === 'assistant') {
-              onAssistantMessage?.();
+              // If message is complete, trigger callback
+              if (isComplete) {
+                onAssistantMessage?.();
+                // Reset streaming state after a short delay
+                setTimeout(() => {
+                  setStreamingState(prev => ({
+                    ...prev,
+                    isStreaming: false,
+                    isAnalyzing: false
+                  }));
+                }, 500);
+              }
             }
 
             await queryClient.invalidateQueries({ 
