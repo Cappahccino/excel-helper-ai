@@ -10,7 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import { MessageContent } from "@/components/message/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
-import { useChatController } from "@/hooks/useChatController";
+import { useChatMessages } from "@/hooks/useChatMessages";
+import { useChatRealtime } from "@/hooks/useChatRealtime";
 
 const Chat = () => {
   const location = useLocation();
@@ -45,20 +46,22 @@ const Chat = () => {
   const {
     messages,
     isLoading: messagesLoading,
-    status,
-    latestMessageId,
-    sendMessage,
-    formatTimestamp
-  } = useChatController({
+    sendMessage: sendMessageMutation,
+    formatTimestamp,
+    refetch
+  } = useChatMessages(selectedSessionId);
+
+  const { status, latestMessageId } = useChatRealtime({
     sessionId: selectedSessionId,
-    fileId: uploadedFileId || fileIdFromUrl || null,
-    onMessageSent: resetUpload
+    refetch,
+    onAssistantMessage: () => {}
   });
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
     const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
-    await sendMessage(message, activeFileId);
+    await sendMessageMutation.mutateAsync({ content: message, fileId: activeFileId });
+    resetUpload();
   };
 
   const activeFileId = uploadedFileId || fileIdFromUrl;

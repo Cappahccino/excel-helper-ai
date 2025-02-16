@@ -33,10 +33,10 @@ export function ChatWindow({
     messages,
     isLoading,
     isError,
-    sendMessage,
+    sendMessage: sendMessageMutation,
     formatTimestamp,
     groupMessagesByDate,
-    refetch: refetchMessages
+    refetch
   } = useChatMessages(sessionId);
 
   const {
@@ -51,7 +51,7 @@ export function ChatWindow({
 
   const { status, latestMessageId } = useChatRealtime({
     sessionId: sessionId || null,
-    refetchMessages,
+    refetch,
     onAssistantMessage: () => {
       if (!hasScrolledUp) {
         scrollToBottom("smooth");
@@ -59,8 +59,13 @@ export function ChatWindow({
     }
   });
 
+  const handleSendMessage = async (message: string, fileId?: string | null) => {
+    await sendMessageMutation.mutateAsync({ content: message, fileId });
+    onMessageSent?.();
+  };
+
   if (isError) {
-    return <ChatError onRetry={refetchMessages} />;
+    return <ChatError onRetry={refetch} />;
   }
 
   const messageGroups = groupMessagesByDate(messages);
@@ -103,7 +108,7 @@ export function ChatWindow({
       
       <div className="absolute bottom-0 left-0 right-0">
         <ChatInput 
-          onSendMessage={sendMessage}
+          onSendMessage={handleSendMessage}
           isAnalyzing={status === 'in_progress'}
           sessionId={sessionId}
           fileInfo={fileInfo}
