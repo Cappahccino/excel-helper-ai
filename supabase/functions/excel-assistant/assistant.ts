@@ -28,7 +28,7 @@ export async function streamAssistantResponse(
   openai: OpenAI, 
   threadId: string, 
   runId: string, 
-  updateMessage: (content: string, isComplete: boolean) => Promise<void>,
+  updateMessage: (content: string, isComplete: boolean, raw?: any) => Promise<void>,
   maxDuration: number = 60000
 ): Promise<string> {
   let accumulatedContent = "";
@@ -52,7 +52,6 @@ export async function streamAssistantResponse(
       console.log(`🔍 Checking for new content at ${new Date().toISOString()}`);
 
       try {
-        // Get the latest assistant message
         const messages = await openai.beta.threads.messages.list(threadId, {
           order: "desc",
           limit: 1
@@ -64,31 +63,35 @@ export async function streamAssistantResponse(
         }
 
         const message = messages.data[0];
-        console.log(`📨 Latest message - ID: ${message.id}, Role: ${message.role}`);
 
-        // Only update if this is a new message
         if (message.id !== lastMessageId && message.role === "assistant") {
           console.log(`🆕 New assistant message detected (ID: ${message.id})`);
           lastMessageId = message.id;
 
-          // Extract content from the message
+          // Store the raw message for debugging
+          const rawMessage = {
+            id: message.id,
+            role: message.role,
+            content: message.content
+          };
+
           if (!message.content || !Array.isArray(message.content) || !message.content.length) {
             console.warn('⚠️ Invalid message structure:', message);
             continue;
           }
 
           const textContent = message.content.find(content => content.type === 'text');
-          if (!textContent || !textContent.text || !textContent.text.value) {
+          if (!textContent?.text?.value) {
             console.warn('⚠️ No valid text content found:', message.content);
             continue;
           }
 
           accumulatedContent = textContent.text.value;
-          console.log(`📤 Updating message with content (length: ${accumulatedContent.length})`);
+          console.log(`📤 Processing content (length: ${accumulatedContent.length})`);
           console.log('Content preview:', accumulatedContent.substring(0, 100));
 
           try {
-            await updateMessage(accumulatedContent, false);
+            await updateMessage(accumulatedContent, false, rawMessage);
             console.log('✅ Message update successful');
           } catch (updateError) {
             console.error('❌ Failed to update message:', updateError);

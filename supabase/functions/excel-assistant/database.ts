@@ -5,19 +5,26 @@ export async function updateStreamingMessage(
   supabase: ReturnType<typeof createClient>,
   messageId: string,
   content: string,
-  isComplete: boolean
+  isComplete: boolean,
+  rawMessage?: any
 ) {
-  console.log(`🔄 Updating message ${messageId} with content length: ${content?.length || 0}`);
+  console.log(`🔄 Updating message ${messageId}`);
+  console.log(`Content length: ${content?.length || 0}`);
   console.log('Content preview:', content?.substring(0, 100));
 
   try {
+    const updateData = {
+      content: content || '', // Never store null content
+      is_streaming: !isComplete,
+      raw_response: rawMessage || null,
+      status: isComplete ? 'completed' : 'streaming'
+    };
+
+    console.log('Update payload:', JSON.stringify(updateData, null, 2));
+
     const { data, error } = await supabase
       .from('chat_messages')
-      .update({
-        content: content || '', // Ensure we never pass null
-        is_streaming: !isComplete,
-        raw_response: content ? { content } : null // Store raw response for debugging
-      })
+      .update(updateData)
       .eq('id', messageId)
       .select();
 
