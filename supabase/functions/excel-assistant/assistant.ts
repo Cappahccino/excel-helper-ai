@@ -28,7 +28,7 @@ export async function streamAssistantResponse(
   openai: OpenAI, 
   threadId: string, 
   runId: string, 
-  updateMessage: (content: string, isComplete: boolean) => Promise<void>,
+  updateMessage: (content: string, isComplete: boolean, rawResponse?: any) => Promise<void>,
   maxDuration: number = 60000
 ): Promise<string> {
   let accumulatedContent = "";
@@ -45,49 +45,56 @@ export async function streamAssistantResponse(
       const run = await openai.beta.threads.runs.retrieve(threadId, runId);
       console.log(`Run status: ${run.status}`);
 
-      const shouldCheckContent =
-        run.status === "completed" ||
-        (run.status === "in_progress" &&
-          Date.now() - lastContentCheck >= 1000);
+      if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
+        throw new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
+      }
 
-      if (shouldCheckContent) {
-        lastContentCheck = Date.now();
+      if (run.status === "completed" || run.status === "in_progress") {
+        if (Date.now() - lastContentCheck >= 1000) {
+          lastContentCheck = Date.now();
 
-        const messages = await openai.beta.threads.messages.list(threadId, {
-          order: "desc",
-          limit: 1
-        });
+          const messages = await openai.beta.threads.messages.list(threadId, {
+            order: "desc",
+            limit: 1
+          });
 
-        if (messages.data.length > 0) {
-          const message = messages.data[0];
-          
-          if (message.id !== lastMessageId) {
-            lastMessageId = message.id;
-            console.log('New message received:', message.id);
+          if (messages.data.length > 0) {
+            const message = messages.data[0];
             
-            if (message.role === "assistant" && message.content) {
-              const textContent = message.content.find(content => 
-                content.type === 'text' && content.text?.value
-              );
+            if (message.id !== lastMessageId && message.role === "assistant") {
+              lastMessageId = message.id;
+              console.log('New message received:', message.id);
+              console.log('Raw message content:', JSON.stringify(message.content));
+              
+              let messageContent = "";
+              for (const contentPart of message.content) {
+                if (contentPart.type === 'text' && contentPart.text?.value) {
+                  messageContent += contentPart.text.value;
+                }
+              }
 
-              if (textContent?.text?.value) {
-                accumulatedContent = textContent.text.value;
-                console.log(`Updating message with content length: ${accumulatedContent.length}`);
+              if (messageContent) {
+                accumulatedContent = messageContent;
+                console.log(`Extracted message content (${accumulatedContent.length} chars):`, accumulatedContent.substring(0, 100) + '...');
                 
-                await updateMessage(accumulatedContent, run.status === "completed");
-                retryCount = 0; // Reset retry count on successful update
+                await updateMessage(
+                  accumulatedContent, 
+                  run.status === "completed",
+                  message
+                );
+                retryCount = 0;
+              } else {
+                console.warn('No text content found in message:', message);
               }
             }
           }
         }
-      }
 
-      if (run.status === "completed") {
-        console.log("Assistant response complete");
-        await updateMessage(accumulatedContent, true);
-        return accumulatedContent;
-      } else if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
-        throw new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
+        if (run.status === "completed") {
+          console.log("Assistant response complete");
+          await updateMessage(accumulatedContent, true);
+          return accumulatedContent;
+        }
       }
 
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -99,7 +106,6 @@ export async function streamAssistantResponse(
         throw new Error(`Failed to process response after ${maxRetries} retries: ${error.message}`);
       }
       
-      // Wait before retrying
       await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
     }
   }

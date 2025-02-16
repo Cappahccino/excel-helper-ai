@@ -5,26 +5,39 @@ export async function updateStreamingMessage(
   supabase: ReturnType<typeof createClient>,
   messageId: string,
   content: string,
-  isComplete: boolean
+  isComplete: boolean,
+  rawResponse?: any
 ) {
   try {
-    // Validate content
+    // Validate and clean content
     const validContent = content?.trim() || '';
-    console.log(`Updating message ${messageId} with content length: ${validContent.length}`);
+    console.log(`Updating message ${messageId}:`);
+    console.log(`- Content length: ${validContent.length}`);
+    console.log(`- Is complete: ${isComplete}`);
+    console.log(`- Has raw response: ${!!rawResponse}`);
+
+    const updateData: Record<string, any> = {
+      content: validContent,
+      is_streaming: !isComplete,
+      status: isComplete ? 'completed' : 'streaming'
+    };
+
+    // Only include raw_response if it exists
+    if (rawResponse) {
+      updateData.raw_response = rawResponse;
+    }
 
     const { error } = await supabase
       .from('chat_messages')
-      .update({
-        content: validContent,
-        is_streaming: !isComplete,
-        status: isComplete ? 'completed' : 'streaming'
-      })
+      .update(updateData)
       .eq('id', messageId);
 
     if (error) {
       console.error('Error updating message:', error);
       throw error;
     }
+
+    console.log(`Successfully updated message ${messageId}`);
   } catch (error) {
     console.error(`Failed to update message ${messageId}:`, error);
     throw error;
