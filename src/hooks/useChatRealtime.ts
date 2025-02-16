@@ -11,9 +11,7 @@ interface UseChatRealtimeProps {
 export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealtimeProps) {
   const [streamingState, setStreamingState] = useState({
     messageId: null as string | null,
-    isStreaming: false,
-    streamingProgress: 0,
-    isAnalyzing: false
+    isProcessing: false
   });
   const queryClient = useQueryClient();
 
@@ -33,16 +31,16 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
         async (payload: any) => {
           if (payload.new) {
             const message = payload.new;
+            const hasContent = message.content && message.content.trim().length > 0;
             
-            setStreamingState(prev => ({
+            // Simplified state management - only track if we're processing
+            setStreamingState({
               messageId: message.id,
-              isStreaming: message.is_streaming,
-              streamingProgress: message.is_streaming ? prev.streamingProgress + 1 : 100,
-              isAnalyzing: !message.is_streaming && message.status === 'processing'
-            }));
+              isProcessing: !hasContent && message.status === 'processing'
+            });
 
-            // Only trigger the callback when message is complete
-            if (!message.is_streaming && message.role === 'assistant') {
+            // Notify when assistant message is complete
+            if (hasContent && message.role === 'assistant') {
               onAssistantMessage?.();
             }
 
@@ -67,8 +65,6 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
 
   return {
     latestMessageId: streamingState.messageId,
-    isStreaming: streamingState.isStreaming,
-    streamingProgress: streamingState.streamingProgress,
-    isAnalyzing: streamingState.isAnalyzing
+    isProcessing: streamingState.isProcessing
   };
 }
