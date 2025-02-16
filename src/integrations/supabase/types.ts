@@ -23,7 +23,7 @@ export type Database = {
           raw_response: Json | null
           role: string
           session_id: string | null
-          status: string
+          status: Database["public"]["Enums"]["message_status"]
           thread_message_id: string | null
           user_id: string
         }
@@ -40,7 +40,7 @@ export type Database = {
           raw_response?: Json | null
           role?: string
           session_id?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["message_status"]
           thread_message_id?: string | null
           user_id: string
         }
@@ -57,7 +57,7 @@ export type Database = {
           raw_response?: Json | null
           role?: string
           session_id?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["message_status"]
           thread_message_id?: string | null
           user_id?: string
         }
@@ -254,6 +254,7 @@ export type Database = {
         | "analyzing"
         | "completed"
         | "error"
+      message_status: "processing" | "streaming" | "completed" | "error"
     }
     CompositeTypes: {
       [_ in never]: never

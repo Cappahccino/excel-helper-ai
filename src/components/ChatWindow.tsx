@@ -23,7 +23,6 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatWindowProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -49,10 +48,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
     chatContainerRef
   });
 
-  const { latestMessageId, isStreaming } = useChatRealtime({
+  const { latestMessageId, isStreaming, isAnalyzing } = useChatRealtime({
     sessionId: session?.session_id || null,
     onAssistantMessage: () => {
-      setIsAnalyzing(false);
       if (!hasScrolledUp) {
         scrollToBottom("smooth");
       }
@@ -60,11 +58,9 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
   });
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
-    if ((!message.trim() && !fileId) || isAnalyzing) return;
+    if ((!message.trim() && !fileId) || isStreaming || isAnalyzing) return;
 
     try {
-      setIsAnalyzing(true);
-      
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
@@ -92,7 +88,8 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
           session_id: currentSessionId,
           excel_file_id: fileId || null,
           is_ai_response: false,
-          user_id: user.id
+          user_id: user.id,
+          status: 'completed'
         });
       
       if (messageError) throw messageError;
@@ -117,7 +114,6 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
       
     } catch (error) {
       console.error('Analysis error:', error);
-      setIsAnalyzing(false);
       toast({
         title: "Analysis Failed",
         description: error instanceof Error ? error.message : "Failed to analyze request",

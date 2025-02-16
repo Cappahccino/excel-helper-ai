@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 export async function updateStreamingMessage(
@@ -15,11 +14,14 @@ export async function updateStreamingMessage(
     operation: 'update_streaming_message'
   });
 
+  const status = isComplete ? 'completed' : 'streaming';
+
   const { data, error } = await supabase
     .from('chat_messages')
     .update({
       content,
-      is_streaming: !isComplete
+      is_streaming: !isComplete,
+      status
     })
     .eq('id', messageId)
     .select();
@@ -35,6 +37,7 @@ export async function updateStreamingMessage(
     console.log(`[${requestId}] Message updated successfully:`, {
       messageId,
       isComplete,
+      status,
       updatedAt: data?.[0]?.updated_at
     });
   }
@@ -63,7 +66,8 @@ export async function createInitialMessage(
       content: '',
       role: 'assistant',
       is_ai_response: true,
-      is_streaming: true
+      is_streaming: false,
+      status: 'processing'
     })
     .select()
     .single();
@@ -80,7 +84,8 @@ export async function createInitialMessage(
   console.log(`[${requestId}] Initial message created:`, {
     messageId: message.id,
     sessionId: message.session_id,
-    createdAt: message.created_at
+    createdAt: message.created_at,
+    status: message.status
   });
 
   return message;
