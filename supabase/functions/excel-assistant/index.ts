@@ -46,6 +46,35 @@ async function createInitialMessage(supabase: any, userId: string, sessionId: st
   return message;
 }
 
+async function generateChatName(openai: OpenAI, query: string, excelData: ExcelData[] | null): Promise<string> {
+  try {
+    const fileContext = excelData 
+      ? `The conversation is about an Excel file containing ${excelData.length} sheet(s). First sheet: "${excelData[0]?.sheetName}".`
+      : 'This is a general Excel-related conversation.';
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "Generate a short, descriptive title (2-4 words) for this chat conversation. Return ONLY the title, no explanations or punctuation."
+        },
+        {
+          role: "user",
+          content: `Create a concise title based on this context:\n${fileContext}\nFirst message: "${query}"`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 20,
+    });
+
+    return response.choices[0]?.message?.content?.trim() || 'Excel Analysis Chat';
+  } catch (error) {
+    console.error('Error generating chat name:', error);
+    return 'Excel Analysis Chat';
+  }
+}
+
 async function processExcelFile(supabase: any, fileId: string): Promise<ExcelData[] | null> {
   if (!fileId) return null;
   
@@ -209,13 +238,26 @@ serve(async (req) => {
         await updateStreamingMessage(supabase, message.id, accumulatedContent, true);
       }
 
-      // Update session with latest file_id if needed
-      if (activeFileId && !session.excel_file_id) {
+      // Generate and update chat name if this is a new session or has default name
+      if (messageHistory.length === 0 || session.chat_name === 'Untitled Chat') {
+        const chatName = await generateChatName(openai, query, excelData);
         await supabase
           .from('chat_sessions')
-          .update({ excel_file_id: activeFileId })
+          .update({ 
+            chat_name: chatName,
+            excel_file_id: activeFileId 
+          })
           .eq('session_id', sessionId);
+      } else {
+        // Update session with latest file_id if needed
+        if (activeFileId && !session.excel_file_id) {
+          await supabase
+            .from('chat_sessions')
+            .update({ excel_file_id: activeFileId })
+            .eq('session_id', sessionId);
+        }
       }
+
     } catch (streamError) {
       console.error(`Stream error:`, streamError);
       controller.abort();
@@ -247,4 +289,3 @@ serve(async (req) => {
     );
   }
 });
-
