@@ -11,8 +11,11 @@ export type Database = {
     Tables: {
       chat_messages: {
         Row: {
+          cleanup_after: string | null
+          cleanup_reason: string | null
           content: string
           created_at: string
+          deployment_id: string | null
           excel_file_id: string | null
           id: string
           is_ai_response: boolean | null
@@ -25,10 +28,14 @@ export type Database = {
           status: Database["public"]["Enums"]["message_status"]
           thread_message_id: string | null
           user_id: string
+          version: string | null
         }
         Insert: {
+          cleanup_after?: string | null
+          cleanup_reason?: string | null
           content: string
           created_at?: string
+          deployment_id?: string | null
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
@@ -41,10 +48,14 @@ export type Database = {
           status?: Database["public"]["Enums"]["message_status"]
           thread_message_id?: string | null
           user_id: string
+          version?: string | null
         }
         Update: {
+          cleanup_after?: string | null
+          cleanup_reason?: string | null
           content?: string
           created_at?: string
+          deployment_id?: string | null
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
@@ -57,6 +68,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["message_status"]
           thread_message_id?: string | null
           user_id?: string
+          version?: string | null
         }
         Relationships: [
           {
@@ -239,6 +251,10 @@ export type Database = {
     }
     Functions: {
       cleanup_orphaned_files: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_orphaned_messages: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
