@@ -11,7 +11,7 @@ const corsHeaders = {
 
 const ASSISTANT_INSTRUCTIONS = `You are an Excel data analyst assistant. Help users analyze Excel data and answer questions about spreadsheets. 
 When data is provided, focus on giving clear insights and explanations. If data seems incomplete or unclear, mention this in your response. 
-Maintain context from the conversation history. When no specific Excel file is provided, provide general Excel advice and guidance.`;
+Focus only on the current question, do not reference previous conversations. When no specific Excel file is provided, provide general Excel advice and guidance.`;
 
 interface ExcelData {
   sheetName: string;
@@ -124,9 +124,9 @@ async function getSessionContext(supabase: any, sessionId: string) {
   return session;
 }
 
-const STATUS_POLL_INTERVAL = 500; // 500ms for status checks
-const CONTENT_POLL_INTERVAL = 1000; // 1s for content updates
-const MAX_DURATION = 60000; // 60 seconds timeout
+const STATUS_POLL_INTERVAL = 500;
+const CONTENT_POLL_INTERVAL = 1000;
+const MAX_DURATION = 60000;
 
 async function streamAssistantResponse(
   openai: OpenAI, 
@@ -141,11 +141,9 @@ async function streamAssistantResponse(
   let startTime = Date.now();
 
   while (Date.now() - startTime < MAX_DURATION) {
-    // 1️⃣ Fetch Run Status Every 500ms
     const run = await openai.beta.threads.runs.retrieve(threadId, runId);
     console.log(`Run status: ${run.status}`);
 
-    // 2️⃣ Check if Content Should Be Fetched
     const shouldCheckContent =
       run.status === "completed" ||
       (run.status === "in_progress" &&
@@ -154,26 +152,20 @@ async function streamAssistantResponse(
     if (shouldCheckContent) {
       lastContentCheck = Date.now();
 
-      // 3️⃣ Fetch New Messages Only (Avoid Re-fetching Old Messages)
       const messages = await openai.beta.threads.messages.list(threadId, {
-        order: "asc", // Ensure chronological order
-        after: lastMessageId, // Fetch only new messages
+        order: "desc",
+        limit: 1
       });
 
       if (messages.data.length > 0) {
-        lastMessageId = messages.data[messages.data.length - 1].id; // Track last message ID
-
-        for (const message of messages.data) {
-          if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
-            const newContent = message.content[0].text.value;
-            accumulatedContent = newContent; // Replace with latest content
-            await updateStreamingMessage(supabase, messageId, accumulatedContent, false);
-          }
+        const message = messages.data[0];
+        if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
+          accumulatedContent = message.content[0].text.value;
+          await updateStreamingMessage(supabase, messageId, accumulatedContent, false);
         }
       }
     }
 
-    // 4️⃣ Handle different run statuses
     if (run.status === "completed") {
       console.log("Assistant response complete.");
       await updateStreamingMessage(supabase, messageId, accumulatedContent, true);
@@ -182,7 +174,6 @@ async function streamAssistantResponse(
       throw new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
     }
 
-    // 5️⃣ Delay for next status check
     await new Promise((resolve) => setTimeout(resolve, STATUS_POLL_INTERVAL));
   }
 
@@ -220,34 +211,23 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    // Get or create assistant
     const assistantId = await getOrCreateAssistant(openai);
-
-    // Get session context and process Excel file
     const session = await getSessionContext(supabase, sessionId);
     const excelData = fileId ? await processExcelFile(supabase, fileId) : null;
-
-    // Create initial message
     const message = await createInitialMessage(supabase, userId, sessionId, fileId);
 
     try {
-      // Get or create thread
-      let threadId = session.thread_id;
-      if (!threadId) {
-        const thread = await openai.beta.threads.create();
-        threadId = thread.id;
-        
-        // Update session with thread_id
-        await supabase
-          .from('chat_sessions')
-          .update({ 
-            thread_id: threadId,
-            assistant_id: assistantId
-          })
-          .eq('session_id', sessionId);
-      }
+      const thread = await openai.beta.threads.create();
+      const threadId = thread.id;
+      
+      await supabase
+        .from('chat_sessions')
+        .update({ 
+          thread_id: threadId,
+          assistant_id: assistantId
+        })
+        .eq('session_id', sessionId);
 
-      // Create message in thread
       const excelContext = excelData 
         ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
         : '';
@@ -257,12 +237,11 @@ serve(async (req) => {
         content: `${excelContext}${query}`
       });
 
-      // Create run
       const run = await openai.beta.threads.runs.create(threadId, {
-        assistant_id: assistantId
+        assistant_id: assistantId,
+        instructions: "Focus only on answering the current question. Do not reference or use context from previous messages."
       });
 
-      // Update message with OpenAI IDs
       await supabase
         .from('chat_messages')
         .update({ 
@@ -271,7 +250,6 @@ serve(async (req) => {
         })
         .eq('id', message.id);
 
-      // Stream response with improved polling
       const finalContent = await streamAssistantResponse(
         openai,
         threadId,
@@ -280,7 +258,6 @@ serve(async (req) => {
         message.id
       );
 
-      // Update session
       await supabase
         .from('chat_sessions')
         .update({ 
