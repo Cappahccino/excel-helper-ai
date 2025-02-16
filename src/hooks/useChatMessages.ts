@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
+const MESSAGES_PER_PAGE = 50;
+
 interface Message {
   id: string;
   content: string;
@@ -47,16 +49,23 @@ export function useChatMessages(sessionId: string | null) {
     enabled: !!sessionId,
   });
 
-  const { data: messages = [], isLoading: messagesLoading, isError, refetch } = useQuery({
+  const { data: messages = [], isLoading: messagesLoading, isError, refetch, hasNextPage, fetchNextPage } = useQuery({
     queryKey: ['chat-messages', session?.session_id],
-    queryFn: async () => {
+    queryFn: async ({ pageParam = null }) => {
       if (!session?.session_id) return [];
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('chat_messages')
         .select('*, excel_files(filename, file_size)')
         .eq('session_id', session.session_id)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(MESSAGES_PER_PAGE);
+
+      if (pageParam) {
+        query = query.lt('created_at', pageParam);
+      }
+      
+      const { data, error } = await query;
       
       if (error) {
         console.error('Error fetching messages:', error);
@@ -68,6 +77,10 @@ export function useChatMessages(sessionId: string | null) {
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         isStreaming: msg.is_streaming || false
       })) as Message[];
+    },
+    getNextPageParam: (lastPage) => {
+      if (lastPage.length < MESSAGES_PER_PAGE) return undefined;
+      return lastPage[lastPage.length - 1]?.created_at;
     },
     enabled: !!session?.session_id,
   });
@@ -233,6 +246,8 @@ export function useChatMessages(sessionId: string | null) {
     sendMessage,
     formatTimestamp,
     groupMessagesByDate,
-    refetch
+    refetch,
+    hasNextPage,
+    fetchNextPage
   };
 }

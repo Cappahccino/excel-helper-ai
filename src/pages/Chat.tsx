@@ -13,6 +13,7 @@ import { MessageContent } from "@/components/message/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { useToast } from "@/hooks/use-toast";
 import { useChatMessages } from "@/hooks/useChatMessages";
+import { useChatRealtime } from "@/hooks/useChatRealtime";
 
 const Chat = () => {
   const location = useLocation();
@@ -49,8 +50,17 @@ const Chat = () => {
     messages, 
     sendMessage, 
     isLoading: messagesLoading,
-    formatTimestamp
+    formatTimestamp,
+    hasNextPage,
+    fetchNextPage
   } = useChatMessages(selectedSessionId);
+
+  const { latestMessageId, isStreaming, streamingProgress } = useChatRealtime({
+    sessionId: selectedSessionId,
+    onAssistantMessage: () => {
+      resetUpload();
+    }
+  });
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
@@ -61,9 +71,6 @@ const Chat = () => {
         content: message, 
         fileId: activeFileId 
       });
-
-      // Reset upload after successful message send
-      resetUpload();
       
     } catch (error) {
       console.error('Analysis error:', error);
@@ -72,6 +79,15 @@ const Chat = () => {
         description: error instanceof Error ? error.message : "Failed to process message",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLDivElement;
+    const isNearTop = target.scrollTop < 100;
+
+    if (isNearTop && hasNextPage && !messagesLoading) {
+      fetchNextPage();
     }
   };
 
@@ -133,7 +149,10 @@ const Chat = () => {
                   exit={{ opacity: 0 }}
                   className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
                 >
-                  <ScrollArea className="flex-grow p-4">
+                  <ScrollArea 
+                    className="flex-grow p-4"
+                    onScrollCapture={handleScroll}
+                  >
                     <div className="space-y-6">
                       {messages.map(msg => (
                         <MessageContent
@@ -142,6 +161,9 @@ const Chat = () => {
                           role={msg.role as 'user' | 'assistant'}
                           timestamp={formatTimestamp(msg.created_at)}
                           fileInfo={msg.excel_files}
+                          isNewMessage={msg.id === latestMessageId}
+                          isStreaming={msg.id === latestMessageId && isStreaming}
+                          streamingProgress={msg.id === latestMessageId ? streamingProgress : undefined}
                         />
                       ))}
                     </div>
@@ -154,7 +176,7 @@ const Chat = () => {
                     <ChatInput
                       onSendMessage={handleSendMessage}
                       sessionId={selectedSessionId}
-                      isAnalyzing={false}
+                      isAnalyzing={isStreaming}
                       fileInfo={currentFile}
                     />
                   </div>
