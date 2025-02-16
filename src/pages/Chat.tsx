@@ -52,11 +52,13 @@ const Chat = () => {
     isLoading: messagesLoading,
     formatTimestamp,
     hasNextPage,
-    fetchNextPage
+    fetchNextPage,
+    refetch
   } = useChatMessages(selectedSessionId);
 
   const { latestMessageId, status } = useChatRealtime({
     sessionId: selectedSessionId,
+    refetch,
     onAssistantMessage: () => {
       resetUpload();
     }
