@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -21,13 +20,11 @@ interface ExcelData {
 
 async function getOrCreateAssistant(openai: OpenAI): Promise<string> {
   try {
-    // Get assistant ID from environment variable
     const existingAssistantId = Deno.env.get('EXCEL_ASSISTANT_ID');
     if (existingAssistantId) {
       return existingAssistantId;
     }
 
-    // Create new assistant if doesn't exist
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
       instructions: ASSISTANT_INSTRUCTIONS,
@@ -127,6 +124,10 @@ async function getSessionContext(supabase: any, sessionId: string) {
   return session;
 }
 
+const STATUS_POLL_INTERVAL = 500; // 500ms for status checks
+const CONTENT_POLL_INTERVAL = 1000; // 1s for content updates
+const MAX_DURATION = 60000; // 60 seconds timeout
+
 async function streamAssistantResponse(
   openai: OpenAI, 
   threadId: string, 
@@ -134,62 +135,58 @@ async function streamAssistantResponse(
   supabase: any,
   messageId: string
 ): Promise<string> {
-  let accumulatedContent = '';
-  let pollingCount = 0;
-  const maxPolls = 60; // Maximum number of polling attempts (60 seconds)
-  
-  while (pollingCount < maxPolls) {
-    try {
-      const run = await openai.beta.threads.runs.retrieve(threadId, runId);
-      console.log(`Run status: ${run.status}`);
-      
-      if (run.status === 'completed') {
-        const messages = await openai.beta.threads.messages.list(threadId, {
-          order: 'desc',
-          limit: 1,
-        });
-        
-        if (!messages.data || messages.data.length === 0) {
-          throw new Error('No messages found after completion');
-        }
-        
-        const latestMessage = messages.data[0];
-        if (!latestMessage.content || !latestMessage.content[0] || !latestMessage.content[0].text) {
-          throw new Error('Invalid message format received from OpenAI');
-        }
-        
-        const content = latestMessage.content[0].text.value;
-        await updateStreamingMessage(supabase, messageId, content, true);
-        return content;
-      } else if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'expired') {
-        throw new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
-      }
-      
-      // Get new messages since last check
-      const messages = await openai.beta.threads.messages.list(threadId);
-      
-      for (const message of messages.data) {
-        if (message.role === 'assistant' && 
-            message.content && 
-            message.content[0] && 
-            message.content[0].text) {
-          const newContent = message.content[0].text.value;
-          if (newContent && newContent !== accumulatedContent) {
-            accumulatedContent = newContent;
+  let accumulatedContent = "";
+  let lastContentCheck = 0;
+  let lastMessageId = null;
+  let startTime = Date.now();
+
+  while (Date.now() - startTime < MAX_DURATION) {
+    // 1️⃣ Fetch Run Status Every 500ms
+    const run = await openai.beta.threads.runs.retrieve(threadId, runId);
+    console.log(`Run status: ${run.status}`);
+
+    // 2️⃣ Check if Content Should Be Fetched
+    const shouldCheckContent =
+      run.status === "completed" ||
+      (run.status === "in_progress" &&
+        Date.now() - lastContentCheck >= CONTENT_POLL_INTERVAL);
+
+    if (shouldCheckContent) {
+      lastContentCheck = Date.now();
+
+      // 3️⃣ Fetch New Messages Only (Avoid Re-fetching Old Messages)
+      const messages = await openai.beta.threads.messages.list(threadId, {
+        order: "asc", // Ensure chronological order
+        after: lastMessageId, // Fetch only new messages
+      });
+
+      if (messages.data.length > 0) {
+        lastMessageId = messages.data[messages.data.length - 1].id; // Track last message ID
+
+        for (const message of messages.data) {
+          if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
+            const newContent = message.content[0].text.value;
+            accumulatedContent = newContent; // Replace with latest content
             await updateStreamingMessage(supabase, messageId, accumulatedContent, false);
           }
         }
       }
-      
-      // Increment polling count and wait
-      pollingCount++;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } catch (error) {
-      console.error('Error in streamAssistantResponse:', error);
-      throw error;
     }
+
+    // 4️⃣ Handle different run statuses
+    if (run.status === "completed") {
+      console.log("Assistant response complete.");
+      await updateStreamingMessage(supabase, messageId, accumulatedContent, true);
+      return accumulatedContent;
+    } else if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
+      throw new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
+    }
+
+    // 5️⃣ Delay for next status check
+    await new Promise((resolve) => setTimeout(resolve, STATUS_POLL_INTERVAL));
   }
-  
+
+  console.warn("Timeout reached, stopping polling.");
   throw new Error('Response streaming timed out');
 }
 
@@ -274,7 +271,7 @@ serve(async (req) => {
         })
         .eq('id', message.id);
 
-      // Stream response
+      // Stream response with improved polling
       const finalContent = await streamAssistantResponse(
         openai,
         threadId,
