@@ -26,7 +26,11 @@ export function MessageContent({
   isNewMessage,
   status = 'completed'
 }: MessageContentProps) {
-  const isThinking = role === 'assistant' && (status === "in_progress" || status === "queued");
+  const isThinking = (
+    role === "assistant" &&
+    status === "in_progress" &&
+    content.trim().length === 0
+  );
   const showContent = !isThinking && content.trim().length > 0;
 
   return (
