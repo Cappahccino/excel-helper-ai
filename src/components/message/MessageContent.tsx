@@ -29,10 +29,8 @@ export function MessageContent({
 }: MessageContentProps) {
   let displayState: 'thinking' | 'streaming' | 'complete' = 'complete';
 
-  if (isProcessing) {
+  if (isProcessing || isStreaming) {
     displayState = 'thinking';
-  } else if (isStreaming) {
-    displayState = 'streaming';
   }
 
   return (
