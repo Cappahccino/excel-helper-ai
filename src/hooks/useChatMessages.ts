@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
@@ -20,11 +21,21 @@ interface Message {
   isStreaming?: boolean;
 }
 
+interface SessionData {
+  session_id: string;
+  thread_id: string | null;
+}
+
+interface MessagesResponse {
+  messages: Message[];
+  nextCursor: string | null;
+}
+
 export function useChatMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: session, isLoading: sessionLoading } = useInfiniteQuery({
+  const { data: session } = useInfiniteQuery({
     queryKey: ['chat-session', sessionId],
     queryFn: async () => {
       if (!sessionId) return null;
@@ -43,8 +54,10 @@ export function useChatMessages(sessionId: string | null) {
         throw sessionError;
       }
 
-      return sessionData;
+      return sessionData as SessionData;
     },
+    initialPageParam: null,
+    getNextPageParam: () => null,
     enabled: !!sessionId,
   });
 
@@ -55,7 +68,7 @@ export function useChatMessages(sessionId: string | null) {
     refetch,
     hasNextPage,
     fetchNextPage 
-  } = useInfiniteQuery({
+  } = useInfiniteQuery<MessagesResponse>({
     queryKey: ['chat-messages', session?.pages?.[0]?.session_id],
     queryFn: async ({ pageParam = null }) => {
       if (!session?.pages?.[0]?.session_id) return { messages: [], nextCursor: null };
@@ -93,6 +106,7 @@ export function useChatMessages(sessionId: string | null) {
         nextCursor,
       };
     },
+    initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: !!session?.pages?.[0]?.session_id,
   });
@@ -251,7 +265,7 @@ export function useChatMessages(sessionId: string | null) {
   return {
     messages,
     session: session?.pages?.[0],
-    isLoading: sessionLoading || messagesLoading,
+    isLoading: messagesLoading,
     isError,
     sendMessage,
     formatTimestamp,
