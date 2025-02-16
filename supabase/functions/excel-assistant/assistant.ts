@@ -58,49 +58,42 @@ export async function streamAssistantResponse(
           limit: 1
         });
 
-        console.log(`📨 Retrieved ${messages.data.length} messages`);
-
-        if (messages.data.length > 0) {
-          const message = messages.data[0];
-          console.log(`📝 Latest message - ID: ${message.id}, Role: ${message.role}`);
-          
-          // Log the full message structure for debugging
-          console.log('Message content structure:', JSON.stringify(message, null, 2));
-
-          // Only update if this is a new message
-          if (message.id !== lastMessageId) {
-            console.log(`🆕 New message detected (ID: ${message.id})`);
-            lastMessageId = message.id;
-
-            if (message.role === "assistant") {
-              if (!message.content) {
-                console.warn('⚠️ Message content is null or undefined');
-              } else if (!Array.isArray(message.content)) {
-                console.warn('⚠️ Message content is not an array:', typeof message.content);
-              } else if (message.content.length === 0) {
-                console.warn('⚠️ Message content array is empty');
-              } else if (!message.content[0].text) {
-                console.warn('⚠️ First content item has no text property:', message.content[0]);
-              } else {
-                console.log('✅ Valid message content found');
-                accumulatedContent = message.content[0].text.value;
-                console.log(`📤 Updating message with content (length: ${accumulatedContent.length})`);
-                try {
-                  await updateMessage(accumulatedContent, false);
-                  console.log('✅ Message update successful');
-                } catch (updateError) {
-                  console.error('❌ Failed to update message:', updateError);
-                  throw updateError;
-                }
-              }
-            } else {
-              console.log(`ℹ️ Skipping non-assistant message (role: ${message.role})`);
-            }
-          } else {
-            console.log(`ℹ️ Message ${message.id} already processed`);
-          }
-        } else {
+        if (!messages.data.length) {
           console.warn('⚠️ No messages returned from API');
+          continue;
+        }
+
+        const message = messages.data[0];
+        console.log(`📨 Latest message - ID: ${message.id}, Role: ${message.role}`);
+
+        // Only update if this is a new message
+        if (message.id !== lastMessageId && message.role === "assistant") {
+          console.log(`🆕 New assistant message detected (ID: ${message.id})`);
+          lastMessageId = message.id;
+
+          // Extract content from the message
+          if (!message.content || !Array.isArray(message.content) || !message.content.length) {
+            console.warn('⚠️ Invalid message structure:', message);
+            continue;
+          }
+
+          const textContent = message.content.find(content => content.type === 'text');
+          if (!textContent || !textContent.text || !textContent.text.value) {
+            console.warn('⚠️ No valid text content found:', message.content);
+            continue;
+          }
+
+          accumulatedContent = textContent.text.value;
+          console.log(`📤 Updating message with content (length: ${accumulatedContent.length})`);
+          console.log('Content preview:', accumulatedContent.substring(0, 100));
+
+          try {
+            await updateMessage(accumulatedContent, false);
+            console.log('✅ Message update successful');
+          } catch (updateError) {
+            console.error('❌ Failed to update message:', updateError);
+            throw updateError;
+          }
         }
       } catch (messageError) {
         console.error('❌ Error retrieving or processing messages:', messageError);
