@@ -7,15 +7,28 @@ export async function updateStreamingMessage(
   content: string,
   isComplete: boolean
 ) {
-  const { error } = await supabase
-    .from('chat_messages')
-    .update({
-      content,
-      is_streaming: !isComplete
-    })
-    .eq('id', messageId);
+  try {
+    // Validate content
+    const validContent = content?.trim() || '';
+    console.log(`Updating message ${messageId} with content length: ${validContent.length}`);
 
-  if (error) console.error('Error updating message:', error);
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({
+        content: validContent,
+        is_streaming: !isComplete,
+        status: isComplete ? 'completed' : 'streaming'
+      })
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Error updating message:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error(`Failed to update message ${messageId}:`, error);
+    throw error;
+  }
 }
 
 export async function createInitialMessage(
@@ -24,36 +37,54 @@ export async function createInitialMessage(
   sessionId: string,
   fileId: string | null
 ) {
-  const { data: message, error } = await supabase
-    .from('chat_messages')
-    .insert({
-      user_id: userId,
-      session_id: sessionId,
-      excel_file_id: fileId,
-      content: '',
-      role: 'assistant',
-      is_ai_response: true,
-      is_streaming: true
-    })
-    .select()
-    .single();
+  try {
+    console.log(`Creating initial message for session ${sessionId}`);
+    const { data: message, error } = await supabase
+      .from('chat_messages')
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        excel_file_id: fileId,
+        content: '',
+        role: 'assistant',
+        is_ai_response: true,
+        is_streaming: true,
+        status: 'streaming'
+      })
+      .select()
+      .single();
 
-  if (error) throw new Error(`Failed to create initial message: ${error.message}`);
-  return message;
+    if (error) {
+      console.error('Error creating initial message:', error);
+      throw error;
+    }
+    return message;
+  } catch (error) {
+    console.error('Error in createInitialMessage:', error);
+    throw error;
+  }
 }
 
 export async function getSessionContext(
   supabase: ReturnType<typeof createClient>,
   sessionId: string
 ) {
-  const { data: session, error } = await supabase
-    .from('chat_sessions')
-    .select('*')
-    .eq('session_id', sessionId)
-    .single();
+  try {
+    const { data: session, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
 
-  if (error) throw new Error(`Failed to get session context: ${error.message}`);
-  return session;
+    if (error) {
+      console.error('Error getting session context:', error);
+      throw error;
+    }
+    return session;
+  } catch (error) {
+    console.error('Error in getSessionContext:', error);
+    throw error;
+  }
 }
 
 export async function updateSession(
@@ -61,10 +92,18 @@ export async function updateSession(
   sessionId: string,
   data: Record<string, any>
 ) {
-  const { error } = await supabase
-    .from('chat_sessions')
-    .update(data)
-    .eq('session_id', sessionId);
+  try {
+    const { error } = await supabase
+      .from('chat_sessions')
+      .update(data)
+      .eq('session_id', sessionId);
 
-  if (error) throw new Error(`Failed to update session: ${error.message}`);
+    if (error) {
+      console.error('Error updating session:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in updateSession:', error);
+    throw error;
+  }
 }
