@@ -16,7 +16,6 @@ export type Database = {
           excel_file_id: string | null
           id: string
           is_ai_response: boolean | null
-          is_streaming: boolean | null
           metadata: Json | null
           openai_message_id: string | null
           openai_run_id: string | null
@@ -33,7 +32,6 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
-          is_streaming?: boolean | null
           metadata?: Json | null
           openai_message_id?: string | null
           openai_run_id?: string | null
@@ -50,7 +48,6 @@ export type Database = {
           excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
-          is_streaming?: boolean | null
           metadata?: Json | null
           openai_message_id?: string | null
           openai_run_id?: string | null
@@ -254,7 +251,13 @@ export type Database = {
         | "analyzing"
         | "completed"
         | "error"
-      message_status: "processing" | "streaming" | "completed" | "error"
+      message_status:
+        | "queued"
+        | "in_progress"
+        | "completed"
+        | "failed"
+        | "cancelled"
+        | "expired"
     }
     CompositeTypes: {
       [_ in never]: never

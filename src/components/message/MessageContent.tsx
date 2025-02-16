@@ -15,7 +15,7 @@ interface MessageContentProps {
     file_size: number;
   } | null;
   isNewMessage?: boolean;
-  isProcessing?: boolean;
+  status?: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
 }
 
 export function MessageContent({ 
@@ -24,12 +24,12 @@ export function MessageContent({
   timestamp,
   fileInfo,
   isNewMessage,
-  isProcessing
+  status = 'completed'
 }: MessageContentProps) {
   // Show thinking state only if:
   // 1. It's an assistant message
-  // 2. There's no content AND it's processing
-  const isThinking = role === 'assistant' && !content && isProcessing;
+  // 2. Status is "in_progress"
+  const isThinking = role === 'assistant' && status === "in_progress";
 
   return (
     <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>

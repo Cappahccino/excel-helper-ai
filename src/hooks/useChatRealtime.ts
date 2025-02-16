@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +11,7 @@ interface UseChatRealtimeProps {
 export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealtimeProps) {
   const [streamingState, setStreamingState] = useState({
     messageId: null as string | null,
-    isProcessing: false
+    status: 'queued' as 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired'
   });
   const queryClient = useQueryClient();
 
@@ -40,11 +41,10 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
               isComplete
             });
             
-            // Update state based on message status
-            // Only keep processing if message is not complete AND has no content
+            // Update state with new message status
             setStreamingState({
               messageId: message.id,
-              isProcessing: !isComplete && !hasContent
+              status: message.status
             });
 
             // Notify when assistant message is complete
@@ -74,6 +74,6 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
 
   return {
     latestMessageId: streamingState.messageId,
-    isProcessing: streamingState.isProcessing
+    status: streamingState.status
   };
 }
