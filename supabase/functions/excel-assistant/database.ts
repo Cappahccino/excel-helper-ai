@@ -7,15 +7,31 @@ export async function updateStreamingMessage(
   content: string,
   isComplete: boolean
 ) {
-  const { error } = await supabase
-    .from('chat_messages')
-    .update({
-      content,
-      is_streaming: !isComplete
-    })
-    .eq('id', messageId);
+  console.log(`🔄 Updating message ${messageId} with content length: ${content?.length || 0}`);
+  console.log('Content preview:', content?.substring(0, 100));
 
-  if (error) console.error('Error updating message:', error);
+  try {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .update({
+        content: content || '', // Ensure we never pass null
+        is_streaming: !isComplete,
+        raw_response: content ? { content } : null // Store raw response for debugging
+      })
+      .eq('id', messageId)
+      .select();
+
+    if (error) {
+      console.error('❌ Database update error:', error);
+      throw error;
+    }
+
+    console.log(`✅ Message ${messageId} updated successfully:`, data);
+    return data;
+  } catch (error) {
+    console.error(`❌ Failed to update message ${messageId}:`, error);
+    throw error;
+  }
 }
 
 export async function createInitialMessage(
@@ -24,36 +40,60 @@ export async function createInitialMessage(
   sessionId: string,
   fileId: string | null
 ) {
-  const { data: message, error } = await supabase
-    .from('chat_messages')
-    .insert({
-      user_id: userId,
-      session_id: sessionId,
-      excel_file_id: fileId,
-      content: '',
-      role: 'assistant',
-      is_ai_response: true,
-      is_streaming: true
-    })
-    .select()
-    .single();
+  console.log('Creating initial message:', { userId, sessionId, fileId });
 
-  if (error) throw new Error(`Failed to create initial message: ${error.message}`);
-  return message;
+  try {
+    const { data: message, error } = await supabase
+      .from('chat_messages')
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        excel_file_id: fileId,
+        content: '', // Initialize with empty string instead of null
+        role: 'assistant',
+        is_ai_response: true,
+        is_streaming: true
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Failed to create initial message:', error);
+      throw new Error(`Failed to create initial message: ${error.message}`);
+    }
+
+    console.log('✅ Initial message created:', message);
+    return message;
+  } catch (error) {
+    console.error('❌ Error in createInitialMessage:', error);
+    throw error;
+  }
 }
 
 export async function getSessionContext(
   supabase: ReturnType<typeof createClient>,
   sessionId: string
 ) {
-  const { data: session, error } = await supabase
-    .from('chat_sessions')
-    .select('*')
-    .eq('session_id', sessionId)
-    .single();
+  console.log(`📝 Getting session context for ${sessionId}`);
 
-  if (error) throw new Error(`Failed to get session context: ${error.message}`);
-  return session;
+  try {
+    const { data: session, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
+
+    if (error) {
+      console.error('❌ Failed to get session context:', error);
+      throw new Error(`Failed to get session context: ${error.message}`);
+    }
+
+    console.log('✅ Session context retrieved:', session);
+    return session;
+  } catch (error) {
+    console.error('❌ Error in getSessionContext:', error);
+    throw error;
+  }
 }
 
 export async function updateSession(
@@ -61,10 +101,22 @@ export async function updateSession(
   sessionId: string,
   data: Record<string, any>
 ) {
-  const { error } = await supabase
-    .from('chat_sessions')
-    .update(data)
-    .eq('session_id', sessionId);
+  console.log(`📝 Updating session ${sessionId} with:`, data);
 
-  if (error) throw new Error(`Failed to update session: ${error.message}`);
+  try {
+    const { error } = await supabase
+      .from('chat_sessions')
+      .update(data)
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('❌ Failed to update session:', error);
+      throw new Error(`Failed to update session: ${error.message}`);
+    }
+
+    console.log('✅ Session updated successfully');
+  } catch (error) {
+    console.error('❌ Error in updateSession:', error);
+    throw error;
+  }
 }
