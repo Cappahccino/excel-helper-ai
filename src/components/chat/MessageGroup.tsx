@@ -1,6 +1,6 @@
 
 import { motion } from "framer-motion";
-import { MessageContent } from "../MessageContent";
+import { MessageContent } from "../message/MessageContent";
 import { format } from "date-fns";
 
 interface MessageGroupProps {
