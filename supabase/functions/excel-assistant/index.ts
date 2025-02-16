@@ -23,6 +23,9 @@ serve(async (req) => {
   }
 
   const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, 25000); // Set timeout to 25 seconds to ensure we stay within Edge Function limits
 
   try {
     const body = await req.json() as RequestBody;
@@ -36,24 +39,53 @@ serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          persistSession: false
+        },
+        global: {
+          fetch: (...args) => {
+            const fetchPromise = fetch(...args);
+            controller.signal.addEventListener('abort', () => {
+              console.log('Aborting fetch request');
+            });
+            return fetchPromise;
+          }
+        }
+      }
     );
 
     const openai = new OpenAI({
-      apiKey: Deno.env.get('OPENAI_API_KEY')
+      apiKey: Deno.env.get('OPENAI_API_KEY'),
+      fetch: (url: string, init?: RequestInit) => {
+        const fetchPromise = fetch(url, {
+          ...init,
+          signal: controller.signal
+        });
+        return fetchPromise;
+      }
     });
 
+    console.log(`🔑 [${requestId}] Clients initialized`);
+
     const assistantId = await getOrCreateAssistant(openai);
+    console.log(`👨‍💼 [${requestId}] Assistant ID: ${assistantId}`);
+
     const session = await getSessionContext(supabase, sessionId);
+    console.log(`📄 [${requestId}] Session context retrieved`);
+
     const excelData = fileId ? await processExcelFile(supabase, fileId) : null;
+    console.log(`📊 [${requestId}] Excel data processed:`, !!excelData);
+
     const message = await createInitialMessage(supabase, userId, sessionId, fileId);
+    console.log(`💬 [${requestId}] Initial message created: ${message.id}`);
 
     try {
       let threadId = session.thread_id;
       
-      // Create a new thread if one doesn't exist
       if (!threadId) {
-        console.log(`🧵 [${requestId}] Creating new thread for session ${sessionId}`);
+        console.log(`🧵 [${requestId}] Creating new thread`);
         const thread = await openai.beta.threads.create();
         threadId = thread.id;
         
@@ -61,24 +93,19 @@ serve(async (req) => {
           thread_id: threadId,
           assistant_id: assistantId
         });
-      } else {
-        console.log(`🧵 [${requestId}] Using existing thread ${threadId}`);
       }
 
       const excelContext = excelData 
         ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
         : '';
 
-      console.log(`📤 [${requestId}] Creating message in thread ${threadId}`);
-      // Add the new message to the thread
+      console.log(`📤 [${requestId}] Creating message in thread`);
       const threadMessage = await openai.beta.threads.messages.create(threadId, {
         role: 'user',
         content: `${excelContext}${query}`
       });
-      console.log(`✅ [${requestId}] Message created: ${threadMessage.id}`);
 
-      console.log(`🎯 [${requestId}] Creating run with assistant ${assistantId}`);
-      // Create a new run with context-aware instructions
+      console.log(`🎯 [${requestId}] Creating run`);
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId,
         instructions: `
@@ -87,14 +114,9 @@ serve(async (req) => {
           2. Specifically focus on answering the most recent question asked
           3. Only reference previous context when it directly relates to the current question
           4. Be clear and concise in your responses
-          
-          While you can use context from previous messages to better understand the user's needs,
-          make sure your response directly addresses their latest query.
         `
       });
-      console.log(`✅ [${requestId}] Run created: ${run.id}`);
 
-      console.log(`📝 [${requestId}] Updating message with run details`);
       await supabase
         .from('chat_messages')
         .update({ 
@@ -103,19 +125,16 @@ serve(async (req) => {
         })
         .eq('id', message.id);
 
-      const updateMessageCallback = async (content: string, isComplete: boolean) => {
-        console.log(`📤 [${requestId}] Updating message ${message.id} - Complete: ${isComplete}`);
+      const updateMessageCallback = async (content: string, isComplete: boolean, rawMessage?: any) => {
         try {
-          await updateStreamingMessage(supabase, message.id, content, isComplete);
-          console.log(`✅ [${requestId}] Message update successful`);
+          await updateStreamingMessage(supabase, message.id, content, isComplete, rawMessage);
         } catch (error) {
           console.error(`❌ [${requestId}] Message update failed:`, error);
           throw error;
         }
       };
 
-      console.log(`⚡ [${requestId}] Starting response stream for run ${run.id}`);
-      
+      console.log(`⚡ [${requestId}] Starting response stream`);
       const finalContent = await streamAssistantResponse(
         openai,
         threadId,
@@ -123,11 +142,12 @@ serve(async (req) => {
         updateMessageCallback
       );
 
-      console.log(`🔄 [${requestId}] Updating session with run details`);
       await updateSession(supabase, sessionId, { 
         last_run_id: run.id,
         excel_file_id: fileId || session.excel_file_id
       });
+
+      clearTimeout(timeoutId);
 
       const response: MessageResponse = {
         message: finalContent,
@@ -142,13 +162,27 @@ serve(async (req) => {
 
     } catch (streamError) {
       console.error(`❌ [${requestId}] Stream error:`, streamError);
-      controller.abort();
       throw streamError;
     }
 
   } catch (error) {
     console.error(`❌ [${requestId}] Error:`, error);
-    controller.abort();
+    
+    clearTimeout(timeoutId);
+    
+    if (controller.signal.aborted) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Request timed out",
+          requestId
+        }),
+        { 
+          status: 504,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'An unexpected error occurred',
