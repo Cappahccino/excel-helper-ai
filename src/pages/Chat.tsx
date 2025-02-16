@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation } from "react-router-dom";
@@ -55,7 +54,7 @@ const Chat = () => {
     fetchNextPage
   } = useChatMessages(selectedSessionId);
 
-  const { latestMessageId, isStreaming, streamingProgress } = useChatRealtime({
+  const { latestMessageId, isStreaming, streamingProgress, isAnalyzing } = useChatRealtime({
     sessionId: selectedSessionId,
     onAssistantMessage: () => {
       resetUpload();
@@ -163,7 +162,7 @@ const Chat = () => {
                           fileInfo={msg.excel_files}
                           isNewMessage={msg.id === latestMessageId}
                           isStreaming={msg.id === latestMessageId && isStreaming}
-                          streamingProgress={msg.id === latestMessageId ? streamingProgress : undefined}
+                          isProcessing={msg.id === latestMessageId && isAnalyzing}
                         />
                       ))}
                     </div>

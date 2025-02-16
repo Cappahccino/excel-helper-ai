@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { MessageAvatar } from "./MessageAvatar";
@@ -34,15 +33,24 @@ export function MessageContent({
   isNewMessage = false,
   isStreaming = false,
   isProcessing = false,
-  streamingProgress = 0,
 }: MessageContentProps) {
   const [messageState, setMessageState] = useState<MessageState>({
     tokens: [],
     displayedContent: "",
-    displayState: role === "assistant" ? "thinking" : "complete"
+    displayState: role === "assistant" ? (isProcessing ? "thinking" : "complete") : "complete"
   });
   const contentRef = useRef(content);
   const streamingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Handle initial processing state
+  useEffect(() => {
+    if (role === "assistant" && isProcessing) {
+      setMessageState(prev => ({
+        ...prev,
+        displayState: "thinking"
+      }));
+    }
+  }, [role, isProcessing]);
 
   // Enhanced streaming effect with token-based updates
   useEffect(() => {
@@ -55,6 +63,7 @@ export function MessageContent({
       return;
     }
 
+    // Keep thinking state while processing
     if (isProcessing) {
       setMessageState(prev => ({
         ...prev,
