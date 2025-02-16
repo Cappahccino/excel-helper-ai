@@ -6,9 +6,14 @@ import { useQueryClient } from "@tanstack/react-query";
 interface UseChatRealtimeProps {
   sessionId: string | null;
   onAssistantMessage?: () => void;
+  refetch: () => Promise<any>;
 }
 
-export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealtimeProps) {
+export function useChatRealtime({ 
+  sessionId, 
+  onAssistantMessage,
+  refetch 
+}: UseChatRealtimeProps) {
   const [streamingState, setStreamingState] = useState({
     messageId: null as string | null,
     status: 'queued' as 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired'
@@ -50,13 +55,16 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
             // Notify when assistant message is complete
             if (isComplete && hasContent && message.role === 'assistant') {
               console.log('Assistant message complete:', message.id);
+              // First invalidate the query cache
+              await queryClient.invalidateQueries({ 
+                queryKey: ['chat-messages', sessionId],
+                refetchType: 'active'
+              });
+              // Then explicitly refetch to ensure we have the latest data
+              await refetch();
+              // Finally call the onAssistantMessage callback
               onAssistantMessage?.();
             }
-
-            await queryClient.invalidateQueries({ 
-              queryKey: ['chat-messages', sessionId],
-              refetchType: 'active'
-            });
           }
         }
       )
@@ -70,10 +78,11 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
       console.log('Unsubscribing from chat updates:', sessionId);
       supabase.removeChannel(channel);
     };
-  }, [sessionId, queryClient, onAssistantMessage]);
+  }, [sessionId, queryClient, onAssistantMessage, refetch]);
 
   return {
     latestMessageId: streamingState.messageId,
-    status: streamingState.status
+    status: streamingState.status,
+    refetchMessages: refetch
   };
 }

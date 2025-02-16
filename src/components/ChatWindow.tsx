@@ -50,6 +50,7 @@ export function ChatWindow({ sessionId, fileId, fileInfo, onMessageSent }: ChatW
 
   const { latestMessageId, status } = useChatRealtime({
     sessionId: session?.session_id || null,
+    refetch,
     onAssistantMessage: () => {
       if (!hasScrolledUp) {
         scrollToBottom("smooth");
