@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -147,6 +148,7 @@ export function useChatController({
         currentSessionId = newSession.session_id;
       }
 
+      // First, create the user message
       const { error: messageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -161,6 +163,7 @@ export function useChatController({
       
       if (messageError) throw messageError;
 
+      // Then, immediately create the assistant message with in_progress status
       const { data: assistantMessage, error: assistantError } = await supabase
         .from('chat_messages')
         .insert({
@@ -170,13 +173,18 @@ export function useChatController({
           excel_file_id: messageFileId || fileId || null,
           is_ai_response: true,
           user_id: user.id,
-          status: 'queued'
+          status: 'in_progress' // Changed from 'queued' to 'in_progress'
         })
         .select()
         .single();
 
       if (assistantError) throw assistantError;
 
+      // Immediately update UI state to show loading
+      setStatus('in_progress');
+      setLatestMessageId(assistantMessage.id);
+      
+      // Then invoke the edge function to generate the response
       const { error } = await supabase.functions.invoke('excel-assistant', {
         body: { 
           fileId: messageFileId || fileId || null,
@@ -189,10 +197,16 @@ export function useChatController({
 
       if (error) throw error;
       
+      // Scroll to bottom immediately when sending
+      if (!hasScrolledUp) {
+        scrollToBottom('smooth');
+      }
+      
       onMessageSent?.();
       
     } catch (error) {
       console.error('Error sending message:', error);
+      setStatus('failed');
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to send message",
