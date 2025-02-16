@@ -11,7 +11,7 @@ interface ChatContentProps {
   messageGroups: Record<string, any[]>;
   formatTimestamp: (timestamp: string) => string;
   latestMessageId: string | null;
-  isProcessing: boolean;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
   messagesEndRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -22,7 +22,7 @@ export function ChatContent({
   messageGroups,
   formatTimestamp,
   latestMessageId,
-  isProcessing,
+  status,
   messagesEndRef
 }: ChatContentProps) {
   return (
@@ -56,7 +56,7 @@ export function ChatContent({
               messages={groupMessages}
               formatTimestamp={formatTimestamp}
               latestMessageId={latestMessageId}
-              isProcessing={isProcessing}
+              status={status}
             />
           ))}
           <div ref={messagesEndRef} />
