@@ -5,7 +5,9 @@ import { ChatError } from "./chat/ChatError";
 import { ScrollToTop } from "./ScrollToTop";
 import { ChatInput } from "./ChatInput";
 import { Button } from "./ui/button";
-import { useChatController } from "@/hooks/useChatController";
+import { useChatMessages } from "@/hooks/useChatMessages";
+import { useChatRealtime } from "@/hooks/useChatRealtime";
+import { useChatScroll } from "@/hooks/useChatScroll";
 import { ChatContent } from "./chat/ChatContent";
 
 interface ChatWindowProps {
@@ -31,26 +33,37 @@ export function ChatWindow({
     messages,
     isLoading,
     isError,
-    status,
-    latestMessageId,
     sendMessage,
     formatTimestamp,
     groupMessagesByDate,
+    refetch: refetchMessages
+  } = useChatMessages(sessionId);
+
+  const {
     hasScrolledUp,
     scrollToBottom,
-    handleScroll,
-    refetchMessages
-  } = useChatController({
-    sessionId,
-    fileId,
-    onMessageSent
+    handleScroll
+  } = useChatScroll({
+    messages,
+    messagesEndRef,
+    chatContainerRef
+  });
+
+  const { status, latestMessageId } = useChatRealtime({
+    sessionId: sessionId || null,
+    refetchMessages,
+    onAssistantMessage: () => {
+      if (!hasScrolledUp) {
+        scrollToBottom("smooth");
+      }
+    }
   });
 
   if (isError) {
     return <ChatError onRetry={refetchMessages} />;
   }
 
-  const messageGroups = groupMessagesByDate();
+  const messageGroups = groupMessagesByDate(messages);
 
   return (
     <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
