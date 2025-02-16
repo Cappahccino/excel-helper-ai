@@ -110,18 +110,18 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`Subscribed to real-time updates for session ${sessionId}`);
-        }
+      .on('system', { event: 'disconnect' }, () => {
+        console.log('Channel disconnected');
       });
 
-    // Handle connection issues by resubscribing
-    channel.on('system', { event: 'disconnect' }, () => {
-      console.log('Channel disconnected, attempting to reconnect...');
-      setTimeout(() => {
-        channel.subscribe();
-      }, 5000);
+    // Initial subscription
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log(`Subscribed to real-time updates for session ${sessionId}`);
+      }
+      if (status === 'CHANNEL_ERROR') {
+        console.log('Channel error occurred');
+      }
     });
 
     return () => {
