@@ -15,6 +15,7 @@ export type Database = {
           cleanup_reason: string | null
           content: string
           created_at: string
+          deleted_at: string | null
           deployment_id: string | null
           excel_file_id: string | null
           id: string
@@ -36,6 +37,7 @@ export type Database = {
           cleanup_reason?: string | null
           content: string
           created_at?: string
+          deleted_at?: string | null
           deployment_id?: string | null
           excel_file_id?: string | null
           id?: string
@@ -57,6 +59,7 @@ export type Database = {
           cleanup_reason?: string | null
           content?: string
           created_at?: string
+          deleted_at?: string | null
           deployment_id?: string | null
           excel_file_id?: string | null
           id?: string

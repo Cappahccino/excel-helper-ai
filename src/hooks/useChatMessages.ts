@@ -25,6 +25,7 @@ interface Message {
   deployment_id?: string;
   cleanup_after?: string;
   cleanup_reason?: string;
+  deleted_at?: string | null;
   temp?: boolean;
 }
 
@@ -84,7 +85,7 @@ export function useChatMessages(sessionId: string | null) {
         .from('chat_messages')
         .select('*, excel_files(filename, file_size)')
         .eq('session_id', session.pages[0].session_id)
-        .is('deleted_at', null) // Only fetch non-deleted messages
+        .is('deleted_at', null)
         .order('created_at', { ascending: true })
         .limit(MESSAGES_PER_PAGE);
 
@@ -153,7 +154,8 @@ export function useChatMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: false,
           user_id: user.id,
-          status: 'completed'
+          status: 'completed',
+          version: '1.0.0'
         })
         .select('*, excel_files(filename, file_size)')
         .single();
