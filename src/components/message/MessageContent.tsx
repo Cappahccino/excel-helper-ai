@@ -48,7 +48,7 @@ export function MessageContent({
           <MessageMarkdown content={content} />
         </div>
         <MessageActions content={content} timestamp={timestamp} />
-        {role === 'assistant' && (isNewMessage || isProcessing || isStreaming) && (
+        {role === 'assistant' && isNewMessage && (
           <MessageLoadingState displayState={displayState} />
         )}
       </div>
