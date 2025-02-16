@@ -16,7 +16,10 @@ import {
 
 serve(async (req) => {
   const requestId = crypto.randomUUID();
-  console.log(`🚀 [${requestId}] New request received`);
+  console.log(`🚀 [${requestId}] New request received:`, {
+    method: req.method,
+    url: req.url
+  });
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -26,7 +29,12 @@ serve(async (req) => {
 
   try {
     const body = await req.json() as RequestBody;
-    console.log(`📝 [${requestId}] Request body:`, body);
+    console.log(`📝 [${requestId}] Request body:`, {
+      userId: body.userId,
+      hasFileId: !!body.fileId,
+      hasSessionId: !!body.sessionId,
+      queryLength: body.query?.length
+    });
 
     if (!body.userId || !body.query) {
       throw new Error('Missing required fields');
@@ -43,38 +51,73 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    const assistantId = await getOrCreateAssistant(openai);
-    const session = await getOrCreateSession(supabase, userId, sessionId, fileId);
+    console.log(`[${requestId}] Initializing OpenAI components`);
+    const assistantId = await getOrCreateAssistant(openai, requestId);
+    const session = await getOrCreateSession(supabase, userId, sessionId, fileId, requestId);
+    
+    console.log(`[${requestId}] Processing Excel file:`, {
+      fileId,
+      sessionId: session.session_id
+    });
     const excelData = fileId ? await processExcelFile(supabase, fileId) : null;
-    const message = await createInitialMessage(supabase, userId, session.session_id, fileId);
+    
+    const message = await createInitialMessage(supabase, userId, session.session_id, fileId, requestId);
 
     try {
       let threadId = session.thread_id;
       
-      // Create a new thread only if one doesn't exist
       if (!threadId) {
+        console.log(`[${requestId}] Creating new thread`);
         const thread = await openai.beta.threads.create();
         threadId = thread.id;
-        await updateSession(supabase, session.session_id, { thread_id: threadId });
+        await updateSession(supabase, session.session_id, { thread_id: threadId }, requestId);
+        
+        console.log(`[${requestId}] New thread created:`, {
+          threadId,
+          sessionId: session.session_id
+        });
+      } else {
+        console.log(`[${requestId}] Using existing thread:`, {
+          threadId,
+          sessionId: session.session_id
+        });
       }
 
-      // Get previous messages for context
-      const previousMessages = await getThreadMessages(openai, threadId);
-      console.log(`📜 [${requestId}] Previous messages count:`, previousMessages.length);
+      const previousMessages = await getThreadMessages(openai, threadId, requestId);
+      console.log(`📜 [${requestId}] Thread context:`, {
+        threadId,
+        messageCount: previousMessages.length,
+        latestMessageId: previousMessages[0]?.id
+      });
 
       const excelContext = excelData 
         ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
         : '';
 
+      console.log(`[${requestId}] Creating thread message`);
       const threadMessage = await openai.beta.threads.messages.create(threadId, {
         role: 'user',
         content: `${excelContext}${query}`
       });
 
-      // Create a run with modified instructions that encourage context usage
+      console.log(`[${requestId}] Thread message created:`, {
+        messageId: threadMessage.id,
+        threadId,
+        role: threadMessage.role,
+        createdAt: threadMessage.created_at
+      });
+
+      console.log(`[${requestId}] Creating assistant run`);
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId,
         instructions: "Please provide a response that takes into account the conversation history and context when relevant. For follow-up questions, refer to previous exchanges to maintain continuity."
+      });
+
+      console.log(`[${requestId}] Run created:`, {
+        runId: run.id,
+        threadId,
+        assistantId,
+        status: run.status
       });
 
       await supabase
@@ -86,21 +129,29 @@ serve(async (req) => {
         .eq('id', message.id);
 
       const updateMessageCallback = async (content: string, isComplete: boolean) => {
-        await updateStreamingMessage(supabase, message.id, content, isComplete);
+        await updateStreamingMessage(supabase, message.id, content, isComplete, requestId);
       };
 
       const finalContent = await streamAssistantResponse(
         openai,
         threadId,
         run.id,
+        requestId,
         updateMessageCallback
       );
+
+      console.log(`[${requestId}] Processing complete:`, {
+        messageId: message.id,
+        threadId,
+        runId: run.id,
+        contentLength: finalContent.length
+      });
 
       await updateSession(supabase, session.session_id, { 
         last_run_id: run.id,
         excel_file_id: fileId || session.excel_file_id,
         assistant_id: assistantId
-      });
+      }, requestId);
 
       const response: MessageResponse = {
         message: finalContent,
@@ -108,19 +159,41 @@ serve(async (req) => {
         sessionId: session.session_id
       };
 
+      console.log(`[${requestId}] Sending response:`, {
+        messageId: message.id,
+        sessionId: session.session_id,
+        contentLength: finalContent.length
+      });
+
       return new Response(
         JSON.stringify(response),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
 
     } catch (streamError) {
-      console.error(`Stream error:`, streamError);
+      console.error(`[${requestId}] Stream error:`, {
+        error: streamError.message,
+        stack: streamError.stack,
+        context: {
+          messageId: message.id,
+          threadId: session.thread_id,
+          sessionId: session.session_id
+        }
+      });
       controller.abort();
       throw streamError;
     }
 
   } catch (error) {
-    console.error(`❌ [${requestId}] Error:`, error);
+    console.error(`❌ [${requestId}] Request failed:`, {
+      error: error.message,
+      stack: error.stack,
+      context: {
+        url: req.url,
+        method: req.method
+      }
+    });
+    
     controller.abort();
     return new Response(
       JSON.stringify({ 
