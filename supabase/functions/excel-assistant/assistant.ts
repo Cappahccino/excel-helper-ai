@@ -28,56 +28,57 @@ export async function streamAssistantResponse(
   openai: OpenAI, 
   threadId: string, 
   runId: string, 
-  updateMessage: (content: string, isComplete: boolean, raw?: any) => Promise<void>,
-  maxDuration: number = 20000 // Reduced to 20 seconds
+  updateMessage: (content: string, isComplete: boolean) => Promise<void>,
+  maxDuration: number = 60000
 ): Promise<string> {
   let accumulatedContent = "";
-  const startTime = Date.now();
+  let lastContentCheck = 0;
+  let startTime = Date.now();
   let lastMessageId: string | null = null;
 
   while (Date.now() - startTime < maxDuration) {
     const run = await openai.beta.threads.runs.retrieve(threadId, runId);
+    console.log(`Run status: ${run.status}`);
 
-    if (run.status === "completed" || run.status === "in_progress") {
+    const shouldCheckContent =
+      run.status === "completed" ||
+      (run.status === "in_progress" &&
+        Date.now() - lastContentCheck >= 1000);
+
+    if (shouldCheckContent) {
+      lastContentCheck = Date.now();
+
+      // Get the latest assistant message
       const messages = await openai.beta.threads.messages.list(threadId, {
         order: "desc",
         limit: 1
       });
 
-      if (!messages.data.length) continue;
-
-      const message = messages.data[0];
-
-      if (message.id !== lastMessageId && message.role === "assistant") {
-        lastMessageId = message.id;
-
-        // Only store essential information from the message
-        const rawMessage = {
-          id: message.id,
-          role: message.role
-        };
-
-        const textContent = message.content.find(content => content.type === 'text');
-        if (textContent?.text?.value) {
-          accumulatedContent = textContent.text.value;
-
-          await updateMessage(
-            accumulatedContent,
-            run.status === "completed",
-            rawMessage
-          );
-
-          if (run.status === "completed") {
-            return accumulatedContent;
+      if (messages.data.length > 0) {
+        const message = messages.data[0];
+        
+        // Only update if this is a new message
+        if (message.id !== lastMessageId) {
+          lastMessageId = message.id;
+          if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
+            accumulatedContent = message.content[0].text.value;
+            await updateMessage(accumulatedContent, false);
           }
         }
       }
+    }
+
+    if (run.status === "completed") {
+      console.log("Assistant response complete.");
+      await updateMessage(accumulatedContent, true);
+      return accumulatedContent;
     } else if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
       throw new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // Increased polling interval
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  throw new Error("Response timeout");
+  console.warn("Timeout reached, stopping polling.");
+  throw new Error('Response streaming timed out');
 }
