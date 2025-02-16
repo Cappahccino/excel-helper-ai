@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -50,7 +51,6 @@ async function processExcelFile(supabase: any, fileId: string): Promise<ExcelDat
   
   console.log(`📂 Processing file ID: ${fileId}`);
   
-  // Get file metadata from database
   const { data: fileData, error: fileError } = await supabase
     .from('excel_files')
     .select('file_path')
@@ -59,28 +59,22 @@ async function processExcelFile(supabase: any, fileId: string): Promise<ExcelDat
 
   if (fileError) throw new Error(`File metadata error: ${fileError.message}`);
   
-  // Download file from storage
   const { data: fileBuffer, error: downloadError } = await supabase.storage
     .from('excel_files')
     .download(fileData.file_path);
 
   if (downloadError) throw new Error(`File download error: ${downloadError.message}`);
 
-  // Process Excel file
   try {
     const arrayBuffer = await fileBuffer.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer);
     
     const results: ExcelData[] = [];
     
-    // Process each sheet
     for (const sheetName of workbook.SheetNames) {
       const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      
-      // Limit data to first 1000 rows to avoid token limits
       const limitedData = jsonData.slice(0, 1000);
-      
       results.push({
         sheetName,
         data: limitedData
@@ -92,6 +86,28 @@ async function processExcelFile(supabase: any, fileId: string): Promise<ExcelDat
     console.error('Excel processing error:', error);
     throw new Error(`Failed to process Excel file: ${error.message}`);
   }
+}
+
+async function getSessionContext(supabase: any, sessionId: string) {
+  const { data: session, error } = await supabase
+    .from('chat_sessions')
+    .select('*')
+    .eq('session_id', sessionId)
+    .single();
+
+  if (error) throw new Error(`Failed to get session context: ${error.message}`);
+  return session;
+}
+
+async function getMessageHistory(supabase: any, sessionId: string) {
+  const { data: messages, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Failed to get message history: ${error.message}`);
+  return messages;
 }
 
 serve(async (req) => {
@@ -120,25 +136,38 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Get session context and active file
+    const session = await getSessionContext(supabase, sessionId);
+    const activeFileId = fileId || session?.excel_file_id;
+    
+    // Get message history
+    const messageHistory = await getMessageHistory(supabase, sessionId);
+    
     const openai = new OpenAI({
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
     // Create initial empty message
-    const message = await createInitialMessage(supabase, userId, sessionId, fileId);
+    const message = await createInitialMessage(supabase, userId, sessionId, activeFileId);
     let accumulatedContent = '';
 
-    // Process Excel file if provided
-    const excelData = await processExcelFile(supabase, fileId);
+    // Process Excel file if available
+    const excelData = await processExcelFile(supabase, activeFileId);
     
-    // Prepare system message based on context
+    // Prepare system message
     const systemMessage = excelData 
-      ? "You are an Excel data analyst assistant. Analyze the provided Excel data and answer questions about it. Focus on providing clear insights and explanations. If data seems incomplete or unclear, mention this in your response."
-      : "You are a helpful Excel assistant. Answer questions about Excel and data analysis.";
+      ? "You are an Excel data analyst assistant. Analyze the provided Excel data and answer questions about it. Focus on providing clear insights and explanations. If data seems incomplete or unclear, mention this in your response. Maintain context from the conversation history."
+      : "You are a helpful Excel assistant. Answer questions about Excel and data analysis. Maintain context from the conversation history.";
+
+    // Prepare conversation history for OpenAI
+    const conversationHistory = messageHistory.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }));
 
     // Prepare user message with Excel data context if available
     const userMessage = excelData 
-      ? `Analyzing Excel file with ${excelData.length} sheet(s):\n\n${JSON.stringify(excelData, null, 2)}\n\nUser Query: ${query}`
+      ? `Excel file context with ${excelData.length} sheet(s):\n\n${JSON.stringify(excelData, null, 2)}\n\nUser Query: ${query}`
       : query;
 
     // Create completion with streaming
@@ -146,19 +175,19 @@ serve(async (req) => {
       model: "gpt-4-turbo",
       messages: [
         { role: "system", content: systemMessage },
+        ...conversationHistory,
         { role: "user", content: userMessage }
       ],
       stream: true,
       temperature: 0.7,
-      max_tokens: 2000, // Increased token limit for complex Excel analysis
+      max_tokens: 2000,
     }, { signal });
 
     console.log(`✨ [${requestId}] Starting stream processing`);
 
     try {
-      // Process the stream with chunking
       let updateBuffer = '';
-      const updateInterval = 25; // Reduced from 100ms to 25ms for smoother updates
+      const updateInterval = 25;
       let lastUpdate = Date.now();
 
       for await (const chunk of stream) {
@@ -167,7 +196,6 @@ serve(async (req) => {
           updateBuffer += content;
           accumulatedContent += content;
 
-          // Send updates more frequently
           const now = Date.now();
           if (now - lastUpdate >= updateInterval || content.includes('\n')) {
             await updateStreamingMessage(supabase, message.id, accumulatedContent, false);
@@ -177,9 +205,16 @@ serve(async (req) => {
         }
       }
 
-      // Final update
       if (updateBuffer) {
         await updateStreamingMessage(supabase, message.id, accumulatedContent, true);
+      }
+
+      // Update session with latest file_id if needed
+      if (activeFileId && !session.excel_file_id) {
+        await supabase
+          .from('chat_sessions')
+          .update({ excel_file_id: activeFileId })
+          .eq('session_id', sessionId);
       }
     } catch (streamError) {
       console.error(`Stream error:`, streamError);
@@ -212,3 +247,4 @@ serve(async (req) => {
     );
   }
 });
+
