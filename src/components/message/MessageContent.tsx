@@ -29,7 +29,8 @@ export function MessageContent({
 }: MessageContentProps) {
   let displayState: 'thinking' | 'streaming' | 'complete' = 'complete';
 
-  if (isProcessing || isStreaming) {
+  // Show loading state for empty assistant messages or when processing/streaming
+  if (role === 'assistant' && (!content || isProcessing || isStreaming)) {
     displayState = 'thinking';
   }
 
@@ -45,10 +46,10 @@ export function MessageContent({
           />
         )}
         <div className="prose prose-slate max-w-none">
-          <MessageMarkdown content={content} />
+          {content && <MessageMarkdown content={content} />}
         </div>
-        <MessageActions content={content} timestamp={timestamp} />
-        {role === 'assistant' && isNewMessage && (
+        {content && <MessageActions content={content} timestamp={timestamp} />}
+        {role === 'assistant' && displayState !== 'complete' && (
           <MessageLoadingState displayState={displayState} />
         )}
       </div>
