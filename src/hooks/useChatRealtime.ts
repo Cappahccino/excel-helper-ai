@@ -2,25 +2,17 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { RealtimeChannel } from "@supabase/supabase-js";
-
-interface StreamingState {
-  messageId: string | null;
-  isStreaming: boolean;
-  progress: number;
-  isAnalyzing: boolean;
-}
 
 interface UseChatRealtimeProps {
   sessionId: string | null;
-  onAssistantMessage: () => void;
+  onAssistantMessage?: () => void;
 }
 
 export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealtimeProps) {
-  const [streamingState, setStreamingState] = useState<StreamingState>({
-    messageId: null,
+  const [streamingState, setStreamingState] = useState({
+    messageId: null as string | null,
     isStreaming: false,
-    progress: 0,
+    streamingProgress: 0,
     isAnalyzing: false
   });
   const queryClient = useQueryClient();
@@ -28,11 +20,7 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
   useEffect(() => {
     if (!sessionId) return;
 
-    // Dynamic polling interval based on streaming state
-    const pollingInterval = streamingState.isStreaming ? 500 : 2000;
-    let lastUpdate = Date.now();
-
-    const channel: RealtimeChannel = supabase
+    const channel = supabase
       .channel(`chat_${sessionId}`)
       .on(
         'postgres_changes',
@@ -44,98 +32,42 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
         },
         async (payload: any) => {
           if (payload.new) {
-            const currentTime = Date.now();
-            const timeSinceLastUpdate = currentTime - lastUpdate;
+            const message = payload.new;
             
-            // Update streaming state
-            if (payload.new.role === 'assistant') {
-              setStreamingState(prev => ({
-                messageId: payload.new.id,
-                isStreaming: payload.new.is_streaming,
-                progress: payload.new.is_streaming ? prev.progress + 1 : 100,
-                isAnalyzing: !payload.new.is_streaming && payload.new.status === 'processing'
-              }));
+            setStreamingState(prev => ({
+              messageId: message.id,
+              isStreaming: message.is_streaming,
+              streamingProgress: message.is_streaming ? prev.streamingProgress + 1 : 100,
+              isAnalyzing: !message.is_streaming && message.status === 'processing'
+            }));
 
-              // Trigger callback only when message is complete and enough time has passed
-              if (!payload.new.is_streaming && timeSinceLastUpdate >= pollingInterval) {
-                onAssistantMessage();
-                lastUpdate = currentTime;
-              }
+            // Only trigger the callback when message is complete
+            if (!message.is_streaming && message.role === 'assistant') {
+              onAssistantMessage?.();
             }
 
-            // Optimistic cache update for streaming content
-            if (payload.new.is_streaming) {
-              await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
-              
-              queryClient.setQueryData(['chat-messages', sessionId], (oldData: any) => {
-                if (!oldData?.pages) return oldData;
-                
-                const lastPage = oldData.pages[oldData.pages.length - 1];
-                const messageIndex = lastPage.messages.findIndex((msg: any) => msg.id === payload.new.id);
-                
-                if (messageIndex === -1) {
-                  return {
-                    ...oldData,
-                    pages: [
-                      ...oldData.pages.slice(0, -1),
-                      {
-                        ...lastPage,
-                        messages: [...lastPage.messages, payload.new]
-                      }
-                    ]
-                  };
-                }
-                
-                return {
-                  ...oldData,
-                  pages: oldData.pages.map((page: any, pageIndex: number) => {
-                    if (pageIndex !== oldData.pages.length - 1) return page;
-                    return {
-                      ...page,
-                      messages: page.messages.map((msg: any) =>
-                        msg.id === payload.new.id ? { ...msg, content: payload.new.content } : msg
-                      )
-                    };
-                  })
-                };
-              });
-            } else {
-              // Full query invalidation only when streaming is complete
-              await queryClient.invalidateQueries({ 
-                queryKey: ['chat-messages', sessionId],
-                refetchType: 'active'
-              });
-              await queryClient.invalidateQueries({ 
-                queryKey: ['chat-session', sessionId],
-                refetchType: 'active'
-              });
-            }
+            await queryClient.invalidateQueries({ 
+              queryKey: ['chat-messages', sessionId]
+            });
           }
         }
       )
-      .on('system', { event: 'disconnect' }, () => {
-        console.log('Channel disconnected');
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to chat updates:', sessionId);
+        }
       });
 
-    // Initial subscription
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log(`Subscribed to real-time updates for session ${sessionId}`);
-      }
-      if (status === 'CHANNEL_ERROR') {
-        console.log('Channel error occurred');
-      }
-    });
-
     return () => {
-      channel.unsubscribe();
+      console.log('Unsubscribing from chat updates:', sessionId);
+      supabase.removeChannel(channel);
     };
-  }, [sessionId, queryClient, onAssistantMessage, streamingState.isStreaming]);
+  }, [sessionId, queryClient, onAssistantMessage]);
 
   return {
     latestMessageId: streamingState.messageId,
     isStreaming: streamingState.isStreaming,
-    streamingProgress: streamingState.progress,
+    streamingProgress: streamingState.streamingProgress,
     isAnalyzing: streamingState.isAnalyzing
   };
 }
