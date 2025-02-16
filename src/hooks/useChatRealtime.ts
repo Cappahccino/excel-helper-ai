@@ -46,8 +46,10 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
               onAssistantMessage?.();
             }
 
+            // Force immediate refetch of messages
             await queryClient.invalidateQueries({ 
-              queryKey: ['chat-messages', sessionId]
+              queryKey: ['chat-messages', sessionId],
+              refetchType: 'active'
             });
           }
         }
