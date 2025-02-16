@@ -165,21 +165,58 @@ export function useChatMessages(sessionId: string | null) {
       };
 
       await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
-      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]) as Message[] || [];
+      
+      const previousData = queryClient.getQueryData(['chat-messages', sessionId]);
 
-      queryClient.setQueryData(['chat-messages', sessionId], (old: Message[] = []) => {
-        return [...old, optimisticMessage];
+      queryClient.setQueryData(['chat-messages', sessionId], (old: any) => {
+        if (!old?.pages) return {
+          pages: [{
+            messages: [optimisticMessage],
+            nextCursor: null
+          }],
+          pageParams: [null]
+        };
+
+        return {
+          ...old,
+          pages: [
+            {
+              messages: [...(old.pages[0]?.messages || []), optimisticMessage],
+              nextCursor: old.pages[0]?.nextCursor
+            },
+            ...old.pages.slice(1)
+          ]
+        };
       });
 
-      return { previousMessages, optimisticMessage };
+      return { previousData, optimisticMessage };
     },
     onSuccess: async ({ storedMessage, newSessionId }, variables, context) => {
-      queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
-        return old.map(msg => 
-          msg.temp && msg.content === context?.optimisticMessage.content
-            ? { ...storedMessage, role: 'user' as const, temp: false }
-            : msg
-        );
+      queryClient.setQueryData(['chat-messages', newSessionId], (old: any) => {
+        if (!old?.pages) return {
+          pages: [{
+            messages: [storedMessage],
+            nextCursor: null
+          }],
+          pageParams: [null]
+        };
+
+        return {
+          ...old,
+          pages: old.pages.map((page: any, index: number) => {
+            if (index === 0) {
+              return {
+                ...page,
+                messages: page.messages.map((msg: Message) =>
+                  msg.temp && msg.content === context?.optimisticMessage.content
+                    ? { ...storedMessage, role: 'user' as const }
+                    : msg
+                )
+              };
+            }
+            return page;
+          })
+        };
       });
 
       queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
@@ -201,8 +238,8 @@ export function useChatMessages(sessionId: string | null) {
       });
     },
     onError: (_, __, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
+      if (context?.previousData) {
+        queryClient.setQueryData(['chat-messages', sessionId], context.previousData);
       }
     }
   });
