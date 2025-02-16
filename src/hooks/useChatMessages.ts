@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
@@ -79,7 +78,6 @@ export function useChatMessages(sessionId: string | null) {
 
       let currentSessionId = sessionId;
 
-      // Create new session if needed
       if (!currentSessionId) {
         const { data: newSession, error: sessionError } = await supabase
           .from('chat_sessions')
@@ -96,7 +94,6 @@ export function useChatMessages(sessionId: string | null) {
         currentSessionId = newSession.session_id;
       }
 
-      // Store the message
       const { data: storedMessage, error: messageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -112,57 +109,16 @@ export function useChatMessages(sessionId: string | null) {
 
       if (messageError) throw messageError;
 
-      // Call OpenAI via Edge Function
-      const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
-        body: {
-          fileId,
-          query: content,
-          userId: user.id,
-          sessionId: currentSessionId,
-          threadId: session?.thread_id
-        }
-      });
-
-      if (aiError) throw aiError;
-
       return { storedMessage, newSessionId: currentSessionId };
     },
-    onMutate: async ({ content, fileId }) => {
-      const optimisticMessage: Message = {
-        id: crypto.randomUUID(),
-        content,
-        role: 'user',
-        session_id: sessionId,
-        created_at: new Date().toISOString(),
-        excel_file_id: fileId || null,
-        temp: true
-      };
-
-      await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
-
-      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]) as Message[] || [];
-
-      queryClient.setQueryData(['chat-messages', sessionId], (old: Message[] = []) => {
-        return [...old, optimisticMessage];
-      });
-
-      return { previousMessages, optimisticMessage };
-    },
-    onSuccess: ({ storedMessage, newSessionId }, _, context) => {
-      // Update messages cache
+    onSuccess: async ({ storedMessage, newSessionId }, variables) => {
       queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
-        return old.map(msg => 
-          msg.temp && msg.content === context?.optimisticMessage.content
-            ? { ...storedMessage, role: storedMessage.role as 'user' | 'assistant', temp: false }
-            : msg
-        );
+        return [...old, { ...storedMessage, role: 'user' as const }];
       });
 
-      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', newSessionId] });
 
-      // Navigate to new session if created
       if (!sessionId && newSessionId) {
         const queryParams = new URLSearchParams();
         queryParams.set('sessionId', newSessionId);
@@ -171,11 +127,35 @@ export function useChatMessages(sessionId: string | null) {
         }
         navigate(`/chat?${queryParams.toString()}`);
       }
+
+      await generateAIResponse.mutate({
+        content: variables.content,
+        fileId: variables.fileId,
+        sessionId: newSessionId
+      });
+    }
+  });
+
+  const generateAIResponse = useMutation({
+    mutationFn: async ({ content, fileId, sessionId }: { content: string; fileId?: string | null; sessionId: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
+        body: {
+          fileId,
+          query: content,
+          userId: user.id,
+          sessionId: sessionId,
+          threadId: session?.thread_id
+        }
+      });
+
+      if (aiError) throw aiError;
+      return { sessionId };
     },
-    onError: (_, __, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
-      }
+    onError: (error) => {
+      console.error('AI Response error:', error);
     }
   });
 
