@@ -32,15 +32,25 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
           if (payload.new) {
             const message = payload.new;
             const hasContent = message.content && message.content.trim().length > 0;
+            const isComplete = message.status === 'completed' && !message.is_streaming;
             
-            // Simplified state management - only track if we're processing
+            console.log('Message update:', {
+              messageId: message.id,
+              status: message.status,
+              hasContent,
+              isComplete,
+              isStreaming: message.is_streaming
+            });
+            
+            // Update state based on message status
             setStreamingState({
               messageId: message.id,
-              isProcessing: !hasContent && message.status === 'processing'
+              isProcessing: !isComplete || !hasContent
             });
 
             // Notify when assistant message is complete
-            if (hasContent && message.role === 'assistant') {
+            if (isComplete && hasContent && message.role === 'assistant') {
+              console.log('Assistant message complete:', message.id);
               onAssistantMessage?.();
             }
 

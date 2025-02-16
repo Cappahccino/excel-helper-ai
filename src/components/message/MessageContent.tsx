@@ -15,7 +15,6 @@ interface MessageContentProps {
     file_size: number;
   } | null;
   isNewMessage?: boolean;
-  isStreaming?: boolean;
   isProcessing?: boolean;
 }
 
@@ -27,8 +26,10 @@ export function MessageContent({
   isNewMessage,
   isProcessing
 }: MessageContentProps) {
-  // Simple state determination: if it's an assistant message with no content, it's thinking
-  const isThinking = role === 'assistant' && !content;
+  // Show thinking state only if:
+  // 1. It's an assistant message
+  // 2. Either there's no content or it's actively processing
+  const isThinking = role === 'assistant' && (!content || isProcessing);
 
   return (
     <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>
