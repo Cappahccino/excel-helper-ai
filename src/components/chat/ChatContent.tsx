@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FileInfo } from "../FileInfo";
 import { MessageGroup } from "./MessageGroup";
 import { LoadingMessages } from "./LoadingMessages";
-import { LoadingState } from "./LoadingState";
 
 interface ChatContentProps {
   isLoading: boolean;
@@ -12,8 +11,7 @@ interface ChatContentProps {
   messageGroups: Record<string, any[]>;
   formatTimestamp: (timestamp: string) => string;
   latestMessageId: string | null;
-  isAnalyzing: boolean;
-  isStreaming: boolean;
+  isProcessing: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -24,8 +22,7 @@ export function ChatContent({
   messageGroups,
   formatTimestamp,
   latestMessageId,
-  isAnalyzing,
-  isStreaming,
+  isProcessing,
   messagesEndRef
 }: ChatContentProps) {
   return (
@@ -59,8 +56,7 @@ export function ChatContent({
               messages={groupMessages}
               formatTimestamp={formatTimestamp}
               latestMessageId={latestMessageId}
-              isStreaming={isStreaming}
-              isProcessing={isAnalyzing}
+              isProcessing={isProcessing}
             />
           ))}
           <div ref={messagesEndRef} />

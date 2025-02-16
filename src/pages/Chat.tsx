@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation } from "react-router-dom";
@@ -54,7 +55,7 @@ const Chat = () => {
     fetchNextPage
   } = useChatMessages(selectedSessionId);
 
-  const { latestMessageId, isStreaming, streamingProgress, isAnalyzing } = useChatRealtime({
+  const { latestMessageId, isProcessing } = useChatRealtime({
     sessionId: selectedSessionId,
     onAssistantMessage: () => {
       resetUpload();
@@ -129,7 +130,7 @@ const Chat = () => {
                   <ChatInput
                     onSendMessage={handleSendMessage}
                     sessionId={selectedSessionId}
-                    isAnalyzing={false}
+                    isAnalyzing={isProcessing}
                     fileInfo={currentFile}
                   />
                 </motion.div>
@@ -161,8 +162,7 @@ const Chat = () => {
                           timestamp={formatTimestamp(msg.created_at)}
                           fileInfo={msg.excel_files}
                           isNewMessage={msg.id === latestMessageId}
-                          isStreaming={msg.id === latestMessageId && isStreaming}
-                          isProcessing={msg.id === latestMessageId && isAnalyzing}
+                          isProcessing={msg.id === latestMessageId && isProcessing}
                         />
                       ))}
                     </div>
@@ -175,7 +175,7 @@ const Chat = () => {
                     <ChatInput
                       onSendMessage={handleSendMessage}
                       sessionId={selectedSessionId}
-                      isAnalyzing={isStreaming}
+                      isAnalyzing={isProcessing}
                       fileInfo={currentFile}
                     />
                   </div>
@@ -187,6 +187,6 @@ const Chat = () => {
       </div>
     </SidebarProvider>
   );
-};
+}
 
 export default Chat;
