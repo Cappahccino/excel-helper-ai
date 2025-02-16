@@ -12,7 +12,6 @@ export function MessageLoadingState({ displayState }: MessageLoadingStateProps) 
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
         className="flex items-center gap-2 mt-2"
       >
         <Spinner variant="ring" className="h-4 w-4 text-blue-600" />
