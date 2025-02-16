@@ -34,6 +34,7 @@ export async function streamAssistantResponse(
   let accumulatedContent = "";
   let lastContentCheck = 0;
   let startTime = Date.now();
+  let lastMessageId: string | null = null;
 
   while (Date.now() - startTime < maxDuration) {
     const run = await openai.beta.threads.runs.retrieve(threadId, runId);
@@ -47,6 +48,7 @@ export async function streamAssistantResponse(
     if (shouldCheckContent) {
       lastContentCheck = Date.now();
 
+      // Get the latest assistant message
       const messages = await openai.beta.threads.messages.list(threadId, {
         order: "desc",
         limit: 1
@@ -54,9 +56,14 @@ export async function streamAssistantResponse(
 
       if (messages.data.length > 0) {
         const message = messages.data[0];
-        if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
-          accumulatedContent = message.content[0].text.value;
-          await updateMessage(accumulatedContent, false);
+        
+        // Only update if this is a new message
+        if (message.id !== lastMessageId) {
+          lastMessageId = message.id;
+          if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
+            accumulatedContent = message.content[0].text.value;
+            await updateMessage(accumulatedContent, false);
+          }
         }
       }
     }
