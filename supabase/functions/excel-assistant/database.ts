@@ -17,6 +17,7 @@ export async function updateStreamingMessage(
 
   const status = isComplete ? 'completed' : 'in_progress';
 
+  // Enhanced update query with additional safety checks
   const { data, error } = await supabase
     .from('chat_messages')
     .update({
@@ -24,6 +25,8 @@ export async function updateStreamingMessage(
       status
     })
     .eq('id', messageId)
+    .eq('role', 'assistant')
+    .eq('status', 'in_progress') // Only update messages that are currently in progress
     .select();
 
   if (error) {
@@ -33,6 +36,24 @@ export async function updateStreamingMessage(
       context: { operation: 'update_streaming_message' },
       details: error.details
     });
+
+    // Attempt to mark message as failed if update error occurs
+    try {
+      await supabase
+        .from('chat_messages')
+        .update({
+          status: 'failed',
+          content: 'An error occurred while generating the response.'
+        })
+        .eq('id', messageId)
+        .eq('role', 'assistant');
+    } catch (failureError) {
+      console.error(`[${requestId}] Error marking message as failed:`, {
+        error: failureError,
+        messageId,
+        context: { operation: 'mark_message_failed' }
+      });
+    }
   } else {
     console.log(`[${requestId}] Message updated successfully:`, {
       messageId,
