@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { RealtimeChannel } from "@supabase/supabase-js";
 
 interface StreamingState {
   messageId: string | null;
@@ -29,7 +30,7 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
     const pollingInterval = streamingState.isStreaming ? 500 : 2000;
     let lastUpdate = Date.now();
 
-    const channel = supabase
+    const channel: RealtimeChannel = supabase
       .channel(`chat_${sessionId}`)
       .on(
         'postgres_changes',
@@ -63,16 +64,37 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
             if (payload.new.is_streaming) {
               await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
               
-              queryClient.setQueryData(['chat-messages', sessionId], (oldData: any[] = []) => {
-                const messageIndex = oldData.findIndex(msg => msg.id === payload.new.id);
+              queryClient.setQueryData(['chat-messages', sessionId], (oldData: any) => {
+                if (!oldData?.pages) return oldData;
+                
+                const lastPage = oldData.pages[oldData.pages.length - 1];
+                const messageIndex = lastPage.messages.findIndex((msg: any) => msg.id === payload.new.id);
                 
                 if (messageIndex === -1) {
-                  return [...oldData, payload.new];
+                  return {
+                    ...oldData,
+                    pages: [
+                      ...oldData.pages.slice(0, -1),
+                      {
+                        ...lastPage,
+                        messages: [...lastPage.messages, payload.new]
+                      }
+                    ]
+                  };
                 }
                 
-                return oldData.map(msg =>
-                  msg.id === payload.new.id ? { ...msg, content: payload.new.content } : msg
-                );
+                return {
+                  ...oldData,
+                  pages: oldData.pages.map((page: any, pageIndex: number) => {
+                    if (pageIndex !== oldData.pages.length - 1) return page;
+                    return {
+                      ...page,
+                      messages: page.messages.map((msg: any) =>
+                        msg.id === payload.new.id ? { ...msg, content: payload.new.content } : msg
+                      )
+                    };
+                  })
+                };
               });
             } else {
               // Full query invalidation only when streaming is complete
@@ -94,20 +116,18 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
         }
       });
 
-    // Automatic reconnection
-    let reconnectTimeout: NodeJS.Timeout;
-    
-    channel.onError(() => {
+    // Automatic reconnection using error event listener
+    const handleError = () => {
       console.log('Channel error, attempting to reconnect...');
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = setTimeout(() => {
+      setTimeout(() => {
         channel.subscribe();
       }, 5000);
-    });
+    };
+
+    channel.on('error', handleError);
 
     return () => {
-      clearTimeout(reconnectTimeout);
-      supabase.removeChannel(channel);
+      channel.unsubscribe();
     };
   }, [sessionId, queryClient, onAssistantMessage, streamingState.isStreaming]);
 

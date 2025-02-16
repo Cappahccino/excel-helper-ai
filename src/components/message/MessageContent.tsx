@@ -17,6 +17,7 @@ interface MessageContentProps {
   isNewMessage?: boolean;
   isStreaming?: boolean;
   isProcessing?: boolean;
+  streamingProgress?: number;
 }
 
 interface MessageState {
@@ -33,6 +34,7 @@ export function MessageContent({
   isNewMessage = false,
   isStreaming = false,
   isProcessing = false,
+  streamingProgress = 0,
 }: MessageContentProps) {
   const [messageState, setMessageState] = useState<MessageState>({
     tokens: [],

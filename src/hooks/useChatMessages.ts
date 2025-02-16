@@ -1,5 +1,4 @@
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
 import { useNavigate } from "react-router-dom";
@@ -25,7 +24,7 @@ export function useChatMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: session, isLoading: sessionLoading } = useQuery({
+  const { data: session, isLoading: sessionLoading } = useInfiniteQuery({
     queryKey: ['chat-session', sessionId],
     queryFn: async () => {
       if (!sessionId) return null;
@@ -49,15 +48,22 @@ export function useChatMessages(sessionId: string | null) {
     enabled: !!sessionId,
   });
 
-  const { data: messages = [], isLoading: messagesLoading, isError, refetch, hasNextPage, fetchNextPage } = useQuery({
-    queryKey: ['chat-messages', session?.session_id],
+  const { 
+    data, 
+    isLoading: messagesLoading, 
+    isError, 
+    refetch,
+    hasNextPage,
+    fetchNextPage 
+  } = useInfiniteQuery({
+    queryKey: ['chat-messages', session?.pages?.[0]?.session_id],
     queryFn: async ({ pageParam = null }) => {
-      if (!session?.session_id) return [];
+      if (!session?.pages?.[0]?.session_id) return { messages: [], nextCursor: null };
       
       let query = supabase
         .from('chat_messages')
         .select('*, excel_files(filename, file_size)')
-        .eq('session_id', session.session_id)
+        .eq('session_id', session.pages[0].session_id)
         .order('created_at', { ascending: true })
         .limit(MESSAGES_PER_PAGE);
 
@@ -72,18 +78,26 @@ export function useChatMessages(sessionId: string | null) {
         throw error;
       }
 
-      return data?.map(msg => ({
+      const messages = data?.map(msg => ({
         ...msg,
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         isStreaming: msg.is_streaming || false
       })) as Message[];
+
+      const nextCursor = messages.length === MESSAGES_PER_PAGE 
+        ? messages[messages.length - 1]?.created_at 
+        : null;
+
+      return {
+        messages,
+        nextCursor,
+      };
     },
-    getNextPageParam: (lastPage) => {
-      if (lastPage.length < MESSAGES_PER_PAGE) return undefined;
-      return lastPage[lastPage.length - 1]?.created_at;
-    },
-    enabled: !!session?.session_id,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: !!session?.pages?.[0]?.session_id,
   });
+
+  const messages = data?.pages.flatMap(page => page.messages) ?? [];
 
   const sendMessage = useMutation({
     mutationFn: async ({ content, fileId }: { content: string; fileId?: string | null }) => {
@@ -146,7 +160,6 @@ export function useChatMessages(sessionId: string | null) {
       return { previousMessages, optimisticMessage };
     },
     onSuccess: async ({ storedMessage, newSessionId }, variables, context) => {
-      // Update cache with the real message
       queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
         return old.map(msg => 
           msg.temp && msg.content === context?.optimisticMessage.content
@@ -155,11 +168,9 @@ export function useChatMessages(sessionId: string | null) {
         );
       });
 
-      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', newSessionId] });
 
-      // Navigate immediately for new sessions
       if (!sessionId && newSessionId) {
         const queryParams = new URLSearchParams();
         queryParams.set('sessionId', newSessionId);
@@ -169,7 +180,6 @@ export function useChatMessages(sessionId: string | null) {
         navigate(`/chat?${queryParams.toString()}`);
       }
 
-      // Trigger AI response separately
       generateAIResponse.mutate({
         content: variables.content,
         fileId: variables.fileId,
@@ -240,7 +250,7 @@ export function useChatMessages(sessionId: string | null) {
 
   return {
     messages,
-    session,
+    session: session?.pages?.[0],
     isLoading: sessionLoading || messagesLoading,
     isError,
     sendMessage,
