@@ -43,28 +43,38 @@ export function MessageContent({
           />
         )}
         <AnimatePresence mode="wait">
-          {isThinking ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
+          <motion.div
+            key={isThinking ? "loading" : "content"}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ 
+              opacity: 1, 
+              height: "auto",
+              transition: {
+                height: { duration: 0.2 },
+                opacity: { duration: 0.15, delay: 0.05 }
+              }
+            }}
+            exit={{ 
+              opacity: 0,
+              height: 0,
+              transition: {
+                height: { duration: 0.2 },
+                opacity: { duration: 0.1 }
+              }
+            }}
+            className="min-h-[40px] overflow-hidden"
+          >
+            {isThinking ? (
               <MessageLoadingState />
-            </motion.div>
-          ) : content && (
-            <motion.div
-              key="content"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <div className="prose prose-slate max-w-none">
-                <MessageMarkdown content={content} />
-              </div>
-              <MessageActions content={content} timestamp={timestamp} />
-            </motion.div>
-          )}
+            ) : content && (
+              <>
+                <div className="prose prose-slate max-w-none">
+                  <MessageMarkdown content={content} />
+                </div>
+                <MessageActions content={content} timestamp={timestamp} />
+              </>
+            )}
+          </motion.div>
         </AnimatePresence>
       </div>
     </div>
