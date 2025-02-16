@@ -8,6 +8,7 @@ interface StreamingState {
   messageId: string | null;
   isStreaming: boolean;
   progress: number;
+  isAnalyzing: boolean;
 }
 
 interface UseChatRealtimeProps {
@@ -19,7 +20,8 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
   const [streamingState, setStreamingState] = useState<StreamingState>({
     messageId: null,
     isStreaming: false,
-    progress: 0
+    progress: 0,
+    isAnalyzing: false
   });
   const queryClient = useQueryClient();
 
@@ -50,7 +52,8 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
               setStreamingState(prev => ({
                 messageId: payload.new.id,
                 isStreaming: payload.new.is_streaming,
-                progress: payload.new.is_streaming ? prev.progress + 1 : 100
+                progress: payload.new.is_streaming ? prev.progress + 1 : 100,
+                isAnalyzing: !payload.new.is_streaming && payload.new.status === 'processing'
               }));
 
               // Trigger callback only when message is complete and enough time has passed
@@ -132,6 +135,7 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
   return {
     latestMessageId: streamingState.messageId,
     isStreaming: streamingState.isStreaming,
-    streamingProgress: streamingState.progress
+    streamingProgress: streamingState.progress,
+    isAnalyzing: streamingState.isAnalyzing
   };
 }
