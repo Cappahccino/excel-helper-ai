@@ -27,9 +27,12 @@ export function MessageContent({
   isStreaming,
   isProcessing
 }: MessageContentProps) {
-  // Only show thinking state when there's no content
-  const showThinking = role === 'assistant' && !content && isProcessing;
-  const displayState = showThinking ? 'thinking' : 'complete';
+  let displayState: 'thinking' | 'streaming' | 'complete' = 'complete';
+
+  // Show loading state for empty assistant messages or when processing/streaming
+  if (role === 'assistant' && (!content || isProcessing || isStreaming)) {
+    displayState = 'thinking';
+  }
 
   return (
     <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>
@@ -46,7 +49,7 @@ export function MessageContent({
           {content && <MessageMarkdown content={content} />}
         </div>
         {content && <MessageActions content={content} timestamp={timestamp} />}
-        {showThinking && (
+        {role === 'assistant' && displayState !== 'complete' && (
           <MessageLoadingState displayState={displayState} />
         )}
       </div>
