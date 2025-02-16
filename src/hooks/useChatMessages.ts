@@ -1,6 +1,8 @@
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
+import { useNavigate } from "react-router-dom";
 
 interface Message {
   id: string;
@@ -19,6 +21,7 @@ interface Message {
 
 export function useChatMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ['chat-session', sessionId],
@@ -60,7 +63,6 @@ export function useChatMessages(sessionId: string | null) {
         throw error;
       }
 
-      // Ensure the role is either 'user' or 'assistant'
       return data?.map(msg => ({
         ...msg,
         role: msg.role === 'assistant' ? 'assistant' : 'user',
@@ -126,7 +128,6 @@ export function useChatMessages(sessionId: string | null) {
       return { storedMessage, newSessionId: currentSessionId };
     },
     onMutate: async ({ content, fileId }) => {
-      // Create optimistic message
       const optimisticMessage: Message = {
         id: crypto.randomUUID(),
         content,
@@ -137,13 +138,10 @@ export function useChatMessages(sessionId: string | null) {
         temp: true
       };
 
-      // Cancel outgoing fetches
       await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
 
-      // Get current messages
       const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]) as Message[] || [];
 
-      // Optimistically update messages
       queryClient.setQueryData(['chat-messages', sessionId], (old: Message[] = []) => {
         return [...old, optimisticMessage];
       });
@@ -151,7 +149,7 @@ export function useChatMessages(sessionId: string | null) {
       return { previousMessages, optimisticMessage };
     },
     onSuccess: ({ storedMessage, newSessionId }, _, context) => {
-      // Update messages with stored message
+      // Update messages cache
       queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
         return old.map(msg => 
           msg.temp && msg.content === context?.optimisticMessage.content
@@ -160,12 +158,21 @@ export function useChatMessages(sessionId: string | null) {
         );
       });
 
-      // Invalidate queries to ensure fresh data
+      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', newSessionId] });
+
+      // Navigate to new session if created
+      if (!sessionId && newSessionId) {
+        const queryParams = new URLSearchParams();
+        queryParams.set('sessionId', newSessionId);
+        if (storedMessage.excel_file_id) {
+          queryParams.set('fileId', storedMessage.excel_file_id);
+        }
+        navigate(`/chat?${queryParams.toString()}`);
+      }
     },
     onError: (_, __, context) => {
-      // Rollback on error
       if (context?.previousMessages) {
         queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
       }

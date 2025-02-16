@@ -1,23 +1,20 @@
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { MessageContent } from "@/components/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
-import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useChatMessages } from "@/hooks/useChatMessages";
 
 const Chat = () => {
   const location = useLocation();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { toast } = useToast();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('sessionId');
@@ -59,18 +56,10 @@ const Chat = () => {
     
     try {
       const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
-      const result = await sendMessage.mutateAsync({ 
+      await sendMessage.mutateAsync({ 
         content: message, 
         fileId: activeFileId 
       });
-
-      // Update URL if new session was created
-      if (!selectedSessionId && result.newSessionId) {
-        const queryParams = new URLSearchParams();
-        queryParams.set('sessionId', result.newSessionId);
-        if (activeFileId) queryParams.set('fileId', activeFileId);
-        navigate(`/chat?${queryParams.toString()}`, { replace: true });
-      }
 
       // Reset upload after successful message send
       resetUpload();
