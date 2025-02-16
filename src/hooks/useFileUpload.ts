@@ -77,7 +77,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Check if file with same hash exists - using maybeSingle() instead of single()
+      // Check if file with same hash exists
       const { data: existingFiles } = await supabase
         .from('excel_files')
         .select('*')
@@ -93,6 +93,14 @@ export const useFileUpload = (): UseFileUploadReturn => {
         });
         setFileId(existingFiles.id);
         setUploadProgress(100);
+
+        // Update chat session with the file ID if we have a session
+        if (currentSessionId) {
+          await supabase
+            .from('chat_sessions')
+            .update({ excel_file_id: existingFiles.id })
+            .eq('session_id', currentSessionId);
+        }
         return;
       }
 
@@ -116,7 +124,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
           file_size: sanitizedFile.size,
           user_id: user.id,
           processing_status: "pending",
-          session_id: currentSessionId || null,
           mime_type: sanitizedFile.type,
           file_hash: fileHash,
           storage_verified: true,
@@ -125,6 +132,15 @@ export const useFileUpload = (): UseFileUploadReturn => {
         .single();
 
       if (dbError) throw dbError;
+      
+      // Update the chat session with the new file ID if we have a session
+      if (currentSessionId) {
+        await supabase
+          .from('chat_sessions')
+          .update({ excel_file_id: fileRecord.id })
+          .eq('session_id', currentSessionId);
+      }
+
       setUploadProgress(100);
       setFileId(fileRecord.id);
       setSessionId(currentSessionId);

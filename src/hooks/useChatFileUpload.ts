@@ -85,8 +85,7 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
           file_path: filePath,
           file_size: sanitizedFile.size,
           user_id: user.id,
-          processing_status: "pending",
-          session_id: currentSessionId || null
+          processing_status: "pending"
         })
         .select()
         .single();
@@ -94,6 +93,15 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
       if (dbError) throw dbError;
       setUploadProgress(100);
       setFileId(fileRecord.id);
+      
+      // Update the chat session with the new file ID if we have a session
+      if (currentSessionId) {
+        await supabase
+          .from('chat_sessions')
+          .update({ excel_file_id: fileRecord.id })
+          .eq('session_id', currentSessionId);
+      }
+      
       setSessionId(currentSessionId);
       
       toast({
@@ -101,7 +109,6 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         description: "File uploaded successfully",
       });
 
-      setIsUploading(false);
     } catch (err) {
       console.error('Upload error:', err);
       setError(err instanceof Error ? err.message : "Failed to upload file");
@@ -110,8 +117,8 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         description: err instanceof Error ? err.message : "Failed to upload file",
         variant: "destructive",
       });
+    } finally {
       setIsUploading(false);
-      setFile(null);
     }
   }, [toast]);
 

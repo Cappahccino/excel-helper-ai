@@ -73,6 +73,7 @@ export type Database = {
         Row: {
           chat_name: string | null
           created_at: string
+          excel_file_id: string | null
           openai_model: string | null
           openai_usage: Json | null
           session_id: string
@@ -84,6 +85,7 @@ export type Database = {
         Insert: {
           chat_name?: string | null
           created_at?: string
+          excel_file_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
           session_id?: string
@@ -95,6 +97,7 @@ export type Database = {
         Update: {
           chat_name?: string | null
           created_at?: string
+          excel_file_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
           session_id?: string
@@ -103,7 +106,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "chat_sessions_excel_file_id_fkey"
+            columns: ["excel_file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       excel_files: {
         Row: {
@@ -126,7 +137,6 @@ export type Database = {
             | Database["public"]["Enums"]["file_processing_status"]
             | null
           retry_count: number | null
-          session_id: string | null
           storage_verified: boolean | null
           total_chunks: number | null
           upload_progress: number | null
@@ -152,7 +162,6 @@ export type Database = {
             | Database["public"]["Enums"]["file_processing_status"]
             | null
           retry_count?: number | null
-          session_id?: string | null
           storage_verified?: boolean | null
           total_chunks?: number | null
           upload_progress?: number | null
@@ -178,21 +187,12 @@ export type Database = {
             | Database["public"]["Enums"]["file_processing_status"]
             | null
           retry_count?: number | null
-          session_id?: string | null
           storage_verified?: boolean | null
           total_chunks?: number | null
           upload_progress?: number | null
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "excel_files_session_id_fkey"
-            columns: ["session_id"]
-            isOneToOne: false
-            referencedRelation: "chat_sessions"
-            referencedColumns: ["session_id"]
-          },
-        ]
+        Relationships: []
       }
       profiles: {
         Row: {
