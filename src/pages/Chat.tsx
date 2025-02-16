@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation } from "react-router-dom";
@@ -8,7 +9,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
-import { MessageContent } from "@/components/MessageContent";
+import { MessageContent } from "@/components/message/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { useToast } from "@/hooks/use-toast";
 import { useChatMessages } from "@/hooks/useChatMessages";
