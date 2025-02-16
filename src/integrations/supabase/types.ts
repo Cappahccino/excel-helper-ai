@@ -18,10 +18,13 @@ export type Database = {
           is_ai_response: boolean | null
           is_streaming: boolean | null
           metadata: Json | null
+          openai_message_id: string | null
+          openai_run_id: string | null
           raw_response: Json | null
           role: string
           session_id: string | null
           status: string
+          thread_message_id: string | null
           user_id: string
         }
         Insert: {
@@ -32,10 +35,13 @@ export type Database = {
           is_ai_response?: boolean | null
           is_streaming?: boolean | null
           metadata?: Json | null
+          openai_message_id?: string | null
+          openai_run_id?: string | null
           raw_response?: Json | null
           role?: string
           session_id?: string | null
           status?: string
+          thread_message_id?: string | null
           user_id: string
         }
         Update: {
@@ -46,10 +52,13 @@ export type Database = {
           is_ai_response?: boolean | null
           is_streaming?: boolean | null
           metadata?: Json | null
+          openai_message_id?: string | null
+          openai_run_id?: string | null
           raw_response?: Json | null
           role?: string
           session_id?: string | null
           status?: string
+          thread_message_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -71,9 +80,11 @@ export type Database = {
       }
       chat_sessions: {
         Row: {
+          assistant_id: string | null
           chat_name: string | null
           created_at: string
           excel_file_id: string | null
+          last_run_id: string | null
           openai_model: string | null
           openai_usage: Json | null
           session_id: string
@@ -83,9 +94,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          assistant_id?: string | null
           chat_name?: string | null
           created_at?: string
           excel_file_id?: string | null
+          last_run_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
           session_id?: string
@@ -95,9 +108,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          assistant_id?: string | null
           chat_name?: string | null
           created_at?: string
           excel_file_id?: string | null
+          last_run_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
           session_id?: string
