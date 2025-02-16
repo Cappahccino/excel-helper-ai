@@ -1,3 +1,4 @@
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, isToday, isYesterday } from "date-fns";
@@ -111,14 +112,41 @@ export function useChatMessages(sessionId: string | null) {
 
       return { storedMessage, newSessionId: currentSessionId };
     },
-    onSuccess: async ({ storedMessage, newSessionId }, variables) => {
-      queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
-        return [...old, { ...storedMessage, role: 'user' as const }];
+    onMutate: async ({ content, fileId }) => {
+      const optimisticMessage: Message = {
+        id: crypto.randomUUID(),
+        content,
+        role: 'user',
+        session_id: sessionId,
+        created_at: new Date().toISOString(),
+        excel_file_id: fileId || null,
+        temp: true
+      };
+
+      await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
+      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]) as Message[] || [];
+
+      queryClient.setQueryData(['chat-messages', sessionId], (old: Message[] = []) => {
+        return [...old, optimisticMessage];
       });
 
+      return { previousMessages, optimisticMessage };
+    },
+    onSuccess: async ({ storedMessage, newSessionId }, variables, context) => {
+      // Update cache with the real message
+      queryClient.setQueryData(['chat-messages', newSessionId], (old: Message[] = []) => {
+        return old.map(msg => 
+          msg.temp && msg.content === context?.optimisticMessage.content
+            ? { ...storedMessage, role: 'user' as const, temp: false }
+            : msg
+        );
+      });
+
+      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
       queryClient.invalidateQueries({ queryKey: ['chat-session', newSessionId] });
 
+      // Navigate immediately for new sessions
       if (!sessionId && newSessionId) {
         const queryParams = new URLSearchParams();
         queryParams.set('sessionId', newSessionId);
@@ -128,11 +156,17 @@ export function useChatMessages(sessionId: string | null) {
         navigate(`/chat?${queryParams.toString()}`);
       }
 
-      await generateAIResponse.mutate({
+      // Trigger AI response separately
+      generateAIResponse.mutate({
         content: variables.content,
         fileId: variables.fileId,
         sessionId: newSessionId
       });
+    },
+    onError: (_, __, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
+      }
     }
   });
 
