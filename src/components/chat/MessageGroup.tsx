@@ -1,13 +1,12 @@
 
 import { motion } from "framer-motion";
 import { MessageContent } from "../message/MessageContent";
-import { format } from "date-fns";
 
 interface MessageGroupProps {
   date: string;
   messages: any[];
   formatTimestamp: (timestamp: string) => string;
-  latestMessageId?: string;
+  latestMessageId?: string | null;
   status?: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
 }
 
@@ -42,7 +41,7 @@ export function MessageGroup({
             timestamp={formatTimestamp(msg.created_at)}
             fileInfo={msg.excel_files}
             isNewMessage={msg.id === latestMessageId}
-            status={msg.id === latestMessageId ? status : 'completed'}
+            status={msg.id === latestMessageId ? status : msg.status || 'completed'}
           />
         </motion.div>
       ))}

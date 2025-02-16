@@ -66,7 +66,7 @@ export async function createInitialMessage(
       content: '',
       role: 'assistant',
       is_ai_response: true,
-      status: 'queued'
+      status: 'in_progress' // Changed from 'queued' to show loading immediately
     })
     .select()
     .single();

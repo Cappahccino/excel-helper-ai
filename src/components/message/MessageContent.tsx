@@ -26,10 +26,8 @@ export function MessageContent({
   isNewMessage,
   status = 'completed'
 }: MessageContentProps) {
-  // Show thinking state only if:
-  // 1. It's an assistant message
-  // 2. Status is "in_progress"
-  const isThinking = role === 'assistant' && status === "in_progress";
+  const isThinking = role === 'assistant' && (status === "in_progress" || status === "queued");
+  const showContent = !isThinking && content.trim().length > 0;
 
   return (
     <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>
@@ -42,39 +40,31 @@ export function MessageContent({
             className="mb-2"
           />
         )}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={isThinking ? "loading" : "content"}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ 
-              opacity: 1, 
-              height: "auto",
-              transition: {
-                height: { duration: 0.2 },
-                opacity: { duration: 0.15, delay: 0.05 }
-              }
-            }}
-            exit={{ 
-              opacity: 0,
-              height: 0,
-              transition: {
-                height: { duration: 0.2 },
-                opacity: { duration: 0.1 }
-              }
-            }}
-            className="min-h-[40px] overflow-hidden"
-          >
-            {isThinking ? (
+        <AnimatePresence mode="wait" initial={false}>
+          {isThinking ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+            >
               <MessageLoadingState />
-            ) : content && (
-              <>
-                <div className="prose prose-slate max-w-none">
-                  <MessageMarkdown content={content} />
-                </div>
-                <MessageActions content={content} timestamp={timestamp} />
-              </>
-            )}
-          </motion.div>
+            </motion.div>
+          ) : showContent && (
+            <motion.div
+              key="content"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="prose prose-slate max-w-none">
+                <MessageMarkdown content={content} />
+              </div>
+              <MessageActions content={content} timestamp={timestamp} />
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
     </div>
