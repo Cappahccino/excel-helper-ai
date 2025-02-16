@@ -20,6 +20,7 @@ interface MessageContentProps {
   };
   isNewMessage?: boolean;
   isStreaming?: boolean;
+  isProcessing?: boolean;
 }
 
 interface MessageState {
@@ -35,6 +36,7 @@ export function MessageContent({
   fileInfo,
   isNewMessage = false,
   isStreaming = false,
+  isProcessing = false,
 }: MessageContentProps) {
   const { toast } = useToast();
   const [messageState, setMessageState] = useState<MessageState>({
@@ -59,12 +61,20 @@ export function MessageContent({
 
   // Enhanced streaming effect with token-based updates
   useEffect(() => {
-    if (role !== "assistant" || !isStreaming) {
+    if (role !== "assistant" || (!isStreaming && !isProcessing)) {
       setMessageState({
         tokens: [content],
         displayedContent: content,
         displayState: "complete"
       });
+      return;
+    }
+
+    if (isProcessing) {
+      setMessageState(prev => ({
+        ...prev,
+        displayState: "thinking"
+      }));
       return;
     }
 
@@ -131,7 +141,7 @@ export function MessageContent({
         clearTimeout(streamingTimeoutRef.current);
       }
     };
-  }, [content, role, isStreaming, messageState.displayedContent]);
+  }, [content, role, isStreaming, isProcessing, messageState.displayedContent]);
 
   // Update display state when streaming ends
   useEffect(() => {
@@ -149,6 +159,24 @@ export function MessageContent({
       ? "bg-gradient-to-br from-blue-50 to-blue-50/50 ml-4 items-start shadow-sm hover:shadow-md transition-shadow duration-200"
       : "bg-gradient-to-br from-gray-50 to-gray-50/50 mr-4 flex-row-reverse items-start shadow-sm hover:shadow-md transition-shadow duration-200"
   }`;
+
+  // Enhanced loading indicators
+  const renderLoadingState = () => {
+    if (messageState.displayState === "thinking") {
+      return (
+        <div className="flex items-center gap-2 mt-2">
+          <Spinner variant="ring" className="h-4 w-4 text-excel" />
+          <span className="text-sm text-gray-500">Assistant is thinking...</span>
+        </div>
+      );
+    }
+    if (messageState.displayState === "streaming") {
+      return (
+        <span className="inline-block h-4 w-[2px] bg-excel animate-blink ml-1" />
+      );
+    }
+    return null;
+  };
 
   return (
     <motion.div
@@ -250,14 +278,7 @@ export function MessageContent({
               >
                 {messageState.displayedContent}
               </ReactMarkdown>
-              {messageState.displayState === "thinking" ? (
-                <span className="inline-flex items-center gap-2 mt-2">
-                  <Spinner variant="ring" className="h-4 w-4 text-excel" />
-                  <span className="text-sm text-gray-500">Thinking...</span>
-                </span>
-              ) : messageState.displayState === "streaming" && (
-                <span className="inline-block h-4 w-[2px] bg-excel animate-blink ml-1" />
-              )}
+              {renderLoadingState()}
             </div>
           ) : (
             <p className="text-sm whitespace-pre-wrap leading-relaxed text-gray-800">

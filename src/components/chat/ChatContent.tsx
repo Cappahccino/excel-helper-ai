@@ -60,9 +60,9 @@ export function ChatContent({
               formatTimestamp={formatTimestamp}
               latestMessageId={latestMessageId}
               isStreaming={isStreaming}
+              isProcessing={isAnalyzing}
             />
           ))}
-          {isAnalyzing && <LoadingState />}
           <div ref={messagesEndRef} />
         </AnimatePresence>
       )}
