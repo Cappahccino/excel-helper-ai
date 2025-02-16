@@ -22,13 +22,13 @@ export function FileInfo({ filename, fileSize, fileId, className }: FileInfoProp
   };
 
   return (
-    <div className={`flex items-center gap-4 p-4 bg-zinc-900 rounded-lg text-white ${className || ''}`}>
+    <div className={`flex items-center gap-4 p-4 bg-[#F1F0FB] rounded-lg border border-[#C8C8C9] ${className || ''}`}>
       <div className="flex items-center gap-3 flex-1">
-        <FileSpreadsheet className="w-8 h-8 text-green-500" />
+        <FileSpreadsheet className="w-8 h-8 text-[#F2FCE2]" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{filename}</p>
+          <p className="text-sm font-medium text-[#8E9196] truncate">{filename}</p>
           {fileSize && (
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-[#9F9EA1]">
               spreadsheet - {formatFileSize(fileSize)}
             </p>
           )}
@@ -40,7 +40,7 @@ export function FileInfo({ filename, fileSize, fileId, className }: FileInfoProp
             <Button 
               variant="outline" 
               size="sm"
-              className="bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700"
+              className="bg-[#D3E4FD] hover:bg-[#D3E4FD]/90 text-[#8E9196] border-[#C8C8C9]"
             >
               <Table className="w-4 h-4 mr-2" />
               View Data
