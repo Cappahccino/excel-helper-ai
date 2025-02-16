@@ -27,6 +27,7 @@ export type Database = {
           session_id: string | null
           status: Database["public"]["Enums"]["message_status"]
           thread_message_id: string | null
+          updated_at: string | null
           user_id: string
           version: string | null
         }
@@ -47,6 +48,7 @@ export type Database = {
           session_id?: string | null
           status?: Database["public"]["Enums"]["message_status"]
           thread_message_id?: string | null
+          updated_at?: string | null
           user_id: string
           version?: string | null
         }
@@ -67,6 +69,7 @@ export type Database = {
           session_id?: string | null
           status?: Database["public"]["Enums"]["message_status"]
           thread_message_id?: string | null
+          updated_at?: string | null
           user_id?: string
           version?: string | null
         }

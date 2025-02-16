@@ -14,12 +14,17 @@ interface Message {
   role: 'user' | 'assistant';
   session_id: string | null;
   created_at: string;
+  updated_at: string;
   excel_file_id: string | null;
   excel_files?: {
     filename: string;
     file_size: number;
   } | null;
   status: MessageStatus;
+  version?: string;
+  deployment_id?: string;
+  cleanup_after?: string;
+  cleanup_reason?: string;
   temp?: boolean;
 }
 
@@ -79,6 +84,7 @@ export function useChatMessages(sessionId: string | null) {
         .from('chat_messages')
         .select('*, excel_files(filename, file_size)')
         .eq('session_id', session.pages[0].session_id)
+        .is('deleted_at', null) // Only fetch non-deleted messages
         .order('created_at', { ascending: true })
         .limit(MESSAGES_PER_PAGE);
 
@@ -163,7 +169,9 @@ export function useChatMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: true,
           user_id: user.id,
-          status: 'queued'
+          status: 'queued',
+          version: '1.0.0',
+          deployment_id: crypto.randomUUID()
         })
         .select('*, excel_files(filename, file_size)')
         .single();
