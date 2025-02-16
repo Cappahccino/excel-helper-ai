@@ -5,19 +5,15 @@ import { useLocation } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import { MessageContent } from "@/components/message/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
-import { useToast } from "@/hooks/use-toast";
-import { useChatMessages } from "@/hooks/useChatMessages";
-import { useChatRealtime } from "@/hooks/useChatRealtime";
+import { useChatController } from "@/hooks/useChatController";
 
 const Chat = () => {
   const location = useLocation();
-  const { toast } = useToast();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('sessionId');
   const fileIdFromUrl = searchParams.get('fileId');
@@ -46,51 +42,23 @@ const Chat = () => {
     enabled: !!fileIdFromUrl && !selectedSessionId
   });
 
-  const { 
-    messages, 
-    sendMessage, 
+  const {
+    messages,
     isLoading: messagesLoading,
-    formatTimestamp,
-    hasNextPage,
-    fetchNextPage,
-    refetch
-  } = useChatMessages(selectedSessionId);
-
-  const { latestMessageId, status } = useChatRealtime({
+    status,
+    latestMessageId,
+    sendMessage,
+    formatTimestamp
+  } = useChatController({
     sessionId: selectedSessionId,
-    refetch,
-    onAssistantMessage: () => {
-      resetUpload();
-    }
+    fileId: uploadedFileId || fileIdFromUrl || null,
+    onMessageSent: resetUpload
   });
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
-    
-    try {
-      const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
-      await sendMessage.mutateAsync({ 
-        content: message, 
-        fileId: activeFileId 
-      });
-      
-    } catch (error) {
-      console.error('Analysis error:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to process message",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLDivElement;
-    const isNearTop = target.scrollTop < 100;
-
-    if (isNearTop && hasNextPage && !messagesLoading) {
-      fetchNextPage();
-    }
+    const activeFileId = fileId || uploadedFileId || fileIdFromUrl;
+    await sendMessage(message, activeFileId);
   };
 
   const activeFileId = uploadedFileId || fileIdFromUrl;
@@ -151,10 +119,7 @@ const Chat = () => {
                   exit={{ opacity: 0 }}
                   className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
                 >
-                  <ScrollArea 
-                    className="flex-grow p-4"
-                    onScrollCapture={handleScroll}
-                  >
+                  <ScrollArea className="flex-grow p-4">
                     <div className="space-y-6">
                       {messages.map(msg => (
                         <MessageContent
