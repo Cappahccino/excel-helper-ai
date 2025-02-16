@@ -8,9 +8,10 @@ interface FileInfoProps {
   filename: string;
   fileSize?: number;
   fileId?: string;
+  className?: string;
 }
 
-export function FileInfo({ filename, fileSize, fileId }: FileInfoProps) {
+export function FileInfo({ filename, fileSize, fileId, className }: FileInfoProps) {
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
     if (bytes === 0) return '0 Bytes';
@@ -21,7 +22,7 @@ export function FileInfo({ filename, fileSize, fileId }: FileInfoProps) {
   };
 
   return (
-    <div className="flex items-center gap-4 p-4 bg-zinc-900 rounded-lg text-white">
+    <div className={`flex items-center gap-4 p-4 bg-zinc-900 rounded-lg text-white ${className || ''}`}>
       <div className="flex items-center gap-3 flex-1">
         <FileSpreadsheet className="w-8 h-8 text-green-500" />
         <div className="flex-1 min-w-0">
