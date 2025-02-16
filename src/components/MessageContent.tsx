@@ -22,6 +22,12 @@ interface MessageContentProps {
   isStreaming?: boolean;
 }
 
+interface MessageState {
+  tokens: string[];
+  displayedContent: string;
+  displayState: 'thinking' | 'streaming' | 'complete';
+}
+
 export function MessageContent({
   content,
   role,
@@ -31,12 +37,13 @@ export function MessageContent({
   isStreaming = false,
 }: MessageContentProps) {
   const { toast } = useToast();
-  const [displayedText, setDisplayedText] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [isThinking, setIsThinking] = useState(role === "assistant" && isStreaming && !content);
+  const [messageState, setMessageState] = useState<MessageState>({
+    tokens: [],
+    displayedContent: "",
+    displayState: role === "assistant" ? "thinking" : "complete"
+  });
   const contentRef = useRef(content);
-  const typingIndexRef = useRef(0);
-  const words = useRef<string[]>([]);
+  const streamingTimeoutRef = useRef<NodeJS.Timeout>();
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content).then(() => {
@@ -50,72 +57,90 @@ export function MessageContent({
     return role === "assistant" ? "AI" : "U";
   };
 
-  // Enhanced typing effect with word-by-word approach
+  // Enhanced streaming effect with token-based updates
   useEffect(() => {
     if (role !== "assistant" || !isStreaming) {
-      setDisplayedText(content);
-      setIsTyping(false);
-      setIsThinking(false);
+      setMessageState({
+        tokens: [content],
+        displayedContent: content,
+        displayState: "complete"
+      });
       return;
     }
 
-    // If content is empty, show thinking state
-    if (!content) {
-      setIsThinking(true);
-      setIsTyping(false);
-      return;
-    }
-
-    setIsThinking(false);
-    setIsTyping(true);
-
-    // Reset if content has completely changed
+    // Reset state if content has completely changed
     if (content !== contentRef.current) {
       contentRef.current = content;
-      words.current = content.split(/\s+/);
       
-      if (content.startsWith(displayedText)) {
-        const displayedWords = displayedText.split(/\s+/);
-        typingIndexRef.current = displayedWords.length;
+      // If new content includes previous content, only stream the new part
+      if (content.startsWith(messageState.displayedContent)) {
+        const newContent = content.slice(messageState.displayedContent.length);
+        const newTokens = newContent.split(/(\s+)/).filter(Boolean);
+        
+        setMessageState(prev => ({
+          ...prev,
+          tokens: [...prev.tokens, ...newTokens],
+          displayState: "streaming"
+        }));
       } else {
-        typingIndexRef.current = 0;
-        setDisplayedText("");
+        // Complete reset for new content
+        setMessageState({
+          tokens: content.split(/(\s+)/).filter(Boolean),
+          displayedContent: "",
+          displayState: "streaming"
+        });
       }
     }
 
-    const typeNextWord = () => {
-      if (typingIndexRef.current < words.current.length) {
-        setDisplayedText((prev) =>
-          prev ? `${prev} ${words.current[typingIndexRef.current]}` : words.current[typingIndexRef.current]
-        );
-        typingIndexRef.current += 1;
-
-        // Simulated OpenAI speed
-        const lastWord = words.current[typingIndexRef.current - 1] || "";
-        let delay = Math.random() * (120 - 80) + 80; // Base delay 80-120ms
-
-        if (/[.!?]/.test(lastWord)) {
-          delay = Math.random() * (400 - 250) + 250; // Pause at sentence endings
-        } else if (/[,;]/.test(lastWord)) {
-          delay = Math.random() * (180 - 120) + 120; // Pause slightly at commas
+    // Progressive token display
+    const displayNextToken = () => {
+      setMessageState(prev => {
+        const displayedTokensCount = prev.displayedContent.split(/(\s+)/).filter(Boolean).length;
+        
+        if (displayedTokensCount >= prev.tokens.length) {
+          return {
+            ...prev,
+            displayState: isStreaming ? "streaming" : "complete"
+          };
         }
 
-        setTimeout(typeNextWord, delay);
-      } else {
-        setIsTyping(false);
-      }
+        const nextToken = prev.tokens[displayedTokensCount];
+        const newDisplayedContent = prev.displayedContent + nextToken;
+
+        return {
+          ...prev,
+          displayedContent: newDisplayedContent,
+          displayState: "streaming"
+        };
+      });
+
+      // Schedule next token
+      streamingTimeoutRef.current = setTimeout(displayNextToken, 
+        Math.random() * (120 - 80) + 80 // Dynamic delay between 80-120ms
+      );
     };
 
-    const initialDelay = setTimeout(typeNextWord, 50); // Small initial delay
-    return () => clearTimeout(initialDelay);
-  }, [content, role, isStreaming, displayedText]);
+    // Start token display
+    if (messageState.displayState === "streaming") {
+      streamingTimeoutRef.current = setTimeout(displayNextToken, 50);
+    }
 
-  // Reset typing when streaming ends
+    // Cleanup
+    return () => {
+      if (streamingTimeoutRef.current) {
+        clearTimeout(streamingTimeoutRef.current);
+      }
+    };
+  }, [content, role, isStreaming, messageState.displayedContent]);
+
+  // Update display state when streaming ends
   useEffect(() => {
-    if (!isStreaming) {
-      setDisplayedText(content);
-      setIsTyping(false);
-      setIsThinking(false);
+    if (!isStreaming && messageState.displayState === "streaming") {
+      setMessageState(prev => ({
+        ...prev,
+        displayedContent: content,
+        displayState: "complete"
+      }));
     }
   }, [isStreaming, content]);
 
@@ -223,14 +248,14 @@ export function MessageContent({
                   },
                 }}
               >
-                {displayedText}
+                {messageState.displayedContent}
               </ReactMarkdown>
-              {isThinking ? (
+              {messageState.displayState === "thinking" ? (
                 <span className="inline-flex items-center gap-2 mt-2">
                   <Spinner variant="ring" className="h-4 w-4 text-excel" />
                   <span className="text-sm text-gray-500">Thinking...</span>
                 </span>
-              ) : isTyping && (
+              ) : messageState.displayState === "streaming" && (
                 <span className="inline-block h-4 w-[2px] bg-excel animate-blink ml-1" />
               )}
             </div>
