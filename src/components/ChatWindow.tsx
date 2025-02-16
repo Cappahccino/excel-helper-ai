@@ -38,7 +38,8 @@ export function ChatWindow({
     groupMessagesByDate,
     hasScrolledUp,
     scrollToBottom,
-    handleScroll
+    handleScroll,
+    refetchMessages
   } = useChatController({
     sessionId,
     fileId,
@@ -46,7 +47,7 @@ export function ChatWindow({
   });
 
   if (isError) {
-    return <ChatError />;
+    return <ChatError onRetry={refetchMessages} />;
   }
 
   const messageGroups = groupMessagesByDate();

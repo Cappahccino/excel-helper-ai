@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,11 +5,12 @@ import { useToast } from "@/hooks/use-toast";
 import { format, isToday, isYesterday } from "date-fns";
 
 type MessageStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+type MessageRole = 'user' | 'assistant';
 
 interface Message {
   id: string;
   content: string;
-  role: 'user' | 'assistant';
+  role: MessageRole;
   created_at: string;
   status: MessageStatus;
   excel_files?: {
@@ -39,43 +39,50 @@ export function useChatController({
   const [isError, setIsError] = useState(false);
   const [latestMessageId, setLatestMessageId] = useState<string | null>(null);
 
-  // Fetch messages
-  useEffect(() => {
+  const fetchMessages = async () => {
     if (!sessionId) {
       setMessages([]);
       setIsLoading(false);
       return;
     }
 
-    async function fetchMessages() {
-      try {
-        const { data, error } = await supabase
-          .from('chat_messages')
-          .select('*, excel_files(filename, file_size)')
-          .eq('session_id', sessionId)
-          .order('created_at', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*, excel_files(filename, file_size)')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        setMessages(data || []);
-        setIsError(false);
-      } catch (error) {
-        console.error('Error fetching messages:', error);
-        setIsError(true);
-        toast({
-          title: "Error",
-          description: "Failed to load messages",
-          variant: "destructive"
-        });
-      } finally {
-        setIsLoading(false);
-      }
+      const transformedMessages: Message[] = data?.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role as MessageRole,
+        created_at: msg.created_at,
+        status: msg.status as MessageStatus,
+        excel_files: msg.excel_files
+      })) || [];
+
+      setMessages(transformedMessages);
+      setIsError(false);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      setIsError(true);
+      toast({
+        title: "Error",
+        description: "Failed to load messages",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchMessages();
-  }, [sessionId, toast]);
+  }, [sessionId]);
 
-  // Real-time updates
   useEffect(() => {
     if (!sessionId) return;
 
@@ -99,7 +106,6 @@ export function useChatController({
             setStatus(message.status);
 
             if (isComplete && hasContent) {
-              // Refetch messages to ensure we have the latest state
               await queryClient.invalidateQueries({ 
                 queryKey: ['chat-messages', sessionId] 
               });
@@ -141,7 +147,6 @@ export function useChatController({
         currentSessionId = newSession.session_id;
       }
 
-      // Send user message
       const { error: messageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -156,7 +161,6 @@ export function useChatController({
       
       if (messageError) throw messageError;
 
-      // Create assistant message placeholder
       const { data: assistantMessage, error: assistantError } = await supabase
         .from('chat_messages')
         .insert({
@@ -173,7 +177,6 @@ export function useChatController({
 
       if (assistantError) throw assistantError;
 
-      // Invoke edge function
       const { error } = await supabase.functions.invoke('excel-assistant', {
         body: { 
           fileId: messageFileId || fileId || null,
@@ -256,6 +259,7 @@ export function useChatController({
     groupMessagesByDate,
     hasScrolledUp,
     scrollToBottom,
-    handleScroll
+    handleScroll,
+    refetchMessages: fetchMessages
   };
 }
