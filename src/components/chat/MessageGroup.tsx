@@ -8,7 +8,6 @@ interface MessageGroupProps {
   messages: any[];
   formatTimestamp: (timestamp: string) => string;
   latestMessageId?: string;
-  isStreaming?: boolean;
   isProcessing?: boolean;
 }
 
@@ -17,7 +16,6 @@ export function MessageGroup({
   messages, 
   formatTimestamp, 
   latestMessageId, 
-  isStreaming,
   isProcessing 
 }: MessageGroupProps) {
   return (
@@ -44,7 +42,6 @@ export function MessageGroup({
             timestamp={formatTimestamp(msg.created_at)}
             fileInfo={msg.excel_files}
             isNewMessage={msg.id === latestMessageId}
-            isStreaming={msg.id === latestMessageId && isStreaming && msg.role === 'assistant'}
             isProcessing={msg.id === latestMessageId && isProcessing && msg.role === 'assistant'}
           />
         </motion.div>
