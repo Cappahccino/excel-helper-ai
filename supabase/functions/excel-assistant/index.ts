@@ -5,11 +5,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import OpenAI from 'npm:openai';
 import { corsHeaders } from './config.ts';
 import { RequestBody, MessageResponse } from './types.ts';
-import { getOrCreateAssistant, streamAssistantResponse } from './assistant.ts';
+import { getOrCreateAssistant, streamAssistantResponse, getThreadMessages } from './assistant.ts';
 import { processExcelFile } from './excel.ts';
 import { 
   createInitialMessage, 
-  getSessionContext, 
+  getOrCreateSession,
   updateSession,
   updateStreamingMessage 
 } from './database.ts';
@@ -28,7 +28,7 @@ serve(async (req) => {
     const body = await req.json() as RequestBody;
     console.log(`📝 [${requestId}] Request body:`, body);
 
-    if (!body.userId || !body.sessionId || !body.query) {
+    if (!body.userId || !body.query) {
       throw new Error('Missing required fields');
     }
 
@@ -44,18 +44,23 @@ serve(async (req) => {
     });
 
     const assistantId = await getOrCreateAssistant(openai);
-    const session = await getSessionContext(supabase, sessionId);
+    const session = await getOrCreateSession(supabase, userId, sessionId, fileId);
     const excelData = fileId ? await processExcelFile(supabase, fileId) : null;
-    const message = await createInitialMessage(supabase, userId, sessionId, fileId);
+    const message = await createInitialMessage(supabase, userId, session.session_id, fileId);
 
     try {
-      const thread = await openai.beta.threads.create();
-      const threadId = thread.id;
+      let threadId = session.thread_id;
       
-      await updateSession(supabase, sessionId, { 
-        thread_id: threadId,
-        assistant_id: assistantId
-      });
+      // Create a new thread only if one doesn't exist
+      if (!threadId) {
+        const thread = await openai.beta.threads.create();
+        threadId = thread.id;
+        await updateSession(supabase, session.session_id, { thread_id: threadId });
+      }
+
+      // Get previous messages for context
+      const previousMessages = await getThreadMessages(openai, threadId);
+      console.log(`📜 [${requestId}] Previous messages count:`, previousMessages.length);
 
       const excelContext = excelData 
         ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
@@ -66,9 +71,10 @@ serve(async (req) => {
         content: `${excelContext}${query}`
       });
 
+      // Create a run with modified instructions that encourage context usage
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId,
-        instructions: "Focus only on answering the current question. Do not reference or use context from previous messages."
+        instructions: "Please provide a response that takes into account the conversation history and context when relevant. For follow-up questions, refer to previous exchanges to maintain continuity."
       });
 
       await supabase
@@ -90,15 +96,16 @@ serve(async (req) => {
         updateMessageCallback
       );
 
-      await updateSession(supabase, sessionId, { 
+      await updateSession(supabase, session.session_id, { 
         last_run_id: run.id,
-        excel_file_id: fileId || session.excel_file_id
+        excel_file_id: fileId || session.excel_file_id,
+        assistant_id: assistantId
       });
 
       const response: MessageResponse = {
         message: finalContent,
         messageId: message.id,
-        sessionId
+        sessionId: session.session_id
       };
 
       return new Response(

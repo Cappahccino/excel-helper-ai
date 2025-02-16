@@ -24,6 +24,23 @@ export async function getOrCreateAssistant(openai: OpenAI): Promise<string> {
   }
 }
 
+export async function getThreadMessages(
+  openai: OpenAI,
+  threadId: string,
+  limit: number = 10
+): Promise<any[]> {
+  try {
+    const messages = await openai.beta.threads.messages.list(threadId, {
+      order: 'desc',
+      limit
+    });
+    return messages.data;
+  } catch (error) {
+    console.error('Error fetching thread messages:', error);
+    throw error;
+  }
+}
+
 export async function streamAssistantResponse(
   openai: OpenAI, 
   threadId: string, 

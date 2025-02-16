@@ -42,17 +42,34 @@ export async function createInitialMessage(
   return message;
 }
 
-export async function getSessionContext(
+export async function getOrCreateSession(
   supabase: ReturnType<typeof createClient>,
-  sessionId: string
+  userId: string,
+  sessionId: string | null,
+  fileId: string | null
 ) {
+  if (sessionId) {
+    const { data: session, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
+
+    if (error) throw new Error(`Failed to get session: ${error.message}`);
+    return session;
+  }
+
   const { data: session, error } = await supabase
     .from('chat_sessions')
-    .select('*')
-    .eq('session_id', sessionId)
+    .insert({
+      user_id: userId,
+      excel_file_id: fileId,
+      status: 'active'
+    })
+    .select()
     .single();
 
-  if (error) throw new Error(`Failed to get session context: ${error.message}`);
+  if (error) throw new Error(`Failed to create session: ${error.message}`);
   return session;
 }
 
