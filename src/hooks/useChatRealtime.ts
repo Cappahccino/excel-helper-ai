@@ -33,16 +33,19 @@ export function useChatRealtime({ sessionId, onAssistantMessage }: UseChatRealti
         async (payload: any) => {
           if (payload.new) {
             const message = payload.new;
+            const hasContent = message.content && message.content.trim().length > 0;
             
+            // Clear processing states when content arrives
             setStreamingState(prev => ({
               messageId: message.id,
-              isStreaming: message.is_streaming,
-              streamingProgress: message.is_streaming ? prev.streamingProgress + 1 : 100,
-              isAnalyzing: !message.is_streaming && message.status === 'processing'
+              isStreaming: false,
+              streamingProgress: hasContent ? 100 : 0,
+              // Only show analyzing state when there's no content
+              isAnalyzing: !hasContent && message.status === 'processing'
             }));
 
-            // Only trigger the callback when message is complete
-            if (!message.is_streaming && message.role === 'assistant') {
+            // Trigger callback when message is complete
+            if (hasContent && message.role === 'assistant') {
               onAssistantMessage?.();
             }
 

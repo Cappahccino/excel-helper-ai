@@ -4,6 +4,7 @@ import { MessageAvatar } from "./MessageAvatar";
 import { MessageActions } from "./MessageActions";
 import { MessageLoadingState } from "./MessageLoadingState";
 import { FileInfo } from "../FileInfo";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface MessageContentProps {
   content: string;
@@ -24,15 +25,10 @@ export function MessageContent({
   timestamp,
   fileInfo,
   isNewMessage,
-  isStreaming,
   isProcessing
 }: MessageContentProps) {
-  let displayState: 'thinking' | 'streaming' | 'complete' = 'complete';
-
-  // Show loading state for empty assistant messages or when processing/streaming
-  if (role === 'assistant' && (!content || isProcessing || isStreaming)) {
-    displayState = 'thinking';
-  }
+  // Only show thinking state when there's no content and message is processing
+  const showThinking = role === 'assistant' && !content && isProcessing;
 
   return (
     <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>
@@ -45,13 +41,32 @@ export function MessageContent({
             className="mb-2"
           />
         )}
-        <div className="prose prose-slate max-w-none">
-          {content && <MessageMarkdown content={content} />}
-        </div>
-        {content && <MessageActions content={content} timestamp={timestamp} />}
-        {role === 'assistant' && displayState !== 'complete' && (
-          <MessageLoadingState displayState={displayState} />
-        )}
+        <AnimatePresence mode="wait">
+          {content ? (
+            <motion.div
+              key="content"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="prose prose-slate max-w-none">
+                <MessageMarkdown content={content} />
+              </div>
+              <MessageActions content={content} timestamp={timestamp} />
+            </motion.div>
+          ) : showThinking ? (
+            <motion.div
+              key="thinking"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <MessageLoadingState />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
     </div>
   );
