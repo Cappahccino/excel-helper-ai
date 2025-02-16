@@ -1,11 +1,12 @@
 
-import { Spinner } from "../ui/spinner";
-import { motion } from "framer-motion";
-
 export function MessageLoadingState() {
   return (
     <div className="flex items-center gap-2 py-2 min-h-[40px]">
-      <Spinner variant="ring" className="h-4 w-4 text-blue-600" />
+      <div className="flex space-x-1">
+        <span className="h-2 w-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+        <span className="h-2 w-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+        <span className="h-2 w-2 bg-blue-500 rounded-full animate-bounce"></span>
+      </div>
       <span className="text-sm text-gray-600">
         Thinking...
       </span>
