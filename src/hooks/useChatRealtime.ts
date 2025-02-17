@@ -25,7 +25,6 @@ interface UseChatRealtimeProps {
   refetch: () => Promise<any>;
 }
 
-// Define the shape of a chat message from Supabase
 interface ChatMessage {
   id: string;
   content: string;
@@ -87,13 +86,17 @@ export function useChatRealtime({
 
           // Handle different types of updates
           if (payload.eventType === 'INSERT') {
-            // New message created
+            // Immediately invalidate query on new message
             await queryClient.invalidateQueries({ 
               queryKey: ['chat-messages', sessionId]
             });
+            
+            // Force an immediate refetch
+            await refetch();
           } else if (message.status === 'completed' || message.status === 'failed') {
-            // Message completed or failed
             console.log(`Message ${message.id} final status: ${message.status}`);
+            
+            // Invalidate and refetch on completion or failure
             await queryClient.invalidateQueries({ 
               queryKey: ['chat-messages', sessionId],
               refetchType: 'active'
@@ -102,7 +105,16 @@ export function useChatRealtime({
             
             if (message.status === 'completed' && message.role === 'assistant') {
               onAssistantMessage?.();
+              
+              // Clear streaming state for completed message
+              setStreamingStates(prev => {
+                const { [message.id]: _, ...rest } = prev;
+                return rest;
+              });
             }
+          } else {
+            // For other updates (like streaming content), just refetch
+            await refetch();
           }
         }
       )
