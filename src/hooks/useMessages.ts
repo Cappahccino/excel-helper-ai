@@ -42,19 +42,30 @@ export function useMessages(sessionId: string | null) {
         query = query.lt('created_at', pageParam);
       }
       
-      const { data: messages, error } = await query;
+      const { data: rawMessages, error } = await query;
       
       if (error) {
         console.error('Error fetching messages:', error);
         throw error;
       }
 
-      const nextCursor = messages && messages.length === MESSAGES_PER_PAGE 
+      // Transform the raw messages to match our Message type
+      const messages = (rawMessages || []).map(msg => ({
+        ...msg,
+        role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        status: msg.status as Message['status'],
+        excel_files: msg.excel_files ? {
+          filename: msg.excel_files.filename,
+          file_size: msg.excel_files.file_size
+        } : null
+      }));
+
+      const nextCursor = messages.length === MESSAGES_PER_PAGE 
         ? messages[messages.length - 1]?.created_at 
         : null;
 
       return {
-        messages: messages || [],
+        messages,
         nextCursor
       };
     },
@@ -108,7 +119,7 @@ export function useMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: false,
           user_id: user.id,
-          status: 'completed',
+          status: 'completed' as const,
           version: '1.0.0'
         })
         .select('*, excel_files(filename, file_size)')
@@ -126,7 +137,7 @@ export function useMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: true,
           user_id: user.id,
-          status: 'in_progress',
+          status: 'in_progress' as const,
           version: '1.0.0',
           deployment_id: crypto.randomUUID(),
           metadata: {
@@ -142,7 +153,31 @@ export function useMessages(sessionId: string | null) {
 
       if (assistantMessageError) throw assistantMessageError;
 
-      return { userMessage, assistantMessage };
+      // Transform the messages to match our Message type
+      const transformedUserMessage = {
+        ...userMessage,
+        role: 'user' as const,
+        status: userMessage.status as Message['status'],
+        excel_files: userMessage.excel_files ? {
+          filename: userMessage.excel_files.filename,
+          file_size: userMessage.excel_files.file_size
+        } : null
+      };
+
+      const transformedAssistantMessage = {
+        ...assistantMessage,
+        role: 'assistant' as const,
+        status: assistantMessage.status as Message['status'],
+        excel_files: assistantMessage.excel_files ? {
+          filename: assistantMessage.excel_files.filename,
+          file_size: assistantMessage.excel_files.file_size
+        } : null
+      };
+
+      return { 
+        userMessage: transformedUserMessage, 
+        assistantMessage: transformedAssistantMessage 
+      };
     },
     onMutate: async ({ content, fileId, sessionId: currentSessionId }) => {
       await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
@@ -254,7 +289,7 @@ export function useMessages(sessionId: string | null) {
     }
   });
 
-  const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
+  const messages = data?.pages?.flatMap(page => page.messages ?? []) ?? [];
 
   return {
     messages,
