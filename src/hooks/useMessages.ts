@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +7,24 @@ import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 
 const MESSAGES_PER_PAGE = 50;
+
+type MessageMetadata = {
+  reaction_counts?: {
+    positive: number;
+    negative: number;
+  };
+  processing_stage?: {
+    stage: string;
+    started_at: number;
+    last_updated: number;
+    completion_percentage?: number;
+  };
+  user_reaction?: boolean | null;
+  edit_history?: Array<{
+    previous_content: string;
+    edited_at: string;
+  }>;
+} | null;
 
 type DatabaseMessage = {
   id: string;
@@ -26,23 +45,7 @@ type DatabaseMessage = {
   cleanup_reason: string | null;
   deleted_at: string | null;
   is_ai_response: boolean | null;
-  metadata: {
-    reaction_counts?: {
-      positive: number;
-      negative: number;
-    };
-    processing_stage?: {
-      stage: string;
-      started_at: number;
-      last_updated: number;
-      completion_percentage?: number;
-    };
-    user_reaction?: boolean | null;
-    edit_history?: Array<{
-      previous_content: string;
-      edited_at: string;
-    }>;
-  } | null;
+  metadata: MessageMetadata;
 };
 
 export function useMessages(sessionId: string | null) {
@@ -87,7 +90,7 @@ export function useMessages(sessionId: string | null) {
       }
 
       // Transform the raw messages to match our Message type
-      const messages = (rawMessages || []).map((msg: DatabaseMessage): Message => ({
+      const messages = (rawMessages || []).map((msg): Message => ({
         id: msg.id,
         content: msg.content,
         role: msg.role === 'assistant' ? 'assistant' : 'user',
@@ -95,7 +98,7 @@ export function useMessages(sessionId: string | null) {
         created_at: msg.created_at,
         updated_at: msg.updated_at,
         excel_file_id: msg.excel_file_id,
-        status: msg.status,
+        status: msg.status as Message['status'],
         version: msg.version || undefined,
         deployment_id: msg.deployment_id || undefined,
         cleanup_after: msg.cleanup_after || undefined,
@@ -103,7 +106,7 @@ export function useMessages(sessionId: string | null) {
         deleted_at: msg.deleted_at || undefined,
         is_ai_response: msg.is_ai_response || false,
         excel_files: msg.excel_files,
-        metadata: msg.metadata || null
+        metadata: msg.metadata as Message['metadata']
       }));
 
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
@@ -203,23 +206,23 @@ export function useMessages(sessionId: string | null) {
       const transformedUserMessage: Message = {
         ...userMessage,
         role: 'user',
-        status: userMessage.status,
+        status: userMessage.status as Message['status'],
         excel_files: userMessage.excel_files ? {
           filename: userMessage.excel_files.filename,
           file_size: userMessage.excel_files.file_size
         } : null,
-        metadata: userMessage.metadata
+        metadata: userMessage.metadata as Message['metadata']
       };
 
       const transformedAssistantMessage: Message = {
         ...assistantMessage,
         role: 'assistant',
-        status: assistantMessage.status,
+        status: assistantMessage.status as Message['status'],
         excel_files: assistantMessage.excel_files ? {
           filename: assistantMessage.excel_files.filename,
           file_size: assistantMessage.excel_files.file_size
         } : null,
-        metadata: assistantMessage.metadata
+        metadata: assistantMessage.metadata as Message['metadata']
       };
 
       return { 
