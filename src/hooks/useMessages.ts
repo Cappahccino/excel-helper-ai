@@ -111,6 +111,7 @@ export function useMessages(sessionId: string | null) {
         throw new Error('No session ID provided');
       }
 
+      console.log('Creating user message...');
       const { data: userMessage, error: userMessageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -128,6 +129,7 @@ export function useMessages(sessionId: string | null) {
 
       if (userMessageError) throw userMessageError;
 
+      console.log('Creating assistant message...');
       const { data: assistantMessage, error: assistantMessageError } = await supabase
         .from('chat_messages')
         .insert({
@@ -139,7 +141,14 @@ export function useMessages(sessionId: string | null) {
           user_id: user.id,
           status: 'in_progress' as const,
           version: '1.0.0',
-          deployment_id: crypto.randomUUID()
+          deployment_id: crypto.randomUUID(),
+          metadata: {
+            processing_stage: {
+              stage: 'generating',
+              started_at: Date.now(),
+              last_updated: Date.now()
+            }
+          }
         })
         .select('*, excel_files(filename, file_size)')
         .single();
@@ -192,7 +201,7 @@ export function useMessages(sessionId: string | null) {
 
       queryClient.setQueryData(['chat-messages', currentSessionId], (old: any) => ({
         pages: [{
-          messages: [...(old?.pages?.[0]?.messages || []), optimisticUserMessage, optimisticAssistantMessage],
+          messages: [optimisticAssistantMessage, optimisticUserMessage, ...(old?.pages?.[0]?.messages || [])],
           nextCursor: old?.pages?.[0]?.nextCursor
         },
         ...(old?.pages?.slice(1) || [])],
@@ -233,6 +242,7 @@ export function useMessages(sessionId: string | null) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
+      console.log('Invoking excel-assistant function...');
       const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
         body: {
           fileId,
