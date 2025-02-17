@@ -35,6 +35,20 @@ interface Thread {
   child_threads?: Thread[];
 }
 
+// Helper function to safely transform thread metadata
+const transformThreadMetadata = (metadata: unknown): ThreadMetadata | null => {
+  if (!metadata || typeof metadata !== 'object') return null;
+  
+  const meta = metadata as Record<string, unknown>;
+  if ('title' in meta || 'summary' in meta) {
+    return {
+      title: typeof meta.title === 'string' ? meta.title : null,
+      summary: typeof meta.summary === 'string' ? meta.summary : null
+    };
+  }
+  return null;
+};
+
 export function ThreadsList() {
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
   const navigate = useNavigate();
@@ -74,7 +88,7 @@ export function ThreadsList() {
       const transformedSessions = sessions.map(session => ({
         ...session,
         excel_files: session.excel_files ? [session.excel_files] : [],
-        thread_metadata: session.thread_metadata as ThreadMetadata,
+        thread_metadata: transformThreadMetadata(session.thread_metadata)
       }));
 
       // Fetch child threads for each session
@@ -103,7 +117,7 @@ export function ThreadsList() {
           const transformedChildThreads = childThreads?.map(thread => ({
             ...thread,
             excel_files: thread.excel_files ? [thread.excel_files] : [],
-            thread_metadata: thread.thread_metadata as ThreadMetadata,
+            thread_metadata: transformThreadMetadata(thread.thread_metadata)
           })) || [];
 
           return {
