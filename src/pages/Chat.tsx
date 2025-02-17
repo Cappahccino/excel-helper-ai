@@ -126,7 +126,10 @@ const Chat = () => {
                         // Calculate message status
                         const isLatestMessage = msg.id === latestMessageId;
                         const messageStatus = isLatestMessage ? status : msg.status;
-                        const messageStage = isLatestMessage ? processingStage : msg.metadata?.processing_stage;
+                        const messageMetadata = {
+                          ...msg.metadata,
+                          processing_stage: isLatestMessage ? processingStage : msg.metadata?.processing_stage
+                        };
 
                         return (
                           <MessageContent
@@ -138,10 +141,7 @@ const Chat = () => {
                             fileInfo={msg.excel_files}
                             isNewMessage={isLatestMessage}
                             status={messageStatus}
-                            metadata={{
-                              ...msg.metadata,
-                              processing_stage: messageStage,
-                            }}
+                            metadata={messageMetadata}
                             userReaction={msg.metadata?.user_reaction}
                           />
                         );

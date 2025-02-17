@@ -1,6 +1,13 @@
 
 export type MessageStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
 
+export interface ProcessingStage {
+  stage: string;
+  started_at: number;
+  last_updated: number;
+  completion_percentage?: number;
+}
+
 export interface Message {
   id: string;
   content: string;
@@ -26,6 +33,12 @@ export interface Message {
       positive: number;
       negative: number;
     };
+    processing_stage?: ProcessingStage;
+    user_reaction?: boolean | null;
+    edit_history?: Array<{
+      previous_content: string;
+      edited_at: string;
+    }>;
   } | null;
 }
 
