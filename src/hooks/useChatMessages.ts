@@ -3,11 +3,11 @@ import { useSession } from "./useSession";
 import { useMessages } from "./useMessages";
 
 export function useChatMessages(sessionId: string | null) {
-  const { data: session } = useSession(sessionId);
+  const { data: session, isLoading: sessionLoading } = useSession(sessionId);
 
   const {
     messages,
-    isLoading,
+    isLoading: messagesLoading,
     isError,
     sendMessage,
     formatTimestamp,
@@ -15,12 +15,12 @@ export function useChatMessages(sessionId: string | null) {
     refetch,
     hasNextPage,
     fetchNextPage
-  } = useMessages(sessionId, session);
+  } = useMessages(sessionId);
 
   return {
     messages,
     session,
-    isLoading,
+    isLoading: sessionLoading || messagesLoading,
     isError,
     sendMessage,
     formatTimestamp,

@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -8,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const MESSAGES_PER_PAGE = 50;
 
-export function useMessages(sessionId: string | null, session: SessionData | null) {
+export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -49,19 +48,11 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
         throw error;
       }
 
-      const messages = data?.map(msg => ({
+      const messages = (data || []).map(msg => ({
         ...msg,
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         status: msg.status as Message['status']
       })) as Message[];
-
-      // Handle empty or undefined messages case
-      if (!messages || messages.length === 0) {
-        return {
-          messages: [],
-          nextCursor: null
-        };
-      }
 
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
         ? messages[messages.length - 1]?.created_at 
@@ -69,17 +60,17 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
 
       return {
         messages,
-        nextCursor,
+        nextCursor
       };
     },
     initialPageParam: null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    getPreviousPageParam: (firstPage) => firstPage.nextCursor,
-    enabled: !!sessionId,
+    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
+    getPreviousPageParam: (firstPage) => firstPage?.nextCursor ?? undefined,
+    enabled: !!sessionId
   });
 
   // Safely extract and combine messages from all pages
-  const messages = data?.pages?.flatMap(page => page.messages) ?? [];
+  const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
 
   const sendMessage = useMutation({
     mutationFn: async ({ content, fileId }: { content: string; fileId?: string | null }) => {
@@ -235,7 +226,7 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
           query: content,
           userId: user.id,
           sessionId: sessionId,
-          threadId: session?.thread_id || null,
+          threadId: null,
           messageId
         }
       });

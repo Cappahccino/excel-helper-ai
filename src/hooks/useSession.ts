@@ -23,7 +23,7 @@ export function useSession(sessionId: string | null) {
         throw sessionError;
       }
 
-      return sessionData as SessionData;
+      return sessionData as SessionData | null;
     },
     enabled: !!sessionId,
   });
