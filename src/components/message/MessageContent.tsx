@@ -72,10 +72,20 @@ export function MessageContent({
   // Updated logic to determine if we should show the loading state
   const isThinking = (
     role === "assistant" &&
-    (status === 'queued' || (status === 'in_progress' && !content.trim()))
+    (status === 'queued' || status === 'in_progress') &&
+    !content.trim()
   );
 
-  const showContent = content.trim().length > 0 && !isThinking;
+  // Show content if we have content and either:
+  // 1. It's not an assistant message
+  // 2. It's a completed assistant message
+  // 3. It's an in-progress assistant message with content
+  const showContent = content.trim().length > 0 && (
+    role !== 'assistant' ||
+    status === 'completed' ||
+    (status === 'in_progress' && content.trim().length > 0)
+  );
+
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
