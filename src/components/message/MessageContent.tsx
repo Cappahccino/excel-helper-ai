@@ -1,4 +1,3 @@
-
 import { MessageMarkdown } from "./MessageMarkdown";
 import { MessageAvatar } from "./MessageAvatar";
 import { MessageActions } from "./MessageActions";
@@ -58,7 +57,6 @@ export function MessageContent({
   const [showEditHistory, setShowEditHistory] = useState(false);
   
   const getLoadingStage = () => {
-    if (status === 'queued') return LoadingStage.Queued;
     if (status === 'in_progress') {
       const stage = metadata?.processing_stage?.stage;
       if (stage === 'generating' && metadata?.processing_stage?.completion_percentage) {
@@ -75,7 +73,7 @@ export function MessageContent({
   // Show loading state while generating or when no content is available
   const showLoading = (
     role === "assistant" &&
-    ['queued', 'in_progress'].includes(status)
+    status === 'in_progress'
   );
 
   // Show content as soon as there's any content, even while still generating

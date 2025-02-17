@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -77,7 +76,6 @@ export function useMessages(sessionId: string | null) {
     enabled: true // Always enable the query
   });
 
-  // Create session mutation
   const createSession = useMutation({
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -121,7 +119,7 @@ export function useMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: false,
           user_id: user.id,
-          status: 'completed',
+          status: 'completed' as const,
           version: '1.0.0'
         })
         .select('*, excel_files(filename, file_size)')
@@ -138,7 +136,7 @@ export function useMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: true,
           user_id: user.id,
-          status: 'queued',
+          status: 'in_progress' as const,
           version: '1.0.0',
           deployment_id: crypto.randomUUID()
         })
@@ -177,7 +175,7 @@ export function useMessages(sessionId: string | null) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         excel_file_id: fileId,
-        status: 'queued',
+        status: 'in_progress',
         is_ai_response: true,
         version: '1.0.0',
         deployment_id: crypto.randomUUID(),
@@ -252,7 +250,6 @@ export function useMessages(sessionId: string | null) {
     }
   });
 
-  // Modified messages to handle empty state
   const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
 
   return {
