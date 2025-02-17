@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -53,6 +54,13 @@ export function useMessages(sessionId: string | null) {
         role: msg.role === 'assistant' ? 'assistant' : 'user',
         status: msg.status as Message['status']
       })) as Message[];
+
+      if (!messages || messages.length === 0) {
+        return {
+          messages: [],
+          nextCursor: null
+        };
+      }
 
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
         ? messages[messages.length - 1]?.created_at 
