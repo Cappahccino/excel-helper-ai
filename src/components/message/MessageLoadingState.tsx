@@ -29,7 +29,7 @@ const messages: Record<LoadingStage, string> = {
   [LoadingStage.Queued]: "Waiting to process..."
 };
 
-export function MessageLoadingState({ stage = LoadingStage.Generating, className }: MessageLoadingStateProps) {
+export function MessageLoadingState({ stage = LoadingStage.Queued, className }: MessageLoadingStateProps) {
   // Handle percentage-based generating message
   const baseMessage = typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`)
     ? `Generating response ${stage.split('(')[1].split(')')[0]}`
