@@ -3,6 +3,7 @@ import { MessageMarkdown } from "./MessageMarkdown";
 import { MessageAvatar } from "./MessageAvatar";
 import { MessageActions } from "./MessageActions";
 import { MessageLoadingState } from "./MessageLoadingState";
+import { ReactionButtons } from "./ReactionButtons";
 import { FileInfo } from "../FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -16,6 +17,14 @@ interface MessageContentProps {
   } | null;
   isNewMessage?: boolean;
   status?: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  messageId: string;
+  metadata?: {
+    reaction_counts?: {
+      positive: number;
+      negative: number;
+    };
+  } | null;
+  userReaction?: boolean | null;
 }
 
 export function MessageContent({ 
@@ -24,7 +33,10 @@ export function MessageContent({
   timestamp,
   fileInfo,
   isNewMessage,
-  status = 'completed'
+  status = 'completed',
+  messageId,
+  metadata,
+  userReaction
 }: MessageContentProps) {
   const isThinking = (
     role === "assistant" &&
@@ -32,6 +44,8 @@ export function MessageContent({
     content.trim().length === 0
   );
   const showContent = !isThinking && content.trim().length > 0;
+
+  const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
 
   return (
     <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>
@@ -66,7 +80,14 @@ export function MessageContent({
               <div className="prose prose-slate max-w-none">
                 <MessageMarkdown content={content} />
               </div>
-              <MessageActions content={content} timestamp={timestamp} />
+              <div className="flex items-center justify-between mt-2">
+                <MessageActions content={content} timestamp={timestamp} />
+                <ReactionButtons
+                  messageId={messageId}
+                  initialCounts={reactionCounts}
+                  userReaction={userReaction}
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

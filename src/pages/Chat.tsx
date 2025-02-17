@@ -127,12 +127,14 @@ const Chat = () => {
                       {messages.map(msg => (
                         <MessageContent
                           key={msg.id}
+                          messageId={msg.id}
                           content={msg.content}
                           role={msg.role as 'user' | 'assistant'}
                           timestamp={formatTimestamp(msg.created_at)}
                           fileInfo={msg.excel_files}
                           isNewMessage={msg.id === latestMessageId}
                           status={msg.id === latestMessageId ? status : 'completed'}
+                          metadata={msg.metadata as { reaction_counts?: { positive: number; negative: number } } | null}
                         />
                       ))}
                     </div>

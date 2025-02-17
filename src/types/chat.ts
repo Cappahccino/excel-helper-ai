@@ -20,6 +20,12 @@ export interface Message {
   cleanup_reason?: string;
   deleted_at?: string | null;
   temp?: boolean;
+  metadata?: {
+    reaction_counts?: {
+      positive: number;
+      negative: number;
+    };
+  } | null;
 }
 
 export interface SessionData {
