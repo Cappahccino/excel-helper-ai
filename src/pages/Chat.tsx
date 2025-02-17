@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Message } from "@/types/chat";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -197,16 +197,6 @@ const Chat = () => {
 
   const showMessages = selectedSessionId || isCreatingSession;
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-gray-50">
@@ -271,7 +261,6 @@ const Chat = () => {
                       latestMessageId={latestMessageId}
                       status={status}
                     />
-                    <div ref={messagesEndRef} />
                   </motion.div>
                 </div>
                 <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
