@@ -3,6 +3,19 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 
+interface ProcessingStage {
+  stage: string;
+  started_at: number;
+  last_updated: number;
+  completion_percentage?: number;
+}
+
+interface StreamingState {
+  messageId: string | null;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  processingStage?: ProcessingStage;
+}
+
 interface UseChatRealtimeProps {
   sessionId: string | null;
   onAssistantMessage?: () => void;
@@ -14,14 +27,16 @@ export function useChatRealtime({
   onAssistantMessage,
   refetch 
 }: UseChatRealtimeProps) {
-  const [streamingState, setStreamingState] = useState({
-    messageId: null as string | null,
-    status: 'queued' as 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired'
+  const [streamingState, setStreamingState] = useState<StreamingState>({
+    messageId: null,
+    status: 'queued'
   });
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!sessionId) return;
+
+    console.log('Subscribing to chat updates for session:', sessionId);
 
     const channel = supabase
       .channel(`chat_${sessionId}`)
@@ -39,17 +54,19 @@ export function useChatRealtime({
             const hasContent = message.content && message.content.trim().length > 0;
             const isComplete = message.status === 'completed';
             
-            console.log('Message update:', {
+            console.log('Message update received:', {
               messageId: message.id,
               status: message.status,
               hasContent,
-              isComplete
+              isComplete,
+              processingStage: message.processing_stage
             });
             
-            // Update state with new message status
+            // Update state with new message status and processing stage
             setStreamingState({
               messageId: message.id,
-              status: message.status
+              status: message.status,
+              processingStage: message.processing_stage
             });
 
             // Notify when assistant message is complete
@@ -83,6 +100,7 @@ export function useChatRealtime({
   return {
     latestMessageId: streamingState.messageId,
     status: streamingState.status,
+    processingStage: streamingState.processingStage,
     refetchMessages: refetch
   };
 }

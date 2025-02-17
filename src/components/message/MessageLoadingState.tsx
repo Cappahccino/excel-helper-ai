@@ -13,13 +13,14 @@ export function MessageLoadingState({ stage = 'generating', className }: Message
     processing: "Processing data...",
     generating: "Generating response...",
     created: "Initializing...",
-    'in_progress': "Processing..."
+    'in_progress': "Processing...",
+    'queued': "Waiting to process..."
   };
 
   // Handle percentage-based generating message
-  const baseMessage = stage.startsWith('generating (') 
+  const baseMessage = stage?.startsWith('generating (') 
     ? `Generating response ${stage.split('(')[1].split(')')[0]}`
-    : messages[stage] || "Processing...";
+    : messages[stage || 'processing'] || "Processing...";
 
   return (
     <div className={cn(

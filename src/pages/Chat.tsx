@@ -51,7 +51,7 @@ const Chat = () => {
     refetch
   } = useChatMessages(selectedSessionId);
 
-  const { status, latestMessageId } = useChatRealtime({
+  const { status, latestMessageId, processingStage } = useChatRealtime({
     sessionId: selectedSessionId,
     refetch,
     onAssistantMessage: () => {}
@@ -70,8 +70,6 @@ const Chat = () => {
     filename: uploadedFile.name,
     file_size: uploadedFile.size
   } : null);
-
-  const showUploadZone = !selectedSessionId && !activeFileId;
 
   return (
     <SidebarProvider>
@@ -124,19 +122,30 @@ const Chat = () => {
                 >
                   <ScrollArea className="flex-grow p-4">
                     <div className="space-y-6">
-                      {messages.map(msg => (
-                        <MessageContent
-                          key={msg.id}
-                          messageId={msg.id}
-                          content={msg.content}
-                          role={msg.role as 'user' | 'assistant'}
-                          timestamp={formatTimestamp(msg.created_at)}
-                          fileInfo={msg.excel_files}
-                          isNewMessage={msg.id === latestMessageId}
-                          status={msg.id === latestMessageId ? status : 'completed'}
-                          metadata={msg.metadata as { reaction_counts?: { positive: number; negative: number } } | null}
-                        />
-                      ))}
+                      {messages.map(msg => {
+                        // Calculate message status
+                        const isLatestMessage = msg.id === latestMessageId;
+                        const messageStatus = isLatestMessage ? status : msg.status;
+                        const messageStage = isLatestMessage ? processingStage : msg.metadata?.processing_stage;
+
+                        return (
+                          <MessageContent
+                            key={msg.id}
+                            messageId={msg.id}
+                            content={msg.content}
+                            role={msg.role as 'user' | 'assistant'}
+                            timestamp={formatTimestamp(msg.created_at)}
+                            fileInfo={msg.excel_files}
+                            isNewMessage={isLatestMessage}
+                            status={messageStatus}
+                            metadata={{
+                              ...msg.metadata,
+                              processing_stage: messageStage,
+                            }}
+                            userReaction={msg.metadata?.user_reaction}
+                          />
+                        );
+                      })}
                     </div>
                   </ScrollArea>
                 </motion.div>
