@@ -29,11 +29,7 @@ export function useChatRealtime({
   onAssistantMessage,
   refetch 
 }: UseChatRealtimeProps) {
-  const [streamingState, setStreamingState] = useState<StreamingState>({
-    messageId: null,
-    status: 'queued',
-    content: '',
-  });
+  const [streamingStates, setStreamingStates] = useState<Record<string, StreamingState>>({});
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -55,37 +51,45 @@ export function useChatRealtime({
           if (payload.new) {
             const message = payload.new;
             const hasContent = message.content && message.content.trim().length > 0;
-            const isComplete = message.status === 'completed';
             
             console.log('Message update received:', {
               messageId: message.id,
               status: message.status,
               content: message.content,
               hasContent,
-              isComplete,
+              event: payload.eventType,
               processingStage: message.processing_stage
             });
             
-            // Update state with new message status, content and processing stage
-            setStreamingState({
-              messageId: message.id,
-              status: message.status,
-              content: message.content || '',
-              processingStage: message.processing_stage
-            });
+            // Update streaming state for this specific message
+            setStreamingStates(prev => ({
+              ...prev,
+              [message.id]: {
+                messageId: message.id,
+                status: message.status,
+                content: message.content || '',
+                processingStage: message.processing_stage
+              }
+            }));
 
-            // Notify when assistant message is complete
-            if (isComplete && hasContent && message.role === 'assistant') {
-              console.log('Assistant message complete:', message.id);
-              // First invalidate the query cache
+            // Handle different types of updates
+            if (payload.eventType === 'INSERT') {
+              // New message created
+              await queryClient.invalidateQueries({ 
+                queryKey: ['chat-messages', sessionId]
+              });
+            } else if (message.status === 'completed' || message.status === 'failed') {
+              // Message completed or failed
+              console.log(`Message ${message.id} ${message.status}`);
               await queryClient.invalidateQueries({ 
                 queryKey: ['chat-messages', sessionId],
                 refetchType: 'active'
               });
-              // Then explicitly refetch to ensure we have the latest data
               await refetch();
-              // Finally call the onAssistantMessage callback
-              onAssistantMessage?.();
+              
+              if (message.status === 'completed' && message.role === 'assistant') {
+                onAssistantMessage?.();
+              }
             }
           }
         }
@@ -102,11 +106,22 @@ export function useChatRealtime({
     };
   }, [sessionId, queryClient, onAssistantMessage, refetch]);
 
+  // Find the latest message state
+  const latestMessage = Object.values(streamingStates)
+    .sort((a, b) => {
+      if (!a || !b) return 0;
+      return (b.processingStage?.last_updated || 0) - (a.processingStage?.last_updated || 0);
+    })[0] || {
+      messageId: null,
+      status: 'queued' as MessageStatus,
+      content: '',
+    };
+
   return {
-    latestMessageId: streamingState.messageId,
-    status: streamingState.status,
-    content: streamingState.content,
-    processingStage: streamingState.processingStage,
+    latestMessageId: latestMessage.messageId,
+    status: latestMessage.status,
+    content: latestMessage.content,
+    processingStage: latestMessage.processingStage,
     refetchMessages: refetch
   };
 }
