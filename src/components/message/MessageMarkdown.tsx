@@ -3,9 +3,17 @@ import ReactMarkdown from "react-markdown";
 import { InlineMath, BlockMath } from "react-katex";
 import { CodeBlock } from "./CodeBlock";
 import "katex/dist/katex.min.css";
+import { ComponentPropsWithoutRef } from "react";
 
 interface MessageMarkdownProps {
   content: string;
+}
+
+// Define the props type for the code component
+interface CodeProps extends ComponentPropsWithoutRef<"code"> {
+  inline?: boolean;
+  className?: string;
+  children: React.ReactNode;
 }
 
 export function MessageMarkdown({ content }: MessageMarkdownProps) {
@@ -30,7 +38,7 @@ export function MessageMarkdown({ content }: MessageMarkdownProps) {
         li: ({ children }) => (
           <li className="text-sm text-gray-800">{children}</li>
         ),
-        code: ({ inline, className, children }) => {
+        code: ({ inline, className, children }: CodeProps) => {
           const match = /language-(\w+)/.exec(className || '');
           const language = match ? match[1] : 'typescript';
           
