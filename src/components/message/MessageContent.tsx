@@ -69,13 +69,13 @@ export function MessageContent({
     return null;
   };
 
+  // Updated logic to determine if we should show the loading state
   const isThinking = (
     role === "assistant" &&
-    ['queued', 'in_progress'].includes(status) &&
-    (!content || content.trim().length === 0)
+    (status === 'queued' || (status === 'in_progress' && !content.trim()))
   );
 
-  const showContent = !isThinking && content.trim().length > 0;
+  const showContent = content.trim().length > 0 && (!isThinking || status === 'completed');
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
