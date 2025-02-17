@@ -65,7 +65,7 @@ const Chat = () => {
   });
 
   const messages = useMemo(() => {
-    return baseMessages.map(msg => {
+    const messagesList = baseMessages.map(msg => {
       if (msg.id === latestMessageId) {
         return {
           ...msg,
@@ -79,7 +79,31 @@ const Chat = () => {
       }
       return msg;
     });
-  }, [baseMessages, latestMessageId, streamingContent, status, processingStage]);
+
+    if (status === 'in_progress' && !latestMessageId && !streamingContent) {
+      messagesList.unshift({
+        id: 'loading-indicator',
+        content: '',
+        role: 'assistant',
+        session_id: selectedSessionId || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        status: 'in_progress',
+        is_ai_response: true,
+        version: '1.0.0',
+        excel_files: null,
+        metadata: {
+          processing_stage: {
+            stage: 'generating',
+            started_at: Date.now(),
+            last_updated: Date.now()
+          }
+        }
+      });
+    }
+
+    return messagesList;
+  }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId]);
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
@@ -230,22 +254,20 @@ const Chat = () => {
                   >
                     <ScrollArea className="flex-grow p-4">
                       <div className="space-y-6">
-                        {messages.map(msg => {
-                          return (
-                            <MessageContent
-                              key={msg.id}
-                              messageId={msg.id}
-                              content={msg.content}
-                              role={msg.role as 'user' | 'assistant'}
-                              timestamp={formatTimestamp(msg.created_at)}
-                              fileInfo={msg.excel_files}
-                              isNewMessage={msg.id === latestMessageId}
-                              status={msg.status}
-                              metadata={msg.metadata}
-                              userReaction={msg.metadata?.user_reaction}
-                            />
-                          );
-                        })}
+                        {messages.map(msg => (
+                          <MessageContent
+                            key={msg.id}
+                            messageId={msg.id}
+                            content={msg.content}
+                            role={msg.role as 'user' | 'assistant'}
+                            timestamp={formatTimestamp(msg.created_at)}
+                            fileInfo={msg.excel_files}
+                            isNewMessage={msg.id === latestMessageId}
+                            status={msg.status}
+                            metadata={msg.metadata}
+                            userReaction={msg.metadata?.user_reaction}
+                          />
+                        ))}
                       </div>
                     </ScrollArea>
                   </motion.div>
