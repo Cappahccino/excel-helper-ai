@@ -91,6 +91,7 @@ const Chat = () => {
         status: 'in_progress',
         is_ai_response: true,
         version: '1.0.0',
+        excel_file_id: fileIdFromUrl || null,
         excel_files: null,
         metadata: {
           processing_stage: {
@@ -103,7 +104,7 @@ const Chat = () => {
     }
 
     return messagesList;
-  }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId]);
+  }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId, fileIdFromUrl]);
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
