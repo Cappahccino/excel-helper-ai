@@ -72,13 +72,15 @@ export function MessageContent({
     return LoadingStage.Processing;
   };
 
-  const isThinking = (
+  // Show loading state while generating or when no content is available
+  const showLoading = (
     role === "assistant" &&
-    ['queued', 'in_progress'].includes(status) &&
-    (!content || content.trim().length === 0)
+    ['queued', 'in_progress'].includes(status)
   );
 
-  const showContent = !isThinking && content.trim().length > 0;
+  // Show content as soon as there's any content, even while still generating
+  const showContent = content.trim().length > 0;
+  
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
@@ -98,95 +100,97 @@ export function MessageContent({
             className="mb-2"
           />
         )}
-        <AnimatePresence mode="wait" initial={false}>
-          {isThinking ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <MessageLoadingState 
-                stage={getLoadingStage()}
-                className="shadow-sm border border-slate-200"
-              />
-            </motion.div>
-          ) : showContent && (
-            <motion.div
-              key="content"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ 
-                duration: 0.3,
-                ease: [0.4, 0, 0.2, 1]
-              }}
-              className={cn(
-                "relative",
-                isNewMessage && "animate-highlight"
-              )}
-            >
-              <div className="prose prose-slate max-w-none relative group">
-                {isEditing ? (
-                  <EditableMessage
-                    content={content}
-                    messageId={messageId}
-                    onCancel={() => setIsEditing(false)}
-                    onSave={handleSave}
-                  />
-                ) : (
-                  <>
-                    <MessageMarkdown content={content} />
-                    {role === 'user' && (
+        <div className="space-y-4">
+          <AnimatePresence mode="sync">
+            {showLoading && (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <MessageLoadingState 
+                  stage={getLoadingStage()}
+                  className="shadow-sm border border-slate-200"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            {showContent && (
+              <motion.div
+                key="content"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className={cn(
+                  "relative",
+                  isNewMessage && "animate-highlight"
+                )}
+              >
+                <div className="prose prose-slate max-w-none relative group">
+                  {isEditing ? (
+                    <EditableMessage
+                      content={content}
+                      messageId={messageId}
+                      onCancel={() => setIsEditing(false)}
+                      onSave={handleSave}
+                    />
+                  ) : (
+                    <>
+                      <MessageMarkdown content={content} />
+                      {role === 'user' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute -right-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => setIsEditing(true)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  {hasEditHistory && !isEditing && (
+                    <div className="mt-1">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="absolute -right-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => setIsEditing(true)}
+                        size="sm"
+                        className="text-xs text-gray-500 flex items-center gap-1 hover:text-gray-700"
+                        onClick={() => setShowEditHistory(!showEditHistory)}
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <Clock className="h-3 w-3" />
+                        Edited {editHistory.length} {editHistory.length === 1 ? 'time' : 'times'}
                       </Button>
-                    )}
-                  </>
-                )}
-                {hasEditHistory && !isEditing && (
-                  <div className="mt-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs text-gray-500 flex items-center gap-1 hover:text-gray-700"
-                      onClick={() => setShowEditHistory(!showEditHistory)}
-                    >
-                      <Clock className="h-3 w-3" />
-                      Edited {editHistory.length} {editHistory.length === 1 ? 'time' : 'times'}
-                    </Button>
-                    {showEditHistory && (
-                      <div className="mt-2 space-y-2">
-                        {editHistory.map((edit, index) => (
-                          <div key={index} className="text-sm text-gray-600 border-l-2 border-gray-200 pl-2">
-                            <div className="text-xs text-gray-400">
-                              {formatDistance(new Date(parseInt(edit.edited_at) * 1000), new Date(), { addSuffix: true })}
+                      {showEditHistory && (
+                        <div className="mt-2 space-y-2">
+                          {editHistory.map((edit, index) => (
+                            <div key={index} className="text-sm text-gray-600 border-l-2 border-gray-200 pl-2">
+                              <div className="text-xs text-gray-400">
+                                {formatDistance(new Date(parseInt(edit.edited_at) * 1000), new Date(), { addSuffix: true })}
+                              </div>
+                              <MessageMarkdown content={edit.previous_content} />
                             </div>
-                            <MessageMarkdown content={edit.previous_content} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <MessageActions content={content} timestamp={timestamp} />
-                <ReactionButtons
-                  messageId={messageId}
-                  initialCounts={reactionCounts}
-                  userReaction={userReaction}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <MessageActions content={content} timestamp={timestamp} />
+                  <ReactionButtons
+                    messageId={messageId}
+                    initialCounts={reactionCounts}
+                    userReaction={userReaction}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
