@@ -73,30 +73,25 @@ export function useChatRealtime({
             processingStage: message.processing_stage
           });
 
-          // Update streaming state for this message
+          // Update streaming state while preserving existing content
           setStreamingStates(prev => ({
             ...prev,
             [message.id]: {
               messageId: message.id,
               status: message.status,
-              content: message.content || '',
+              content: message.content || prev[message.id]?.content || '',
               processingStage: message.processing_stage
             }
           }));
 
-          // Handle different types of updates
           if (payload.eventType === 'INSERT') {
-            // Immediately invalidate query on new message
             await queryClient.invalidateQueries({ 
               queryKey: ['chat-messages', sessionId]
             });
-            
-            // Force an immediate refetch
             await refetch();
           } else if (message.status === 'completed' || message.status === 'failed') {
             console.log(`Message ${message.id} final status: ${message.status}`);
             
-            // Invalidate and refetch on completion or failure
             await queryClient.invalidateQueries({ 
               queryKey: ['chat-messages', sessionId],
               refetchType: 'active'
@@ -113,7 +108,6 @@ export function useChatRealtime({
               });
             }
           } else {
-            // For other updates (like streaming content), just refetch
             await refetch();
           }
         }
