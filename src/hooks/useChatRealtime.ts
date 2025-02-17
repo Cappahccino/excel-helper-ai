@@ -35,82 +35,81 @@ export function useChatRealtime({
   useEffect(() => {
     if (!sessionId) return;
 
-    console.log('Subscribing to chat updates for session:', sessionId);
+    console.log("Subscribing to chat updates for session:", sessionId);
 
     const channel = supabase
-      .channel(`chat_${sessionId}`)
+      .channel(`chat-${sessionId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
+        { 
+          event: '*',  // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public', 
           table: 'chat_messages',
-          filter: `session_id=eq.${sessionId}`,
+          filter: `session_id=eq.${sessionId}`
         },
-        async (payload: any) => {
-          if (payload.new) {
-            const message = payload.new;
-            const hasContent = message.content && message.content.trim().length > 0;
-            
-            console.log('Message update received:', {
+        async (payload) => {
+          if (!payload.new) return;
+
+          const message = payload.new;
+          console.log("🔄 Real-time update received:", {
+            event: payload.eventType,
+            messageId: message.id,
+            status: message.status,
+            hasContent: Boolean(message.content?.trim()),
+            processingStage: message.processing_stage
+          });
+
+          // Update streaming state for this message
+          setStreamingStates(prev => ({
+            ...prev,
+            [message.id]: {
               messageId: message.id,
               status: message.status,
-              content: message.content,
-              hasContent,
-              event: payload.eventType,
+              content: message.content || '',
               processingStage: message.processing_stage
-            });
-            
-            // Update streaming state for this specific message
-            setStreamingStates(prev => ({
-              ...prev,
-              [message.id]: {
-                messageId: message.id,
-                status: message.status,
-                content: message.content || '',
-                processingStage: message.processing_stage
-              }
-            }));
+            }
+          }));
 
-            // Handle different types of updates
-            if (payload.eventType === 'INSERT') {
-              // New message created
-              await queryClient.invalidateQueries({ 
-                queryKey: ['chat-messages', sessionId]
-              });
-            } else if (message.status === 'completed' || message.status === 'failed') {
-              // Message completed or failed
-              console.log(`Message ${message.id} ${message.status}`);
-              await queryClient.invalidateQueries({ 
-                queryKey: ['chat-messages', sessionId],
-                refetchType: 'active'
-              });
-              await refetch();
-              
-              if (message.status === 'completed' && message.role === 'assistant') {
-                onAssistantMessage?.();
-              }
+          // Handle different types of updates
+          if (payload.eventType === 'INSERT') {
+            // New message created
+            await queryClient.invalidateQueries({ 
+              queryKey: ['chat-messages', sessionId]
+            });
+          } else if (message.status === 'completed' || message.status === 'failed') {
+            // Message completed or failed
+            console.log(`Message ${message.id} final status: ${message.status}`);
+            await queryClient.invalidateQueries({ 
+              queryKey: ['chat-messages', sessionId],
+              refetchType: 'active'
+            });
+            await refetch();
+            
+            if (message.status === 'completed' && message.role === 'assistant') {
+              onAssistantMessage?.();
             }
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Subscribed to chat updates:', sessionId);
+          console.log('✅ Successfully subscribed to chat updates for session:', sessionId);
+        } else {
+          console.log('❌ Subscription status:', status);
         }
       });
 
     return () => {
-      console.log('Unsubscribing from chat updates:', sessionId);
+      console.log('Cleaning up chat subscription:', sessionId);
       supabase.removeChannel(channel);
     };
   }, [sessionId, queryClient, onAssistantMessage, refetch]);
 
-  // Find the latest message state
+  // Get the latest message state based on processing stage timestamp
   const latestMessage = Object.values(streamingStates)
     .sort((a, b) => {
-      if (!a || !b) return 0;
-      return (b.processingStage?.last_updated || 0) - (a.processingStage?.last_updated || 0);
+      if (!a?.processingStage?.last_updated || !b?.processingStage?.last_updated) return 0;
+      return b.processingStage.last_updated - a.processingStage.last_updated;
     })[0] || {
       messageId: null,
       status: 'queued' as MessageStatus,
