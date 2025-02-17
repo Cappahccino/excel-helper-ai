@@ -1,10 +1,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-import { Database } from '../types.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const supabase = createClient<Database>(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface MessageMetadata {
   processing_stage?: {
