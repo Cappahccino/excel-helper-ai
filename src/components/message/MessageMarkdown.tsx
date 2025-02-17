@@ -1,6 +1,7 @@
 
 import ReactMarkdown from "react-markdown";
 import { InlineMath, BlockMath } from "react-katex";
+import { CodeBlock } from "./CodeBlock";
 import "katex/dist/katex.min.css";
 
 interface MessageMarkdownProps {
@@ -29,16 +30,26 @@ export function MessageMarkdown({ content }: MessageMarkdownProps) {
         li: ({ children }) => (
           <li className="text-sm text-gray-800">{children}</li>
         ),
-        code: ({ children }) => (
-          <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">
-            {children}
-          </code>
-        ),
-        pre: ({ children }) => (
-          <pre className="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4">
-            {children}
-          </pre>
-        ),
+        code: ({ inline, className, children }) => {
+          const match = /language-(\w+)/.exec(className || '');
+          const language = match ? match[1] : 'typescript';
+          
+          if (inline) {
+            return (
+              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">
+                {children}
+              </code>
+            );
+          }
+
+          return (
+            <CodeBlock
+              code={String(children).replace(/\n$/, '')}
+              language={language}
+              className="my-4"
+            />
+          );
+        },
         p: ({ children }) => {
           if (typeof children === "string") {
             const parts = children.split(/(INLINEMATH{.*?}|BLOCKMATH{.*?})/g);
