@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageStatus } from "@/types/chat";
+import { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 interface ProcessingStage {
   stage: string;
@@ -34,11 +35,7 @@ interface ChatMessage {
   session_id: string;
 }
 
-interface RealtimePayload {
-  new: ChatMessage;
-  old: ChatMessage;
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-}
+type ChatMessageChange = RealtimePostgresChangesPayload<ChatMessage>;
 
 export function useChatRealtime({ 
   sessionId, 
@@ -63,7 +60,7 @@ export function useChatRealtime({
           table: 'chat_messages',
           filter: `session_id=eq.${sessionId}`
         },
-        async (payload: RealtimePayload) => {
+        async (payload: ChatMessageChange) => {
           if (!payload.new) return;
 
           const message = payload.new;
