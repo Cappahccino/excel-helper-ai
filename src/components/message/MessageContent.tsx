@@ -75,7 +75,7 @@ export function MessageContent({
     (status === 'queued' || (status === 'in_progress' && !content.trim()))
   );
 
-  const showContent = content.trim().length > 0 && (!isThinking || status === 'completed');
+  const showContent = content.trim().length > 0 && !isThinking;
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
