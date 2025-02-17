@@ -23,6 +23,14 @@ interface Thread {
     id: string;
     filename: string;
   }[];
+  parent_session_id: string | null;
+  thread_level: number;
+  thread_position: number;
+  thread_metadata: {
+    title: string | null;
+    summary: string | null;
+  } | null;
+  child_threads?: Thread[];
 }
 
 export function ThreadsList() {
@@ -47,14 +55,50 @@ export function ThreadsList() {
           excel_files (
             id,
             filename
-          )
+          ),
+          parent_session_id,
+          thread_level,
+          thread_position,
+          thread_metadata
         `)
         .eq("user_id", user.id)
+        .is("parent_session_id", null)
         .order("updated_at", { ascending: false })
         .limit(5);
 
       if (sessionsError) throw sessionsError;
-      return sessions;
+
+      // Fetch child threads for each session
+      const sessionsWithThreads = await Promise.all(
+        sessions.map(async (session) => {
+          const { data: childThreads, error: childThreadsError } = await supabase
+            .from("chat_sessions")
+            .select(`
+              session_id,
+              created_at,
+              thread_id,
+              excel_files (
+                id,
+                filename
+              ),
+              parent_session_id,
+              thread_level,
+              thread_position,
+              thread_metadata
+            `)
+            .eq("parent_session_id", session.session_id)
+            .order("thread_position", { ascending: true });
+
+          if (childThreadsError) throw childThreadsError;
+
+          return {
+            ...session,
+            child_threads: childThreads || [],
+          };
+        })
+      );
+
+      return sessionsWithThreads;
     },
   });
 
@@ -65,6 +109,45 @@ export function ThreadsList() {
   const toggleChatsExpanded = () => {
     setIsChatsExpanded(!isChatsExpanded);
   };
+
+  const ThreadItem = ({ thread, level = 0 }: { thread: Thread; level?: number }) => (
+    <>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={() => handleThreadClick(thread.session_id)}
+          className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
+            currentSessionId === thread.session_id ? 'bg-green-50 text-excel' : ''
+          }`}
+          style={{ paddingLeft: `${(level + 1) * 1}rem` }}
+        >
+          <MessageSquare className="h-4 w-4 shrink-0" />
+          <motion.div
+            animate={{ 
+              opacity: true ? 1 : 0,
+              width: true ? 'auto' : 0,
+            }}
+            className="flex flex-col items-start overflow-hidden"
+          >
+            <span className="text-sm font-medium truncate">
+              {thread.thread_metadata?.title || 
+               thread.excel_files?.[0]?.filename || 
+               'Untitled Chat'}
+            </span>
+            <span className="text-xs text-gray-500">
+              {format(new Date(thread.created_at), 'MMM d, yyyy')}
+            </span>
+          </motion.div>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      {thread.child_threads?.map((childThread) => (
+        <ThreadItem
+          key={childThread.session_id}
+          thread={childThread}
+          level={level + 1}
+        />
+      ))}
+    </>
+  );
 
   return (
     <SidebarGroupContent>
@@ -120,30 +203,7 @@ export function ThreadsList() {
                   </div>
                 ) : (
                   threads?.map((thread) => (
-                    <SidebarMenuItem key={thread.session_id}>
-                      <SidebarMenuButton
-                        onClick={() => handleThreadClick(thread.session_id)}
-                        className={`w-full justify-start gap-3 p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100/80 transition-all ${
-                          currentSessionId === thread.session_id ? 'bg-green-50 text-excel' : ''
-                        }`}
-                      >
-                        <MessageSquare className="h-4 w-4 shrink-0" />
-                        <motion.div
-                          animate={{ 
-                            opacity: true ? 1 : 0,
-                            width: true ? 'auto' : 0,
-                          }}
-                          className="flex flex-col items-start overflow-hidden"
-                        >
-                          <span className="text-sm font-medium truncate">
-                            {thread.excel_files?.[0]?.filename || 'Untitled Chat'}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {format(new Date(thread.created_at), 'MMM d, yyyy')}
-                          </span>
-                        </motion.div>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    <ThreadItem key={thread.session_id} thread={thread} />
                   ))
                 )}
               </SidebarMenu>

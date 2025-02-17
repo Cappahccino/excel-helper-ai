@@ -102,9 +102,13 @@ export type Database = {
           last_run_id: string | null
           openai_model: string | null
           openai_usage: Json | null
+          parent_session_id: string | null
           session_id: string
           status: string
           thread_id: string | null
+          thread_level: number | null
+          thread_metadata: Json | null
+          thread_position: number | null
           updated_at: string
           user_id: string
         }
@@ -116,9 +120,13 @@ export type Database = {
           last_run_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
+          parent_session_id?: string | null
           session_id?: string
           status?: string
           thread_id?: string | null
+          thread_level?: number | null
+          thread_metadata?: Json | null
+          thread_position?: number | null
           updated_at?: string
           user_id: string
         }
@@ -130,9 +138,13 @@ export type Database = {
           last_run_id?: string | null
           openai_model?: string | null
           openai_usage?: Json | null
+          parent_session_id?: string | null
           session_id?: string
           status?: string
           thread_id?: string | null
+          thread_level?: number | null
+          thread_metadata?: Json | null
+          thread_position?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -143,6 +155,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "excel_files"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_sessions_parent_session_id_fkey"
+            columns: ["parent_session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["session_id"]
           },
         ]
       }
