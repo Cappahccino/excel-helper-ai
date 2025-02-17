@@ -22,7 +22,7 @@ interface Thread {
   excel_files: {
     id: string;
     filename: string;
-  }[];
+  }[] | null;
   parent_session_id: string | null;
   thread_level: number;
   thread_position: number;
@@ -52,7 +52,7 @@ export function ThreadsList() {
           session_id,
           created_at,
           thread_id,
-          excel_files (
+          excel_files:excel_file_id (
             id,
             filename
           ),
@@ -68,16 +68,22 @@ export function ThreadsList() {
 
       if (sessionsError) throw sessionsError;
 
+      // Transform the data to match our Thread interface
+      const transformedSessions = sessions.map(session => ({
+        ...session,
+        excel_files: session.excel_files ? [session.excel_files] : [],
+      }));
+
       // Fetch child threads for each session
       const sessionsWithThreads = await Promise.all(
-        sessions.map(async (session) => {
+        transformedSessions.map(async (session) => {
           const { data: childThreads, error: childThreadsError } = await supabase
             .from("chat_sessions")
             .select(`
               session_id,
               created_at,
               thread_id,
-              excel_files (
+              excel_files:excel_file_id (
                 id,
                 filename
               ),
@@ -91,9 +97,14 @@ export function ThreadsList() {
 
           if (childThreadsError) throw childThreadsError;
 
+          const transformedChildThreads = childThreads?.map(thread => ({
+            ...thread,
+            excel_files: thread.excel_files ? [thread.excel_files] : [],
+          })) || [];
+
           return {
             ...session,
-            child_threads: childThreads || [],
+            child_threads: transformedChildThreads,
           };
         })
       );
