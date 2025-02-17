@@ -28,6 +28,8 @@ export function ChatContent({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const isInitialLoad = useRef(true);
+  const previousMessageCount = useRef(messages.length);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
@@ -51,25 +53,25 @@ export function ChatContent({
     const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
     if (!viewport) return;
 
-    // Add scroll event listener
     viewport.addEventListener('scroll', handleScroll);
     return () => viewport.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
-    if (!viewport) return;
-
-    const isNearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 100;
-    
-    // Only auto-scroll if:
-    // 1. User is already near bottom
-    // 2. A new message is completed
-    // 3. This is the initial load
-    if (isNearBottom || (latestMessageId && status === 'completed') || messages.length === 1) {
-      scrollToBottom(messages.length === 1 ? "auto" : "smooth");
+    // Check if this is the initial load
+    if (isInitialLoad.current && messages.length > 0) {
+      scrollToBottom("auto");
+      isInitialLoad.current = false;
+      return;
     }
-  }, [messages, latestMessageId, status]);
+
+    // Check if a new message has been added
+    if (messages.length > previousMessageCount.current) {
+      scrollToBottom("smooth");
+    }
+
+    previousMessageCount.current = messages.length;
+  }, [messages]);
 
   const messageGroups = groupMessagesByDate(messages);
   const hasMessages = Object.keys(messageGroups).length > 0;
