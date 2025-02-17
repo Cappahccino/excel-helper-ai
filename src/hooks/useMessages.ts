@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -7,6 +6,44 @@ import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 
 const MESSAGES_PER_PAGE = 50;
+
+type DatabaseMessage = {
+  id: string;
+  content: string;
+  role: string;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+  excel_file_id: string | null;
+  excel_files: {
+    filename: string;
+    file_size: number;
+  } | null;
+  status: Message['status'];
+  version: string | null;
+  deployment_id: string | null;
+  cleanup_after: string | null;
+  cleanup_reason: string | null;
+  deleted_at: string | null;
+  is_ai_response: boolean | null;
+  metadata: {
+    reaction_counts?: {
+      positive: number;
+      negative: number;
+    };
+    processing_stage?: {
+      stage: string;
+      started_at: number;
+      last_updated: number;
+      completion_percentage?: number;
+    };
+    user_reaction?: boolean | null;
+    edit_history?: Array<{
+      previous_content: string;
+      edited_at: string;
+    }>;
+  } | null;
+};
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -22,7 +59,7 @@ export function useMessages(sessionId: string | null) {
     fetchNextPage 
   } = useInfiniteQuery<MessagesResponse>({
     queryKey: ['chat-messages', sessionId],
-    queryFn: async ({ pageParam = null }) => {
+    queryFn: async ({ pageParam = null }): Promise<MessagesResponse> => {
       if (!sessionId) {
         return {
           messages: [],
@@ -50,14 +87,23 @@ export function useMessages(sessionId: string | null) {
       }
 
       // Transform the raw messages to match our Message type
-      const messages = (rawMessages || []).map(msg => ({
-        ...msg,
-        role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
-        status: msg.status as Message['status'],
-        excel_files: msg.excel_files ? {
-          filename: msg.excel_files.filename,
-          file_size: msg.excel_files.file_size
-        } : null
+      const messages = (rawMessages || []).map((msg: DatabaseMessage): Message => ({
+        id: msg.id,
+        content: msg.content,
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        session_id: msg.session_id,
+        created_at: msg.created_at,
+        updated_at: msg.updated_at,
+        excel_file_id: msg.excel_file_id,
+        status: msg.status,
+        version: msg.version || undefined,
+        deployment_id: msg.deployment_id || undefined,
+        cleanup_after: msg.cleanup_after || undefined,
+        cleanup_reason: msg.cleanup_reason || undefined,
+        deleted_at: msg.deleted_at || undefined,
+        is_ai_response: msg.is_ai_response || false,
+        excel_files: msg.excel_files,
+        metadata: msg.metadata || null
       }));
 
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
@@ -70,8 +116,8 @@ export function useMessages(sessionId: string | null) {
       };
     },
     initialPageParam: null,
-    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
-    getPreviousPageParam: (firstPage) => firstPage?.nextCursor ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    getPreviousPageParam: (firstPage) => firstPage.nextCursor ?? undefined,
     enabled: true
   });
 
@@ -154,24 +200,26 @@ export function useMessages(sessionId: string | null) {
       if (assistantMessageError) throw assistantMessageError;
 
       // Transform the messages to match our Message type
-      const transformedUserMessage = {
+      const transformedUserMessage: Message = {
         ...userMessage,
-        role: 'user' as const,
-        status: userMessage.status as Message['status'],
+        role: 'user',
+        status: userMessage.status,
         excel_files: userMessage.excel_files ? {
           filename: userMessage.excel_files.filename,
           file_size: userMessage.excel_files.file_size
-        } : null
+        } : null,
+        metadata: userMessage.metadata
       };
 
-      const transformedAssistantMessage = {
+      const transformedAssistantMessage: Message = {
         ...assistantMessage,
-        role: 'assistant' as const,
-        status: assistantMessage.status as Message['status'],
+        role: 'assistant',
+        status: assistantMessage.status,
         excel_files: assistantMessage.excel_files ? {
           filename: assistantMessage.excel_files.filename,
           file_size: assistantMessage.excel_files.file_size
-        } : null
+        } : null,
+        metadata: assistantMessage.metadata
       };
 
       return { 
@@ -289,7 +337,7 @@ export function useMessages(sessionId: string | null) {
     }
   });
 
-  const messages = data?.pages?.flatMap(page => page.messages ?? []) ?? [];
+  const messages = data?.pages?.flatMap(page => page.messages) ?? [];
 
   return {
     messages,
