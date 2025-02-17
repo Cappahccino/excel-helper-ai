@@ -42,11 +42,6 @@ export interface Message {
   } | null;
 }
 
-export interface SessionData {
-  session_id: string;
-  thread_id: string | null;
-}
-
 export interface MessagesResponse {
   messages: Message[];
   nextCursor: string | null;

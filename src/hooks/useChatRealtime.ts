@@ -54,13 +54,17 @@ export function useChatRealtime({
     setStreamingStates(prev => {
       const updated = { ...prev };
       Object.entries(updated).forEach(([id, state]) => {
-        // Clean up completed or failed messages after 5 seconds
         if ((state.status === 'completed' || state.status === 'failed') && now - state.timestamp > 5000) {
           delete updated[id];
         }
-        // Clean up stale in_progress messages after 30 seconds
         if (state.status === 'in_progress' && now - state.timestamp > 30000) {
-          delete updated[id];
+          console.log("Cleaning up stale in_progress message:", id);
+          updated[id] = {
+            ...state,
+            status: 'failed',
+            content: 'Message processing timed out.',
+            timestamp: now
+          };
         }
       });
       return updated;
@@ -95,7 +99,6 @@ export function useChatRealtime({
             threadMessageId: message.thread_message_id
           });
 
-          // Only update state for messages that are part of the current session
           if (message.session_id !== sessionId) {
             console.log("Ignoring message from different session:", message.session_id);
             return;
@@ -111,7 +114,6 @@ export function useChatRealtime({
               timestamp: Date.now()
             };
 
-            // Clean up completed or failed messages after a delay
             if (message.status === 'completed' || message.status === 'failed') {
               setTimeout(cleanupStreamingStates, 5000);
             }
@@ -161,17 +163,14 @@ export function useChatRealtime({
     const queryData = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', sessionId]);
     const messages = queryData?.pages?.[0]?.messages || [];
     
-    // First check streaming states for active messages
     const activeStates = Object.values(streamingStates).filter(
       state => state.status === 'in_progress'
     );
 
     if (activeStates.length > 0) {
-      // Get the most recent active state
       return activeStates.sort((a, b) => b.timestamp - a.timestamp)[0];
     }
 
-    // Then check for optimistic updates in the messages list
     const latestOptimistic = messages.find(
       (msg: Message) => msg.status === 'in_progress' && msg.role === 'assistant'
     );
@@ -186,13 +185,11 @@ export function useChatRealtime({
       };
     }
 
-    // If no active messages found, return null to indicate no loading state needed
     return null;
   };
 
   const latestMessage = getLatestActiveMessage();
 
-  // Only return in_progress status if there's an actual message being processed
   return {
     latestMessageId: latestMessage?.messageId || null,
     status: latestMessage ? latestMessage.status : 'completed',
