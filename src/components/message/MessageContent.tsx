@@ -49,15 +49,16 @@ export function MessageContent({
 }: MessageContentProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showEditHistory, setShowEditHistory] = useState(false);
+  
   const isThinking = (
     role === "assistant" &&
     status === "in_progress" &&
     content.trim().length === 0
   );
+
   const showContent = !isThinking && content.trim().length > 0;
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
-
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
 
   const handleSave = (newContent: string) => {
@@ -79,20 +80,30 @@ export function MessageContent({
           {isThinking ? (
             <motion.div
               key="loading"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
             >
-              <MessageLoadingState />
+              <MessageLoadingState 
+                stage={!content ? 'analyzing' : 'generating'}
+                className="shadow-sm border border-slate-200"
+              />
             </motion.div>
           ) : showContent && (
             <motion.div
               key="content"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ 
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1]
+              }}
+              className={cn(
+                "relative",
+                isNewMessage && "animate-highlight"
+              )}
             >
               <div className="prose prose-slate max-w-none relative group">
                 {isEditing ? (
