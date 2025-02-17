@@ -1,106 +1,208 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { corsHeaders } from "./cors.ts";
-import { Database } from "./types.ts";
-import { handleAnalyzeExcel } from "./excel.ts";
-import { handleLargeLanguageModel } from "./assistant.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import OpenAI from 'npm:openai';
+import { corsHeaders } from './config.ts';
+import { RequestBody, MessageResponse } from './types.ts';
+import { getOrCreateAssistant, streamAssistantResponse, getThreadMessages } from './assistant.ts';
+import { processExcelFile } from './excel.ts';
+import { 
+  createInitialMessage, 
+  getOrCreateSession,
+  updateSession,
+  updateStreamingMessage 
+} from './database.ts';
 
 serve(async (req) => {
-  // Handle CORS preflight requests
+  const requestId = crypto.randomUUID();
+  console.log(`🚀 [${requestId}] New request received:`, {
+    method: req.method,
+    url: req.url
+  });
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const controller = new AbortController();
+
   try {
-    const requestId = crypto.randomUUID();
-    const { fileId, query, userId, sessionId, threadId, messageId } = await req.json();
+    const body = await req.json() as RequestBody;
+    console.log(`📝 [${requestId}] Request body:`, {
+      userId: body.userId,
+      hasFileId: !!body.fileId,
+      hasSessionId: !!body.sessionId,
+      queryLength: body.query?.length
+    });
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient<Database>(supabaseUrl, supabaseKey);
+    if (!body.userId || !body.query) {
+      throw new Error('Missing required fields');
+    }
 
-    // Update message callback for streaming responses
-    const updateMessageCallback = async (content: string, isComplete: boolean) => {
-      const status = isComplete ? 'completed' : 'in_progress';
-      const now = Date.now();
+    const { fileId, query, userId, sessionId } = body;
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const openai = new OpenAI({
+      apiKey: Deno.env.get('OPENAI_API_KEY')
+    });
+
+    console.log(`[${requestId}] Initializing OpenAI components`);
+    const assistantId = await getOrCreateAssistant(openai, requestId);
+    const session = await getOrCreateSession(supabase, userId, sessionId, fileId, requestId);
+    
+    console.log(`[${requestId}] Processing Excel file:`, {
+      fileId,
+      sessionId: session.session_id
+    });
+    const excelData = fileId ? await processExcelFile(supabase, fileId) : null;
+    
+    const message = await createInitialMessage(supabase, userId, session.session_id, fileId, requestId);
+
+    try {
+      let threadId = session.thread_id;
       
-      const { error } = await supabase
-        .from('chat_messages')
-        .update({
-          content,
-          status,
-          processing_stage: {
-            stage: status,
-            started_at: now,
-            last_updated: now,
-            completion_percentage: isComplete ? 100 : undefined
-          }
-        })
-        .eq('id', messageId);
-
-      if (error) {
-        console.error('Error updating message:', error);
-        throw error;
+      if (!threadId) {
+        console.log(`[${requestId}] Creating new thread`);
+        const thread = await openai.beta.threads.create();
+        threadId = thread.id;
+        await updateSession(supabase, session.session_id, { thread_id: threadId }, requestId);
+        
+        console.log(`[${requestId}] New thread created:`, {
+          threadId,
+          sessionId: session.session_id
+        });
+      } else {
+        console.log(`[${requestId}] Using existing thread:`, {
+          threadId,
+          sessionId: session.session_id
+        });
       }
 
-      return new Response(
-        JSON.stringify({ 
-          message: content, 
-          isComplete,
-          status,
-          processingStage: {
-            stage: status,
-            started_at: now,
-            last_updated: now,
-            completion_percentage: isComplete ? 100 : undefined
-          }
-        }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            "Content-Type": "application/json" 
-          } 
-        }
-      );
-    };
-
-    // Process the request
-    if (fileId) {
-      return await handleAnalyzeExcel(
-        supabase,
-        fileId,
-        query,
-        userId,
-        sessionId,
-        messageId,
-        requestId,
-        updateMessageCallback
-      );
-    } else {
-      return await handleLargeLanguageModel(
-        supabase,
-        query,
-        userId,
-        sessionId,
+      const previousMessages = await getThreadMessages(openai, threadId, requestId);
+      console.log(`📜 [${requestId}] Thread context:`, {
         threadId,
-        messageId,
+        messageCount: previousMessages.length,
+        latestMessageId: previousMessages[0]?.id
+      });
+
+      const excelContext = excelData 
+        ? `Excel file context: ${JSON.stringify(excelData)}\n\n`
+        : '';
+
+      console.log(`[${requestId}] Creating thread message`);
+      const threadMessage = await openai.beta.threads.messages.create(threadId, {
+        role: 'user',
+        content: `${excelContext}${query}`
+      });
+
+      console.log(`[${requestId}] Thread message created:`, {
+        messageId: threadMessage.id,
+        threadId,
+        role: threadMessage.role,
+        createdAt: threadMessage.created_at
+      });
+
+      console.log(`[${requestId}] Creating assistant run`);
+      const run = await openai.beta.threads.runs.create(threadId, {
+        assistant_id: assistantId,
+        instructions: "Please provide a response that takes into account the conversation history and context when relevant. For follow-up questions, refer to previous exchanges to maintain continuity."
+      });
+
+      console.log(`[${requestId}] Run created:`, {
+        runId: run.id,
+        threadId,
+        assistantId,
+        status: run.status
+      });
+
+      await supabase
+        .from('chat_messages')
+        .update({ 
+          thread_message_id: threadMessage.id,
+          openai_run_id: run.id
+        })
+        .eq('id', message.id);
+
+      const updateMessageCallback = async (content: string, isComplete: boolean) => {
+        await updateStreamingMessage(supabase, message.id, content, isComplete, requestId);
+      };
+
+      const finalContent = await streamAssistantResponse(
+        openai,
+        threadId,
+        run.id,
         requestId,
         updateMessageCallback
       );
+
+      console.log(`[${requestId}] Processing complete:`, {
+        messageId: message.id,
+        threadId,
+        runId: run.id,
+        contentLength: finalContent.length
+      });
+
+      await updateSession(supabase, session.session_id, { 
+        last_run_id: run.id,
+        excel_file_id: fileId || session.excel_file_id,
+        assistant_id: assistantId
+      }, requestId);
+
+      const response: MessageResponse = {
+        message: finalContent,
+        messageId: message.id,
+        sessionId: session.session_id
+      };
+
+      console.log(`[${requestId}] Sending response:`, {
+        messageId: message.id,
+        sessionId: session.session_id,
+        contentLength: finalContent.length
+      });
+
+      return new Response(
+        JSON.stringify(response),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } catch (streamError) {
+      console.error(`[${requestId}] Stream error:`, {
+        error: streamError.message,
+        stack: streamError.stack,
+        context: {
+          messageId: message.id,
+          threadId: session.thread_id,
+          sessionId: session.session_id
+        }
+      });
+      controller.abort();
+      throw streamError;
     }
+
   } catch (error) {
-    console.error('Error in excel-assistant function:', error);
+    console.error(`❌ [${requestId}] Request failed:`, {
+      error: error.message,
+      stack: error.stack,
+      context: {
+        url: req.url,
+        method: req.method
+      }
+    });
+    
+    controller.abort();
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        requestId
+      }),
       { 
-        status: 500, 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
