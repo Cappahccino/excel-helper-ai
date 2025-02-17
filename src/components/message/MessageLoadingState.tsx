@@ -35,9 +35,15 @@ export function MessageLoadingState({ stage = LoadingStage.Queued, className }: 
     ? `Generating response ${stage.split('(')[1].split(')')[0]}`
     : messages[stage as LoadingStage] || messages[LoadingStage.Processing];
 
+  const shouldPulse = stage === LoadingStage.Generating || 
+                     stage === LoadingStage.Processing || 
+                     stage === LoadingStage.InProgress ||
+                     (typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`));
+
   return (
     <div className={cn(
-      "relative flex items-center gap-3 py-3 pl-2 min-h-[40px] bg-slate-50 rounded-lg animate-pulse",
+      "relative flex items-center gap-3 py-3 pl-2 min-h-[40px] bg-slate-50 rounded-lg",
+      shouldPulse && "animate-pulse",
       className
     )}>
       <div className="flex items-center gap-3">
