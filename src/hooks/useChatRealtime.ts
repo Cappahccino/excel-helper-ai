@@ -24,6 +24,22 @@ interface UseChatRealtimeProps {
   refetch: () => Promise<any>;
 }
 
+// Define the shape of a chat message from Supabase
+interface ChatMessage {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  status: MessageStatus;
+  processing_stage?: ProcessingStage;
+  session_id: string;
+}
+
+interface RealtimePayload {
+  new: ChatMessage;
+  old: ChatMessage;
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+}
+
 export function useChatRealtime({ 
   sessionId, 
   onAssistantMessage,
@@ -42,12 +58,12 @@ export function useChatRealtime({
       .on(
         'postgres_changes',
         { 
-          event: '*',  // Listen to all events (INSERT, UPDATE, DELETE)
+          event: '*',
           schema: 'public', 
           table: 'chat_messages',
           filter: `session_id=eq.${sessionId}`
         },
-        async (payload) => {
+        async (payload: RealtimePayload) => {
           if (!payload.new) return;
 
           const message = payload.new;
