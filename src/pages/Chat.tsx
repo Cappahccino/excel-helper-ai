@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -150,7 +151,7 @@ const Chat = () => {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           excel_file_id: fileId || uploadedFileId || fileIdFromUrl,
-          status: 'queued',
+          status: 'in_progress',
           is_ai_response: true,
           version: '1.0.0',
           deployment_id: crypto.randomUUID(),
