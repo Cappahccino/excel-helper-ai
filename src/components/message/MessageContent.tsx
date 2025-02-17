@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Clock, Edit2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatDistance } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface MessageContentProps {
   content: string;
