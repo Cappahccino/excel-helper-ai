@@ -23,6 +23,7 @@ export type Database = {
           metadata: Json | null
           openai_message_id: string | null
           openai_run_id: string | null
+          processing_stage: Json | null
           raw_response: Json | null
           role: string
           session_id: string | null
@@ -45,6 +46,7 @@ export type Database = {
           metadata?: Json | null
           openai_message_id?: string | null
           openai_run_id?: string | null
+          processing_stage?: Json | null
           raw_response?: Json | null
           role?: string
           session_id?: string | null
@@ -67,6 +69,7 @@ export type Database = {
           metadata?: Json | null
           openai_message_id?: string | null
           openai_run_id?: string | null
+          processing_stage?: Json | null
           raw_response?: Json | null
           role?: string
           session_id?: string | null

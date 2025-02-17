@@ -1,8 +1,86 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
-const DEPLOYMENT_ID = crypto.randomUUID(); // Generate unique ID for this deployment
-const VERSION = '1.0.0'; // Current version of the code
+const DEPLOYMENT_ID = crypto.randomUUID();
+const VERSION = '1.0.0';
+
+interface MessageState {
+  isValid: boolean;
+  isStuck: boolean;
+  currentStatus: string;
+}
+
+async function validateMessageState(
+  supabase: ReturnType<typeof createClient>,
+  messageId: string,
+  requestId: string
+): Promise<MessageState> {
+  console.log(`[${requestId}] Validating message state:`, {
+    messageId,
+    operation: 'validate_message_state',
+    deploymentId: DEPLOYMENT_ID,
+    version: VERSION
+  });
+
+  const { data: message, error } = await supabase
+    .from('chat_messages')
+    .select('status, role, created_at, processing_stage')
+    .eq('id', messageId)
+    .single();
+
+  if (error || !message) {
+    console.error(`[${requestId}] Message validation failed:`, {
+      error: error?.message || 'Message not found',
+      messageId,
+      deploymentId: DEPLOYMENT_ID,
+      version: VERSION
+    });
+    throw new Error(`Message validation failed: ${error?.message || 'Message not found'}`);
+  }
+
+  const messageAge = Date.now() - new Date(message.created_at).getTime();
+  const isStuck = messageAge > 5 * 60 * 1000 && message.status === 'in_progress';
+
+  return {
+    isValid: message.role === 'assistant' && ['queued', 'in_progress'].includes(message.status),
+    isStuck,
+    currentStatus: message.status
+  };
+}
+
+async function cleanupStuckMessages(
+  supabase: ReturnType<typeof createClient>,
+  requestId: string
+) {
+  console.log(`[${requestId}] Cleaning up stuck messages`, {
+    operation: 'cleanup_stuck_messages',
+    deploymentId: DEPLOYMENT_ID,
+    version: VERSION
+  });
+
+  const stuckTimeout = new Date(Date.now() - 5 * 60 * 1000);
+
+  const { error } = await supabase
+    .from('chat_messages')
+    .update({
+      status: 'failed',
+      content: 'Message processing timed out.',
+      cleanup_reason: 'stuck_in_progress',
+      cleanup_after: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    })
+    .eq('status', 'in_progress')
+    .lt('created_at', stuckTimeout.toISOString())
+    .is('deleted_at', null);
+
+  if (error) {
+    console.error(`[${requestId}] Error cleaning up stuck messages:`, {
+      error: error.message,
+      context: { operation: 'cleanup_stuck_messages' },
+      deploymentId: DEPLOYMENT_ID,
+      version: VERSION
+    });
+  }
+}
 
 export async function updateStreamingMessage(
   supabase: ReturnType<typeof createClient>,
@@ -20,65 +98,74 @@ export async function updateStreamingMessage(
     version: VERSION
   });
 
-  const status = isComplete ? 'completed' : 'in_progress';
+  const { isValid, isStuck } = await validateMessageState(supabase, messageId, requestId);
 
-  // Enhanced update query with additional safety checks
+  if (isStuck) {
+    await cleanupStuckMessages(supabase, requestId);
+    throw new Error('Message processing timed out');
+  }
+
+  if (!isValid) {
+    throw new Error('Invalid message state for update');
+  }
+
+  const status = isComplete ? 'completed' : 'in_progress';
+  const processingStage = {
+    stage: isComplete ? 'completed' : 'generating',
+    last_updated: Math.floor(Date.now() / 1000),
+    completion_percentage: isComplete ? 100 : Math.min(90, (content.length / 500) * 100)
+  };
+
   const { data, error } = await supabase
     .from('chat_messages')
     .update({
       content,
       status,
+      processing_stage: processingStage,
       version: VERSION,
       deployment_id: DEPLOYMENT_ID
     })
     .eq('id', messageId)
     .eq('role', 'assistant')
-    .eq('status', 'in_progress') // Only update messages that are currently in progress
-    .select();
+    .in('status', ['queued', 'in_progress'])
+    .select()
+    .single();
 
   if (error) {
     console.error(`[${requestId}] Error updating message:`, {
       error: error.message,
       messageId,
       context: { operation: 'update_streaming_message' },
-      details: error.details,
       deploymentId: DEPLOYMENT_ID,
       version: VERSION
     });
 
-    // Attempt to mark message as failed if update error occurs
-    try {
-      await supabase
-        .from('chat_messages')
-        .update({
-          status: 'failed',
-          content: 'An error occurred while generating the response.',
-          cleanup_reason: 'update_error',
-          cleanup_after: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-          version: VERSION,
-          deployment_id: DEPLOYMENT_ID
-        })
-        .eq('id', messageId)
-        .eq('role', 'assistant');
-    } catch (failureError) {
-      console.error(`[${requestId}] Error marking message as failed:`, {
-        error: failureError,
-        messageId,
-        context: { operation: 'mark_message_failed' },
-        deploymentId: DEPLOYMENT_ID,
-        version: VERSION
-      });
-    }
-  } else {
-    console.log(`[${requestId}] Message updated successfully:`, {
-      messageId,
-      isComplete,
-      status,
-      updatedAt: data?.[0]?.updated_at,
-      deploymentId: DEPLOYMENT_ID,
-      version: VERSION
-    });
+    await supabase
+      .from('chat_messages')
+      .update({
+        status: 'failed',
+        content: `Error: ${error.message || 'Unknown error occurred during response generation'}`,
+        cleanup_reason: 'update_error',
+        cleanup_after: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        processing_stage: {
+          stage: 'failed',
+          error: error.message,
+          last_updated: Math.floor(Date.now() / 1000)
+        }
+      })
+      .eq('id', messageId)
+      .eq('role', 'assistant');
+
+    throw error;
   }
+
+  console.log(`[${requestId}] Message updated successfully:`, {
+    messageId,
+    status,
+    updatedAt: data?.updated_at,
+    deploymentId: DEPLOYMENT_ID,
+    version: VERSION
+  });
 }
 
 export async function createInitialMessage(
@@ -86,16 +173,25 @@ export async function createInitialMessage(
   userId: string,
   sessionId: string,
   fileId: string | null,
-  requestId: string
+  requestId: string,
+  role: 'user' | 'assistant' = 'assistant'
 ) {
   console.log(`[${requestId}] Creating initial message:`, {
     userId,
     sessionId,
     fileId,
+    role,
     operation: 'create_initial_message',
     deploymentId: DEPLOYMENT_ID,
     version: VERSION
   });
+
+  const initialStatus = role === 'user' ? 'completed' : 'queued';
+  const processingStage = {
+    stage: role === 'user' ? 'completed' : 'created',
+    started_at: Math.floor(Date.now() / 1000),
+    last_updated: Math.floor(Date.now() / 1000)
+  };
 
   const { data: message, error } = await supabase
     .from('chat_messages')
@@ -104,9 +200,10 @@ export async function createInitialMessage(
       session_id: sessionId,
       excel_file_id: fileId,
       content: '',
-      role: 'assistant',
-      is_ai_response: true,
-      status: 'in_progress',
+      role,
+      is_ai_response: role === 'assistant',
+      status: initialStatus,
+      processing_stage: processingStage,
       version: VERSION,
       deployment_id: DEPLOYMENT_ID
     })
@@ -117,17 +214,15 @@ export async function createInitialMessage(
     console.error(`[${requestId}] Error creating initial message:`, {
       error: error.message,
       context: { operation: 'create_initial_message' },
-      details: error.details,
       deploymentId: DEPLOYMENT_ID,
       version: VERSION
     });
-    throw new Error(`Failed to create initial message: ${error.message}`);
+    throw error;
   }
 
   console.log(`[${requestId}] Initial message created:`, {
     messageId: message.id,
     sessionId: message.session_id,
-    createdAt: message.created_at,
     status: message.status,
     deploymentId: DEPLOYMENT_ID,
     version: VERSION

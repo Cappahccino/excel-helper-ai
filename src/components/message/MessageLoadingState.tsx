@@ -3,16 +3,23 @@ import { Loader } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MessageLoadingStateProps {
-  stage?: 'analyzing' | 'processing' | 'generating';
+  stage?: string;
   className?: string;
 }
 
 export function MessageLoadingState({ stage = 'generating', className }: MessageLoadingStateProps) {
-  const messages = {
+  const messages: { [key: string]: string } = {
     analyzing: "Analyzing request...",
     processing: "Processing data...",
-    generating: "Generating response..."
+    generating: "Generating response...",
+    created: "Initializing...",
+    'in_progress': "Processing..."
   };
+
+  // Handle percentage-based generating message
+  const baseMessage = stage.startsWith('generating (') 
+    ? `Generating response ${stage.split('(')[1].split(')')[0]}`
+    : messages[stage] || "Processing...";
 
   return (
     <div className={cn(
@@ -28,7 +35,7 @@ export function MessageLoadingState({ stage = 'generating', className }: Message
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-medium text-slate-700">
-            {messages[stage]}
+            {baseMessage}
           </span>
           <div className="flex space-x-1 mt-1">
             <span className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>

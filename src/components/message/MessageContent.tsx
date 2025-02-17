@@ -33,6 +33,12 @@ interface MessageContentProps {
       previous_content: string;
       edited_at: string;
     }>;
+    processing_stage?: {
+      stage: string;
+      started_at: number;
+      last_updated: number;
+      completion_percentage?: number;
+    };
   } | null;
   userReaction?: boolean | null;
 }
@@ -51,10 +57,22 @@ export function MessageContent({
   const [isEditing, setIsEditing] = useState(false);
   const [showEditHistory, setShowEditHistory] = useState(false);
   
+  const getLoadingStage = () => {
+    if (status === 'queued') return 'analyzing';
+    if (status === 'in_progress') {
+      const stage = metadata?.processing_stage?.stage;
+      if (stage === 'generating' && metadata?.processing_stage?.completion_percentage) {
+        return `generating (${Math.round(metadata.processing_stage.completion_percentage)}%)`;
+      }
+      return stage || 'processing';
+    }
+    return null;
+  };
+
   const isThinking = (
     role === "assistant" &&
-    status === "in_progress" &&
-    content.trim().length === 0
+    ['queued', 'in_progress'].includes(status) &&
+    (!content || content.trim().length === 0)
   );
 
   const showContent = !isThinking && content.trim().length > 0;
@@ -87,7 +105,7 @@ export function MessageContent({
               transition={{ duration: 0.2 }}
             >
               <MessageLoadingState 
-                stage={!content ? 'analyzing' : 'generating'}
+                stage={getLoadingStage()}
                 className="shadow-sm border border-slate-200"
               />
             </motion.div>
