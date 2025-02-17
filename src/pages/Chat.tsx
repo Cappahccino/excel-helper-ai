@@ -12,7 +12,8 @@ import { MessageContent } from "@/components/message/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Message } from "@/types/chat";
 
 const Chat = () => {
   const location = useLocation();
@@ -47,7 +48,7 @@ const Chat = () => {
   });
 
   const {
-    messages,
+    messages: baseMessages,
     isLoading: messagesLoading,
     sendMessage: sendMessageMutation,
     createSession,
@@ -60,6 +61,25 @@ const Chat = () => {
     refetch,
     onAssistantMessage: () => {}
   });
+
+  // Enhance messages with real-time updates
+  const messages = useMemo(() => {
+    return baseMessages.map(msg => {
+      // If this is the latest message being streamed, enhance it with real-time data
+      if (msg.id === latestMessageId) {
+        return {
+          ...msg,
+          content: streamingContent || msg.content,
+          status: status || msg.status,
+          metadata: {
+            ...msg.metadata,
+            processing_stage: processingStage || msg.metadata?.processing_stage
+          }
+        };
+      }
+      return msg;
+    });
+  }, [baseMessages, latestMessageId, streamingContent, status, processingStage]);
 
   const handleSendMessage = async (message: string, fileId?: string | null) => {
     if (!message.trim() && !fileId) return;
@@ -164,26 +184,17 @@ const Chat = () => {
                     <ScrollArea className="flex-grow p-4">
                       <div className="space-y-6">
                         {messages.map(msg => {
-                          // Calculate message status
-                          const isLatestMessage = msg.id === latestMessageId;
-                          const messageStatus = isLatestMessage ? status : msg.status;
-                          const messageContent = isLatestMessage && streamingContent ? streamingContent : msg.content;
-                          const messageMetadata = {
-                            ...msg.metadata,
-                            processing_stage: isLatestMessage ? processingStage : msg.metadata?.processing_stage
-                          };
-
                           return (
                             <MessageContent
                               key={msg.id}
                               messageId={msg.id}
-                              content={messageContent}
+                              content={msg.content}
                               role={msg.role as 'user' | 'assistant'}
                               timestamp={formatTimestamp(msg.created_at)}
                               fileInfo={msg.excel_files}
-                              isNewMessage={isLatestMessage}
-                              status={messageStatus}
-                              metadata={messageMetadata}
+                              isNewMessage={msg.id === latestMessageId}
+                              status={msg.status}
+                              metadata={msg.metadata}
                               userReaction={msg.metadata?.user_reaction}
                             />
                           );
