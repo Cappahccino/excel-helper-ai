@@ -2,7 +2,7 @@
 import { MessageMarkdown } from "./MessageMarkdown";
 import { MessageAvatar } from "./MessageAvatar";
 import { MessageActions } from "./MessageActions";
-import { MessageLoadingState } from "./MessageLoadingState";
+import { MessageLoadingState, LoadingStage } from "./MessageLoadingState";
 import { ReactionButtons } from "./ReactionButtons";
 import { FileInfo } from "../FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
@@ -58,15 +58,18 @@ export function MessageContent({
   const [showEditHistory, setShowEditHistory] = useState(false);
   
   const getLoadingStage = () => {
-    if (status === 'queued') return 'analyzing';
+    if (status === 'queued') return LoadingStage.Queued;
     if (status === 'in_progress') {
       const stage = metadata?.processing_stage?.stage;
       if (stage === 'generating' && metadata?.processing_stage?.completion_percentage) {
-        return `generating (${Math.round(metadata.processing_stage.completion_percentage)}%)`;
+        return `${LoadingStage.Generating} (${Math.round(metadata.processing_stage.completion_percentage)}%)` as const;
       }
-      return stage || 'processing';
+      return stage === 'analyzing' ? LoadingStage.Analyzing 
+        : stage === 'processing' ? LoadingStage.Processing
+        : stage === 'generating' ? LoadingStage.Generating
+        : LoadingStage.InProgress;
     }
-    return null;
+    return LoadingStage.Processing;
   };
 
   const isThinking = (
