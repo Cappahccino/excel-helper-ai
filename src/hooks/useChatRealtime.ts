@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageStatus } from "@/types/chat";
+import { MessageStatus, Message, MessagesResponse } from "@/types/chat";
 import { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import { InfiniteData } from "@tanstack/react-query";
 
 interface ProcessingStage {
   stage: string;
@@ -149,7 +150,7 @@ export function useChatRealtime({
 
   // Get the latest active message state, including optimistic updates
   const getLatestActiveMessage = () => {
-    const queryData = queryClient.getQueryData(['chat-messages', sessionId]);
+    const queryData = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', sessionId]);
     const optimisticMessages = queryData?.pages?.[0]?.messages || [];
     
     // First check streaming states for active messages
@@ -163,7 +164,7 @@ export function useChatRealtime({
 
     // Then check for optimistic updates
     const latestOptimistic = optimisticMessages.find(
-      (msg: any) => msg.id?.startsWith('temp-assistant-')
+      (msg: Message) => msg.id?.startsWith('temp-assistant-')
     );
 
     if (latestOptimistic) {
