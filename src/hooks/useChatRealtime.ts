@@ -34,6 +34,7 @@ interface ChatMessage {
   status: MessageStatus;
   processing_stage?: ProcessingStage;
   session_id: string;
+  thread_message_id?: string | null;
 }
 
 type ChatMessageChange = RealtimePostgresChangesPayload<{
@@ -53,7 +54,12 @@ export function useChatRealtime({
     setStreamingStates(prev => {
       const updated = { ...prev };
       Object.entries(updated).forEach(([id, state]) => {
+        // Clean up completed or failed messages after 5 seconds
         if ((state.status === 'completed' || state.status === 'failed') && now - state.timestamp > 5000) {
+          delete updated[id];
+        }
+        // Clean up stale in_progress messages after 30 seconds
+        if (state.status === 'in_progress' && now - state.timestamp > 30000) {
           delete updated[id];
         }
       });
@@ -85,8 +91,15 @@ export function useChatRealtime({
             messageId: message.id,
             status: message.status,
             hasContent: Boolean(message.content?.trim()),
-            processingStage: message.processing_stage
+            processingStage: message.processing_stage,
+            threadMessageId: message.thread_message_id
           });
+
+          // Only update state for messages that are part of the current session
+          if (message.session_id !== sessionId) {
+            console.log("Ignoring message from different session:", message.session_id);
+            return;
+          }
 
           setStreamingStates(prev => {
             const existingState = prev[message.id];
@@ -98,6 +111,7 @@ export function useChatRealtime({
               timestamp: Date.now()
             };
 
+            // Clean up completed or failed messages after a delay
             if (message.status === 'completed' || message.status === 'failed') {
               setTimeout(cleanupStreamingStates, 5000);
             }
@@ -145,7 +159,7 @@ export function useChatRealtime({
 
   const getLatestActiveMessage = () => {
     const queryData = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', sessionId]);
-    const optimisticMessages = queryData?.pages?.[0]?.messages || [];
+    const messages = queryData?.pages?.[0]?.messages || [];
     
     // First check streaming states for active messages
     const activeStates = Object.values(streamingStates).filter(
@@ -153,12 +167,13 @@ export function useChatRealtime({
     );
 
     if (activeStates.length > 0) {
+      // Get the most recent active state
       return activeStates.sort((a, b) => b.timestamp - a.timestamp)[0];
     }
 
-    // Then check for optimistic updates
-    const latestOptimistic = optimisticMessages.find(
-      (msg: Message) => msg.id?.startsWith('temp-assistant-')
+    // Then check for optimistic updates in the messages list
+    const latestOptimistic = messages.find(
+      (msg: Message) => msg.status === 'in_progress' && msg.role === 'assistant'
     );
 
     if (latestOptimistic) {
@@ -171,14 +186,16 @@ export function useChatRealtime({
       };
     }
 
+    // If no active messages found, return null to indicate no loading state needed
     return null;
   };
 
   const latestMessage = getLatestActiveMessage();
 
+  // Only return in_progress status if there's an actual message being processed
   return {
     latestMessageId: latestMessage?.messageId || null,
-    status: latestMessage?.status || 'in_progress',
+    status: latestMessage ? latestMessage.status : 'completed',
     content: latestMessage?.content || '',
     processingStage: latestMessage?.processingStage,
     refetchMessages: refetch

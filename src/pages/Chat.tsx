@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -81,12 +80,12 @@ const Chat = () => {
       return msg;
     });
 
-    if (status === 'in_progress' && !latestMessageId && !streamingContent) {
+    if (status === 'in_progress' && !latestMessageId && !streamingContent && selectedSessionId) {
       messagesList.unshift({
         id: 'loading-indicator',
         content: '',
         role: 'assistant',
-        session_id: selectedSessionId || '',
+        session_id: selectedSessionId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         status: 'in_progress',
@@ -156,7 +155,13 @@ const Chat = () => {
           version: '1.0.0',
           deployment_id: crypto.randomUUID(),
           excel_files: null,
-          metadata: null,
+          metadata: {
+            processing_stage: {
+              stage: 'generating',
+              started_at: Date.now(),
+              last_updated: Date.now()
+            }
+          },
         };
 
         return {
