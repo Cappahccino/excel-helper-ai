@@ -68,8 +68,6 @@ export function ChatWindow({
     return <ChatError onRetry={refetch} />;
   }
 
-  const messageGroups = groupMessagesByDate(messages);
-
   return (
     <div className="flex flex-col h-full relative max-w-4xl mx-auto w-full">
       <div className="flex-1 overflow-hidden" ref={chatContainerRef}>
@@ -79,14 +77,12 @@ export function ChatWindow({
         >
           <div className="p-4 pb-24">
             <ChatContent
+              messages={messages}
               isLoading={isLoading}
-              fileInfo={fileInfo}
-              fileId={fileId}
-              messageGroups={messageGroups}
               formatTimestamp={formatTimestamp}
+              groupMessagesByDate={groupMessagesByDate}
               latestMessageId={latestMessageId}
               status={status}
-              messagesEndRef={messagesEndRef}
             />
           </div>
         </ScrollArea>
