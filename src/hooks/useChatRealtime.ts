@@ -54,7 +54,7 @@ export function useChatRealtime({
       const updated = { ...prev };
       Object.entries(updated).forEach(([id, state]) => {
         // Remove completed messages older than 5 seconds
-        if (state.status === 'completed' && now - state.timestamp > 5000) {
+        if ((state.status === 'completed' || state.status === 'failed') && now - state.timestamp > 5000) {
           delete updated[id];
         }
       });
@@ -129,8 +129,6 @@ export function useChatRealtime({
             if (message.status === 'completed' && message.role === 'assistant') {
               onAssistantMessage?.();
             }
-          } else {
-            await refetch();
           }
         }
       )
@@ -149,25 +147,43 @@ export function useChatRealtime({
     };
   }, [sessionId, queryClient, onAssistantMessage, refetch]);
 
-  // Get the latest active message state
+  // Get the latest active message state, including optimistic updates
   const getLatestActiveMessage = () => {
+    const queryData = queryClient.getQueryData(['chat-messages', sessionId]);
+    const optimisticMessages = queryData?.pages?.[0]?.messages || [];
+    
+    // First check streaming states for active messages
     const activeStates = Object.values(streamingStates).filter(
       state => state.status === 'in_progress' || state.status === 'queued'
     );
 
-    if (activeStates.length === 0) return null;
+    if (activeStates.length > 0) {
+      return activeStates.sort((a, b) => b.timestamp - a.timestamp)[0];
+    }
 
-    return activeStates.sort((a, b) => {
-      return b.timestamp - a.timestamp;
-    })[0];
+    // Then check for optimistic updates
+    const latestOptimistic = optimisticMessages.find(
+      (msg: any) => msg.id?.startsWith('temp-assistant-')
+    );
+
+    if (latestOptimistic) {
+      return {
+        messageId: latestOptimistic.id,
+        status: latestOptimistic.status as MessageStatus,
+        content: latestOptimistic.content,
+        processingStage: latestOptimistic.metadata?.processing_stage,
+        timestamp: Date.now()
+      };
+    }
+
+    return null;
   };
 
   const latestMessage = getLatestActiveMessage();
 
-  // Only return status and content when there's an actual message
   return {
     latestMessageId: latestMessage?.messageId || null,
-    status: latestMessage ? latestMessage.status : null,
+    status: latestMessage?.status || null,
     content: latestMessage?.content || '',
     processingStage: latestMessage?.processingStage,
     refetchMessages: refetch
