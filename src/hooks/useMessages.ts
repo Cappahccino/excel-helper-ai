@@ -42,32 +42,19 @@ export function useMessages(sessionId: string | null) {
         query = query.lt('created_at', pageParam);
       }
       
-      const { data, error } = await query;
+      const { data: messages, error } = await query;
       
       if (error) {
         console.error('Error fetching messages:', error);
         throw error;
       }
 
-      const messages = (data || []).map(msg => ({
-        ...msg,
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        status: msg.status as Message['status']
-      })) as Message[];
-
-      if (!messages || messages.length === 0) {
-        return {
-          messages: [],
-          nextCursor: null
-        };
-      }
-
-      const nextCursor = messages.length === MESSAGES_PER_PAGE 
+      const nextCursor = messages && messages.length === MESSAGES_PER_PAGE 
         ? messages[messages.length - 1]?.created_at 
         : null;
 
       return {
-        messages,
+        messages: messages || [],
         nextCursor
       };
     },
@@ -121,7 +108,7 @@ export function useMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: false,
           user_id: user.id,
-          status: 'completed' as const,
+          status: 'completed',
           version: '1.0.0'
         })
         .select('*, excel_files(filename, file_size)')
@@ -139,7 +126,7 @@ export function useMessages(sessionId: string | null) {
           excel_file_id: fileId,
           is_ai_response: true,
           user_id: user.id,
-          status: 'in_progress' as const,
+          status: 'in_progress',
           version: '1.0.0',
           deployment_id: crypto.randomUUID(),
           metadata: {
