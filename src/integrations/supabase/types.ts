@@ -328,7 +328,6 @@ export type Database = {
         | "completed"
         | "error"
       message_status:
-        | "queued"
         | "in_progress"
         | "completed"
         | "failed"

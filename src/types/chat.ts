@@ -1,5 +1,5 @@
 
-export type MessageStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+export type MessageStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
 
 export interface ProcessingStage {
   stage: string;

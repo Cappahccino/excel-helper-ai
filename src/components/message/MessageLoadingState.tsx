@@ -6,9 +6,7 @@ export enum LoadingStage {
   Analyzing = "analyzing",
   Processing = "processing",
   Generating = "generating",
-  Created = "created",
-  InProgress = "in_progress",
-  Queued = "queued"
+  InProgress = "in_progress"
 }
 
 // Type for percentage-based generating stage
@@ -24,12 +22,10 @@ const messages: Record<LoadingStage, string> = {
   [LoadingStage.Analyzing]: "Analyzing request...",
   [LoadingStage.Processing]: "Processing data...",
   [LoadingStage.Generating]: "Generating response...",
-  [LoadingStage.Created]: "Initializing...",
-  [LoadingStage.InProgress]: "Processing...",
-  [LoadingStage.Queued]: "Waiting to process..."
+  [LoadingStage.InProgress]: "Processing..."
 };
 
-export function MessageLoadingState({ stage = LoadingStage.Queued, className }: MessageLoadingStateProps) {
+export function MessageLoadingState({ stage = LoadingStage.InProgress, className }: MessageLoadingStateProps) {
   // Handle percentage-based generating message
   const baseMessage = typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`)
     ? `Generating response ${stage.split('(')[1].split(')')[0]}`
