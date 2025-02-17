@@ -51,7 +51,7 @@ const Chat = () => {
     refetch
   } = useChatMessages(selectedSessionId);
 
-  const { status, latestMessageId, processingStage } = useChatRealtime({
+  const { status, latestMessageId, processingStage, content: streamingContent } = useChatRealtime({
     sessionId: selectedSessionId,
     refetch,
     onAssistantMessage: () => {}
@@ -126,6 +126,7 @@ const Chat = () => {
                         // Calculate message status
                         const isLatestMessage = msg.id === latestMessageId;
                         const messageStatus = isLatestMessage ? status : msg.status;
+                        const messageContent = isLatestMessage && streamingContent ? streamingContent : msg.content;
                         const messageMetadata = {
                           ...msg.metadata,
                           processing_stage: isLatestMessage ? processingStage : msg.metadata?.processing_stage
@@ -135,7 +136,7 @@ const Chat = () => {
                           <MessageContent
                             key={msg.id}
                             messageId={msg.id}
-                            content={msg.content}
+                            content={messageContent}
                             role={msg.role as 'user' | 'assistant'}
                             timestamp={formatTimestamp(msg.created_at)}
                             fileInfo={msg.excel_files}

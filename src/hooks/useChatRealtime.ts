@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { MessageStatus } from "@/types/chat";
 
 interface ProcessingStage {
   stage: string;
@@ -12,7 +13,8 @@ interface ProcessingStage {
 
 interface StreamingState {
   messageId: string | null;
-  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  status: MessageStatus;
+  content: string;
   processingStage?: ProcessingStage;
 }
 
@@ -29,7 +31,8 @@ export function useChatRealtime({
 }: UseChatRealtimeProps) {
   const [streamingState, setStreamingState] = useState<StreamingState>({
     messageId: null,
-    status: 'queued'
+    status: 'queued',
+    content: '',
   });
   const queryClient = useQueryClient();
 
@@ -57,15 +60,17 @@ export function useChatRealtime({
             console.log('Message update received:', {
               messageId: message.id,
               status: message.status,
+              content: message.content,
               hasContent,
               isComplete,
               processingStage: message.processing_stage
             });
             
-            // Update state with new message status and processing stage
+            // Update state with new message status, content and processing stage
             setStreamingState({
               messageId: message.id,
               status: message.status,
+              content: message.content || '',
               processingStage: message.processing_stage
             });
 
@@ -100,6 +105,7 @@ export function useChatRealtime({
   return {
     latestMessageId: streamingState.messageId,
     status: streamingState.status,
+    content: streamingState.content,
     processingStage: streamingState.processingStage,
     refetchMessages: refetch
   };
