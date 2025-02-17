@@ -36,12 +36,15 @@ export function MessageGroup({
           transition={{ delay: index * 0.1 }}
         >
           <MessageContent
+            messageId={msg.id}
             content={msg.content}
             role={msg.role as 'user' | 'assistant'}
             timestamp={formatTimestamp(msg.created_at)}
             fileInfo={msg.excel_files}
             isNewMessage={msg.id === latestMessageId}
             status={msg.id === latestMessageId ? status : msg.status || 'completed'}
+            metadata={msg.metadata}
+            userReaction={null}
           />
         </motion.div>
       ))}
