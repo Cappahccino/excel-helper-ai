@@ -142,7 +142,6 @@ export function useChatRealtime({
         }
       });
 
-    // Cleanup subscription and states on unmount
     return () => {
       console.log('Cleaning up chat subscription:', sessionId);
       supabase.removeChannel(channel);
@@ -165,9 +164,10 @@ export function useChatRealtime({
 
   const latestMessage = getLatestActiveMessage();
 
+  // Only return status and content when there's an actual message
   return {
     latestMessageId: latestMessage?.messageId || null,
-    status: latestMessage?.status || 'queued',
+    status: latestMessage ? latestMessage.status : null,
     content: latestMessage?.content || '',
     processingStage: latestMessage?.processingStage,
     refetchMessages: refetch
