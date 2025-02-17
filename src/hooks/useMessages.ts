@@ -21,14 +21,19 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
     hasNextPage,
     fetchNextPage 
   } = useInfiniteQuery<MessagesResponse>({
-    queryKey: ['chat-messages', session?.session_id],
+    queryKey: ['chat-messages', sessionId],
     queryFn: async ({ pageParam = null }) => {
-      if (!session?.session_id) return { messages: [], nextCursor: null };
+      if (!sessionId) {
+        return {
+          messages: [],
+          nextCursor: null
+        };
+      }
       
       let query = supabase
         .from('chat_messages')
         .select('*, excel_files(filename, file_size)')
-        .eq('session_id', session.session_id)
+        .eq('session_id', sessionId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true })
         .limit(MESSAGES_PER_PAGE);
@@ -50,7 +55,7 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
         status: msg.status as Message['status']
       })) as Message[];
 
-      // Handle the case where no messages are returned
+      // Handle empty or undefined messages case
       if (!messages || messages.length === 0) {
         return {
           messages: [],
@@ -68,13 +73,13 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
       };
     },
     initialPageParam: null,
-    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? null,
-    getPreviousPageParam: (firstPage) => firstPage?.nextCursor ?? null,
-    enabled: !!session?.session_id,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    getPreviousPageParam: (firstPage) => firstPage.nextCursor,
+    enabled: !!sessionId,
   });
 
-  // Safely extract messages from data
-  const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
+  // Safely extract and combine messages from all pages
+  const messages = data?.pages?.flatMap(page => page.messages) ?? [];
 
   const sendMessage = useMutation({
     mutationFn: async ({ content, fileId }: { content: string; fileId?: string | null }) => {

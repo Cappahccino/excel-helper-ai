@@ -1,10 +1,10 @@
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { SessionData } from "@/types/chat";
 
 export function useSession(sessionId: string | null) {
-  return useInfiniteQuery({
+  return useQuery({
     queryKey: ['chat-session', sessionId],
     queryFn: async () => {
       if (!sessionId) return null;
@@ -25,8 +25,6 @@ export function useSession(sessionId: string | null) {
 
       return sessionData as SessionData;
     },
-    initialPageParam: null,
-    getNextPageParam: () => null,
     enabled: !!sessionId,
   });
 }
