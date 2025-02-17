@@ -79,7 +79,6 @@ export function MessageContent({
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
-  const isLoading = status === 'in_progress' && content && content.length > 500;
 
   const handleSave = (newContent: string) => {
     setIsEditing(false);
@@ -135,10 +134,7 @@ export function MessageContent({
                   />
                 ) : (
                   <>
-                    <MessageMarkdown 
-                      content={content}
-                      isLoading={isLoading} 
-                    />
+                    <MessageMarkdown content={content} />
                     {role === 'user' && (
                       <Button
                         variant="ghost"

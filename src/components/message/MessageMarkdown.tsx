@@ -2,13 +2,11 @@
 import ReactMarkdown from "react-markdown";
 import { InlineMath, BlockMath } from "react-katex";
 import { CodeBlock } from "./CodeBlock";
-import { Skeleton } from "../ui/skeleton";
 import "katex/dist/katex.min.css";
 import { ComponentPropsWithoutRef } from "react";
 
 interface MessageMarkdownProps {
   content: string;
-  isLoading?: boolean;
 }
 
 // Define the props type for the code component
@@ -18,17 +16,7 @@ interface CodeProps extends ComponentPropsWithoutRef<"code"> {
   children: React.ReactNode;
 }
 
-export function MessageMarkdown({ content, isLoading = false }: MessageMarkdownProps) {
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-4 w-[80%]" />
-        <Skeleton className="h-4 w-[90%]" />
-        <Skeleton className="h-4 w-[60%]" />
-      </div>
-    );
-  }
-
+export function MessageMarkdown({ content }: MessageMarkdownProps) {
   return (
     <ReactMarkdown
       components={{
