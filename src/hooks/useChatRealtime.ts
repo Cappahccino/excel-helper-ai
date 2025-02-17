@@ -17,6 +17,7 @@ interface StreamingState {
   status: MessageStatus;
   content: string;
   processingStage?: ProcessingStage;
+  timestamp: number;
 }
 
 interface UseChatRealtimeProps {
@@ -46,6 +47,21 @@ export function useChatRealtime({
   const [streamingStates, setStreamingStates] = useState<Record<string, StreamingState>>({});
   const queryClient = useQueryClient();
 
+  // Cleanup function to remove old streaming states
+  const cleanupStreamingStates = () => {
+    const now = Date.now();
+    setStreamingStates(prev => {
+      const updated = { ...prev };
+      Object.entries(updated).forEach(([id, state]) => {
+        // Remove completed messages older than 5 seconds
+        if (state.status === 'completed' && now - state.timestamp > 5000) {
+          delete updated[id];
+        }
+      });
+      return updated;
+    });
+  };
+
   useEffect(() => {
     if (!sessionId) return;
 
@@ -73,17 +89,29 @@ export function useChatRealtime({
             processingStage: message.processing_stage
           });
 
-          // Update streaming state while preserving existing content
-          setStreamingStates(prev => ({
-            ...prev,
-            [message.id]: {
+          // Update streaming state
+          setStreamingStates(prev => {
+            const existingState = prev[message.id];
+            const newState: StreamingState = {
               messageId: message.id,
               status: message.status,
-              content: message.content || prev[message.id]?.content || '',
-              processingStage: message.processing_stage
-            }
-          }));
+              content: message.content || existingState?.content || '',
+              processingStage: message.processing_stage,
+              timestamp: Date.now()
+            };
 
+            // If the message is completed or failed, schedule it for cleanup
+            if (message.status === 'completed' || message.status === 'failed') {
+              setTimeout(cleanupStreamingStates, 5000);
+            }
+
+            return {
+              ...prev,
+              [message.id]: newState
+            };
+          });
+
+          // Handle different event types
           if (payload.eventType === 'INSERT') {
             await queryClient.invalidateQueries({ 
               queryKey: ['chat-messages', sessionId]
@@ -100,12 +128,6 @@ export function useChatRealtime({
             
             if (message.status === 'completed' && message.role === 'assistant') {
               onAssistantMessage?.();
-              
-              // Clear streaming state for completed message
-              setStreamingStates(prev => {
-                const { [message.id]: _, ...rest } = prev;
-                return rest;
-              });
             }
           } else {
             await refetch();
@@ -120,28 +142,34 @@ export function useChatRealtime({
         }
       });
 
+    // Cleanup subscription and states on unmount
     return () => {
       console.log('Cleaning up chat subscription:', sessionId);
       supabase.removeChannel(channel);
+      setStreamingStates({});
     };
   }, [sessionId, queryClient, onAssistantMessage, refetch]);
 
-  // Get the latest message state based on processing stage timestamp
-  const latestMessage = Object.values(streamingStates)
-    .sort((a, b) => {
-      if (!a?.processingStage?.last_updated || !b?.processingStage?.last_updated) return 0;
-      return b.processingStage.last_updated - a.processingStage.last_updated;
-    })[0] || {
-      messageId: null,
-      status: 'queued' as MessageStatus,
-      content: '',
-    };
+  // Get the latest active message state
+  const getLatestActiveMessage = () => {
+    const activeStates = Object.values(streamingStates).filter(
+      state => state.status === 'in_progress' || state.status === 'queued'
+    );
+
+    if (activeStates.length === 0) return null;
+
+    return activeStates.sort((a, b) => {
+      return b.timestamp - a.timestamp;
+    })[0];
+  };
+
+  const latestMessage = getLatestActiveMessage();
 
   return {
-    latestMessageId: latestMessage.messageId,
-    status: latestMessage.status,
-    content: latestMessage.content,
-    processingStage: latestMessage.processingStage,
+    latestMessageId: latestMessage?.messageId || null,
+    status: latestMessage?.status || 'queued',
+    content: latestMessage?.content || '',
+    processingStage: latestMessage?.processingStage,
     refetchMessages: refetch
   };
 }
