@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface ReactionButtonsProps {
   messageId: string;
@@ -22,10 +23,13 @@ export function ReactionButtons({
 }: ReactionButtonsProps) {
   const [counts, setCounts] = useState(initialCounts);
   const [currentReaction, setCurrentReaction] = useState<boolean | null>(userReaction);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const handleReaction = async (isPositive: boolean) => {
     try {
+      setIsLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast({
@@ -52,37 +56,59 @@ export function ReactionButtons({
         }));
         setCurrentReaction(null);
       } else {
-        // If there was a previous reaction, remove it first
-        if (currentReaction !== null) {
-          await supabase
+        try {
+          // Try to delete any existing reaction first
+          if (currentReaction !== null) {
+            await supabase
+              .from('message_reactions')
+              .delete()
+              .eq('message_id', messageId)
+              .eq('user_id', user.id);
+
+            setCounts(prev => ({
+              ...prev,
+              [currentReaction ? 'positive' : 'negative']: Math.max(0, prev[currentReaction ? 'positive' : 'negative'] - 1)
+            }));
+          }
+
+          // Add new reaction
+          const { error } = await supabase
             .from('message_reactions')
-            .delete()
-            .eq('message_id', messageId)
-            .eq('user_id', user.id);
+            .insert({
+              message_id: messageId,
+              user_id: user.id,
+              is_positive: isPositive
+            });
+
+          if (error) {
+            if (error.code === '23505') { // Unique constraint violation
+              toast({
+                title: "Already reacted",
+                description: "You've already reacted to this message",
+                variant: "default"
+              });
+              return;
+            }
+            throw error;
+          }
 
           setCounts(prev => ({
             ...prev,
-            [currentReaction ? 'positive' : 'negative']: Math.max(0, prev[currentReaction ? 'positive' : 'negative'] - 1)
+            [isPositive ? 'positive' : 'negative']: prev[isPositive ? 'positive' : 'negative'] + 1
           }));
-        }
-
-        // Add new reaction
-        const { error } = await supabase
-          .from('message_reactions')
-          .insert({
-            message_id: messageId,
-            user_id: user.id,
-            is_positive: isPositive
+          setCurrentReaction(isPositive);
+        } catch (error) {
+          console.error('Error adding reaction:', error);
+          toast({
+            title: "Error",
+            description: "Failed to add reaction",
+            variant: "destructive"
           });
-
-        if (error) throw error;
-
-        setCounts(prev => ({
-          ...prev,
-          [isPositive ? 'positive' : 'negative']: prev[isPositive ? 'positive' : 'negative'] + 1
-        }));
-        setCurrentReaction(isPositive);
+        }
       }
+
+      // Invalidate the messages cache to refresh reaction counts
+      await queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
     } catch (error) {
       console.error('Error handling reaction:', error);
       toast({
@@ -90,6 +116,8 @@ export function ReactionButtons({
         description: "Failed to update reaction",
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -103,6 +131,7 @@ export function ReactionButtons({
           currentReaction === true && "text-green-600 bg-green-50"
         )}
         onClick={() => handleReaction(true)}
+        disabled={isLoading}
       >
         <ThumbsUp className="h-4 w-4 mr-1" />
         <span className="text-xs">{counts.positive}</span>
@@ -116,6 +145,7 @@ export function ReactionButtons({
           currentReaction === false && "text-red-600 bg-red-50"
         )}
         onClick={() => handleReaction(false)}
+        disabled={isLoading}
       >
         <ThumbsDown className="h-4 w-4 mr-1" />
         <span className="text-xs">{counts.negative}</span>

@@ -4,12 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Message, MessagesResponse, SessionData } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
+import { useToast } from "@/hooks/use-toast";
 
 const MESSAGES_PER_PAGE = 50;
 
 export function useMessages(sessionId: string | null, session: SessionData | null) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const { 
     data, 
@@ -48,6 +50,14 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
         status: msg.status as Message['status']
       })) as Message[];
 
+      // Handle the case where no messages are returned
+      if (!messages || messages.length === 0) {
+        return {
+          messages: [],
+          nextCursor: null
+        };
+      }
+
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
         ? messages[messages.length - 1]?.created_at 
         : null;
@@ -58,11 +68,13 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
       };
     },
     initialPageParam: null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? null,
+    getPreviousPageParam: (firstPage) => firstPage?.nextCursor ?? null,
     enabled: !!session?.session_id,
   });
 
-  const messages = data?.pages.flatMap(page => page.messages) ?? [];
+  // Safely extract messages from data
+  const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
 
   const sendMessage = useMutation({
     mutationFn: async ({ content, fileId }: { content: string; fileId?: string | null }) => {
@@ -125,13 +137,10 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
       return { userMessage, assistantMessage, newSessionId: currentSessionId };
     },
     onMutate: async ({ content, fileId }) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
 
-      // Snapshot the previous value
       const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]);
 
-      // Create optimistic user message
       const optimisticUserMessage: Message = {
         id: `temp-${Date.now()}`,
         content,
@@ -147,7 +156,6 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
         metadata: null,
       };
 
-      // Create optimistic assistant message
       const optimisticAssistantMessage: Message = {
         id: `temp-assistant-${Date.now()}`,
         content: '',
@@ -164,27 +172,28 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
         metadata: null,
       };
 
-      // Optimistically update the cache
       queryClient.setQueryData(['chat-messages', sessionId], (old: any) => ({
-        pages: [
-          {
-            messages: [...(old?.pages[0]?.messages || []), optimisticUserMessage, optimisticAssistantMessage],
-            nextCursor: old?.pages[0]?.nextCursor
-          },
-          ...(old?.pages.slice(1) || [])
-        ],
+        pages: [{
+          messages: [...(old?.pages?.[0]?.messages || []), optimisticUserMessage, optimisticAssistantMessage],
+          nextCursor: old?.pages?.[0]?.nextCursor
+        },
+        ...(old?.pages?.slice(1) || [])],
+        pageParams: old?.pageParams || [null]
       }));
 
       return { previousMessages };
     },
     onError: (err, variables, context) => {
-      // Revert to the previous state if there's an error
       if (context?.previousMessages) {
         queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
       }
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive"
+      });
     },
     onSuccess: async ({ userMessage, assistantMessage, newSessionId }, variables) => {
-      // Update cache with the actual messages
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
 
       if (!sessionId && newSessionId) {
@@ -231,6 +240,11 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
     },
     onError: (error) => {
       console.error('AI Response error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate AI response. Please try again.",
+        variant: "destructive"
+      });
     }
   });
 
