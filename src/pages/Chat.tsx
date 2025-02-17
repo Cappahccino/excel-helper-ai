@@ -1,11 +1,10 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageContent } from "@/components/message/MessageContent";
@@ -14,10 +13,13 @@ import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useState, useMemo } from "react";
 import { Message } from "@/types/chat";
+import { useToast } from "@/hooks/use-toast";
 
 const Chat = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('sessionId');
   const fileIdFromUrl = searchParams.get('fileId');
@@ -62,10 +64,8 @@ const Chat = () => {
     onAssistantMessage: () => {}
   });
 
-  // Enhance messages with real-time updates
   const messages = useMemo(() => {
     return baseMessages.map(msg => {
-      // If this is the latest message being streamed, enhance it with real-time data
       if (msg.id === latestMessageId) {
         return {
           ...msg,
@@ -89,12 +89,10 @@ const Chat = () => {
       
       let currentSessionId = selectedSessionId;
       
-      // Create new session if needed
       if (!currentSessionId) {
         const newSession = await createSession.mutateAsync();
         currentSessionId = newSession.session_id;
         
-        // Update URL with new session ID
         const queryParams = new URLSearchParams();
         queryParams.set('sessionId', currentSessionId);
         if (fileId || uploadedFileId || fileIdFromUrl) {
@@ -103,7 +101,48 @@ const Chat = () => {
         navigate(`/chat?${queryParams.toString()}`);
       }
 
-      // Send message
+      queryClient.setQueryData(['chat-messages', currentSessionId], (oldData: any) => {
+        const optimisticUserMessage: Message = {
+          id: `temp-${Date.now()}`,
+          content: message,
+          role: 'user',
+          session_id: currentSessionId!,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          excel_file_id: fileId || uploadedFileId || fileIdFromUrl,
+          status: 'completed',
+          is_ai_response: false,
+          version: '1.0.0',
+          excel_files: null,
+          metadata: null,
+        };
+
+        const optimisticAssistantMessage: Message = {
+          id: `temp-assistant-${Date.now()}`,
+          content: '',
+          role: 'assistant',
+          session_id: currentSessionId!,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          excel_file_id: fileId || uploadedFileId || fileIdFromUrl,
+          status: 'queued',
+          is_ai_response: true,
+          version: '1.0.0',
+          deployment_id: crypto.randomUUID(),
+          excel_files: null,
+          metadata: null,
+        };
+
+        return {
+          pages: [{
+            messages: [optimisticAssistantMessage, optimisticUserMessage, ...(oldData?.pages?.[0]?.messages || [])],
+            nextCursor: oldData?.pages?.[0]?.nextCursor
+          },
+          ...(oldData?.pages?.slice(1) || [])],
+          pageParams: oldData?.pageParams || [null]
+        };
+      });
+
       await sendMessageMutation.mutateAsync({
         content: message,
         fileId: fileId || uploadedFileId || fileIdFromUrl,
@@ -111,6 +150,14 @@ const Chat = () => {
       });
 
       resetUpload();
+    } catch (error) {
+      console.error('Send message error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to send message",
+        variant: "destructive"
+      });
+      await queryClient.invalidateQueries({ queryKey: ['chat-messages', selectedSessionId] });
     } finally {
       setIsCreatingSession(false);
     }
