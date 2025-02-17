@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -73,7 +74,7 @@ export function useMessages(sessionId: string | null) {
     initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
     getPreviousPageParam: (firstPage) => firstPage?.nextCursor ?? undefined,
-    enabled: true // Always enable the query
+    enabled: true
   });
 
   const createSession = useMutation({
@@ -180,7 +181,13 @@ export function useMessages(sessionId: string | null) {
         version: '1.0.0',
         deployment_id: crypto.randomUUID(),
         excel_files: null,
-        metadata: null,
+        metadata: {
+          processing_stage: {
+            stage: 'generating',
+            started_at: Date.now(),
+            last_updated: Date.now()
+          }
+        },
       };
 
       queryClient.setQueryData(['chat-messages', currentSessionId], (old: any) => ({
