@@ -2,9 +2,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageStatus, Message, MessagesResponse } from "@/types/chat";
+import { MessageStatus } from "@/types/chat";
 import { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import { InfiniteData } from "@tanstack/react-query";
 
 interface ProcessingStage {
   stage: string;
@@ -55,7 +54,7 @@ export function useChatRealtime({
       const updated = { ...prev };
       Object.entries(updated).forEach(([id, state]) => {
         // Remove completed messages older than 5 seconds
-        if ((state.status === 'completed' || state.status === 'failed') && now - state.timestamp > 5000) {
+        if (state.status === 'completed' && now - state.timestamp > 5000) {
           delete updated[id];
         }
       });
@@ -130,6 +129,8 @@ export function useChatRealtime({
             if (message.status === 'completed' && message.role === 'assistant') {
               onAssistantMessage?.();
             }
+          } else {
+            await refetch();
           }
         }
       )
@@ -141,6 +142,7 @@ export function useChatRealtime({
         }
       });
 
+    // Cleanup subscription and states on unmount
     return () => {
       console.log('Cleaning up chat subscription:', sessionId);
       supabase.removeChannel(channel);
@@ -148,43 +150,24 @@ export function useChatRealtime({
     };
   }, [sessionId, queryClient, onAssistantMessage, refetch]);
 
-  // Get the latest active message state, including optimistic updates
+  // Get the latest active message state
   const getLatestActiveMessage = () => {
-    const queryData = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', sessionId]);
-    const optimisticMessages = queryData?.pages?.[0]?.messages || [];
-    
-    // First check streaming states for active messages
     const activeStates = Object.values(streamingStates).filter(
       state => state.status === 'in_progress' || state.status === 'queued'
     );
 
-    if (activeStates.length > 0) {
-      return activeStates.sort((a, b) => b.timestamp - a.timestamp)[0];
-    }
+    if (activeStates.length === 0) return null;
 
-    // Then check for optimistic updates
-    const latestOptimistic = optimisticMessages.find(
-      (msg: Message) => msg.id?.startsWith('temp-assistant-')
-    );
-
-    if (latestOptimistic) {
-      return {
-        messageId: latestOptimistic.id,
-        status: latestOptimistic.status as MessageStatus,
-        content: latestOptimistic.content,
-        processingStage: latestOptimistic.metadata?.processing_stage,
-        timestamp: Date.now()
-      };
-    }
-
-    return null;
+    return activeStates.sort((a, b) => {
+      return b.timestamp - a.timestamp;
+    })[0];
   };
 
   const latestMessage = getLatestActiveMessage();
 
   return {
     latestMessageId: latestMessage?.messageId || null,
-    status: latestMessage?.status || null,
+    status: latestMessage?.status || 'queued',
     content: latestMessage?.content || '',
     processingStage: latestMessage?.processingStage,
     refetchMessages: refetch

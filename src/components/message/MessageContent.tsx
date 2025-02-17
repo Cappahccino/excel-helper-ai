@@ -72,11 +72,14 @@ export function MessageContent({
     return LoadingStage.Processing;
   };
 
-  // Show loading state for assistant messages that are queued or in progress
-  const showLoading = role === "assistant" && (status === 'queued' || status === 'in_progress');
+  // Show loading state while generating or when no content is available
+  const showLoading = (
+    role === "assistant" &&
+    ['queued', 'in_progress'].includes(status)
+  );
 
-  // Show content immediately for user messages or when there's content available
-  const showContent = role === 'user' || content.trim().length > 0;
+  // Show content as soon as there's any content, even while still generating
+  const showContent = content.trim().length > 0;
   
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
