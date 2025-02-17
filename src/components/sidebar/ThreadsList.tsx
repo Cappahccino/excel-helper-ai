@@ -15,6 +15,11 @@ import {
   SidebarMenuButton,
 } from "@/components/ui/sidebar-new";
 
+interface ThreadMetadata {
+  title: string | null;
+  summary: string | null;
+}
+
 interface Thread {
   session_id: string;
   created_at: string;
@@ -26,10 +31,7 @@ interface Thread {
   parent_session_id: string | null;
   thread_level: number;
   thread_position: number;
-  thread_metadata: {
-    title: string | null;
-    summary: string | null;
-  } | null;
+  thread_metadata: ThreadMetadata | null;
   child_threads?: Thread[];
 }
 
@@ -72,6 +74,7 @@ export function ThreadsList() {
       const transformedSessions = sessions.map(session => ({
         ...session,
         excel_files: session.excel_files ? [session.excel_files] : [],
+        thread_metadata: session.thread_metadata as ThreadMetadata,
       }));
 
       // Fetch child threads for each session
@@ -100,6 +103,7 @@ export function ThreadsList() {
           const transformedChildThreads = childThreads?.map(thread => ({
             ...thread,
             excel_files: thread.excel_files ? [thread.excel_files] : [],
+            thread_metadata: thread.thread_metadata as ThreadMetadata,
           })) || [];
 
           return {
