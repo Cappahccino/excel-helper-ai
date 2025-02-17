@@ -1,19 +1,19 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar-new";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageContent } from "@/components/message/MessageContent";
 import { ChatInput } from "@/components/ChatInput";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import { useState, useMemo } from "react";
 import { Message } from "@/types/chat";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { ChatContent } from "@/components/chat/ChatContent";
 
 const Chat = () => {
   const location = useLocation();
@@ -55,6 +55,7 @@ const Chat = () => {
     sendMessage: sendMessageMutation,
     createSession,
     formatTimestamp,
+    groupMessagesByDate,
     refetch
   } = useChatMessages(selectedSessionId);
 
@@ -253,24 +254,14 @@ const Chat = () => {
                     exit={{ opacity: 0 }}
                     className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
                   >
-                    <ScrollArea className="flex-grow p-4">
-                      <div className="space-y-6">
-                        {messages.map(msg => (
-                          <MessageContent
-                            key={msg.id}
-                            messageId={msg.id}
-                            content={msg.content}
-                            role={msg.role as 'user' | 'assistant'}
-                            timestamp={formatTimestamp(msg.created_at)}
-                            fileInfo={msg.excel_files}
-                            isNewMessage={msg.id === latestMessageId}
-                            status={msg.status}
-                            metadata={msg.metadata}
-                            userReaction={msg.metadata?.user_reaction}
-                          />
-                        ))}
-                      </div>
-                    </ScrollArea>
+                    <ChatContent
+                      messages={messages}
+                      isLoading={messagesLoading}
+                      formatTimestamp={formatTimestamp}
+                      groupMessagesByDate={groupMessagesByDate}
+                      latestMessageId={latestMessageId}
+                      status={status}
+                    />
                   </motion.div>
                 </div>
                 <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
@@ -292,6 +283,6 @@ const Chat = () => {
       </div>
     </SidebarProvider>
   );
-}
+};
 
 export default Chat;

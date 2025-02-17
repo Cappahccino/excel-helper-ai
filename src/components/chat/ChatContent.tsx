@@ -1,67 +1,62 @@
 
-import { AnimatePresence, motion } from "framer-motion";
-import { FileInfo } from "../FileInfo";
+import { Message, MessageStatus } from "@/types/chat";
 import { MessageGroup } from "./MessageGroup";
 import { LoadingMessages } from "./LoadingMessages";
+import { AnimatePresence } from "framer-motion";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useRef, useEffect } from "react";
 
 interface ChatContentProps {
+  messages: Message[];
   isLoading: boolean;
-  fileInfo?: { filename: string; file_size: number } | null;
-  fileId: string | null;
-  messageGroups: Record<string, any[]>;
   formatTimestamp: (timestamp: string) => string;
+  groupMessagesByDate: (messages: Message[]) => Record<string, Message[]>;
   latestMessageId: string | null;
-  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  status: MessageStatus;
 }
 
 export function ChatContent({
+  messages,
   isLoading,
-  fileInfo,
-  fileId,
-  messageGroups,
   formatTimestamp,
+  groupMessagesByDate,
   latestMessageId,
-  status,
-  messagesEndRef
+  status
 }: ChatContentProps) {
-  return (
-    <div className="flex flex-col gap-6">
-      <AnimatePresence>
-        {fileInfo && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2 }}
-            className="mb-6"
-          >
-            <FileInfo 
-              filename={fileInfo.filename}
-              fileSize={fileInfo.file_size}
-              fileId={fileId || undefined}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-      {isLoading ? (
-        <LoadingMessages />
-      ) : (
-        <AnimatePresence>
-          {Object.entries(messageGroups).map(([date, groupMessages]) => (
-            <MessageGroup
-              key={date}
-              date={date}
-              messages={groupMessages}
-              formatTimestamp={formatTimestamp}
-              latestMessageId={latestMessageId}
-              status={status}
-            />
-          ))}
-          <div ref={messagesEndRef} />
-        </AnimatePresence>
-      )}
-    </div>
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const messageGroups = groupMessagesByDate(messages);
+  const hasMessages = Object.keys(messageGroups).length > 0;
+
+  return (
+    <ScrollArea className="flex-grow p-4">
+      <div className="space-y-6">
+        {(!hasMessages && isLoading) ? (
+          <LoadingMessages />
+        ) : (
+          <AnimatePresence>
+            {Object.entries(messageGroups).map(([date, groupMessages]) => (
+              <MessageGroup
+                key={date}
+                date={date}
+                messages={groupMessages}
+                formatTimestamp={formatTimestamp}
+                latestMessageId={latestMessageId}
+                status={status}
+              />
+            ))}
+            <div ref={messagesEndRef} />
+          </AnimatePresence>
+        )}
+      </div>
+    </ScrollArea>
   );
 }
