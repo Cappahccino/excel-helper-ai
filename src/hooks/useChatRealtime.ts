@@ -35,7 +35,9 @@ interface ChatMessage {
   session_id: string;
 }
 
-type ChatMessageChange = RealtimePostgresChangesPayload<ChatMessage>;
+type ChatMessageChange = RealtimePostgresChangesPayload<{
+  [key: string]: any;
+}>;
 
 export function useChatRealtime({ 
   sessionId, 
@@ -61,9 +63,9 @@ export function useChatRealtime({
           filter: `session_id=eq.${sessionId}`
         },
         async (payload: ChatMessageChange) => {
-          if (!payload.new) return;
+          const message = payload.new as ChatMessage;
+          if (!message || !message.id) return;
 
-          const message = payload.new;
           console.log("🔄 Real-time update received:", {
             event: payload.eventType,
             messageId: message.id,
