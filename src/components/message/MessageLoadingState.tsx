@@ -2,25 +2,38 @@
 import { Loader } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+export enum LoadingStage {
+  Analyzing = "analyzing",
+  Processing = "processing",
+  Generating = "generating",
+  Created = "created",
+  InProgress = "in_progress",
+  Queued = "queued"
+}
+
+// Type for percentage-based generating stage
+type GeneratingStage = `${LoadingStage.Generating} (${number}%)`;
+type LoadingStageType = LoadingStage | GeneratingStage;
+
 interface MessageLoadingStateProps {
-  stage?: string;
+  stage?: LoadingStageType;
   className?: string;
 }
 
-export function MessageLoadingState({ stage = 'generating', className }: MessageLoadingStateProps) {
-  const messages: { [key: string]: string } = {
-    analyzing: "Analyzing request...",
-    processing: "Processing data...",
-    generating: "Generating response...",
-    created: "Initializing...",
-    'in_progress': "Processing...",
-    'queued': "Waiting to process..."
-  };
+const messages: Record<LoadingStage, string> = {
+  [LoadingStage.Analyzing]: "Analyzing request...",
+  [LoadingStage.Processing]: "Processing data...",
+  [LoadingStage.Generating]: "Generating response...",
+  [LoadingStage.Created]: "Initializing...",
+  [LoadingStage.InProgress]: "Processing...",
+  [LoadingStage.Queued]: "Waiting to process..."
+};
 
+export function MessageLoadingState({ stage = LoadingStage.Generating, className }: MessageLoadingStateProps) {
   // Handle percentage-based generating message
-  const baseMessage = stage?.startsWith('generating (') 
+  const baseMessage = typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`)
     ? `Generating response ${stage.split('(')[1].split(')')[0]}`
-    : messages[stage || 'processing'] || "Processing...";
+    : messages[stage as LoadingStage] || messages[LoadingStage.Processing];
 
   return (
     <div className={cn(
