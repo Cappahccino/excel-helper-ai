@@ -124,7 +124,67 @@ export function useMessages(sessionId: string | null, session: SessionData | nul
 
       return { userMessage, assistantMessage, newSessionId: currentSessionId };
     },
+    onMutate: async ({ content, fileId }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
+
+      // Snapshot the previous value
+      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]);
+
+      // Create optimistic user message
+      const optimisticUserMessage: Message = {
+        id: `temp-${Date.now()}`,
+        content,
+        role: 'user',
+        session_id: sessionId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        excel_file_id: fileId,
+        status: 'completed',
+        is_ai_response: false,
+        version: '1.0.0',
+        excel_files: null,
+        metadata: null,
+      };
+
+      // Create optimistic assistant message
+      const optimisticAssistantMessage: Message = {
+        id: `temp-assistant-${Date.now()}`,
+        content: '',
+        role: 'assistant',
+        session_id: sessionId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        excel_file_id: fileId,
+        status: 'queued',
+        is_ai_response: true,
+        version: '1.0.0',
+        deployment_id: crypto.randomUUID(),
+        excel_files: null,
+        metadata: null,
+      };
+
+      // Optimistically update the cache
+      queryClient.setQueryData(['chat-messages', sessionId], (old: any) => ({
+        pages: [
+          {
+            messages: [...(old?.pages[0]?.messages || []), optimisticUserMessage, optimisticAssistantMessage],
+            nextCursor: old?.pages[0]?.nextCursor
+          },
+          ...(old?.pages.slice(1) || [])
+        ],
+      }));
+
+      return { previousMessages };
+    },
+    onError: (err, variables, context) => {
+      // Revert to the previous state if there's an error
+      if (context?.previousMessages) {
+        queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
+      }
+    },
     onSuccess: async ({ userMessage, assistantMessage, newSessionId }, variables) => {
+      // Update cache with the actual messages
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
 
       if (!sessionId && newSessionId) {
