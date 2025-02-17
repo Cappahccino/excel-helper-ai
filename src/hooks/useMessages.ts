@@ -74,33 +74,42 @@ export function useMessages(sessionId: string | null) {
     initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
     getPreviousPageParam: (firstPage) => firstPage?.nextCursor ?? undefined,
-    enabled: !!sessionId
+    enabled: true // Always enable the query
   });
 
-  // Safely extract and combine messages from all pages
-  const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
-
-  const sendMessage = useMutation({
-    mutationFn: async ({ content, fileId }: { content: string; fileId?: string | null }) => {
+  // Create session mutation
+  const createSession = useMutation({
+    mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      let currentSessionId = sessionId;
+      const { data: newSession, error: sessionError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          user_id: user.id,
+          status: 'active',
+          thread_id: null,
+          chat_name: 'New Chat'
+        })
+        .select()
+        .single();
+
+      if (sessionError) throw sessionError;
+      return newSession;
+    }
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: async ({ content, fileId, sessionId: currentSessionId }: { 
+      content: string; 
+      fileId?: string | null;
+      sessionId?: string | null;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
 
       if (!currentSessionId) {
-        const { data: newSession, error: sessionError } = await supabase
-          .from('chat_sessions')
-          .insert({
-            user_id: user.id,
-            status: 'active',
-            thread_id: null,
-            chat_name: 'New Chat'
-          })
-          .select()
-          .single();
-
-        if (sessionError) throw sessionError;
-        currentSessionId = newSession.session_id;
+        throw new Error('No session ID provided');
       }
 
       const { data: userMessage, error: userMessageError } = await supabase
@@ -138,18 +147,18 @@ export function useMessages(sessionId: string | null) {
 
       if (assistantMessageError) throw assistantMessageError;
 
-      return { userMessage, assistantMessage, newSessionId: currentSessionId };
+      return { userMessage, assistantMessage };
     },
-    onMutate: async ({ content, fileId }) => {
-      await queryClient.cancelQueries({ queryKey: ['chat-messages', sessionId] });
+    onMutate: async ({ content, fileId, sessionId: currentSessionId }) => {
+      await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
 
-      const previousMessages = queryClient.getQueryData(['chat-messages', sessionId]);
+      const previousMessages = queryClient.getQueryData(['chat-messages', currentSessionId]);
 
       const optimisticUserMessage: Message = {
         id: `temp-${Date.now()}`,
         content,
         role: 'user',
-        session_id: sessionId,
+        session_id: currentSessionId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         excel_file_id: fileId,
@@ -164,7 +173,7 @@ export function useMessages(sessionId: string | null) {
         id: `temp-assistant-${Date.now()}`,
         content: '',
         role: 'assistant',
-        session_id: sessionId,
+        session_id: currentSessionId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         excel_file_id: fileId,
@@ -176,7 +185,7 @@ export function useMessages(sessionId: string | null) {
         metadata: null,
       };
 
-      queryClient.setQueryData(['chat-messages', sessionId], (old: any) => ({
+      queryClient.setQueryData(['chat-messages', currentSessionId], (old: any) => ({
         pages: [{
           messages: [...(old?.pages?.[0]?.messages || []), optimisticUserMessage, optimisticAssistantMessage],
           nextCursor: old?.pages?.[0]?.nextCursor
@@ -189,7 +198,7 @@ export function useMessages(sessionId: string | null) {
     },
     onError: (err, variables, context) => {
       if (context?.previousMessages) {
-        queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
+        queryClient.setQueryData(['chat-messages', variables.sessionId], context.previousMessages);
       }
       toast({
         title: "Error",
@@ -197,22 +206,13 @@ export function useMessages(sessionId: string | null) {
         variant: "destructive"
       });
     },
-    onSuccess: async ({ userMessage, assistantMessage, newSessionId }, variables) => {
-      await queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
-
-      if (!sessionId && newSessionId) {
-        const queryParams = new URLSearchParams();
-        queryParams.set('sessionId', newSessionId);
-        if (userMessage.excel_file_id) {
-          queryParams.set('fileId', userMessage.excel_file_id);
-        }
-        navigate(`/chat?${queryParams.toString()}`);
-      }
-
+    onSuccess: async ({ userMessage, assistantMessage }, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
+      
       generateAIResponse.mutate({
         content: variables.content,
         fileId: variables.fileId,
-        sessionId: newSessionId,
+        sessionId: variables.sessionId!,
         messageId: assistantMessage.id
       });
     }
@@ -252,10 +252,14 @@ export function useMessages(sessionId: string | null) {
     }
   });
 
+  // Modified messages to handle empty state
+  const messages = data?.pages?.flatMap(page => page?.messages ?? []) ?? [];
+
   return {
     messages,
     isLoading,
     isError,
+    createSession,
     sendMessage,
     formatTimestamp,
     groupMessagesByDate,
