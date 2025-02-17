@@ -1,7 +1,7 @@
 
 import { useSession } from "./useSession";
 import { useMessages } from "./useMessages";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 
 export function useChatMessages(sessionId: string | null) {
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
@@ -19,12 +19,16 @@ export function useChatMessages(sessionId: string | null) {
     fetchNextPage
   } = useMessages(sessionId);
 
-  // Force refresh when session changes or new messages arrive
-  useEffect(() => {
+  const handleRefetch = useCallback(async () => {
     if (sessionId) {
-      refetch();
+      await refetch();
     }
   }, [sessionId, refetch]);
+
+  // Force refresh when session changes or new messages arrive
+  useEffect(() => {
+    handleRefetch();
+  }, [handleRefetch]);
 
   return {
     messages,
@@ -35,7 +39,7 @@ export function useChatMessages(sessionId: string | null) {
     createSession,
     formatTimestamp,
     groupMessagesByDate,
-    refetch,
+    refetch: handleRefetch,
     hasNextPage,
     fetchNextPage
   };

@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -15,6 +16,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { ChatContent } from "@/components/chat/ChatContent";
 
 const Chat = () => {
+  // All useState hooks first
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+
+  // Then other hooks
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -22,7 +27,6 @@ const Chat = () => {
   const searchParams = new URLSearchParams(location.search);
   const selectedSessionId = searchParams.get('sessionId');
   const fileIdFromUrl = searchParams.get('fileId');
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   const {
     file: uploadedFile,
@@ -41,7 +45,7 @@ const Chat = () => {
         .from('excel_files')
         .select('*')
         .eq('id', fileIdFromUrl)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -64,6 +68,7 @@ const Chat = () => {
     onAssistantMessage: () => {}
   });
 
+  // Then useMemo and other derived state
   const messages = useMemo(() => {
     const messagesList = baseMessages.map(msg => {
       if (msg.id === latestMessageId) {
@@ -125,54 +130,6 @@ const Chat = () => {
         }
         navigate(`/chat?${queryParams.toString()}`);
       }
-
-      queryClient.setQueryData(['chat-messages', currentSessionId], (oldData: any) => {
-        const optimisticUserMessage: Message = {
-          id: `temp-${Date.now()}`,
-          content: message,
-          role: 'user',
-          session_id: currentSessionId!,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          excel_file_id: fileId || uploadedFileId || fileIdFromUrl,
-          status: 'completed',
-          is_ai_response: false,
-          version: '1.0.0',
-          excel_files: null,
-          metadata: null,
-        };
-
-        const optimisticAssistantMessage: Message = {
-          id: `temp-assistant-${Date.now()}`,
-          content: '',
-          role: 'assistant',
-          session_id: currentSessionId!,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          excel_file_id: fileId || uploadedFileId || fileIdFromUrl,
-          status: 'in_progress',
-          is_ai_response: true,
-          version: '1.0.0',
-          deployment_id: crypto.randomUUID(),
-          excel_files: null,
-          metadata: {
-            processing_stage: {
-              stage: 'generating',
-              started_at: Date.now(),
-              last_updated: Date.now()
-            }
-          },
-        };
-
-        return {
-          pages: [{
-            messages: [optimisticAssistantMessage, optimisticUserMessage, ...(oldData?.pages?.[0]?.messages || [])],
-            nextCursor: oldData?.pages?.[0]?.nextCursor
-          },
-          ...(oldData?.pages?.slice(1) || [])],
-          pageParams: oldData?.pageParams || [null]
-        };
-      });
 
       await sendMessageMutation.mutateAsync({
         content: message,
@@ -291,3 +248,4 @@ const Chat = () => {
 };
 
 export default Chat;
+
