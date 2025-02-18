@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { Message, ProcessingStage } from '@/types/chat';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface UseChatRealtimeProps {
   sessionId: string | null;
@@ -15,6 +16,7 @@ export function useChatRealtime({ sessionId, refetch, onAssistantMessage }: UseC
   const [content, setContent] = useState<string>();
   const [latestMessageId, setLatestMessageId] = useState<string>();
   const [processingStage, setProcessingStage] = useState<ProcessingStage>();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!sessionId) return;
@@ -42,13 +44,31 @@ export function useChatRealtime({ sessionId, refetch, onAssistantMessage }: UseC
             setLatestMessageId(message.id);
             setProcessingStage(message.metadata?.processing_stage);
             
+            // Update the message in the query cache immediately
+            queryClient.setQueryData(['chat-messages', sessionId], (old: any) => {
+              if (!old?.pages?.[0]) return old;
+
+              const updatedPages = old.pages.map((page: any) => ({
+                ...page,
+                messages: page.messages.map((msg: Message) =>
+                  msg.id === message.id ? message : msg
+                ),
+              }));
+
+              return {
+                ...old,
+                pages: updatedPages,
+              };
+            });
+
             if (message.status === 'completed' && onAssistantMessage) {
               onAssistantMessage(message);
+              await refetch();
             }
           }
 
-          // Refetch messages to ensure consistency
-          if (['completed', 'failed', 'cancelled', 'expired'].includes(message.status)) {
+          // For other status changes, ensure data consistency
+          if (['failed', 'cancelled', 'expired'].includes(message.status)) {
             await refetch();
           }
         }
@@ -59,7 +79,7 @@ export function useChatRealtime({ sessionId, refetch, onAssistantMessage }: UseC
       console.log('Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
-  }, [sessionId, refetch, onAssistantMessage]);
+  }, [sessionId, refetch, onAssistantMessage, queryClient]);
 
   return {
     status,

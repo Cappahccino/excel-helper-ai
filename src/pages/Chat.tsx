@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -8,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Message } from "@/types/chat";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,10 +15,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { ChatContent } from "@/components/chat/ChatContent";
 
 const Chat = () => {
-  // All useState hooks first
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 
-  // Then other hooks
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -62,13 +59,16 @@ const Chat = () => {
     refetch
   } = useChatMessages(selectedSessionId);
 
+  const handleAssistantMessage = useCallback((message: Message) => {
+    console.log('Assistant message updated:', message);
+  }, []);
+
   const { status, latestMessageId, processingStage, content: streamingContent } = useChatRealtime({
     sessionId: selectedSessionId,
     refetch,
-    onAssistantMessage: () => {}
+    onAssistantMessage: handleAssistantMessage
   });
 
-  // Then useMemo and other derived state
   const messages = useMemo(() => {
     const messagesList = baseMessages.map(msg => {
       if (msg.id === latestMessageId) {
@@ -248,4 +248,3 @@ const Chat = () => {
 };
 
 export default Chat;
-
