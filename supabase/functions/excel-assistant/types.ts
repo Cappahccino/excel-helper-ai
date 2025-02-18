@@ -1,5 +1,18 @@
 
-export type MessageStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+export interface RequestBody {
+  fileId?: string | null;
+  query: string;
+  userId: string;
+  sessionId?: string | null;
+  threadId?: string | null;
+  messageId?: string;
+}
+
+export interface MessageResponse {
+  message: string;
+  messageId: string | null;
+  sessionId: string;
+}
 
 export interface Message {
   id: string;
@@ -8,10 +21,7 @@ export interface Message {
   session_id: string;
   created_at: string;
   updated_at: string;
-  excel_file_id: string | null;
-  status: MessageStatus;
-  is_ai_response: boolean;
-  version?: string;
+  status: 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
   metadata?: {
     processing_stage?: {
       stage: string;

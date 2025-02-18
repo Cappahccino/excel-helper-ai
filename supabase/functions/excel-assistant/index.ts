@@ -40,7 +40,7 @@ serve(async (req) => {
       throw new Error('Missing required fields');
     }
 
-    const { fileId, query, userId, sessionId } = body;
+    const { fileId, query, userId, sessionId, messageId } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -51,17 +51,14 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    console.log(`[${requestId}] Initializing OpenAI components`);
-    const assistantId = await getOrCreateAssistant(openai, requestId);
+    console.log(`[${requestId}] Getting or creating session`);
     const session = await getOrCreateSession(supabase, userId, sessionId, fileId, requestId);
-    
+
     console.log(`[${requestId}] Processing Excel file:`, {
       fileId,
       sessionId: session.session_id
     });
     const excelData = fileId ? await processExcelFile(supabase, fileId) : null;
-    
-    const message = await createInitialMessage(supabase, userId, session.session_id, fileId, requestId);
 
     try {
       let threadId = session.thread_id;
@@ -108,6 +105,7 @@ serve(async (req) => {
       });
 
       console.log(`[${requestId}] Creating assistant run`);
+      const assistantId = await getOrCreateAssistant(openai, requestId);
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId,
         instructions: "Please provide a response that takes into account the conversation history and context when relevant. For follow-up questions, refer to previous exchanges to maintain continuity."
@@ -120,16 +118,20 @@ serve(async (req) => {
         status: run.status
       });
 
-      await supabase
-        .from('chat_messages')
-        .update({ 
-          thread_message_id: threadMessage.id,
-          openai_run_id: run.id
-        })
-        .eq('id', message.id);
+      if (messageId) {
+        await supabase
+          .from('chat_messages')
+          .update({ 
+            thread_message_id: threadMessage.id,
+            openai_run_id: run.id
+          })
+          .eq('id', messageId);
+      }
 
       const updateMessageCallback = async (content: string, isComplete: boolean) => {
-        await updateStreamingMessage(supabase, message.id, content, isComplete, requestId);
+        if (messageId) {
+          await updateStreamingMessage(supabase, messageId, content, isComplete, requestId);
+        }
       };
 
       const finalContent = await streamAssistantResponse(
@@ -141,7 +143,7 @@ serve(async (req) => {
       );
 
       console.log(`[${requestId}] Processing complete:`, {
-        messageId: message.id,
+        messageId,
         threadId,
         runId: run.id,
         contentLength: finalContent.length
@@ -155,12 +157,12 @@ serve(async (req) => {
 
       const response: MessageResponse = {
         message: finalContent,
-        messageId: message.id,
+        messageId: messageId || null,
         sessionId: session.session_id
       };
 
       console.log(`[${requestId}] Sending response:`, {
-        messageId: message.id,
+        messageId,
         sessionId: session.session_id,
         contentLength: finalContent.length
       });
@@ -175,7 +177,7 @@ serve(async (req) => {
         error: streamError.message,
         stack: streamError.stack,
         context: {
-          messageId: message.id,
+          messageId,
           threadId: session.thread_id,
           sessionId: session.session_id
         }

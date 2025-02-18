@@ -1,94 +1,37 @@
 
-import { createClient } from '@supabase/supabase-js';
-import { Message, MessageStatus } from './types';
-import { corsHeaders } from './cors';
+import { Message } from './types.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-export async function validateMessageState(messageId: string): Promise<{
-  isValid: boolean;
-  isStuck: boolean;
-  currentStatus: MessageStatus;
-}> {
-  console.log(`Validating message state for message ${messageId}`);
-  
-  const { data: message, error } = await supabase
-    .from('chat_messages')
-    .select('*')
-    .eq('id', messageId)
-    .maybeSingle();
-
-  if (error || !message) {
-    console.error('Error fetching message:', error);
-    return { isValid: false, isStuck: false, currentStatus: 'failed' };
-  }
-
-  const isStuck = message.created_at && 
-    (new Date().getTime() - new Date(message.created_at).getTime() > 5 * 60 * 1000);
-
-  return {
-    isValid: message.role === 'assistant' && message.status === 'in_progress',
-    isStuck,
-    currentStatus: message.status as MessageStatus
-  };
-}
-
-export async function updateMessageStatus(
-  messageId: string, 
-  status: MessageStatus, 
-  content?: string,
-  metadata?: Record<string, any>
-): Promise<void> {
-  console.log(`Updating message ${messageId} status to ${status}`);
-  
-  const update: Record<string, any> = {
-    status,
-    updated_at: new Date().toISOString()
-  };
-
-  if (content !== undefined) {
-    update.content = content;
-  }
-
-  if (metadata) {
-    update.metadata = metadata;
-  }
-
-  const { error } = await supabase
-    .from('chat_messages')
-    .update(update)
-    .eq('id', messageId);
-
-  if (error) {
-    console.error('Error updating message status:', error);
-    throw error;
-  }
-}
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 export async function createInitialMessage(
-  content: string,
-  role: 'user' | 'assistant',
-  sessionId: string,
+  supabase: ReturnType<typeof createClient>,
   userId: string,
-  fileId?: string | null
-): Promise<{ id: string }> {
-  console.log(`Creating initial ${role} message for session ${sessionId}`);
+  sessionId: string,
+  content: string,
+  isAiResponse: boolean,
+  requestId: string
+) {
+  console.log(`[${requestId}] Creating initial message:`, {
+    sessionId,
+    isAiResponse,
+    contentLength: content?.length
+  });
 
-  const { data, error } = await supabase
+  const { data: message, error } = await supabase
     .from('chat_messages')
     .insert({
-      content,
-      role,
+      content: content || '',
+      role: isAiResponse ? 'assistant' : 'user',
       session_id: sessionId,
-      excel_file_id: fileId,
-      is_ai_response: role === 'assistant',
       user_id: userId,
-      status: role === 'user' ? 'completed' : 'in_progress',
+      is_ai_response: isAiResponse,
+      status: isAiResponse ? 'in_progress' : 'completed',
       version: '1.0.0',
-      metadata: role === 'assistant' ? {
+      metadata: isAiResponse ? {
         processing_stage: {
           stage: 'generating',
           started_at: Date.now(),
@@ -96,31 +39,102 @@ export async function createInitialMessage(
         }
       } : null
     })
-    .select('id')
+    .select('*, excel_files(filename, file_size)')
     .single();
 
   if (error) {
-    console.error('Error creating message:', error);
+    console.error(`[${requestId}] Error creating message:`, error);
     throw error;
   }
 
-  return { id: data.id };
+  return message;
 }
 
-export async function getMessageContent(messageId: string): Promise<string | null> {
-  console.log(`Fetching content for message ${messageId}`);
-  
-  const { data, error } = await supabase
+export async function updateStreamingMessage(
+  supabase: ReturnType<typeof createClient>,
+  messageId: string,
+  content: string,
+  isComplete: boolean,
+  requestId: string
+) {
+  console.log(`[${requestId}] Updating streaming message:`, {
+    messageId,
+    contentLength: content?.length,
+    isComplete
+  });
+
+  const { error } = await supabase
     .from('chat_messages')
-    .select('content')
-    .eq('id', messageId)
-    .maybeSingle();
+    .update({
+      content,
+      status: isComplete ? 'completed' : 'in_progress',
+      metadata: {
+        processing_stage: {
+          stage: isComplete ? 'completed' : 'generating',
+          started_at: Date.now(),
+          last_updated: Date.now(),
+          completion_percentage: isComplete ? 100 : undefined
+        }
+      }
+    })
+    .eq('id', messageId);
 
   if (error) {
-    console.error('Error fetching message content:', error);
+    console.error(`[${requestId}] Error updating message:`, error);
+    throw error;
+  }
+}
+
+export async function getOrCreateSession(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  sessionId: string | null,
+  fileId: string | null,
+  requestId: string
+) {
+  if (sessionId) {
+    console.log(`[${requestId}] Using existing session:`, { sessionId });
+    return { session_id: sessionId };
+  }
+
+  console.log(`[${requestId}] Creating new session for user:`, { userId });
+  const { data: session, error } = await supabase
+    .from('chat_sessions')
+    .insert({
+      user_id: userId,
+      excel_file_id: fileId,
+      status: 'active',
+      chat_name: 'New Chat'
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error(`[${requestId}] Error creating session:`, error);
     throw error;
   }
 
-  return data?.content ?? null;
+  return session;
 }
 
+export async function updateSession(
+  supabase: ReturnType<typeof createClient>,
+  sessionId: string,
+  updates: Record<string, unknown>,
+  requestId: string
+) {
+  console.log(`[${requestId}] Updating session:`, {
+    sessionId,
+    updates: Object.keys(updates)
+  });
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update(updates)
+    .eq('session_id', sessionId);
+
+  if (error) {
+    console.error(`[${requestId}] Error updating session:`, error);
+    throw error;
+  }
+}
