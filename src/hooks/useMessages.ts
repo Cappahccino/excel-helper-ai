@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -5,6 +6,7 @@ import { Message, MessagesResponse, SessionData } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
+import { InfiniteData } from "@tanstack/react-query";
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -18,7 +20,7 @@ export function useMessages(sessionId: string | null) {
     refetch,
     hasNextPage,
     fetchNextPage 
-  } = useInfiniteQuery<MessagesResponse, Error, MessagesResponse>({
+  } = useInfiniteQuery<MessagesResponse, Error>({
     queryKey: ['chat-messages', sessionId],
     queryFn: async ({ pageParam }) => {
       if (!sessionId) {
@@ -89,7 +91,7 @@ export function useMessages(sessionId: string | null) {
     onMutate: async ({ content, fileId, sessionId: currentSessionId }) => {
       await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
 
-      const previousMessages = queryClient.getQueryData(['chat-messages', currentSessionId]);
+      const previousMessages = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId]);
 
       const optimisticUserMessage: Message = {
         id: `temp-${Date.now()}`,
@@ -128,7 +130,7 @@ export function useMessages(sessionId: string | null) {
         },
       };
 
-      queryClient.setQueryData(['chat-messages', currentSessionId], (old: any) => ({
+      queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId], (old) => ({
         pages: [{
           messages: [optimisticAssistantMessage, optimisticUserMessage, ...(old?.pages?.[0]?.messages || [])],
           nextCursor: old?.pages?.[0]?.nextCursor
@@ -196,7 +198,7 @@ export function useMessages(sessionId: string | null) {
     }
   });
 
-  const messages = data?.pages?.flatMap(page => page.messages) ?? [];
+  const messages = (data?.pages ?? []).flatMap(page => page.messages);
 
   return {
     messages,
