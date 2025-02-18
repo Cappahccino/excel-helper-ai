@@ -51,6 +51,10 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
+    if (!openai.apiKey) {
+      throw new Error('OpenAI API key is not configured');
+    }
+
     console.log(`[${requestId}] Getting or creating session`);
     const session = await getOrCreateSession(supabase, userId, sessionId, fileId, requestId);
 
@@ -182,7 +186,6 @@ serve(async (req) => {
           sessionId: session.session_id
         }
       });
-      controller.abort();
       throw streamError;
     }
 
@@ -209,3 +212,5 @@ serve(async (req) => {
     );
   }
 });
+
+// Note: This file is getting quite long and should be refactored into smaller modules

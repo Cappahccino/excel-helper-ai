@@ -10,6 +10,7 @@ export async function getOrCreateAssistant(openai: OpenAI, requestId: string): P
       return existingAssistantId;
     }
 
+    console.log(`[${requestId}] Creating new assistant`);
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
       instructions: ASSISTANT_INSTRUCTIONS,
@@ -29,7 +30,7 @@ export async function getOrCreateAssistant(openai: OpenAI, requestId: string): P
       stack: error.stack,
       context: { operation: 'assistant_creation' }
     });
-    throw error;
+    throw new Error(`Failed to create or get assistant: ${error.message}`);
   }
 }
 
@@ -81,6 +82,7 @@ export async function streamAssistantResponse(
   let accumulatedContent = "";
   let lastContentCheck = 0;
   let startTime = Date.now();
+  let lastStatus = "";
   
   console.log(`[${requestId}] Starting assistant response stream:`, {
     threadId,
@@ -90,75 +92,91 @@ export async function streamAssistantResponse(
   });
 
   while (Date.now() - startTime < maxDuration) {
-    const run = await openai.beta.threads.runs.retrieve(threadId, runId);
-    console.log(`[${requestId}] Run status update:`, {
-      threadId,
-      runId,
-      status: run.status,
-      startedAt: run.started_at,
-      completedAt: run.completed_at,
-      elapsedTime: Date.now() - startTime
-    });
+    try {
+      const run = await openai.beta.threads.runs.retrieve(threadId, runId);
+      
+      if (run.status !== lastStatus) {
+        console.log(`[${requestId}] Run status update:`, {
+          threadId,
+          runId,
+          status: run.status,
+          previousStatus: lastStatus,
+          startedAt: run.started_at,
+          completedAt: run.completed_at,
+          elapsedTime: Date.now() - startTime
+        });
+        lastStatus = run.status;
+      }
 
-    const shouldCheckContent =
-      run.status === "completed" ||
-      (run.status === "in_progress" &&
-        Date.now() - lastContentCheck >= 1000);
+      const shouldCheckContent =
+        run.status === "completed" ||
+        (run.status === "in_progress" &&
+          Date.now() - lastContentCheck >= 1000);
 
-    if (shouldCheckContent) {
-      lastContentCheck = Date.now();
+      if (shouldCheckContent) {
+        lastContentCheck = Date.now();
 
-      const messages = await openai.beta.threads.messages.list(threadId, {
-        order: "desc",
-        limit: 1
-      });
-
-      if (messages.data.length > 0) {
-        const message = messages.data[0];
-        console.log(`[${requestId}] Content check:`, {
-          messageId: message.id,
-          role: message.role,
-          hasContent: !!message.content,
-          contentType: message.content?.[0]?.type,
-          contentLength: message.content?.[0]?.text?.value?.length
+        const messages = await openai.beta.threads.messages.list(threadId, {
+          order: "desc",
+          limit: 1
         });
 
-        if (message.role === "assistant" && message.content && message.content[0] && message.content[0].text) {
-          accumulatedContent = message.content[0].text.value;
-          await updateMessage(accumulatedContent, false);
-          
-          console.log(`[${requestId}] Content updated:`, {
+        if (messages.data.length > 0) {
+          const message = messages.data[0];
+          console.log(`[${requestId}] Content check:`, {
             messageId: message.id,
-            contentLength: accumulatedContent.length,
-            isStreaming: true
+            role: message.role,
+            hasContent: !!message.content,
+            contentType: message.content?.[0]?.type,
+            contentLength: message.content?.[0]?.text?.value?.length
           });
+
+          if (message.role === "assistant" && message.content?.[0]?.text?.value) {
+            accumulatedContent = message.content[0].text.value;
+            await updateMessage(accumulatedContent, false);
+            
+            console.log(`[${requestId}] Content updated:`, {
+              messageId: message.id,
+              contentLength: accumulatedContent.length,
+              isStreaming: true
+            });
+          }
         }
       }
-    }
 
-    if (run.status === "completed") {
-      console.log(`[${requestId}] Assistant response complete:`, {
+      if (run.status === "completed") {
+        console.log(`[${requestId}] Assistant response complete:`, {
+          threadId,
+          runId,
+          finalContentLength: accumulatedContent.length,
+          totalTime: Date.now() - startTime
+        });
+        
+        await updateMessage(accumulatedContent, true);
+        return accumulatedContent;
+      } else if (["failed", "cancelled", "expired"].includes(run.status)) {
+        const errorMessage = run.last_error?.message || 'Unknown error';
+        console.error(`[${requestId}] Run failed:`, {
+          threadId,
+          runId,
+          status: run.status,
+          error: run.last_error,
+          totalTime: Date.now() - startTime
+        });
+        throw new Error(`Assistant run ${run.status}: ${errorMessage}`);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error(`[${requestId}] Error in streamAssistantResponse:`, {
+        error: error.message,
+        stack: error.stack,
         threadId,
         runId,
-        finalContentLength: accumulatedContent.length,
-        totalTime: Date.now() - startTime
-      });
-      
-      await updateMessage(accumulatedContent, true);
-      return accumulatedContent;
-    } else if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
-      const error = new Error(`Assistant run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
-      console.error(`[${requestId}] Run failed:`, {
-        threadId,
-        runId,
-        status: run.status,
-        error: run.last_error,
-        totalTime: Date.now() - startTime
+        elapsedTime: Date.now() - startTime
       });
       throw error;
     }
-
-    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   console.warn(`[${requestId}] Stream timeout:`, {
