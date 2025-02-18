@@ -12,7 +12,7 @@ interface UseFileUploadReturn {
   error: string | null;
   handleFileUpload: (file: File, sessionId?: string | null) => Promise<void>;
   resetUpload: () => void;
-  fileId: string | null;
+  fileIds: string[]; // Changed from fileId to fileIds
   setUploadProgress: (progress: number) => void;
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
@@ -24,7 +24,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [fileId, setFileId] = useState<string | null>(null);
+  const [fileIds, setFileIds] = useState<string[]>([]); // Changed from fileId to fileIds
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -34,7 +34,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     setIsUploading(false);
     setUploadProgress(0);
     setError(null);
-    setFileId(null);
+    setFileIds([]); // Reset array instead of null
     setSessionId(null);
     setThreadId(null);
   }, []);
@@ -48,17 +48,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
   };
 
   const handleFileUpload = useCallback(async (newFile: File, currentSessionId?: string | null) => {
-    const validation = validateFile(newFile);
-    if (!validation.isValid) {
-      setError(validation.error);
-      toast({
-        title: "Upload Error",
-        description: validation.error,
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       setFile(newFile);
       setIsUploading(true);
@@ -69,7 +58,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
         type: newFile.type,
       });
 
-      // Calculate file hash
       const fileHash = await calculateFileHash(sanitizedFile);
 
       const { data: { user } } = await supabase.auth.getUser();
@@ -77,7 +65,6 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw new Error("User not authenticated");
       }
 
-      // Check if file with same hash exists
       const { data: existingFiles } = await supabase
         .from('excel_files')
         .select('*')
@@ -91,10 +78,9 @@ export const useFileUpload = (): UseFileUploadReturn => {
           title: "Duplicate File",
           description: "This file has already been uploaded. Using existing version.",
         });
-        setFileId(existingFiles.id);
+        setFileIds(prev => [...prev, existingFiles.id]); // Add to array
         setUploadProgress(100);
 
-        // Update chat session with the file ID if we have a session
         if (currentSessionId) {
           await supabase
             .from('chat_sessions')
@@ -133,16 +119,18 @@ export const useFileUpload = (): UseFileUploadReturn => {
 
       if (dbError) throw dbError;
       
-      // Update the chat session with the new file ID if we have a session
       if (currentSessionId) {
         await supabase
-          .from('chat_sessions')
-          .update({ excel_file_id: fileRecord.id })
-          .eq('session_id', currentSessionId);
+          .from('session_files')
+          .insert({
+            session_id: currentSessionId,
+            file_id: fileRecord.id,
+            is_active: true
+          });
       }
 
       setUploadProgress(100);
-      setFileId(fileRecord.id);
+      setFileIds(prev => [...prev, fileRecord.id]); // Add to array
       setSessionId(currentSessionId);
       
       toast({
@@ -170,7 +158,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     error,
     handleFileUpload,
     resetUpload,
-    fileId,
+    fileIds, // Return array of fileIds
     setUploadProgress,
     sessionId,
     setSessionId,

@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -113,8 +112,8 @@ const Chat = () => {
     return messagesList;
   }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId, fileIdFromUrl]);
 
-  const handleSendMessage = async (message: string, fileId?: string | null) => {
-    if (!message.trim() && !fileId) return;
+  const handleSendMessage = async (message: string, fileIds?: string[] | null) => {
+    if (!message.trim() && !fileIds?.length) return;
 
     try {
       setIsCreatingSession(true);
@@ -127,15 +126,15 @@ const Chat = () => {
         
         const queryParams = new URLSearchParams();
         queryParams.set('sessionId', currentSessionId);
-        if (fileId || fileIds[0] || fileIdFromUrl) {
-          queryParams.set('fileId', fileId || fileIds[0] || fileIdFromUrl!);
+        if (fileIds?.length) {
+          queryParams.set('fileId', fileIds[0]);
         }
         navigate(`/chat?${queryParams.toString()}`);
       }
 
       await sendMessageMutation.mutateAsync({
         content: message,
-        fileId: fileId || fileIds[0] || fileIdFromUrl,
+        fileIds: fileIds || [],
         sessionId: currentSessionId
       });
 

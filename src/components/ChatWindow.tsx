@@ -1,4 +1,3 @@
-
 import { useRef } from "react";
 import { ScrollArea } from "./ui/scroll-area";
 import { ChatError } from "./chat/ChatError";
@@ -12,7 +11,7 @@ import { ChatContent } from "./chat/ChatContent";
 
 interface ChatWindowProps {
   sessionId: string | null;
-  fileId: string | null;
+  fileIds: string[] | null;
   fileInfo?: {
     filename: string;
     file_size: number;
@@ -22,7 +21,7 @@ interface ChatWindowProps {
 
 export function ChatWindow({ 
   sessionId, 
-  fileId, 
+  fileIds, 
   fileInfo, 
   onMessageSent 
 }: ChatWindowProps) {
@@ -59,8 +58,8 @@ export function ChatWindow({
     }
   });
 
-  const handleSendMessage = async (message: string, fileId?: string | null) => {
-    await sendMessageMutation.mutateAsync({ content: message, fileId });
+  const handleSendMessage = async (message: string, fileIds?: string[] | null) => {
+    await sendMessageMutation.mutateAsync({ content: message, fileIds });
     onMessageSent?.();
   };
 

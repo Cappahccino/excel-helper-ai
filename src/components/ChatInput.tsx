@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send, FileSpreadsheet, X } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -89,7 +88,6 @@ export function ChatInput({
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2 py-3 px-0 my-0 mx-0">
-        {/* File Upload Preview */}
         {(isUploading || localFiles.length > 0 || fileInfo) && (
           <div className="space-y-2">
             {localFiles.map((file, index) => (
@@ -120,9 +118,7 @@ export function ChatInput({
           </div>
         )}
 
-        {/* Chat Input Container */}
         <div className="flex items-center gap-2 w-full bg-white rounded-lg border shadow-sm hover:shadow-md hover:border-gray-300 p-3 transition-all duration-200">
-          {/* File Upload Button */}
           <button
             onClick={() => fileInputRef.current?.click()}
             className={`p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 ${
@@ -143,7 +139,6 @@ export function ChatInput({
             multiple
           />
 
-          {/* Text Area for Chat */}
           <textarea
             ref={textareaRef}
             className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
@@ -155,7 +150,6 @@ export function ChatInput({
             disabled={isAnalyzing || isUploading}
           />
 
-          {/* Send Button */}
           <button
             onClick={handleSubmit}
             className={`bg-green-600 hover:bg-green-700 transition-all duration-200 shadow-sm h-9 w-9 p-0 rounded-lg flex items-center justify-center ${
