@@ -16,14 +16,14 @@ const Files = () => {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   
   const {
-    file,
+    files,
     isUploading,
     uploadProgress,
     handleFileUpload,
     resetUpload,
   } = useSimpleFileUpload();
 
-  const { data: files, isLoading: isLoadingFiles } = useQuery({
+  const { data: existingFiles, isLoading: isLoadingFiles } = useQuery({
     queryKey: ['excel-files'],
     queryFn: async () => {
       const { data: files, error } = await supabase
@@ -61,11 +61,11 @@ const Files = () => {
     resetUpload();
   };
 
-  const filteredFiles = files?.filter(file => 
+  const filteredFiles = existingFiles?.filter(file => 
     file.filename.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  const totalStorage = files?.reduce((acc, file) => acc + file.file_size, 0) || 0;
+  const totalStorage = existingFiles?.reduce((acc, file) => acc + file.file_size, 0) || 0;
 
   const handleBulkDownload = async () => {
     if (!selectedFiles.length) {
@@ -77,7 +77,7 @@ const Files = () => {
       return;
     }
 
-    const selectedFilesData = files?.filter(file => selectedFiles.includes(file.id)) || [];
+    const selectedFilesData = existingFiles?.filter(file => selectedFiles.includes(file.id)) || [];
     
     for (const file of selectedFilesData) {
       try {
@@ -163,12 +163,12 @@ const Files = () => {
           <div className="flex-grow flex flex-col h-[calc(100vh-80px)]">
             <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
               <FilesHeader 
-                totalFiles={files?.length || 0}
+                totalFiles={existingFiles?.length || 0}
                 totalStorage={totalStorage}
                 onFileUpload={handleFileUpload}
                 isUploading={isUploading}
                 uploadProgress={uploadProgress}
-                currentFile={file}
+                currentFiles={files}
                 onReset={resetUpload}
                 onUploadComplete={onFileUploadComplete}
               />
