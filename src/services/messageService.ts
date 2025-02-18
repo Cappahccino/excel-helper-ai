@@ -10,7 +10,7 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
     .select(`
       *,
       excel_files!fk_chat_messages_excel_files(filename, file_size),
-      message_files!inner(
+      message_files(
         file_id,
         role,
         excel_files!message_files_file_id_fkey(
@@ -176,3 +176,4 @@ function transformMessage(msg: DatabaseMessage): Message {
 function transformMessages(messages: DatabaseMessage[]): Message[] {
   return messages.map(transformMessage);
 }
+
