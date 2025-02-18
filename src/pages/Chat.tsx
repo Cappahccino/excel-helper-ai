@@ -28,12 +28,12 @@ const Chat = () => {
   const fileIdFromUrl = searchParams.get('fileId');
 
   const {
-    file: uploadedFile,
+    files,
     isUploading,
     uploadProgress,
     handleFileUpload,
     resetUpload,
-    fileId: uploadedFileId
+    fileIds
   } = useChatFileUpload();
 
   const { data: selectedFile } = useQuery({
@@ -127,15 +127,15 @@ const Chat = () => {
         
         const queryParams = new URLSearchParams();
         queryParams.set('sessionId', currentSessionId);
-        if (fileId || uploadedFileId || fileIdFromUrl) {
-          queryParams.set('fileId', fileId || uploadedFileId || fileIdFromUrl!);
+        if (fileId || fileIds[0] || fileIdFromUrl) {
+          queryParams.set('fileId', fileId || fileIds[0] || fileIdFromUrl!);
         }
         navigate(`/chat?${queryParams.toString()}`);
       }
 
       await sendMessageMutation.mutateAsync({
         content: message,
-        fileId: fileId || uploadedFileId || fileIdFromUrl,
+        fileId: fileId || fileIds[0] || fileIdFromUrl,
         sessionId: currentSessionId
       });
 
@@ -153,11 +153,11 @@ const Chat = () => {
     }
   };
 
-  const activeFileId = uploadedFileId || fileIdFromUrl;
+  const activeFileId = fileIds[0] || fileIdFromUrl;
   
-  const currentFile = selectedFile || (uploadedFile ? {
-    filename: uploadedFile.name,
-    file_size: uploadedFile.size
+  const currentFile = selectedFile || (files[0] ? {
+    filename: files[0].name,
+    file_size: files[0].size
   } : null);
 
   const showMessages = selectedSessionId || isCreatingSession;

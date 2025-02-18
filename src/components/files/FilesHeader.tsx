@@ -5,10 +5,10 @@ import { FileUploadZone } from '@/components/FileUploadZone';
 interface FilesHeaderProps {
   totalFiles: number;
   totalStorage: number;
-  onFileUpload: (file: File) => Promise<void>;
+  onFileUpload: (files: File[]) => Promise<void>;
   isUploading: boolean;
-  uploadProgress: number;
-  currentFile: File | null;
+  uploadProgress: Record<string, number>;
+  currentFiles: File[] | null;
   onReset: () => void;
   onUploadComplete: () => Promise<void>;
 }
@@ -19,7 +19,7 @@ export function FilesHeader({
   onFileUpload,
   isUploading,
   uploadProgress,
-  currentFile,
+  currentFiles,
   onReset,
   onUploadComplete,
 }: FilesHeaderProps) {
@@ -39,7 +39,7 @@ export function FilesHeader({
           onFileUpload={onFileUpload}
           isUploading={isUploading}
           uploadProgress={uploadProgress}
-          currentFile={currentFile}
+          currentFiles={currentFiles}
           onReset={onReset}
           onUploadComplete={onUploadComplete}
         />
