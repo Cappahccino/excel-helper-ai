@@ -1,52 +1,11 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Message, MessagesResponse, SessionData } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
-import { Json } from "@/integrations/supabase/types";
-
-const MESSAGES_PER_PAGE = 50;
-
-type MessageMetadata = {
-  reaction_counts?: {
-    positive: number;
-    negative: number;
-  };
-  processing_stage?: {
-    stage: string;
-    started_at: number;
-    last_updated: number;
-    completion_percentage?: number;
-  };
-  user_reaction?: boolean | null;
-  edit_history?: Array<{
-    previous_content: string;
-    edited_at: string;
-  }>;
-} | null;
-
-type DatabaseMessage = {
-  id: string;
-  content: string;
-  role: string;
-  session_id: string | null;
-  created_at: string;
-  updated_at: string;
-  excel_file_id: string | null;
-  excel_files: {
-    filename: string;
-    file_size: number;
-  } | null;
-  status: Message['status'];
-  version: string | null;
-  deployment_id: string | null;
-  cleanup_after: string | null;
-  cleanup_reason: string | null;
-  deleted_at: string | null;
-  is_ai_response: boolean | null;
-  metadata: Json;
-};
+import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -70,56 +29,8 @@ export function useMessages(sessionId: string | null) {
         };
       }
       
-      let query = supabase
-        .from('chat_messages')
-        .select('*, excel_files(filename, file_size)')
-        .eq('session_id', sessionId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: true })
-        .limit(MESSAGES_PER_PAGE);
-
-      if (pageParam) {
-        query = query.lt('created_at', pageParam);
-      }
-      
-      const { data: rawMessages, error } = await query;
-      
-      if (error) {
-        console.error('Error fetching messages:', error);
-        throw error;
-      }
-
-      const messages = (rawMessages || []).map((rawMsg): Message => {
-        const msg = rawMsg as DatabaseMessage;
-        let status: Message['status'] = 'in_progress';
-        if (msg.status === 'completed' || 
-            msg.status === 'failed' || 
-            msg.status === 'cancelled' || 
-            msg.status === 'expired') {
-          status = msg.status;
-        }
-
-        return {
-          id: msg.id,
-          content: msg.content,
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          session_id: msg.session_id,
-          created_at: msg.created_at,
-          updated_at: msg.updated_at,
-          excel_file_id: msg.excel_file_id,
-          status,
-          version: msg.version || undefined,
-          deployment_id: msg.deployment_id || undefined,
-          cleanup_after: msg.cleanup_after || undefined,
-          cleanup_reason: msg.cleanup_reason || undefined,
-          deleted_at: msg.deleted_at || undefined,
-          is_ai_response: msg.is_ai_response || false,
-          excel_files: msg.excel_files,
-          metadata: msg.metadata as MessageMetadata
-        };
-      });
-
-      const nextCursor = messages.length === MESSAGES_PER_PAGE 
+      const messages = await fetchMessages(sessionId, pageParam);
+      const nextCursor = messages.length === 50 
         ? messages[messages.length - 1]?.created_at 
         : null;
 
@@ -169,75 +80,12 @@ export function useMessages(sessionId: string | null) {
       }
 
       console.log('Creating user message...');
-      const { data: userMessage, error: userMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content,
-          role: 'user',
-          session_id: currentSessionId,
-          excel_file_id: fileId,
-          is_ai_response: false,
-          user_id: user.id,
-          status: 'completed' as const,
-          version: '1.0.0'
-        })
-        .select('*, excel_files(filename, file_size)')
-        .single();
-
-      if (userMessageError) throw userMessageError;
+      const userMessage = await createUserMessage(content, currentSessionId, user.id, fileId);
 
       console.log('Creating assistant message...');
-      const { data: assistantMessage, error: assistantMessageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          content: '',
-          role: 'assistant',
-          session_id: currentSessionId,
-          excel_file_id: fileId,
-          is_ai_response: true,
-          user_id: user.id,
-          status: 'in_progress' as const,
-          version: '1.0.0',
-          deployment_id: crypto.randomUUID(),
-          metadata: {
-            processing_stage: {
-              stage: 'generating',
-              started_at: Date.now(),
-              last_updated: Date.now()
-            }
-          }
-        })
-        .select('*, excel_files(filename, file_size)')
-        .single();
+      const assistantMessage = await createAssistantMessage(currentSessionId, user.id, fileId);
 
-      if (assistantMessageError) throw assistantMessageError;
-
-      const transformedUserMessage: Message = {
-        ...userMessage,
-        role: 'user',
-        status: userMessage.status as Message['status'],
-        excel_files: userMessage.excel_files ? {
-          filename: userMessage.excel_files.filename,
-          file_size: userMessage.excel_files.file_size
-        } : null,
-        metadata: userMessage.metadata as Message['metadata']
-      };
-
-      const transformedAssistantMessage: Message = {
-        ...assistantMessage,
-        role: 'assistant',
-        status: assistantMessage.status as Message['status'],
-        excel_files: assistantMessage.excel_files ? {
-          filename: assistantMessage.excel_files.filename,
-          file_size: assistantMessage.excel_files.file_size
-        } : null,
-        metadata: assistantMessage.metadata as Message['metadata']
-      };
-
-      return { 
-        userMessage: transformedUserMessage, 
-        assistantMessage: transformedAssistantMessage 
-      };
+      return { userMessage, assistantMessage };
     },
     onMutate: async ({ content, fileId, sessionId: currentSessionId }) => {
       await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
