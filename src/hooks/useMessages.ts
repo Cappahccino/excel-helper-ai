@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -18,9 +19,9 @@ export function useMessages(sessionId: string | null) {
     refetch,
     hasNextPage,
     fetchNextPage 
-  } = useInfiniteQuery<MessagesResponse>({
+  } = useInfiniteQuery({
     queryKey: ['chat-messages', sessionId],
-    queryFn: async ({ pageParam = null }: { pageParam: string | null }): Promise<MessagesResponse> => {
+    queryFn: async ({ pageParam }) => {
       if (!sessionId) {
         return {
           messages: [],
@@ -28,7 +29,7 @@ export function useMessages(sessionId: string | null) {
         };
       }
       
-      const messages = await fetchMessages(sessionId, pageParam);
+      const messages = await fetchMessages(sessionId, pageParam as string | null);
       const nextCursor = messages.length === 50 
         ? messages[messages.length - 1]?.created_at 
         : null;
