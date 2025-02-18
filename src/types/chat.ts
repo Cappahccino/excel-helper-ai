@@ -28,6 +28,10 @@ export interface Message {
   deleted_at?: string | null;
   temp?: boolean;
   is_ai_response?: boolean;
+  message_files?: {
+    file_id: string;
+    role: string;
+  }[];
   metadata?: {
     reaction_counts?: {
       positive: number;

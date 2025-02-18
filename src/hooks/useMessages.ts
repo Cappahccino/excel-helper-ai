@@ -106,6 +106,7 @@ export function useMessages(sessionId: string | null) {
         version: '1.0.0',
         excel_files: null,
         metadata: null,
+        message_files: fileId ? [{ file_id: fileId, role: 'user' }] : undefined
       };
 
       // Update with the user message appended at the end
@@ -206,4 +207,3 @@ export function useMessages(sessionId: string | null) {
     fetchNextPage
   };
 }
-
