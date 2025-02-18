@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Message, MessagesResponse, SessionData } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
+import { Json } from "@/integrations/supabase/types";
 
 const MESSAGES_PER_PAGE = 50;
 
@@ -38,14 +39,14 @@ type DatabaseMessage = {
     filename: string;
     file_size: number;
   } | null;
-  status: Message['status'];
+  status: string;
   version: string | null;
   deployment_id: string | null;
   cleanup_after: string | null;
   cleanup_reason: string | null;
   deleted_at: string | null;
   is_ai_response: boolean | null;
-  metadata: MessageMetadata;
+  metadata: Json;
 };
 
 export function useMessages(sessionId: string | null) {
@@ -90,7 +91,8 @@ export function useMessages(sessionId: string | null) {
       }
 
       // Transform the raw messages to match our Message type
-      const messages = (rawMessages || []).map((msg: DatabaseMessage): Message => {
+      const messages = (rawMessages || []).map((rawMsg): Message => {
+        const msg = rawMsg as DatabaseMessage;
         // Ensure we only use valid status values
         let status: Message['status'] = 'in_progress';
         if (msg.status === 'completed' || 
@@ -116,7 +118,7 @@ export function useMessages(sessionId: string | null) {
           deleted_at: msg.deleted_at || undefined,
           is_ai_response: msg.is_ai_response || false,
           excel_files: msg.excel_files,
-          metadata: msg.metadata as Message['metadata']
+          metadata: msg.metadata as MessageMetadata
         };
       });
 
