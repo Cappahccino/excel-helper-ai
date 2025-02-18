@@ -7,7 +7,19 @@ import { MESSAGES_PER_PAGE } from "@/config/constants";
 export async function fetchMessages(sessionId: string, cursor: string | null = null) {
   let query = supabase
     .from('chat_messages')
-    .select('*, excel_files(filename, file_size), message_files(file_id, role)')
+    .select(`
+      *,
+      excel_files!fk_chat_messages_excel_files(filename, file_size),
+      message_files!inner(
+        file_id,
+        role,
+        excel_files!message_files_file_id_fkey(
+          id,
+          filename,
+          file_size
+        )
+      )
+    `)
     .eq('session_id', sessionId)
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
@@ -27,7 +39,12 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
   return transformMessages(rawMessages as DatabaseMessage[]);
 }
 
-export async function createUserMessage(content: string, sessionId: string, userId: string, fileId?: string | null) {
+export async function createUserMessage(
+  content: string, 
+  sessionId: string, 
+  userId: string, 
+  fileIds?: string[] | null
+) {
   // Start a transaction
   const { data: message, error: messageError } = await supabase
     .from('chat_messages')
@@ -35,41 +52,50 @@ export async function createUserMessage(content: string, sessionId: string, user
       content,
       role: 'user',
       session_id: sessionId,
-      excel_file_id: fileId,
+      excel_file_id: fileIds?.[0] || null, // Keep for backward compatibility
       is_ai_response: false,
       user_id: userId,
       status: 'completed' as const,
       version: '1.0.0'
     })
-    .select('*, excel_files(filename, file_size)')
+    .select(`
+      *,
+      excel_files!fk_chat_messages_excel_files(filename, file_size)
+    `)
     .single();
 
   if (messageError) throw messageError;
 
-  // If there's a file, create the message_files entry
-  if (fileId) {
-    const { error: fileError } = await supabase
-      .from('message_files')
-      .insert({
-        message_id: message.id,
-        file_id: fileId,
-        role: 'user'
-      });
+  // If there are files, create the message_files entries
+  if (fileIds && fileIds.length > 0) {
+    const messageFiles = fileIds.map(fileId => ({
+      message_id: message.id,
+      file_id: fileId,
+      role: 'user'
+    }));
 
-    if (fileError) throw fileError;
+    const { error: filesError } = await supabase
+      .from('message_files')
+      .insert(messageFiles);
+
+    if (filesError) throw filesError;
   }
 
   return transformMessage(message as DatabaseMessage);
 }
 
-export async function createAssistantMessage(sessionId: string, userId: string, fileId?: string | null) {
+export async function createAssistantMessage(
+  sessionId: string, 
+  userId: string, 
+  fileIds?: string[] | null
+) {
   const { data: message, error: messageError } = await supabase
     .from('chat_messages')
     .insert({
       content: '',
       role: 'assistant',
       session_id: sessionId,
-      excel_file_id: fileId,
+      excel_file_id: fileIds?.[0] || null, // Keep for backward compatibility
       is_ai_response: true,
       user_id: userId,
       status: 'in_progress' as const,
@@ -83,22 +109,27 @@ export async function createAssistantMessage(sessionId: string, userId: string, 
         }
       }
     })
-    .select('*, excel_files(filename, file_size)')
+    .select(`
+      *,
+      excel_files!fk_chat_messages_excel_files(filename, file_size)
+    `)
     .single();
 
   if (messageError) throw messageError;
 
-  // If there's a file, create the message_files entry
-  if (fileId) {
-    const { error: fileError } = await supabase
-      .from('message_files')
-      .insert({
-        message_id: message.id,
-        file_id: fileId,
-        role: 'assistant'
-      });
+  // If there are files, create the message_files entries
+  if (fileIds && fileIds.length > 0) {
+    const messageFiles = fileIds.map(fileId => ({
+      message_id: message.id,
+      file_id: fileId,
+      role: 'assistant'
+    }));
 
-    if (fileError) throw fileError;
+    const { error: filesError } = await supabase
+      .from('message_files')
+      .insert(messageFiles);
+
+    if (filesError) throw filesError;
   }
 
   return transformMessage(message as DatabaseMessage);
@@ -112,6 +143,14 @@ function transformMessage(msg: DatabaseMessage): Message {
       msg.status === 'expired') {
     status = msg.status;
   }
+
+  // Transform message_files to include both file metadata and role
+  const messageFiles = msg.message_files?.map(mf => ({
+    file_id: mf.file_id,
+    role: mf.role,
+    filename: mf.excel_files?.filename,
+    file_size: mf.excel_files?.file_size
+  }));
 
   return {
     id: msg.id,
@@ -129,6 +168,7 @@ function transformMessage(msg: DatabaseMessage): Message {
     deleted_at: msg.deleted_at || undefined,
     is_ai_response: msg.is_ai_response || false,
     excel_files: msg.excel_files,
+    message_files: messageFiles,
     metadata: msg.metadata as Message['metadata']
   };
 }

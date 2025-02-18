@@ -5,6 +5,10 @@ import { Json } from "@/integrations/supabase/types";
 export type MessageFile = {
   file_id: string;
   role: string;
+  excel_files?: {
+    filename: string;
+    file_size: number;
+  };
 };
 
 export type MessageMetadata = {

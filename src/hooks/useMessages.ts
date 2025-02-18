@@ -2,7 +2,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { Message, MessagesResponse, SessionData } from "@/types/chat";
+import { Message, MessagesResponse } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
@@ -68,9 +68,13 @@ export function useMessages(sessionId: string | null) {
   });
 
   const sendMessage = useMutation({
-    mutationFn: async ({ content, fileId, sessionId: currentSessionId }: { 
+    mutationFn: async ({ 
+      content, 
+      fileIds, 
+      sessionId: currentSessionId 
+    }: { 
       content: string; 
-      fileId?: string | null;
+      fileIds?: string[] | null;
       sessionId?: string | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -81,14 +85,14 @@ export function useMessages(sessionId: string | null) {
       }
 
       console.log('Creating user message...');
-      const userMessage = await createUserMessage(content, currentSessionId, user.id, fileId);
+      const userMessage = await createUserMessage(content, currentSessionId, user.id, fileIds);
 
       console.log('Creating assistant message...');
-      const assistantMessage = await createAssistantMessage(currentSessionId, user.id, fileId);
+      const assistantMessage = await createAssistantMessage(currentSessionId, user.id, fileIds);
 
       return { userMessage, assistantMessage };
     },
-    onMutate: async ({ content, fileId, sessionId: currentSessionId }) => {
+    onMutate: async ({ content, fileIds, sessionId: currentSessionId }) => {
       await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
 
       const previousMessages = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId]);
@@ -100,16 +104,18 @@ export function useMessages(sessionId: string | null) {
         session_id: currentSessionId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        excel_file_id: fileId,
+        excel_file_id: fileIds?.[0] || null,
         status: 'completed',
         is_ai_response: false,
         version: '1.0.0',
         excel_files: null,
         metadata: null,
-        message_files: fileId ? [{ file_id: fileId, role: 'user' }] : undefined
+        message_files: fileIds?.map(fileId => ({
+          file_id: fileId,
+          role: 'user'
+        }))
       };
 
-      // Update with the user message appended at the end
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId], (old) => ({
         pages: [{
           messages: [...(old?.pages?.[0]?.messages || []), optimisticUserMessage],
@@ -132,7 +138,6 @@ export function useMessages(sessionId: string | null) {
       });
     },
     onSuccess: async ({ userMessage, assistantMessage }, variables) => {
-      // Add the assistant message after the user message by appending it at the end
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', variables.sessionId], (old) => {
         if (!old?.pages?.[0]) return old;
         
@@ -150,7 +155,7 @@ export function useMessages(sessionId: string | null) {
       
       generateAIResponse.mutate({
         content: variables.content,
-        fileId: variables.fileId,
+        fileIds: variables.fileIds,
         sessionId: variables.sessionId!,
         messageId: assistantMessage.id
       });
@@ -158,9 +163,9 @@ export function useMessages(sessionId: string | null) {
   });
 
   const generateAIResponse = useMutation({
-    mutationFn: async ({ content, fileId, sessionId, messageId }: { 
+    mutationFn: async ({ content, fileIds, sessionId, messageId }: { 
       content: string; 
-      fileId?: string | null; 
+      fileIds?: string[] | null; 
       sessionId: string;
       messageId: string;
     }) => {
@@ -170,7 +175,7 @@ export function useMessages(sessionId: string | null) {
       console.log('Invoking excel-assistant function...');
       const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
         body: {
-          fileId,
+          fileIds,
           query: content,
           userId: user.id,
           sessionId: sessionId,
