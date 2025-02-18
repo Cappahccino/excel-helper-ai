@@ -21,7 +21,7 @@ interface MessageContentProps {
     file_size: number;
   } | null;
   isNewMessage?: boolean;
-  status?: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  status?: 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
   messageId: string;
   metadata?: {
     reaction_counts?: {
