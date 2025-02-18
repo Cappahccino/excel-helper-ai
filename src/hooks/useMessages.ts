@@ -90,24 +90,35 @@ export function useMessages(sessionId: string | null) {
       }
 
       // Transform the raw messages to match our Message type
-      const messages = (rawMessages || []).map((msg): Message => ({
-        id: msg.id,
-        content: msg.content,
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        session_id: msg.session_id,
-        created_at: msg.created_at,
-        updated_at: msg.updated_at,
-        excel_file_id: msg.excel_file_id,
-        status: msg.status as Message['status'],
-        version: msg.version || undefined,
-        deployment_id: msg.deployment_id || undefined,
-        cleanup_after: msg.cleanup_after || undefined,
-        cleanup_reason: msg.cleanup_reason || undefined,
-        deleted_at: msg.deleted_at || undefined,
-        is_ai_response: msg.is_ai_response || false,
-        excel_files: msg.excel_files,
-        metadata: msg.metadata as Message['metadata']
-      }));
+      const messages = (rawMessages || []).map((msg: DatabaseMessage): Message => {
+        // Ensure we only use valid status values
+        let status: Message['status'] = 'in_progress';
+        if (msg.status === 'completed' || 
+            msg.status === 'failed' || 
+            msg.status === 'cancelled' || 
+            msg.status === 'expired') {
+          status = msg.status;
+        }
+
+        return {
+          id: msg.id,
+          content: msg.content,
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          session_id: msg.session_id,
+          created_at: msg.created_at,
+          updated_at: msg.updated_at,
+          excel_file_id: msg.excel_file_id,
+          status,
+          version: msg.version || undefined,
+          deployment_id: msg.deployment_id || undefined,
+          cleanup_after: msg.cleanup_after || undefined,
+          cleanup_reason: msg.cleanup_reason || undefined,
+          deleted_at: msg.deleted_at || undefined,
+          is_ai_response: msg.is_ai_response || false,
+          excel_files: msg.excel_files,
+          metadata: msg.metadata as Message['metadata']
+        };
+      });
 
       const nextCursor = messages.length === MESSAGES_PER_PAGE 
         ? messages[messages.length - 1]?.created_at 
