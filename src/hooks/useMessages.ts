@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -39,7 +38,7 @@ type DatabaseMessage = {
     filename: string;
     file_size: number;
   } | null;
-  status: string;
+  status: Message['status'];
   version: string | null;
   deployment_id: string | null;
   cleanup_after: string | null;
@@ -90,10 +89,8 @@ export function useMessages(sessionId: string | null) {
         throw error;
       }
 
-      // Transform the raw messages to match our Message type
       const messages = (rawMessages || []).map((rawMsg): Message => {
         const msg = rawMsg as DatabaseMessage;
-        // Ensure we only use valid status values
         let status: Message['status'] = 'in_progress';
         if (msg.status === 'completed' || 
             msg.status === 'failed' || 
@@ -215,7 +212,6 @@ export function useMessages(sessionId: string | null) {
 
       if (assistantMessageError) throw assistantMessageError;
 
-      // Transform the messages to match our Message type
       const transformedUserMessage: Message = {
         ...userMessage,
         role: 'user',
