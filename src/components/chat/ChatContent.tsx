@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ChatContentProps {
   messages: Message[];
@@ -58,14 +59,12 @@ export function ChatContent({
   }, []);
 
   useEffect(() => {
-    // Check if this is the initial load
     if (isInitialLoad.current && messages.length > 0) {
       scrollToBottom("auto");
       isInitialLoad.current = false;
       return;
     }
 
-    // Check if a new message has been added
     if (messages.length > previousMessageCount.current) {
       scrollToBottom("smooth");
     }
@@ -78,12 +77,18 @@ export function ChatContent({
 
   return (
     <div className="relative flex-grow">
-      <ScrollArea ref={scrollAreaRef} className="h-full p-4">
-        <div className="space-y-6">
+      <ScrollArea 
+        ref={scrollAreaRef} 
+        className={cn(
+          "h-full p-4 md:p-6",
+          "scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
+        )}
+      >
+        <div className="space-y-8">
           {(!hasMessages && isLoading) ? (
             <LoadingMessages />
           ) : (
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {Object.entries(messageGroups).map(([date, groupMessages]) => (
                 <MessageGroup
                   key={date}
@@ -104,7 +109,7 @@ export function ChatContent({
         <Button
           size="icon"
           variant="secondary"
-          className="absolute bottom-4 right-4 rounded-full shadow-lg"
+          className="absolute bottom-4 right-4 rounded-full shadow-lg bg-white/80 backdrop-blur-sm hover:bg-white/90 transition-all duration-200"
           onClick={() => scrollToBottom()}
         >
           <ChevronDown className="h-4 w-4" />

@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -13,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatContent } from "@/components/chat/ChatContent";
+import { MessageCircle } from "lucide-react";
 
 const Chat = () => {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -162,29 +164,36 @@ const Chat = () => {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-gray-50">
+      <div className="flex min-h-screen w-full bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="fixed left-0 top-0 h-full z-10">
           <ChatSidebar />
         </div>
-        <div className="flex-1 flex flex-col transition-all duration-200 ml-[60px] sidebar-expanded:ml-[300px]">
+        <div className="flex-1 flex flex-col transition-all duration-300 ease-in-out ml-[60px] sidebar-expanded:ml-[300px]">
           <AnimatePresence mode="wait">
             {!showMessages ? (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
                 className="flex-grow flex items-center justify-center px-4 lg:px-6"
               >
                 <div className="w-full max-w-3xl mx-auto">
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.1 }}
                     className="text-center mb-8"
                   >
-                    <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+                    <div className="flex justify-center mb-6">
+                      <div className="p-4 rounded-full bg-green-100">
+                        <MessageCircle className="w-8 h-8 text-green-600" />
+                      </div>
+                    </div>
+                    <h2 className="text-3xl font-semibold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-4">
                       Welcome to Excel Assistant
                     </h2>
-                    <p className="text-gray-600">
+                    <p className="text-gray-600 text-lg max-w-xl mx-auto">
                       Ask me anything about Excel, or upload a file for analysis using the paperclip button below.
                     </p>
                   </motion.div>
@@ -192,6 +201,7 @@ const Chat = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
+                    className="backdrop-blur-sm bg-white/80 rounded-xl shadow-lg border border-gray-100"
                   >
                     <ChatInput
                       onSendMessage={handleSendMessage}
@@ -211,10 +221,10 @@ const Chat = () => {
               >
                 <div className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4">
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="flex-grow flex flex-col overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 mb-24"
+                    className="flex-grow flex flex-col overflow-hidden bg-white/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100/50 mb-24"
                   >
                     <ChatContent
                       messages={messages}
@@ -226,9 +236,9 @@ const Chat = () => {
                     />
                   </motion.div>
                 </div>
-                <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-200 sidebar-expanded:left-[300px]">
+                <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-300 ease-in-out sidebar-expanded:left-[300px]">
                   <div className="w-full max-w-7xl mx-auto px-4 pb-4">
-                    <div className="backdrop-blur-sm shadow-lg bg-transparent rounded-none mx-[13px] py-0 my-0 px-0">
+                    <div className="backdrop-blur-md bg-white/80 shadow-lg rounded-xl border border-gray-100/50">
                       <ChatInput
                         onSendMessage={handleSendMessage}
                         sessionId={selectedSessionId}

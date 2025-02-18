@@ -24,9 +24,11 @@ export function MessageGroup({
       animate={{ opacity: 1 }}
       className="space-y-6"
     >
-      <div className="flex items-center gap-4 my-4">
+      <div className="sticky top-0 z-10 flex items-center gap-4 my-4 bg-white/80 backdrop-blur-sm py-2">
         <div className="h-px bg-gray-200 flex-1" />
-        <span className="text-xs text-gray-500 font-medium">{date}</span>
+        <span className="text-xs font-medium text-gray-500 bg-white/80 px-2 rounded-full shadow-sm border border-gray-100">
+          {date}
+        </span>
         <div className="h-px bg-gray-200 flex-1" />
       </div>
       {messages.map((msg, index) => (
@@ -34,7 +36,13 @@ export function MessageGroup({
           key={msg.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.1 }}
+          transition={{ 
+            delay: index * 0.1,
+            type: "spring",
+            stiffness: 100,
+            damping: 15
+          }}
+          className="group"
         >
           <MessageContent
             messageId={msg.id}
