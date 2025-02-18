@@ -108,10 +108,10 @@ export function useMessages(sessionId: string | null) {
         metadata: null,
       };
 
-      // Update with just the user message first
+      // Update with the user message appended at the end
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId], (old) => ({
         pages: [{
-          messages: [optimisticUserMessage, ...(old?.pages?.[0]?.messages || [])],
+          messages: [...(old?.pages?.[0]?.messages || []), optimisticUserMessage],
           nextCursor: old?.pages?.[0]?.nextCursor
         },
         ...(old?.pages?.slice(1) || [])],
@@ -131,13 +131,13 @@ export function useMessages(sessionId: string | null) {
       });
     },
     onSuccess: async ({ userMessage, assistantMessage }, variables) => {
-      // Add the assistant message after the user message is confirmed
+      // Add the assistant message after the user message by appending it at the end
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', variables.sessionId], (old) => {
         if (!old?.pages?.[0]) return old;
         
         return {
           pages: [{
-            messages: [assistantMessage, ...old.pages[0].messages],
+            messages: [...old.pages[0].messages, assistantMessage],
             nextCursor: old.pages[0].nextCursor
           },
           ...(old.pages.slice(1) || [])],
@@ -206,3 +206,4 @@ export function useMessages(sessionId: string | null) {
     fetchNextPage
   };
 }
+
