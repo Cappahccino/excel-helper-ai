@@ -1,13 +1,14 @@
 
 import { motion } from "framer-motion";
 import { MessageContent } from "../message/MessageContent";
+import { MessageStatus } from "@/types/chat";
 
 interface MessageGroupProps {
   date: string;
   messages: any[];
   formatTimestamp: (timestamp: string) => string;
   latestMessageId?: string | null;
-  status?: 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  status?: MessageStatus;
 }
 
 export function MessageGroup({ 

@@ -1,3 +1,4 @@
+
 import { MessageMarkdown } from "./MessageMarkdown";
 import { MessageAvatar } from "./MessageAvatar";
 import { MessageActions } from "./MessageActions";
@@ -11,6 +12,7 @@ import { Clock, Edit2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
+import { MessageStatus } from "@/types/chat";
 
 interface MessageContentProps {
   content: string;
@@ -21,7 +23,7 @@ interface MessageContentProps {
     file_size: number;
   } | null;
   isNewMessage?: boolean;
-  status?: 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  status?: MessageStatus;
   messageId: string;
   metadata?: {
     reaction_counts?: {
