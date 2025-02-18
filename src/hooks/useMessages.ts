@@ -108,31 +108,10 @@ export function useMessages(sessionId: string | null) {
         metadata: null,
       };
 
-      const optimisticAssistantMessage: Message = {
-        id: `temp-assistant-${Date.now()}`,
-        content: '',
-        role: 'assistant',
-        session_id: currentSessionId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        excel_file_id: fileId,
-        status: 'in_progress',
-        is_ai_response: true,
-        version: '1.0.0',
-        deployment_id: crypto.randomUUID(),
-        excel_files: null,
-        metadata: {
-          processing_stage: {
-            stage: 'generating',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        },
-      };
-
+      // Update with just the user message first
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId], (old) => ({
         pages: [{
-          messages: [optimisticAssistantMessage, optimisticUserMessage, ...(old?.pages?.[0]?.messages || [])],
+          messages: [optimisticUserMessage, ...(old?.pages?.[0]?.messages || [])],
           nextCursor: old?.pages?.[0]?.nextCursor
         },
         ...(old?.pages?.slice(1) || [])],
@@ -152,6 +131,20 @@ export function useMessages(sessionId: string | null) {
       });
     },
     onSuccess: async ({ userMessage, assistantMessage }, variables) => {
+      // Add the assistant message after the user message is confirmed
+      queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', variables.sessionId], (old) => {
+        if (!old?.pages?.[0]) return old;
+        
+        return {
+          pages: [{
+            messages: [assistantMessage, ...old.pages[0].messages],
+            nextCursor: old.pages[0].nextCursor
+          },
+          ...(old.pages.slice(1) || [])],
+          pageParams: old.pageParams
+        };
+      });
+      
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
       
       generateAIResponse.mutate({
