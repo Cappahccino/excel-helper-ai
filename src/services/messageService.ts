@@ -7,7 +7,7 @@ import { MESSAGES_PER_PAGE } from "@/config/constants";
 export async function fetchMessages(sessionId: string, cursor: string | null = null) {
   let query = supabase
     .from('chat_messages')
-    .select('*, excel_files(filename, file_size)')
+    .select('*, excel_files(filename, file_size), message_files(file_id, role)')
     .eq('session_id', sessionId)
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
@@ -28,7 +28,8 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
 }
 
 export async function createUserMessage(content: string, sessionId: string, userId: string, fileId?: string | null) {
-  const { data: message, error } = await supabase
+  // Start a transaction
+  const { data: message, error: messageError } = await supabase
     .from('chat_messages')
     .insert({
       content,
@@ -43,12 +44,26 @@ export async function createUserMessage(content: string, sessionId: string, user
     .select('*, excel_files(filename, file_size)')
     .single();
 
-  if (error) throw error;
+  if (messageError) throw messageError;
+
+  // If there's a file, create the message_files entry
+  if (fileId) {
+    const { error: fileError } = await supabase
+      .from('message_files')
+      .insert({
+        message_id: message.id,
+        file_id: fileId,
+        role: 'user'
+      });
+
+    if (fileError) throw fileError;
+  }
+
   return transformMessage(message as DatabaseMessage);
 }
 
 export async function createAssistantMessage(sessionId: string, userId: string, fileId?: string | null) {
-  const { data: message, error } = await supabase
+  const { data: message, error: messageError } = await supabase
     .from('chat_messages')
     .insert({
       content: '',
@@ -71,7 +86,21 @@ export async function createAssistantMessage(sessionId: string, userId: string, 
     .select('*, excel_files(filename, file_size)')
     .single();
 
-  if (error) throw error;
+  if (messageError) throw messageError;
+
+  // If there's a file, create the message_files entry
+  if (fileId) {
+    const { error: fileError } = await supabase
+      .from('message_files')
+      .insert({
+        message_id: message.id,
+        file_id: fileId,
+        role: 'assistant'
+      });
+
+    if (fileError) throw fileError;
+  }
+
   return transformMessage(message as DatabaseMessage);
 }
 

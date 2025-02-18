@@ -2,6 +2,11 @@
 import { Message } from "./chat";
 import { Json } from "@/integrations/supabase/types";
 
+export type MessageFile = {
+  file_id: string;
+  role: string;
+};
+
 export type MessageMetadata = {
   reaction_counts?: {
     positive: number;
@@ -32,6 +37,7 @@ export type DatabaseMessage = {
     filename: string;
     file_size: number;
   } | null;
+  message_files?: MessageFile[];
   status: Message['status'];
   version: string | null;
   deployment_id: string | null;
