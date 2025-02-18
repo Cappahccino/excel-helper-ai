@@ -246,6 +246,80 @@ export type Database = {
         }
         Relationships: []
       }
+      file_metadata: {
+        Row: {
+          column_definitions: Json | null
+          created_at: string | null
+          data_summary: Json | null
+          file_id: string | null
+          id: string
+          row_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          column_definitions?: Json | null
+          created_at?: string | null
+          data_summary?: Json | null
+          file_id?: string | null
+          id?: string
+          row_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          column_definitions?: Json | null
+          created_at?: string | null
+          data_summary?: Json | null
+          file_id?: string | null
+          id?: string
+          row_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "file_metadata_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_files: {
+        Row: {
+          created_at: string | null
+          file_id: string
+          message_id: string
+          role: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          file_id: string
+          message_id: string
+          role?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          file_id?: string
+          message_id?: string
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_files_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_files_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_reactions: {
         Row: {
           created_at: string | null
@@ -304,6 +378,42 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      session_files: {
+        Row: {
+          added_at: string | null
+          file_id: string
+          is_active: boolean | null
+          session_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          file_id: string
+          is_active?: boolean | null
+          session_id: string
+        }
+        Update: {
+          added_at?: string | null
+          file_id?: string
+          is_active?: boolean | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_files_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_files_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["session_id"]
+          },
+        ]
       }
     }
     Views: {

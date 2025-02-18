@@ -6,115 +6,128 @@ import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 
 interface UseChatFileUploadReturn {
-  file: File | null;
+  files: File[];
   isUploading: boolean;
-  uploadProgress: number;
+  uploadProgress: Record<string, number>;
   error: string | null;
-  handleFileUpload: (file: File, sessionId?: string | null) => Promise<void>;
+  handleFileUpload: (newFiles: File[], sessionId?: string | null) => Promise<void>;
   resetUpload: () => void;
-  fileId: string | null;
-  setUploadProgress: (progress: number) => void;
+  fileIds: string[];
+  setUploadProgress: (fileId: string, progress: number) => void;
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
   threadId: string | null;
 }
 
 export const useChatFileUpload = (): UseChatFileUploadReturn => {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
-  const [fileId, setFileId] = useState<string | null>(null);
+  const [fileIds, setFileIds] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
-    setFile(null);
+    setFiles([]);
     setIsUploading(false);
-    setUploadProgress(0);
+    setUploadProgress({});
     setError(null);
-    setFileId(null);
+    setFileIds([]);
     setSessionId(null);
     setThreadId(null);
   }, []);
 
-  const handleFileUpload = useCallback(async (newFile: File, currentSessionId?: string | null) => {
-    const validation = validateFile(newFile);
-    if (!validation.isValid) {
-      setError(validation.error);
-      toast({
-        title: "Upload Error",
-        description: validation.error,
-        variant: "destructive",
-      });
-      return;
-    }
+  const setProgressForFile = (fileId: string, progress: number) => {
+    setUploadProgress(prev => ({
+      ...prev,
+      [fileId]: progress
+    }));
+  };
 
+  const handleFileUpload = useCallback(async (newFiles: File[], currentSessionId?: string | null) => {
     try {
-      setFile(newFile);
       setIsUploading(true);
       setError(null);
-      setUploadProgress(0);
-      
-      const sanitizedFile = new File([newFile], sanitizeFileName(newFile.name), {
-        type: newFile.type,
-      });
+      const uploadedFileIds: string[] = [];
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error("User not authenticated");
-      }
+      // Process files in parallel using Promise.all
+      await Promise.all(newFiles.map(async (file) => {
+        const validation = validateFile(file);
+        if (!validation.isValid) {
+          throw new Error(`${file.name}: ${validation.error}`);
+        }
 
-      const filePath = `${uuidv4()}-${sanitizedFile.name}`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('excel_files')
-        .upload(filePath, sanitizedFile, {
-          cacheControl: '3600',
-          upsert: false
+        const sanitizedFile = new File([file], sanitizeFileName(file.name), {
+          type: file.type,
         });
 
-      if (uploadError) throw uploadError;
-      setUploadProgress(50);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("User not authenticated");
+        }
 
-      const { data: fileRecord, error: dbError } = await supabase
-        .from('excel_files')
-        .insert({
-          filename: sanitizedFile.name,
-          file_path: filePath,
-          file_size: sanitizedFile.size,
-          user_id: user.id,
-          processing_status: "pending"
-        })
-        .select()
-        .single();
+        const filePath = `${uuidv4()}-${sanitizedFile.name}`;
+        const tempFileId = uuidv4();
 
-      if (dbError) throw dbError;
-      setUploadProgress(100);
-      setFileId(fileRecord.id);
-      
-      // Update the chat session with the new file ID if we have a session
-      if (currentSessionId) {
-        await supabase
-          .from('chat_sessions')
-          .update({ excel_file_id: fileRecord.id })
-          .eq('session_id', currentSessionId);
-      }
-      
+        setProgressForFile(tempFileId, 0);
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('excel_files')
+          .upload(filePath, sanitizedFile, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+        setProgressForFile(tempFileId, 50);
+
+        const { data: fileRecord, error: dbError } = await supabase
+          .from('excel_files')
+          .insert({
+            filename: sanitizedFile.name,
+            file_path: filePath,
+            file_size: sanitizedFile.size,
+            user_id: user.id,
+            processing_status: "pending"
+          })
+          .select()
+          .single();
+
+        if (dbError) throw dbError;
+        
+        uploadedFileIds.push(fileRecord.id);
+        setProgressForFile(tempFileId, 100);
+
+        // If we have a session, create the session_files relationship
+        if (currentSessionId) {
+          const { error: relationError } = await supabase
+            .from('session_files')
+            .insert({
+              session_id: currentSessionId,
+              file_id: fileRecord.id,
+              is_active: true
+            });
+
+          if (relationError) throw relationError;
+        }
+      }));
+
+      setFileIds(uploadedFileIds);
       setSessionId(currentSessionId);
       
       toast({
         title: "Success",
-        description: "File uploaded successfully",
+        description: `${newFiles.length} file(s) uploaded successfully`,
       });
 
     } catch (err) {
       console.error('Upload error:', err);
-      setError(err instanceof Error ? err.message : "Failed to upload file");
+      setError(err instanceof Error ? err.message : "Failed to upload files");
       toast({
         title: "Upload Failed",
-        description: err instanceof Error ? err.message : "Failed to upload file",
+        description: err instanceof Error ? err.message : "Failed to upload files",
         variant: "destructive",
       });
     } finally {
@@ -123,14 +136,14 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
   }, [toast]);
 
   return {
-    file,
+    files,
     isUploading,
     uploadProgress,
     error,
     handleFileUpload,
     resetUpload,
-    fileId,
-    setUploadProgress,
+    fileIds,
+    setUploadProgress: setProgressForFile,
     sessionId,
     setSessionId,
     threadId,
