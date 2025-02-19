@@ -5,6 +5,9 @@ import { Upload, FileSpreadsheet, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { FILE_CONFIG } from "@/config/fileConfig";
+import { TagSelect } from "./tags/TagSelect";
+import { useQuery } from "@tanstack/react-query";
+import { fetchTags } from "@/services/tagService";
 
 interface FileUploadZoneProps {
   onFileUpload: (files: File[]) => Promise<void>;
@@ -23,6 +26,11 @@ export function FileUploadZone({
   onReset,
   onUploadComplete,
 }: FileUploadZoneProps) {
+  const { data: tags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: fetchTags
+  });
+
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
@@ -89,44 +97,61 @@ export function FileUploadZone({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-3">
+    <div className="w-full max-w-4xl mx-auto space-y-4">
       {currentFiles.map((file, index) => (
-        <div key={index} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <FileSpreadsheet className="w-8 h-8 text-green-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-700 truncate">
-                {file.name}
-              </p>
-              <p className="text-xs text-gray-500">
-                {formatFileSize(file.size)}
-              </p>
+        <div 
+          key={index} 
+          className="bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
+        >
+          <div className="border-b border-gray-100 p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <FileSpreadsheet className="w-8 h-8 text-green-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-700 truncate">
+                    {file.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatFileSize(file.size)}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                {isUploading && uploadProgress[index] !== undefined && (
+                  <div className="w-24">
+                    <Progress 
+                      value={uploadProgress[index]} 
+                      className="h-1.5 bg-green-100"
+                      indicatorClassName="bg-green-500"
+                      aria-label="Upload progress"
+                    />
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReset();
+                  }}
+                  className="text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  aria-label="Remove files"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
-            {isUploading && uploadProgress[index] !== undefined && (
-              <div className="w-24">
-                <Progress 
-                  value={uploadProgress[index]} 
-                  className="h-1.5 bg-green-100"
-                  indicatorClassName="bg-green-500"
-                  aria-label="Upload progress"
-                />
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onReset();
-              }}
-              className="text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-              aria-label="Remove files"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+          <div className="p-3 bg-gray-50">
+            <TagSelect
+              tags={tags}
+              selectedTags={[]}
+              onSelect={() => {}}
+              onRemove={() => {}}
+              className="w-full"
+            />
           </div>
         </div>
       ))}
