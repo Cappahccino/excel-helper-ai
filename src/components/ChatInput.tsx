@@ -91,22 +91,25 @@ export function ChatInput({
     });
   };
 
-  const validateTag = (fileName: string, tagName: string): string | null => {
+  const validateTag = (fileName: string, tagName: string, isExisting: boolean): string | null => {
     const trimmedTag = tagName.trim();
     
     if (!trimmedTag) {
       return "Tag cannot be empty";
     }
     
-    if (trimmedTag.length > MAX_TAG_LENGTH) {
-      return `Tag must be ${MAX_TAG_LENGTH} characters or less`;
+    // Skip format validation for existing tags
+    if (!isExisting) {
+      if (trimmedTag.length > MAX_TAG_LENGTH) {
+        return `Tag must be ${MAX_TAG_LENGTH} characters or less`;
+      }
+      
+      if (!TAG_REGEX.test(trimmedTag)) {
+        return "Tag can only contain letters, numbers, spaces, hyphens, and underscores";
+      }
     }
     
-    if (!TAG_REGEX.test(trimmedTag)) {
-      return "Tag can only contain letters, numbers, spaces, hyphens, and underscores";
-    }
-    
-    // Check for duplicates only within the same file's tags
+    // Only check for duplicates within the same file
     const filePendingTags = pendingTagsByFile[fileName] || [];
     if (filePendingTags.some(t => t.toLowerCase() === trimmedTag.toLowerCase())) {
       return "This file already has this tag";
@@ -152,7 +155,12 @@ export function ChatInput({
   };
 
   const handleTagInput = (fileName: string, tagName: string) => {
-    const error = validateTag(fileName, tagName);
+    // Check if this is an existing tag
+    const isExistingTag = tags.some(tag => 
+      tag.name.toLowerCase() === tagName.toLowerCase()
+    );
+
+    const error = validateTag(fileName, tagName, isExistingTag);
     if (error) {
       toast({
         title: "Invalid Tag",
