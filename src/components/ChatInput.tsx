@@ -98,15 +98,23 @@ export function ChatInput({
       return "Tag cannot be empty";
     }
     
-    if (trimmedTag.length > MAX_TAG_LENGTH) {
-      return `Tag must be ${MAX_TAG_LENGTH} characters or less`;
+    // Check if it's an existing tag
+    const isExistingTag = tags.some(tag => 
+      tag.name.toLowerCase() === trimmedTag.toLowerCase()
+    );
+
+    // Only validate format for new tags
+    if (!isExistingTag) {
+      if (trimmedTag.length > MAX_TAG_LENGTH) {
+        return `Tag must be ${MAX_TAG_LENGTH} characters or less`;
+      }
+      
+      if (!TAG_REGEX.test(trimmedTag)) {
+        return "Tag can only contain letters, numbers, spaces, hyphens, and underscores";
+      }
     }
     
-    if (!TAG_REGEX.test(trimmedTag)) {
-      return "Tag can only contain letters, numbers, spaces, hyphens, and underscores";
-    }
-    
-    // Check for duplicates only within the same file's tags
+    // Check for duplicates only within the same file
     const filePendingTags = pendingTagsByFile[fileName] || [];
     if (filePendingTags.some(t => t.toLowerCase() === trimmedTag.toLowerCase())) {
       return "This file already has this tag";
