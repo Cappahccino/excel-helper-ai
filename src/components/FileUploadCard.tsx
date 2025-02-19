@@ -14,22 +14,20 @@ interface FileUploadCardProps {
   file: File;
   isUploading: boolean;
   onRemove: () => void;
-  onTagSelect: (tag: Tag) => void;
-  onTagRemove: (tag: Tag) => void;
-  onTagCreate: (name: string) => Promise<void>;
   onRoleSelect: (role: string) => void;
   selectedTags: Tag[];
   selectedRole?: string;
   availableTags: Tag[];
+  onTagInput: (tagName: string) => void;
+  onTagRemove: (tag: Tag) => void;
 }
 
 export function FileUploadCard({
   file,
   isUploading,
   onRemove,
-  onTagSelect,
+  onTagInput,
   onTagRemove,
-  onTagCreate,
   onRoleSelect,
   selectedTags,
   selectedRole,
@@ -97,9 +95,8 @@ export function FileUploadCard({
             <TagSelect
               tags={availableTags}
               selectedTags={selectedTags}
-              onSelect={onTagSelect}
+              onTagInput={onTagInput}
               onRemove={onTagRemove}
-              onCreate={onTagCreate}
               className="w-full"
             />
           </div>

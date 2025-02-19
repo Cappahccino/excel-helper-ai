@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -9,7 +8,7 @@ import { FileUploadCard } from "./FileUploadCard";
 import { Tag } from "@/types/tags";
 
 interface ChatInputProps {
-  onSendMessage: (message: string, fileIds?: string[] | null) => void;
+  onSendMessage: (message: string, fileIds?: string[] | null, tagNames?: string[] | null) => void;
   isAnalyzing: boolean;
   sessionId?: string | null;
   fileInfo?: {
@@ -30,7 +29,8 @@ export function ChatInput({
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [fileRoles, setFileRoles] = useState<Record<string, string>>({});
   const [fileTags, setFileTags] = useState<Record<string, Tag[]>>({});
-  
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
+
   const {
     handleFileUpload,
     isUploading,
@@ -126,11 +126,16 @@ export function ChatInput({
 
   const handleSubmit = () => {
     if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
-    onSendMessage(message, uploadedFileIds.length > 0 ? uploadedFileIds : null);
+    onSendMessage(
+      message, 
+      uploadedFileIds.length > 0 ? uploadedFileIds : null,
+      pendingTags.length > 0 ? pendingTags : null
+    );
     setMessage("");
     setLocalFiles([]);
     setFileRoles({});
     setFileTags({});
+    setPendingTags([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -158,11 +163,14 @@ export function ChatInput({
     }
   };
 
-  const handleTagRemove = (file: File, tag: Tag) => {
-    setFileTags(prev => ({
-      ...prev,
-      [file.name]: prev[file.name]?.filter(t => t.id !== tag.id) || []
-    }));
+  const handleTagInput = (tagName: string) => {
+    if (!pendingTags.includes(tagName)) {
+      setPendingTags(prev => [...prev, tagName]);
+    }
+  };
+
+  const handleTagRemove = (tag: Tag) => {
+    setPendingTags(prev => prev.filter(t => t !== tag.name));
   };
 
   const handleRoleSelect = (file: File, role: string) => {
@@ -192,6 +200,8 @@ export function ChatInput({
                 selectedTags={fileTags[file.name] || []}
                 selectedRole={fileRoles[file.name]}
                 availableTags={tags}
+                onTagInput={handleTagInput}
+                onTagRemove={handleTagRemove}
               />
             ))}
           </div>

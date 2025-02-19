@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -70,11 +69,13 @@ export function useMessages(sessionId: string | null) {
   const sendMessage = useMutation({
     mutationFn: async ({ 
       content, 
-      fileIds, 
+      fileIds,
+      tagNames,
       sessionId: currentSessionId 
     }: { 
-      content: string; 
+      content: string;
       fileIds?: string[] | null;
+      tagNames?: string[] | null;
       sessionId?: string | null;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -84,15 +85,62 @@ export function useMessages(sessionId: string | null) {
         throw new Error('No session ID provided');
       }
 
+      let tags: Tag[] = [];
+      if (tagNames && tagNames.length > 0) {
+        const { data: existingTags } = await supabase
+          .from('file_tags')
+          .select('*')
+          .in('name', tagNames);
+
+        const existingTagNames = new Set(existingTags?.map(t => t.name.toLowerCase()) || []);
+        const newTagNames = tagNames.filter(name => 
+          !existingTagNames.has(name.toLowerCase())
+        );
+
+        if (newTagNames.length > 0) {
+          const { data: newTags, error: createError } = await supabase
+            .from('file_tags')
+            .insert(
+              newTagNames.map(name => ({
+                name,
+                type: 'custom',
+                user_id: user.id
+              }))
+            )
+            .select();
+
+          if (createError) throw createError;
+          tags = [...(existingTags || []), ...(newTags || [])];
+        } else {
+          tags = existingTags || [];
+        }
+      }
+
       console.log('Creating user message...');
       const userMessage = await createUserMessage(content, currentSessionId, user.id, fileIds);
+
+      if (tags.length > 0 && fileIds && fileIds.length > 0) {
+        const messageTags = tags.flatMap(tag => 
+          fileIds.map(fileId => ({
+            message_id: userMessage.id,
+            file_id: fileId,
+            tag_id: tag.id
+          }))
+        );
+
+        const { error: tagError } = await supabase
+          .from('message_file_tags')
+          .insert(messageTags);
+
+        if (tagError) throw tagError;
+      }
 
       console.log('Creating assistant message...');
       const assistantMessage = await createAssistantMessage(currentSessionId, user.id, fileIds);
 
       return { userMessage, assistantMessage };
     },
-    onMutate: async ({ content, fileIds, sessionId: currentSessionId }) => {
+    onMutate: async ({ content, fileIds, tagNames, sessionId: currentSessionId }) => {
       await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
 
       const previousMessages = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId]);

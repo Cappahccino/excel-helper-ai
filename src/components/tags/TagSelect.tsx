@@ -2,25 +2,22 @@
 import { useState, useRef, KeyboardEvent } from "react";
 import { Tag } from "@/types/tags";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { TagBadge } from "./TagBadge";
 import { cn } from "@/lib/utils";
 
 interface TagSelectProps {
   tags: Tag[];
   selectedTags: Tag[];
-  onSelect: (tag: Tag) => void;
+  onTagInput: (tagName: string) => void;
   onRemove: (tag: Tag) => void;
-  onCreate?: (name: string) => Promise<void>;
   className?: string;
 }
 
 export function TagSelect({
   tags,
   selectedTags,
-  onSelect,
+  onTagInput,
   onRemove,
-  onCreate,
   className
 }: TagSelectProps) {
   const [inputValue, setInputValue] = useState("");
@@ -34,7 +31,7 @@ export function TagSelect({
       !selectedTags.find(t => t.id === tag.id) && 
       tag.name.toLowerCase().includes(inputValue.toLowerCase())
     )
-    .slice(0, 5); // Limit to 5 suggestions
+    .slice(0, 5);
 
   const handleInputChange = (value: string) => {
     setInputValue(value);
@@ -47,11 +44,11 @@ export function TagSelect({
       e.preventDefault();
       
       if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
-        // Select the highlighted suggestion
-        onSelect(suggestions[selectedSuggestionIndex]);
-      } else if (inputValue.trim() && onCreate) {
-        // Create new tag
-        await onCreate(inputValue.trim());
+        // Select existing tag
+        onTagInput(suggestions[selectedSuggestionIndex].name);
+      } else if (inputValue.trim()) {
+        // Input new tag
+        onTagInput(inputValue.trim());
       }
       
       setInputValue("");
@@ -72,7 +69,7 @@ export function TagSelect({
   };
 
   const handleSuggestionClick = (tag: Tag) => {
-    onSelect(tag);
+    onTagInput(tag.name);
     setInputValue("");
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
@@ -95,7 +92,7 @@ export function TagSelect({
         <Input
           ref={inputRef}
           type="text"
-          placeholder="Type to add or select a tag..."
+          placeholder="Type to add tags..."
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -120,23 +117,6 @@ export function TagSelect({
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {showSuggestions && suggestions.length === 0 && inputValue.trim() && onCreate && (
-          <div className="absolute z-10 w-full mt-1 bg-white rounded-md border shadow-lg">
-            <button
-              onClick={async () => {
-                if (inputValue.trim()) {
-                  await onCreate(inputValue.trim());
-                  setInputValue("");
-                  setShowSuggestions(false);
-                }
-              }}
-              className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            >
-              Create tag "{inputValue.trim()}"
-            </button>
           </div>
         )}
       </div>
