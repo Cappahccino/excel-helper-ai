@@ -33,7 +33,7 @@ export function ChatInput({
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [fileRoles, setFileRoles] = useState<Record<string, string>>({});
   const [fileTags, setFileTags] = useState<Record<string, Tag[]>>({});
-  const [pendingTags, setPendingTags] = useState<string[]>([]);
+  const [pendingTagsByFile, setPendingTagsByFile] = useState<Record<string, string[]>>({});
 
   const {
     handleFileUpload,
@@ -85,9 +85,13 @@ export function ChatInput({
       const { [file.name]: _, ...rest } = prev;
       return rest;
     });
+    setPendingTagsByFile(prev => {
+      const { [file.name]: _, ...rest } = prev;
+      return rest;
+    });
   };
 
-  const validateTag = (tagName: string): string | null => {
+  const validateTag = (fileName: string, tagName: string): string | null => {
     const trimmedTag = tagName.trim();
     
     if (!trimmedTag) {
@@ -102,8 +106,10 @@ export function ChatInput({
       return "Tag can only contain letters, numbers, spaces, hyphens, and underscores";
     }
     
-    if (pendingTags.some(t => t.toLowerCase() === trimmedTag.toLowerCase())) {
-      return "Tag already exists";
+    // Check for duplicates only within the same file's tags
+    const filePendingTags = pendingTagsByFile[fileName] || [];
+    if (filePendingTags.some(t => t.toLowerCase() === trimmedTag.toLowerCase())) {
+      return "This file already has this tag";
     }
     
     return null;
@@ -112,9 +118,11 @@ export function ChatInput({
   const handleSubmit = () => {
     if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
     
-    const validTags = pendingTags
+    // Collect all pending tags from all files
+    const allPendingTags = Object.values(pendingTagsByFile).flat();
+    const validTags = allPendingTags
       .map(tag => tag.trim())
-      .filter(tag => tag && !validateTag(tag));
+      .filter(tag => tag);
 
     onSendMessage(
       message,
@@ -126,7 +134,7 @@ export function ChatInput({
     setLocalFiles([]);
     setFileRoles({});
     setFileTags({});
-    setPendingTags([]);
+    setPendingTagsByFile({});
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -144,7 +152,7 @@ export function ChatInput({
   };
 
   const handleTagInput = (fileName: string, tagName: string) => {
-    const error = validateTag(tagName);
+    const error = validateTag(fileName, tagName);
     if (error) {
       toast({
         title: "Invalid Tag",
@@ -154,11 +162,17 @@ export function ChatInput({
       return;
     }
 
-    setPendingTags(prev => [...prev, tagName.trim()]);
+    setPendingTagsByFile(prev => ({
+      ...prev,
+      [fileName]: [...(prev[fileName] || []), tagName.trim()]
+    }));
   };
 
   const handleTagRemove = (fileName: string, tag: Tag) => {
-    setPendingTags(prev => prev.filter(t => t !== tag.name));
+    setPendingTagsByFile(prev => ({
+      ...prev,
+      [fileName]: (prev[fileName] || []).filter(t => t !== tag.name)
+    }));
   };
 
   const isDisabled = isAnalyzing || isUploading || (!message.trim() && !uploadedFileIds.length);
