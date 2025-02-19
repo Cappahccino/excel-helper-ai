@@ -1,9 +1,10 @@
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, KeyboardEvent, useEffect } from "react";
 import { Tag } from "@/types/tags";
 import { Input } from "@/components/ui/input";
 import { TagBadge } from "./TagBadge";
 import { cn } from "@/lib/utils";
+import { Sticker } from "lucide-react";
 
 interface TagSelectProps {
   tags: Tag[];
@@ -22,6 +23,7 @@ export function TagSelect({
 }: TagSelectProps) {
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
@@ -32,6 +34,21 @@ export function TagSelect({
       tag.name.toLowerCase().includes(inputValue.toLowerCase())
     )
     .slice(0, 5);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        event.target !== inputRef.current
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleInputChange = (value: string) => {
     setInputValue(value);
@@ -80,11 +97,13 @@ export function TagSelect({
     <div className={className}>
       <div className="flex flex-wrap gap-2 mb-2">
         {selectedTags.map((tag) => (
-          <TagBadge
-            key={tag.id}
-            tag={tag}
-            onRemove={() => onRemove(tag)}
-          />
+          <div key={tag.id} className="flex items-center gap-1">
+            <Sticker className="w-4 h-4 text-gray-500" />
+            <TagBadge
+              tag={tag}
+              onRemove={() => onRemove(tag)}
+            />
+          </div>
         ))}
       </div>
       
@@ -101,18 +120,22 @@ export function TagSelect({
         />
 
         {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute z-10 w-full mt-1 bg-white rounded-md border shadow-lg max-h-60 overflow-auto">
+          <div 
+            ref={dropdownRef}
+            className="absolute z-10 w-full mt-1 bg-white rounded-md border shadow-lg max-h-60 overflow-auto"
+          >
             <div className="p-1">
               {suggestions.map((tag, index) => (
                 <button
                   key={tag.id}
                   onClick={() => handleSuggestionClick(tag)}
                   className={cn(
-                    "w-full text-left px-2 py-1.5 text-sm rounded",
+                    "w-full text-left px-2 py-1.5 text-sm rounded flex items-center gap-2",
                     "hover:bg-accent hover:text-accent-foreground",
                     selectedSuggestionIndex === index && "bg-accent text-accent-foreground"
                   )}
                 >
+                  <Sticker className="w-4 h-4" />
                   {tag.name}
                 </button>
               ))}

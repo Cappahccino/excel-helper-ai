@@ -1,5 +1,5 @@
 
-import { FileSpreadsheet, X } from "lucide-react";
+import { FileSpreadsheet, X, Sticker } from "lucide-react";
 import { TagSelect } from "./tags/TagSelect";
 import {
   Select,
@@ -43,18 +43,30 @@ export function FileUploadCard({
 
   return (
     <div className="flex flex-col gap-3 p-4 bg-white rounded-lg border shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <FileSpreadsheet className="h-5 w-5 text-green-600" />
-          {isUploading ? (
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600" />
-              <span className="text-sm text-gray-700">Uploading file...</span>
+      <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5 text-green-600 flex-shrink-0" />
+            {isUploading ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600" />
+                <span className="text-sm text-gray-700">Uploading file...</span>
+              </div>
+            ) : (
+              <span className="text-sm font-medium text-gray-700">
+                {file.name} ({formatFileSize(file.size)})
+              </span>
+            )}
+          </div>
+          {selectedTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 ml-7">
+              {selectedTags.map((tag) => (
+                <div key={tag.id} className="flex items-center gap-1">
+                  <Sticker className="w-3 h-3 text-gray-500" />
+                  <span className="text-xs text-gray-600">{tag.name}</span>
+                </div>
+              ))}
             </div>
-          ) : (
-            <span className="text-sm font-medium text-gray-700">
-              {file.name} ({formatFileSize(file.size)})
-            </span>
           )}
         </div>
         
