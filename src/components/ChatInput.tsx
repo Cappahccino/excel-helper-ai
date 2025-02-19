@@ -33,7 +33,6 @@ export function ChatInput({
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [fileRoles, setFileRoles] = useState<Record<string, string>>({});
   const [fileTags, setFileTags] = useState<Record<string, Tag[]>>({});
-  const [pendingTagsByFile, setPendingTagsByFile] = useState<Record<string, string[]>>({});
 
   const {
     handleFileUpload,
@@ -42,7 +41,7 @@ export function ChatInput({
     error: uploadError
   } = useFileUpload();
 
-  const { data: tags = [] } = useQuery({
+  const { data: availableTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: fetchTags
   });
@@ -85,10 +84,6 @@ export function ChatInput({
       const { [file.name]: _, ...rest } = prev;
       return rest;
     });
-    setPendingTagsByFile(prev => {
-      const { [file.name]: _, ...rest } = prev;
-      return rest;
-    });
   };
 
   const validateTag = (fileName: string, tagName: string): string | null => {
@@ -99,7 +94,7 @@ export function ChatInput({
     }
     
     // Check if it's an existing tag
-    const isExistingTag = tags.some(tag => 
+    const isExistingTag = availableTags.some(tag => 
       tag.name.toLowerCase() === trimmedTag.toLowerCase()
     );
 
@@ -115,8 +110,8 @@ export function ChatInput({
     }
     
     // Check for duplicates only within the same file
-    const filePendingTags = pendingTagsByFile[fileName] || [];
-    if (filePendingTags.some(t => t.toLowerCase() === trimmedTag.toLowerCase())) {
+    const fileCurrentTags = fileTags[fileName] || [];
+    if (fileCurrentTags.some(tag => tag.name.toLowerCase() === trimmedTag.toLowerCase())) {
       return "This file already has this tag";
     }
     
@@ -126,23 +121,20 @@ export function ChatInput({
   const handleSubmit = () => {
     if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
     
-    // Collect all pending tags from all files
-    const allPendingTags = Object.values(pendingTagsByFile).flat();
-    const validTags = allPendingTags
-      .map(tag => tag.trim())
-      .filter(tag => tag);
+    // Collect all tags from all files
+    const allTags = Object.values(fileTags).flat();
+    const tagNames = allTags.map(tag => tag.name);
 
     onSendMessage(
       message,
       uploadedFileIds.length > 0 ? uploadedFileIds : null,
-      validTags.length > 0 ? validTags : null
+      tagNames.length > 0 ? tagNames : null
     );
     
     setMessage("");
     setLocalFiles([]);
     setFileRoles({});
     setFileTags({});
-    setPendingTagsByFile({});
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -170,16 +162,39 @@ export function ChatInput({
       return;
     }
 
-    setPendingTagsByFile(prev => ({
+    const trimmedTagName = tagName.trim();
+    
+    // Find existing tag or create a new one
+    let tagToAdd: Tag;
+    const existingTag = availableTags.find(
+      tag => tag.name.toLowerCase() === trimmedTagName.toLowerCase()
+    );
+
+    if (existingTag) {
+      tagToAdd = existingTag;
+    } else {
+      // Create a new tag object
+      tagToAdd = {
+        id: `temp-${Date.now()}`, // Temporary ID for new tags
+        name: trimmedTagName,
+        type: 'custom',
+        category: null,
+        created_at: new Date().toISOString(),
+        is_system: false
+      };
+    }
+
+    // Update fileTags state
+    setFileTags(prev => ({
       ...prev,
-      [fileName]: [...(prev[fileName] || []), tagName.trim()]
+      [fileName]: [...(prev[fileName] || []), tagToAdd]
     }));
   };
 
-  const handleTagRemove = (fileName: string, tag: Tag) => {
-    setPendingTagsByFile(prev => ({
+  const handleTagRemove = (fileName: string, tagToRemove: Tag) => {
+    setFileTags(prev => ({
       ...prev,
-      [fileName]: (prev[fileName] || []).filter(t => t !== tag.name)
+      [fileName]: (prev[fileName] || []).filter(tag => tag.id !== tagToRemove.id)
     }));
   };
 
@@ -199,7 +214,7 @@ export function ChatInput({
                 onRoleSelect={(role) => handleRoleSelect(file.name, role)}
                 selectedTags={fileTags[file.name] || []}
                 selectedRole={fileRoles[file.name]}
-                availableTags={tags}
+                availableTags={availableTags}
                 onTagInput={(tagName) => handleTagInput(file.name, tagName)}
                 onTagRemove={(tag) => handleTagRemove(file.name, tag)}
               />
