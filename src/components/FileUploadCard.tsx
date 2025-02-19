@@ -68,6 +68,15 @@ export function FileUploadCard({
     }
   };
 
+  const getRoleDisplayName = (role: string): string => {
+    switch (role) {
+      case "primary": return "Primary File";
+      case "reference": return "Reference File";
+      case "supporting": return "Supporting File";
+      default: return role;
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3 p-4 bg-white rounded-lg border shadow-sm">
       <div className="flex flex-col gap-2">
@@ -86,27 +95,36 @@ export function FileUploadCard({
                 </span>
               )}
             </div>
-            {selectedTags.length > 0 && (
-              <div className="flex flex-wrap gap-2 ml-7 mt-1">
-                {selectedTags.map((tag) => (
-                  <div
-                    key={tag.id}
-                    className={cn(
-                      "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium",
-                      getTagColor(tag.name)
-                    )}
+            <div className="flex flex-wrap gap-2 ml-7 mt-1">
+              {selectedRole && (
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[#E0F2FE] text-[#0F5A89]">
+                  <span>{getRoleDisplayName(selectedRole)}</span>
+                  <button
+                    onClick={() => onRoleSelect(null)}
+                    className="p-0.5 hover:bg-black/10 rounded-md transition-colors"
                   >
-                    <span>{tag.name}</span>
-                    <button
-                      onClick={() => onTagRemove(tag)}
-                      className="p-0.5 hover:bg-black/10 rounded-md transition-colors"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              {selectedTags.length > 0 && selectedTags.map((tag) => (
+                <div
+                  key={tag.id}
+                  className={cn(
+                    "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium",
+                    getTagColor(tag.name)
+                  )}
+                >
+                  <span>{tag.name}</span>
+                  <button
+                    onClick={() => onTagRemove(tag)}
+                    className="p-0.5 hover:bg-black/10 rounded-md transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
           
           <button
