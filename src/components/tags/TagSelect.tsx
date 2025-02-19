@@ -1,21 +1,9 @@
 
-import { useState } from "react";
+import { useState, useRef, KeyboardEvent } from "react";
 import { Tag } from "@/types/tags";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TagBadge } from "./TagBadge";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TagSelectProps {
@@ -35,89 +23,123 @@ export function TagSelect({
   onCreate,
   className
 }: TagSelectProps) {
-  const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
-  // Filter out already selected tags and filter by search value
-  const filteredTags = tags
-    .filter(tag => !selectedTags.find(t => t.id === tag.id))
+  // Filter suggestions based on input
+  const suggestions = tags
     .filter(tag => 
-      tag.name.toLowerCase().includes(searchValue.toLowerCase())
-    );
+      !selectedTags.find(t => t.id === tag.id) && 
+      tag.name.toLowerCase().includes(inputValue.toLowerCase())
+    )
+    .slice(0, 5); // Limit to 5 suggestions
 
-  const handleSelect = (selectedTag: Tag) => {
-    onSelect(selectedTag);
-    setSearchValue("");
-    setOpen(false);
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+    setShowSuggestions(true);
+    setSelectedSuggestionIndex(-1);
   };
 
-  const handleCreate = async () => {
-    if (!searchValue.trim() || !onCreate) return;
-    
-    await onCreate(searchValue.trim());
-    setSearchValue("");
-    setOpen(false);
+  const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
+        // Select the highlighted suggestion
+        onSelect(suggestions[selectedSuggestionIndex]);
+      } else if (inputValue.trim() && onCreate) {
+        // Create new tag
+        await onCreate(inputValue.trim());
+      }
+      
+      setInputValue("");
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => 
+        prev < suggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    }
+  };
+
+  const handleSuggestionClick = (tag: Tag) => {
+    onSelect(tag);
+    setInputValue("");
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    inputRef.current?.focus();
   };
 
   return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
-      {selectedTags.map((tag) => (
-        <TagBadge
-          key={tag.id}
-          tag={tag}
-          onRemove={() => onRemove(tag)}
-        />
-      ))}
+    <div className={className}>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {selectedTags.map((tag) => (
+          <TagBadge
+            key={tag.id}
+            tag={tag}
+            onRemove={() => onRemove(tag)}
+          />
+        ))}
+      </div>
       
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="h-8 px-2 gap-1"
-          >
-            Add tag
-            <ChevronsUpDown className="h-4 w-4 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[200px] p-0" align="start">
-          <Command shouldFilter={false}>
-            <CommandInput 
-              placeholder="Search tags..."
-              value={searchValue}
-              onValueChange={setSearchValue}
-            />
-            <CommandEmpty>
-              {onCreate && searchValue.trim() && (
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          type="text"
+          placeholder="Type to add or select a tag..."
+          value={inputValue}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setShowSuggestions(true)}
+          className="w-full"
+        />
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white rounded-md border shadow-lg max-h-60 overflow-auto">
+            <div className="p-1">
+              {suggestions.map((tag, index) => (
                 <button
-                  className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
-                  onClick={handleCreate}
-                >
-                  <Plus className="h-4 w-4" />
-                  Create "{searchValue.trim()}"
-                </button>
-              )}
-            </CommandEmpty>
-            <CommandGroup>
-              {filteredTags.map((tag) => (
-                <CommandItem
                   key={tag.id}
-                  value={tag.id}
-                  onSelect={() => handleSelect(tag)}
+                  onClick={() => handleSuggestionClick(tag)}
+                  className={cn(
+                    "w-full text-left px-2 py-1.5 text-sm rounded",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    selectedSuggestionIndex === index && "bg-accent text-accent-foreground"
+                  )}
                 >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 opacity-0"
-                    )}
-                  />
                   {tag.name}
-                </CommandItem>
+                </button>
               ))}
-            </CommandGroup>
-          </Command>
-        </PopoverContent>
-      </Popover>
+            </div>
+          </div>
+        )}
+
+        {showSuggestions && suggestions.length === 0 && inputValue.trim() && onCreate && (
+          <div className="absolute z-10 w-full mt-1 bg-white rounded-md border shadow-lg">
+            <button
+              onClick={async () => {
+                if (inputValue.trim()) {
+                  await onCreate(inputValue.trim());
+                  setInputValue("");
+                  setShowSuggestions(false);
+                }
+              }}
+              className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              Create tag "{inputValue.trim()}"
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
