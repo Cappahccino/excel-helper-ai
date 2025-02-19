@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Button } from "@/components/ui/button";
 import { ExcelPreview } from "./ExcelPreview";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchTags, fetchFileTags, createTag, assignTagToFile } from "@/services/tagService";
+import { fetchFileTags, createTag, assignTagToFile } from "@/services/tagService";
 import { TagSelect } from "./tags/TagSelect";
 import { useToast } from "@/hooks/use-toast";
 import { Tag } from "@/types/tags";
