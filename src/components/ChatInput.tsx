@@ -1,7 +1,10 @@
+
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send, FileSpreadsheet, X } from "lucide-react";
-import { useFileUpload } from "@/hooks/useFileUpload";
+import { Paperclip, Send, X } from "lucide-react";
+import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { toast } from "@/hooks/use-toast";
+import { FileUploadWithTags } from "./shared/FileUploadWithTags";
+import { Tag } from "@/types/tags";
 
 interface ChatInputProps {
   onSendMessage: (message: string, fileIds?: string[] | null) => void;
@@ -21,14 +24,14 @@ export function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [localFiles, setLocalFiles] = useState<File[]>([]);
   const {
     handleFileUpload,
     isUploading,
-    fileIds: uploadedFileIds,
-    error: uploadError
-  } = useFileUpload();
+    uploadProgress,
+    files: currentFiles,
+    resetUpload,
+    fileIds,
+  } = useChatFileUpload();
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -37,35 +40,24 @@ export function ChatInput({
     }
   }, [message]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setLocalFiles(prev => [...prev, ...files]);
-
-      try {
-        for (const file of files) {
-          await handleFileUpload(file, sessionId);
-        }
-      } catch (error) {
-        console.error("File upload error:", error);
-        toast({
-          title: "Upload Failed",
-          description: error instanceof Error ? error.message : "Failed to upload file",
-          variant: "destructive"
-        });
-      }
+  const handleFileUploadWithTags = async (files: File[], tags: Tag[]) => {
+    try {
+      await handleFileUpload(files, sessionId);
+      // Note: Tags will be handled by the FileUploadWithTags component
+    } catch (error) {
+      console.error("File upload error:", error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload file",
+        variant: "destructive"
+      });
     }
   };
 
-  const removeFile = (index: number) => {
-    setLocalFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
   const handleSubmit = () => {
-    if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
-    onSendMessage(message, uploadedFileIds.length > 0 ? uploadedFileIds : null);
+    if ((!message.trim() && !fileIds.length) || isAnalyzing || isUploading) return;
+    onSendMessage(message, fileIds.length > 0 ? fileIds : null);
     setMessage("");
-    setLocalFiles([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -75,54 +67,29 @@ export function ChatInput({
     }
   };
 
-  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !uploadedFileIds.length);
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
+  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !fileIds.length);
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2 py-3 px-0 my-0 mx-0">
-        {(isUploading || localFiles.length > 0 || fileInfo) && (
-          <div className="space-y-2">
-            {localFiles.map((file, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-100 rounded-lg shadow-sm">
-                <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                  {isUploading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600" />
-                      <span className="text-sm text-gray-700">Uploading file...</span>
-                    </div>
-                  ) : (
-                    <span className="text-sm font-medium text-gray-700">
-                      {file.name} ({formatFileSize(file.size)})
-                    </span>
-                  )}
-                </div>
-                
-                <button
-                  onClick={() => removeFile(index)}
-                  className="p-1.5 rounded-full hover:bg-gray-200 transition-colors"
-                  aria-label="Remove file"
-                >
-                  <X className="w-4 h-4 text-gray-600" />
-                </button>
-              </div>
-            ))}
-          </div>
+        {(currentFiles && currentFiles.length > 0) && (
+          <FileUploadWithTags
+            onFileUpload={handleFileUploadWithTags}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            currentFiles={currentFiles}
+            onReset={resetUpload}
+            variant="chat"
+            messageId={sessionId || undefined}
+            className="mb-2"
+          />
         )}
 
         <div className="flex items-center gap-2 w-full bg-white rounded-lg border shadow-sm hover:shadow-md hover:border-gray-300 p-3 transition-all duration-200">
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => document.getElementById('chat-file-input')?.click()}
             className={`p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 ${
-              localFiles.length > 0 ? "text-green-600" : "text-gray-500"
+              currentFiles && currentFiles.length > 0 ? "text-green-600" : "text-gray-500"
             }`}
             disabled={isAnalyzing || isUploading}
             aria-label="Upload file"
@@ -130,14 +97,19 @@ export function ChatInput({
             <Paperclip className="w-5 h-5" />
           </button>
 
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            onChange={handleFileChange}
-            accept=".xlsx,.xls,.csv"
-            multiple
-          />
+          {!currentFiles?.length && (
+            <FileUploadWithTags
+              onFileUpload={handleFileUploadWithTags}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              currentFiles={null}
+              onReset={resetUpload}
+              variant="chat"
+              messageId={sessionId || undefined}
+              className="hidden"
+              maxFiles={1}
+            />
+          )}
 
           <textarea
             ref={textareaRef}
