@@ -1,6 +1,7 @@
 
 import { Message } from "./chat";
 import { Json } from "@/integrations/supabase/types";
+import { Tag } from "./tags";
 
 export type MessageFile = {
   file_id: string;
@@ -9,6 +10,7 @@ export type MessageFile = {
     filename: string;
     file_size: number;
   };
+  tags?: Tag[];
 };
 
 export type MessageMetadata = {
@@ -27,6 +29,7 @@ export type MessageMetadata = {
     previous_content: string;
     edited_at: string;
   }>;
+  tags?: Tag[];
 } | null;
 
 export type DatabaseMessage = {

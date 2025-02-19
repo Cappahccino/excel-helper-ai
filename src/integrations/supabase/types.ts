@@ -284,6 +284,85 @@ export type Database = {
           },
         ]
       }
+      file_tags: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          id: string
+          is_system: boolean | null
+          name: string
+          type: Database["public"]["Enums"]["tag_type"] | null
+          user_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          is_system?: boolean | null
+          name: string
+          type?: Database["public"]["Enums"]["tag_type"] | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          is_system?: boolean | null
+          name?: string
+          type?: Database["public"]["Enums"]["tag_type"] | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      message_file_tags: {
+        Row: {
+          ai_context: string | null
+          created_at: string | null
+          file_id: string
+          message_id: string
+          tag_id: string
+          usage_count: number | null
+        }
+        Insert: {
+          ai_context?: string | null
+          created_at?: string | null
+          file_id: string
+          message_id: string
+          tag_id: string
+          usage_count?: number | null
+        }
+        Update: {
+          ai_context?: string | null
+          created_at?: string | null
+          file_id?: string
+          message_id?: string
+          tag_id?: string
+          usage_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_file_tags_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_file_tags_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_file_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "file_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_files: {
         Row: {
           created_at: string | null
@@ -443,6 +522,7 @@ export type Database = {
         | "failed"
         | "cancelled"
         | "expired"
+      tag_type: "system" | "custom"
     }
     CompositeTypes: {
       [_ in never]: never
