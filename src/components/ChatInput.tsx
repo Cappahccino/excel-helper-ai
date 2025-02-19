@@ -1,7 +1,12 @@
+
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send, FileSpreadsheet, X } from "lucide-react";
+import { Paperclip, Send } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { toast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchTags, createTag, assignTagToFile } from "@/services/tagService";
+import { FileUploadCard } from "./FileUploadCard";
+import { Tag } from "@/types/tags";
 
 interface ChatInputProps {
   onSendMessage: (message: string, fileIds?: string[] | null) => void;
@@ -23,12 +28,61 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [localFiles, setLocalFiles] = useState<File[]>([]);
+  const [fileRoles, setFileRoles] = useState<Record<string, string>>({});
+  const [fileTags, setFileTags] = useState<Record<string, Tag[]>>({});
+  
   const {
     handleFileUpload,
     isUploading,
     fileIds: uploadedFileIds,
     error: uploadError
   } = useFileUpload();
+
+  const queryClient = useQueryClient();
+
+  const { data: tags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: fetchTags
+  });
+
+  const createTagMutation = useMutation({
+    mutationFn: createTag,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast({
+        title: "Success",
+        description: "Tag created successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to create tag",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const assignTagMutation = useMutation({
+    mutationFn: (data: { fileId: string, tagId: string }) => {
+      if (!sessionId) throw new Error("No session ID");
+      return assignTagToFile(sessionId, data.fileId, data.tagId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['file-tags'] });
+      toast({
+        title: "Success",
+        description: "Tag assigned successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to assign tag",
+        variant: "destructive",
+      });
+    }
+  });
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -58,7 +112,16 @@ export function ChatInput({
   };
 
   const removeFile = (index: number) => {
+    const file = localFiles[index];
     setLocalFiles(prev => prev.filter((_, i) => i !== index));
+    setFileRoles(prev => {
+      const { [file.name]: _, ...rest } = prev;
+      return rest;
+    });
+    setFileTags(prev => {
+      const { [file.name]: _, ...rest } = prev;
+      return rest;
+    });
   };
 
   const handleSubmit = () => {
@@ -66,6 +129,8 @@ export function ChatInput({
     onSendMessage(message, uploadedFileIds.length > 0 ? uploadedFileIds : null);
     setMessage("");
     setLocalFiles([]);
+    setFileRoles({});
+    setFileTags({});
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -75,15 +140,39 @@ export function ChatInput({
     }
   };
 
-  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !uploadedFileIds.length);
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  const handleCreateTag = async (name: string) => {
+    await createTagMutation.mutateAsync(name);
   };
+
+  const handleTagSelect = async (file: File, tag: Tag) => {
+    setFileTags(prev => ({
+      ...prev,
+      [file.name]: [...(prev[file.name] || []), tag]
+    }));
+    
+    if (uploadedFileIds.length > 0) {
+      await assignTagMutation.mutateAsync({
+        fileId: uploadedFileIds[0],
+        tagId: tag.id
+      });
+    }
+  };
+
+  const handleTagRemove = (file: File, tag: Tag) => {
+    setFileTags(prev => ({
+      ...prev,
+      [file.name]: prev[file.name]?.filter(t => t.id !== tag.id) || []
+    }));
+  };
+
+  const handleRoleSelect = (file: File, role: string) => {
+    setFileRoles(prev => ({
+      ...prev,
+      [file.name]: role
+    }));
+  };
+
+  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !uploadedFileIds.length);
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
@@ -91,29 +180,19 @@ export function ChatInput({
         {(isUploading || localFiles.length > 0 || fileInfo) && (
           <div className="space-y-2">
             {localFiles.map((file, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-100 rounded-lg shadow-sm">
-                <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                  {isUploading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600" />
-                      <span className="text-sm text-gray-700">Uploading file...</span>
-                    </div>
-                  ) : (
-                    <span className="text-sm font-medium text-gray-700">
-                      {file.name} ({formatFileSize(file.size)})
-                    </span>
-                  )}
-                </div>
-                
-                <button
-                  onClick={() => removeFile(index)}
-                  className="p-1.5 rounded-full hover:bg-gray-200 transition-colors"
-                  aria-label="Remove file"
-                >
-                  <X className="w-4 h-4 text-gray-600" />
-                </button>
-              </div>
+              <FileUploadCard
+                key={file.name}
+                file={file}
+                isUploading={isUploading}
+                onRemove={() => removeFile(index)}
+                onTagSelect={(tag) => handleTagSelect(file, tag)}
+                onTagRemove={(tag) => handleTagRemove(file, tag)}
+                onTagCreate={handleCreateTag}
+                onRoleSelect={(role) => handleRoleSelect(file, role)}
+                selectedTags={fileTags[file.name] || []}
+                selectedRole={fileRoles[file.name]}
+                availableTags={tags}
+              />
             ))}
           </div>
         )}
