@@ -4,30 +4,41 @@ import { ExcelData } from './types.ts';
 
 export async function validateExcelFile(supabase: any, fileId: string): Promise<boolean> {
   try {
-    const { data: file } = await supabase
+    const { data: file, error } = await supabase
       .from('excel_files')
-      .select('*')
+      .select('storage_verified, processing_status')
       .eq('id', fileId)
-      .single();
+      .maybeSingle();
 
-    return !!file && file.storage_verified;
+    if (error) {
+      console.error('Error validating file:', error);
+      return false;
+    }
+
+    return !!file && 
+           file.storage_verified && 
+           ['completed', 'processing', 'analyzing'].includes(file.processing_status);
   } catch (error) {
-    console.error('Error validating Excel file:', error);
+    console.error('Error in validateExcelFile:', error);
     return false;
   }
 }
 
 export async function processExcelFiles(supabase: any, fileId: string): Promise<ExcelData[] | null> {
   try {
-    // First check if we have metadata for this file
-    const { data: metadata } = await supabase
+    console.log(`Processing Excel file: ${fileId}`);
+
+    // First check if we have metadata
+    const { data: metadata, error: metadataError } = await supabase
       .from('file_metadata')
       .select('column_definitions, data_summary')
       .eq('file_id', fileId)
-      .single();
+      .maybeSingle();
 
-    if (metadata?.column_definitions && metadata?.data_summary) {
-      console.log('Using cached metadata for file:', fileId);
+    if (metadataError) {
+      console.error('Error fetching metadata:', metadataError);
+    } else if (metadata?.column_definitions && metadata?.data_summary) {
+      console.log('Using cached metadata');
       return [{
         sheet: 'Sheet1',
         headers: Object.keys(metadata.column_definitions),
@@ -35,53 +46,62 @@ export async function processExcelFiles(supabase: any, fileId: string): Promise<
       }];
     }
 
-    // If no metadata, check the file status
-    const { data: file } = await supabase
+    // If no metadata, check file status
+    const { data: file, error: fileError } = await supabase
       .from('excel_files')
       .select('*')
       .eq('id', fileId)
-      .single();
+      .maybeSingle();
 
-    if (!file || !file.storage_verified) {
-      console.error('File not found or not verified:', fileId);
+    if (fileError) {
+      console.error('Error fetching file:', fileError);
       return null;
     }
 
-    // Return minimal data if file is still processing
-    if (file.processing_status === 'processing') {
-      return [{
-        sheet: 'Sheet1',
-        headers: ['Status'],
-        data: [{ Status: 'File is still being processed' }]
-      }];
+    if (!file || !file.storage_verified) {
+      console.warn('File not found or not verified');
+      return null;
     }
 
-    // Return error if processing failed
-    if (file.processing_status === 'failed') {
-      return [{
-        sheet: 'Sheet1',
-        headers: ['Error'],
-        data: [{ Error: file.error_message || 'File processing failed' }]
-      }];
-    }
+    // Return appropriate response based on processing status
+    switch (file.processing_status) {
+      case 'completed':
+        return [{
+          sheet: 'Sheet1',
+          headers: ['Status'],
+          data: [{ Status: 'File processing completed' }]
+        }];
 
-    // Return empty data if file is pending
-    if (file.processing_status === 'pending') {
-      return [{
-        sheet: 'Sheet1',
-        headers: ['Status'],
-        data: [{ Status: 'File is pending processing' }]
-      }];
-    }
+      case 'processing':
+        return [{
+          sheet: 'Sheet1',
+          headers: ['Status'],
+          data: [{ Status: 'File is currently being processed' }]
+        }];
 
-    // Return completed data
-    return [{
-      sheet: 'Sheet1',
-      headers: ['Status'],
-      data: [{ Status: 'File processing completed' }]
-    }];
+      case 'failed':
+        return [{
+          sheet: 'Sheet1',
+          headers: ['Error'],
+          data: [{ Error: file.error_message || 'File processing failed' }]
+        }];
+
+      case 'pending':
+        return [{
+          sheet: 'Sheet1',
+          headers: ['Status'],
+          data: [{ Status: 'File is queued for processing' }]
+        }];
+
+      default:
+        return [{
+          sheet: 'Sheet1',
+          headers: ['Status'],
+          data: [{ Status: `Unknown file status: ${file.processing_status}` }]
+        }];
+    }
   } catch (error) {
-    console.error('Error processing Excel file:', error);
+    console.error('Error in processExcelFiles:', error);
     return null;
   }
 }
