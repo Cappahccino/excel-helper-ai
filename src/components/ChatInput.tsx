@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -43,45 +44,6 @@ export function ChatInput({
   const { data: tags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: fetchTags
-  });
-
-  const createTagMutation = useMutation({
-    mutationFn: createTag,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
-      toast({
-        title: "Success",
-        description: "Tag created successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to create tag",
-        variant: "destructive",
-      });
-    }
-  });
-
-  const assignTagMutation = useMutation({
-    mutationFn: (data: { fileId: string, tagId: string }) => {
-      if (!sessionId) throw new Error("No session ID");
-      return assignTagToFile(sessionId, data.fileId, data.tagId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['file-tags'] });
-      toast({
-        title: "Success",
-        description: "Tag assigned successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to assign tag",
-        variant: "destructive",
-      });
-    }
   });
 
   useEffect(() => {
@@ -145,22 +107,11 @@ export function ChatInput({
     }
   };
 
-  const handleCreateTag = async (name: string) => {
-    await createTagMutation.mutateAsync(name);
-  };
-
-  const handleTagSelect = async (file: File, tag: Tag) => {
-    setFileTags(prev => ({
+  const handleRoleSelect = (fileName: string, role: string) => {
+    setFileRoles(prev => ({
       ...prev,
-      [file.name]: [...(prev[file.name] || []), tag]
+      [fileName]: role
     }));
-    
-    if (uploadedFileIds.length > 0) {
-      await assignTagMutation.mutateAsync({
-        fileId: uploadedFileIds[0],
-        tagId: tag.id
-      });
-    }
   };
 
   const handleTagInput = (fileName: string, tagName: string) => {
@@ -171,13 +122,6 @@ export function ChatInput({
 
   const handleTagRemove = (fileName: string, tag: Tag) => {
     setPendingTags(prev => prev.filter(t => t !== tag.name));
-  };
-
-  const handleRoleSelect = (file: File, role: string) => {
-    setFileRoles(prev => ({
-      ...prev,
-      [file.name]: role
-    }));
   };
 
   const isDisabled = isAnalyzing || isUploading || (!message.trim() && !uploadedFileIds.length);
