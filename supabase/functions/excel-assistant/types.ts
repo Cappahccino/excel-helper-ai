@@ -1,29 +1,21 @@
 
 export interface RequestBody {
-  files?: FileRequest[] | null;
+  fileIds?: string[] | null;
   query: string;
   userId: string;
-  sessionId?: string | null;
+  sessionId: string;
+  messageId: string;
   threadId?: string | null;
-  messageId?: string;
-}
-
-export interface FileRequest {
-  fileId: string;
-  systemRole?: 'primary' | 'reference' | 'supporting';
-  tags?: string[];
 }
 
 export interface ExcelData {
   sheet: string;
   headers: string[];
-  data: any[];
+  data: Record<string, any>[];
 }
 
 export interface ProcessedFileContext {
   fileId: string;
   fileName: string;
-  systemRole: string;
-  tags: string[];
   data: ExcelData[];
 }
