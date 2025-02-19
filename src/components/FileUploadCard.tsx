@@ -1,5 +1,5 @@
 
-import { FileSpreadsheet, X, Sticker } from "lucide-react";
+import { FileSpreadsheet, X } from "lucide-react";
 import { TagSelect } from "./tags/TagSelect";
 import {
   Select,
@@ -16,7 +16,7 @@ interface FileUploadCardProps {
   file: File;
   isUploading: boolean;
   onRemove: () => void;
-  onRoleSelect: (role: string) => void;
+  onRoleSelect: (role: string | null) => void;
   selectedTags: Tag[];
   selectedRole?: string;
   availableTags: Tag[];
@@ -43,16 +43,8 @@ export function FileUploadCard({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  // Function to get a pastel color based on tag index
-  const getTagColor = (index: number) => {
-    const colors = [
-      "bg-purple-50 text-purple-700",  // Light Purple
-      "bg-blue-50 text-blue-700",      // Light Blue
-      "bg-green-50 text-green-700",    // Light Green
-      "bg-pink-50 text-pink-700",      // Light Pink
-      "bg-yellow-50 text-yellow-700"   // Light Yellow
-    ];
-    return colors[index % colors.length];
+  const handleRoleSelect = (value: string | undefined) => {
+    onRoleSelect(value || null);
   };
 
   return (
@@ -75,17 +67,13 @@ export function FileUploadCard({
             </div>
             {selectedTags.length > 0 && (
               <div className="flex flex-wrap gap-2 ml-7 mt-1">
-                {selectedTags.map((tag, index) => (
-                  <div
+                {selectedTags.map((tag) => (
+                  <TagBadge
                     key={tag.id}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-1 rounded-md",
-                      getTagColor(index)
-                    )}
-                  >
-                    <Sticker className="w-3.5 h-3.5" />
-                    <span className="text-xs font-medium">{tag.name}</span>
-                  </div>
+                    tag={tag}
+                    onRemove={() => onTagRemove(tag)}
+                    className="flex items-center gap-1.5"
+                  />
                 ))}
               </div>
             )}
@@ -108,7 +96,7 @@ export function FileUploadCard({
               </label>
               <Select
                 value={selectedRole}
-                onValueChange={onRoleSelect}
+                onValueChange={handleRoleSelect}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select file role" />
