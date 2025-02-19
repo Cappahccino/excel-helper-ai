@@ -36,8 +36,28 @@ export function TagSelect({
   className
 }: TagSelectProps) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
-  const [inputValue, setInputValue] = useState("");
+  const [searchValue, setSearchValue] = useState("");
+
+  // Filter out already selected tags and filter by search value
+  const filteredTags = tags
+    .filter(tag => !selectedTags.find(t => t.id === tag.id))
+    .filter(tag => 
+      tag.name.toLowerCase().includes(searchValue.toLowerCase())
+    );
+
+  const handleSelect = (selectedTag: Tag) => {
+    onSelect(selectedTag);
+    setSearchValue("");
+    setOpen(false);
+  };
+
+  const handleCreate = async () => {
+    if (!searchValue.trim() || !onCreate) return;
+    
+    await onCreate(searchValue.trim());
+    setSearchValue("");
+    setOpen(false);
+  };
 
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
@@ -61,48 +81,39 @@ export function TagSelect({
             <ChevronsUpDown className="h-4 w-4 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[200px] p-0">
-          <Command>
-            <CommandInput
+        <PopoverContent className="w-[200px] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput 
               placeholder="Search tags..."
-              value={inputValue}
-              onValueChange={setInputValue}
+              value={searchValue}
+              onValueChange={setSearchValue}
             />
             <CommandEmpty>
-              {onCreate && (
+              {onCreate && searchValue.trim() && (
                 <button
                   className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
-                  onClick={() => {
-                    onCreate(inputValue);
-                    setInputValue("");
-                  }}
+                  onClick={handleCreate}
                 >
                   <Plus className="h-4 w-4" />
-                  Create "{inputValue}"
+                  Create "{searchValue.trim()}"
                 </button>
               )}
             </CommandEmpty>
             <CommandGroup>
-              {tags
-                .filter(tag => !selectedTags.find(t => t.id === tag.id))
-                .map((tag) => (
-                  <CommandItem
-                    key={tag.id}
-                    value={tag.name}
-                    onSelect={() => {
-                      onSelect(tag);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === tag.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {tag.name}
-                  </CommandItem>
-                ))}
+              {filteredTags.map((tag) => (
+                <CommandItem
+                  key={tag.id}
+                  value={tag.id}
+                  onSelect={() => handleSelect(tag)}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 opacity-0"
+                    )}
+                  />
+                  {tag.name}
+                </CommandItem>
+              ))}
             </CommandGroup>
           </Command>
         </PopoverContent>
