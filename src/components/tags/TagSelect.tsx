@@ -2,9 +2,7 @@
 import { useState, useRef, KeyboardEvent, useEffect } from "react";
 import { Tag } from "@/types/tags";
 import { Input } from "@/components/ui/input";
-import { TagBadge } from "./TagBadge";
 import { cn } from "@/lib/utils";
-import { Sticker } from "lucide-react";
 
 interface TagSelectProps {
   tags: Tag[];
@@ -61,10 +59,8 @@ export function TagSelect({
       e.preventDefault();
       
       if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
-        // Select existing tag
         onTagInput(suggestions[selectedSuggestionIndex].name);
       } else if (inputValue.trim()) {
-        // Input new tag
         onTagInput(inputValue.trim());
       }
       
@@ -95,18 +91,6 @@ export function TagSelect({
 
   return (
     <div className={className}>
-      <div className="flex flex-wrap gap-2 mb-2">
-        {selectedTags.map((tag) => (
-          <div key={tag.id} className="flex items-center gap-1">
-            <Sticker className="w-4 h-4 text-gray-500" />
-            <TagBadge
-              tag={tag}
-              onRemove={() => onRemove(tag)}
-            />
-          </div>
-        ))}
-      </div>
-      
       <div className="relative">
         <Input
           ref={inputRef}
@@ -130,12 +114,11 @@ export function TagSelect({
                   key={tag.id}
                   onClick={() => handleSuggestionClick(tag)}
                   className={cn(
-                    "w-full text-left px-2 py-1.5 text-sm rounded flex items-center gap-2",
+                    "w-full text-left px-3 py-2 text-sm rounded",
                     "hover:bg-accent hover:text-accent-foreground",
                     selectedSuggestionIndex === index && "bg-accent text-accent-foreground"
                   )}
                 >
-                  <Sticker className="w-4 h-4" />
                   {tag.name}
                 </button>
               ))}

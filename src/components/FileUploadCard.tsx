@@ -1,5 +1,5 @@
 
-import { FileSpreadsheet, X, Sticker } from "lucide-react";
+import { FileSpreadsheet, X } from "lucide-react";
 import { TagSelect } from "./tags/TagSelect";
 import {
   Select,
@@ -9,14 +9,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tag } from "@/types/tags";
-import { TagBadge } from "./tags/TagBadge";
 import { cn } from "@/lib/utils";
 
 interface FileUploadCardProps {
   file: File;
   isUploading: boolean;
   onRemove: () => void;
-  onRoleSelect: (role: string) => void;
+  onRoleSelect: (role: string | null) => void;
   selectedTags: Tag[];
   selectedRole?: string;
   availableTags: Tag[];
@@ -43,16 +42,30 @@ export function FileUploadCard({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  // Function to get a pastel color based on tag index
-  const getTagColor = (index: number) => {
+  // Function to get a pastel color based on tag name
+  const getTagColor = (name: string) => {
     const colors = [
-      "bg-purple-50 text-purple-700",  // Light Purple
-      "bg-blue-50 text-blue-700",      // Light Blue
-      "bg-green-50 text-green-700",    // Light Green
-      "bg-pink-50 text-pink-700",      // Light Pink
-      "bg-yellow-50 text-yellow-700"   // Light Yellow
+      "bg-[#F2FCE2] text-[#4B7F52]", // Soft Green
+      "bg-[#E5DEFF] text-[#4A3D89]", // Soft Purple
+      "bg-[#FFDEE2] text-[#943D4B]", // Soft Pink
+      "bg-[#D3E4FD] text-[#2C5282]", // Soft Blue
+      "bg-[#FDE1D3] text-[#974E34]", // Soft Peach
+      "bg-[#FEF7CD] text-[#8B7E2B]"  // Soft Yellow
     ];
-    return colors[index % colors.length];
+    
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const handleRoleSelect = (value: string) => {
+    if (value === selectedRole) {
+      onRoleSelect(null); // Clear the role if it's clicked again
+    } else {
+      onRoleSelect(value);
+    }
   };
 
   return (
@@ -75,16 +88,21 @@ export function FileUploadCard({
             </div>
             {selectedTags.length > 0 && (
               <div className="flex flex-wrap gap-2 ml-7 mt-1">
-                {selectedTags.map((tag, index) => (
+                {selectedTags.map((tag) => (
                   <div
                     key={tag.id}
                     className={cn(
-                      "flex items-center gap-1.5 px-2 py-1 rounded-md",
-                      getTagColor(index)
+                      "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium",
+                      getTagColor(tag.name)
                     )}
                   >
-                    <Sticker className="w-3.5 h-3.5" />
-                    <span className="text-xs font-medium">{tag.name}</span>
+                    <span>{tag.name}</span>
+                    <button
+                      onClick={() => onTagRemove(tag)}
+                      className="p-0.5 hover:bg-black/10 rounded-md transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -108,7 +126,7 @@ export function FileUploadCard({
               </label>
               <Select
                 value={selectedRole}
-                onValueChange={onRoleSelect}
+                onValueChange={handleRoleSelect}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select file role" />
