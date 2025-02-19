@@ -3,8 +3,8 @@ import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { toast } from "@/hooks/use-toast";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchTags, createTag, assignTagToFile } from "@/services/tagService";
+import { useQuery } from "@tanstack/react-query";
+import { fetchTags } from "@/services/tagService";
 import { FileUploadCard } from "./FileUploadCard";
 import { Tag } from "@/types/tags";
 
@@ -17,6 +17,9 @@ interface ChatInputProps {
     file_size: number;
   } | null;
 }
+
+const MAX_TAG_LENGTH = 50;
+const TAG_REGEX = /^[a-zA-Z0-9\s-_]+$/;
 
 export function ChatInput({
   onSendMessage,
@@ -38,8 +41,6 @@ export function ChatInput({
     fileIds: uploadedFileIds,
     error: uploadError
   } = useFileUpload();
-
-  const queryClient = useQueryClient();
 
   const { data: tags = [] } = useQuery({
     queryKey: ['tags'],
@@ -86,13 +87,41 @@ export function ChatInput({
     });
   };
 
+  const validateTag = (tagName: string): string | null => {
+    const trimmedTag = tagName.trim();
+    
+    if (!trimmedTag) {
+      return "Tag cannot be empty";
+    }
+    
+    if (trimmedTag.length > MAX_TAG_LENGTH) {
+      return `Tag must be ${MAX_TAG_LENGTH} characters or less`;
+    }
+    
+    if (!TAG_REGEX.test(trimmedTag)) {
+      return "Tag can only contain letters, numbers, spaces, hyphens, and underscores";
+    }
+    
+    if (pendingTags.some(t => t.toLowerCase() === trimmedTag.toLowerCase())) {
+      return "Tag already exists";
+    }
+    
+    return null;
+  };
+
   const handleSubmit = () => {
     if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
+    
+    const validTags = pendingTags
+      .map(tag => tag.trim())
+      .filter(tag => tag && !validateTag(tag));
+
     onSendMessage(
       message,
       uploadedFileIds.length > 0 ? uploadedFileIds : null,
-      pendingTags.length > 0 ? pendingTags : null
+      validTags.length > 0 ? validTags : null
     );
+    
     setMessage("");
     setLocalFiles([]);
     setFileRoles({});
@@ -115,9 +144,17 @@ export function ChatInput({
   };
 
   const handleTagInput = (fileName: string, tagName: string) => {
-    if (!pendingTags.includes(tagName)) {
-      setPendingTags(prev => [...prev, tagName]);
+    const error = validateTag(tagName);
+    if (error) {
+      toast({
+        title: "Invalid Tag",
+        description: error,
+        variant: "destructive"
+      });
+      return;
     }
+
+    setPendingTags(prev => [...prev, tagName.trim()]);
   };
 
   const handleTagRemove = (fileName: string, tag: Tag) => {

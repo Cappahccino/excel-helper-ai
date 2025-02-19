@@ -1,6 +1,6 @@
 
 export interface RequestBody {
-  fileId?: string | null;
+  files?: FileRequest[] | null;
   query: string;
   userId: string;
   sessionId?: string | null;
@@ -8,26 +8,22 @@ export interface RequestBody {
   messageId?: string;
 }
 
-export interface MessageResponse {
-  message: string;
-  messageId: string | null;
-  sessionId: string;
+export interface FileRequest {
+  fileId: string;
+  systemRole?: 'primary' | 'reference' | 'supporting';
+  tags?: string[];
 }
 
-export interface Message {
-  id: string;
-  content: string;
-  role: 'user' | 'assistant';
-  session_id: string;
-  created_at: string;
-  updated_at: string;
-  status: 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
-  metadata?: {
-    processing_stage?: {
-      stage: string;
-      started_at: number;
-      last_updated: number;
-      completion_percentage?: number;
-    };
-  } | null;
+export interface ExcelData {
+  sheet: string;
+  headers: string[];
+  data: any[];
+}
+
+export interface ProcessedFileContext {
+  fileId: string;
+  fileName: string;
+  systemRole: string;
+  tags: string[];
+  data: ExcelData[];
 }

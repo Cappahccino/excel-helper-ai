@@ -1,46 +1,87 @@
 
-import * as XLSX from 'npm:xlsx';
+import { createClient } from '@supabase/supabase-js';
 import { ExcelData } from './types.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
-export async function processExcelFile(supabase: ReturnType<typeof createClient>, fileId: string): Promise<ExcelData[] | null> {
-  if (!fileId) return null;
-  
-  console.log(`📂 Processing file ID: ${fileId}`);
-  
-  const { data: fileData, error: fileError } = await supabase
-    .from('excel_files')
-    .select('file_path')
-    .eq('id', fileId)
-    .single();
-
-  if (fileError) throw new Error(`File metadata error: ${fileError.message}`);
-  
-  const { data: fileBuffer, error: downloadError } = await supabase.storage
-    .from('excel_files')
-    .download(fileData.file_path);
-
-  if (downloadError) throw new Error(`File download error: ${downloadError.message}`);
-
+export async function validateExcelFile(supabase: any, fileId: string): Promise<boolean> {
   try {
-    const arrayBuffer = await fileBuffer.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer);
-    
-    const results: ExcelData[] = [];
-    
-    for (const sheetName of workbook.SheetNames) {
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      const limitedData = jsonData.slice(0, 1000);
-      results.push({
-        sheetName,
-        data: limitedData
-      });
-    }
-    
-    return results;
+    const { data: file } = await supabase
+      .from('excel_files')
+      .select('*')
+      .eq('id', fileId)
+      .single();
+
+    return !!file && file.storage_verified;
   } catch (error) {
-    console.error('Excel processing error:', error);
-    throw new Error(`Failed to process Excel file: ${error.message}`);
+    console.error('Error validating Excel file:', error);
+    return false;
+  }
+}
+
+export async function processExcelFiles(supabase: any, fileId: string): Promise<ExcelData[] | null> {
+  try {
+    // First check if we have metadata for this file
+    const { data: metadata } = await supabase
+      .from('file_metadata')
+      .select('column_definitions, data_summary')
+      .eq('file_id', fileId)
+      .single();
+
+    if (metadata?.column_definitions && metadata?.data_summary) {
+      console.log('Using cached metadata for file:', fileId);
+      return [{
+        sheet: 'Sheet1',
+        headers: Object.keys(metadata.column_definitions),
+        data: metadata.data_summary
+      }];
+    }
+
+    // If no metadata, check the file status
+    const { data: file } = await supabase
+      .from('excel_files')
+      .select('*')
+      .eq('id', fileId)
+      .single();
+
+    if (!file || !file.storage_verified) {
+      console.error('File not found or not verified:', fileId);
+      return null;
+    }
+
+    // Return minimal data if file is still processing
+    if (file.processing_status === 'processing') {
+      return [{
+        sheet: 'Sheet1',
+        headers: ['Status'],
+        data: [{ Status: 'File is still being processed' }]
+      }];
+    }
+
+    // Return error if processing failed
+    if (file.processing_status === 'failed') {
+      return [{
+        sheet: 'Sheet1',
+        headers: ['Error'],
+        data: [{ Error: file.error_message || 'File processing failed' }]
+      }];
+    }
+
+    // Return empty data if file is pending
+    if (file.processing_status === 'pending') {
+      return [{
+        sheet: 'Sheet1',
+        headers: ['Status'],
+        data: [{ Status: 'File is pending processing' }]
+      }];
+    }
+
+    // Return completed data
+    return [{
+      sheet: 'Sheet1',
+      headers: ['Status'],
+      data: [{ Status: 'File processing completed' }]
+    }];
+  } catch (error) {
+    console.error('Error processing Excel file:', error);
+    return null;
   }
 }
