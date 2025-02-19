@@ -1,7 +1,12 @@
+
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send, FileSpreadsheet, X } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { toast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchTags, createTag, assignTagToFile } from "@/services/tagService";
+import { TagSelect } from "./tags/TagSelect";
+import { Tag } from "@/types/tags";
 
 interface ChatInputProps {
   onSendMessage: (message: string, fileIds?: string[] | null) => void;
@@ -29,6 +34,55 @@ export function ChatInput({
     fileIds: uploadedFileIds,
     error: uploadError
   } = useFileUpload();
+
+  const queryClient = useQueryClient();
+
+  // Fetch available tags
+  const { data: tags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: fetchTags
+  });
+
+  // Create new tag mutation
+  const createTagMutation = useMutation({
+    mutationFn: createTag,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      toast({
+        title: "Success",
+        description: "Tag created successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to create tag",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Assign tag to file mutation
+  const assignTagMutation = useMutation({
+    mutationFn: (data: { fileId: string, tagId: string }) => {
+      if (!sessionId) throw new Error("No session ID");
+      return assignTagToFile(sessionId, data.fileId, data.tagId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['file-tags'] });
+      toast({
+        title: "Success",
+        description: "Tag assigned successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to assign tag",
+        variant: "destructive",
+      });
+    }
+  });
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -85,34 +139,60 @@ export function ChatInput({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const handleCreateTag = async (name: string) => {
+    await createTagMutation.mutateAsync(name);
+  };
+
+  const handleAssignTag = async (tag: Tag) => {
+    if (!uploadedFileIds.length) return;
+    await assignTagMutation.mutateAsync({
+      fileId: uploadedFileIds[0],
+      tagId: tag.id
+    });
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2 py-3 px-0 my-0 mx-0">
         {(isUploading || localFiles.length > 0 || fileInfo) && (
           <div className="space-y-2">
             {localFiles.map((file, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-100 rounded-lg shadow-sm">
-                <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                  {isUploading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600" />
-                      <span className="text-sm text-gray-700">Uploading file...</span>
-                    </div>
-                  ) : (
-                    <span className="text-sm font-medium text-gray-700">
-                      {file.name} ({formatFileSize(file.size)})
-                    </span>
-                  )}
+              <div key={index} className="flex flex-col gap-2 p-3 bg-gray-100 rounded-lg shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                    {isUploading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600" />
+                        <span className="text-sm text-gray-700">Uploading file...</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium text-gray-700">
+                        {file.name} ({formatFileSize(file.size)})
+                      </span>
+                    )}
+                  </div>
+                  
+                  <button
+                    onClick={() => removeFile(index)}
+                    className="p-1.5 rounded-full hover:bg-gray-200 transition-colors"
+                    aria-label="Remove file"
+                  >
+                    <X className="w-4 h-4 text-gray-600" />
+                  </button>
                 </div>
-                
-                <button
-                  onClick={() => removeFile(index)}
-                  className="p-1.5 rounded-full hover:bg-gray-200 transition-colors"
-                  aria-label="Remove file"
-                >
-                  <X className="w-4 h-4 text-gray-600" />
-                </button>
+
+                {!isUploading && uploadedFileIds.length > 0 && (
+                  <div className="pt-2 border-t border-gray-200">
+                    <TagSelect
+                      tags={tags}
+                      selectedTags={[]}
+                      onSelect={handleAssignTag}
+                      onRemove={() => {}}
+                      onCreate={handleCreateTag}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
