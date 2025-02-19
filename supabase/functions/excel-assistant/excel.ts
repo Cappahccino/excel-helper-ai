@@ -1,5 +1,5 @@
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { ExcelData } from './types.ts';
 
 export async function validateExcelFile(supabase: any, fileId: string): Promise<boolean> {
