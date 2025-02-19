@@ -127,7 +127,7 @@ export function ChatInput({
   const handleSubmit = () => {
     if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
     onSendMessage(
-      message, 
+      message,
       uploadedFileIds.length > 0 ? uploadedFileIds : null,
       pendingTags.length > 0 ? pendingTags : null
     );
@@ -163,13 +163,13 @@ export function ChatInput({
     }
   };
 
-  const handleTagInput = (tagName: string) => {
+  const handleTagInput = (fileName: string, tagName: string) => {
     if (!pendingTags.includes(tagName)) {
       setPendingTags(prev => [...prev, tagName]);
     }
   };
 
-  const handleTagRemove = (tag: Tag) => {
+  const handleTagRemove = (fileName: string, tag: Tag) => {
     setPendingTags(prev => prev.filter(t => t !== tag.name));
   };
 
@@ -187,21 +187,18 @@ export function ChatInput({
       <div className="flex flex-col gap-2 py-3 px-0 my-0 mx-0">
         {(isUploading || localFiles.length > 0 || fileInfo) && (
           <div className="space-y-2">
-            {localFiles.map((file, index) => (
+            {localFiles.map((file) => (
               <FileUploadCard
                 key={file.name}
                 file={file}
                 isUploading={isUploading}
-                onRemove={() => removeFile(index)}
-                onTagSelect={(tag) => handleTagSelect(file, tag)}
-                onTagRemove={(tag) => handleTagRemove(file, tag)}
-                onTagCreate={handleCreateTag}
-                onRoleSelect={(role) => handleRoleSelect(file, role)}
+                onRemove={() => removeFile(localFiles.indexOf(file))}
+                onRoleSelect={(role) => handleRoleSelect(file.name, role)}
                 selectedTags={fileTags[file.name] || []}
                 selectedRole={fileRoles[file.name]}
                 availableTags={tags}
-                onTagInput={handleTagInput}
-                onTagRemove={handleTagRemove}
+                onTagInput={(tagName) => handleTagInput(file.name, tagName)}
+                onTagRemove={(tag) => handleTagRemove(file.name, tag)}
               />
             ))}
           </div>

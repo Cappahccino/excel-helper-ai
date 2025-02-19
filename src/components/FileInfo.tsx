@@ -1,4 +1,3 @@
-
 import { FileSpreadsheet, Table } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,8 +17,25 @@ interface FileInfoProps {
 }
 
 export function FileInfo({ filename, fileSize, fileId, messageId, className }: FileInfoProps) {
-  const queryClient = useQueryClient();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: fileTags = [] } = useQuery({
+    queryKey: ['file-tags', fileId],
+    queryFn: () => fileId ? fetchFileTags(fileId) : Promise.resolve([]),
+    enabled: !!fileId
+  });
+
+  const handleTagInput = async (tagName: string) => {
+    toast({
+      title: "Tag added",
+      description: `Tag "${tagName}" will be created when sending the message.`
+    });
+  };
+
+  const handleTagRemove = (tag: Tag) => {
+    // Handle tag removal if needed
+  };
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -29,12 +45,6 @@ export function FileInfo({ filename, fileSize, fileId, messageId, className }: F
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
-
-  const { data: fileTags = [] } = useQuery({
-    queryKey: ['file-tags', fileId],
-    queryFn: () => fileId ? fetchFileTags(fileId) : Promise.resolve([]),
-    enabled: !!fileId
-  });
 
   const createTagMutation = useMutation({
     mutationFn: createTag,
@@ -98,9 +108,8 @@ export function FileInfo({ filename, fileSize, fileId, messageId, className }: F
             <TagSelect
               tags={[]}
               selectedTags={fileTags.map((ft: any) => ft.file_tags)}
-              onSelect={handleAssignTag}
-              onRemove={() => {}}
-              onCreate={handleCreateTag}
+              onTagInput={handleTagInput}
+              onRemove={handleTagRemove}
               className="mt-2"
             />
           )}

@@ -6,6 +6,7 @@ import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
 import { InfiniteData } from "@tanstack/react-query";
+import { Tag } from "@/types/tags";
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -98,15 +99,15 @@ export function useMessages(sessionId: string | null) {
         );
 
         if (newTagNames.length > 0) {
+          const newTagsToCreate = newTagNames.map(name => ({
+            name,
+            type: 'custom' as const,
+            user_id: user.id
+          }));
+
           const { data: newTags, error: createError } = await supabase
             .from('file_tags')
-            .insert(
-              newTagNames.map(name => ({
-                name,
-                type: 'custom',
-                user_id: user.id
-              }))
-            )
+            .insert(newTagsToCreate)
             .select();
 
           if (createError) throw createError;
