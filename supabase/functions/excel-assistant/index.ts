@@ -59,6 +59,12 @@ serve(async (req) => {
         throw new Error(`Failed to fetch file info: ${fileError?.message}`)
       }
 
+      // Update file status
+      await supabase
+        .from('excel_files')
+        .update({ processing_status: 'processing' })
+        .eq('id', fileId)
+
       // Download file
       const { data: fileData, error: downloadError } = await supabase
         .storage
@@ -83,79 +89,78 @@ serve(async (req) => {
       // Convert to JSON
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
       
+      // Get column definitions
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
+      const columns = []
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+          const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })]
+          if (cell) {
+            columns.push({
+              name: cell.v.toString(),
+              type: typeof cell.v
+            })
+            break
+          }
+        }
+      }
+
+      // Create summary statistics
+      const summary = {
+        rowCount: jsonData.length,
+        columnCount: columns.length,
+        sampleData: jsonData.slice(0, 5)
+      }
+
+      // Store metadata
+      const { error: metadataError } = await supabase
+        .from('file_metadata')
+        .insert({
+          file_id: fileId,
+          column_definitions: columns,
+          row_count: jsonData.length,
+          data_summary: summary
+        })
+
+      if (metadataError) {
+        console.error('Metadata storage error:', metadataError)
+        throw new Error(`Failed to store file metadata: ${metadataError.message}`)
+      }
+
+      // Update file status to completed
+      await supabase
+        .from('excel_files')
+        .update({ 
+          processing_status: 'completed',
+          processing_completed_at: new Date().toISOString()
+        })
+        .eq('id', fileId)
+
       return {
         fileId,
         filename: file.filename,
-        data: jsonData,
-        headers: Object.keys(jsonData[0] || {})
+        summary
       }
     }))
 
-    // Update message to analyzing state
-    await supabase
-      .from('chat_messages')
-      .update({
-        metadata: {
-          processing_stage: {
-            stage: 'analyzing',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        }
-      })
-      .eq('id', messageId)
-
-    // Prepare data summary for OpenAI
-    const dataSummary = fileResults.map(result => {
-      const { filename, data, headers } = result
+    // Generate response message
+    const fileAnalysis = fileResults.map(result => {
+      const { filename, summary } = result
       return `
 File: ${filename}
-Headers: ${headers.join(', ')}
-Sample data (first 3 rows):
-${JSON.stringify(data.slice(0, 3), null, 2)}
+- Contains ${summary.rowCount} rows and ${summary.columnCount} columns
+- Column names: ${summary.sampleData[0] ? Object.keys(summary.sampleData[0]).join(', ') : 'No data'}
+- First ${Math.min(5, summary.rowCount)} rows preview available in metadata
       `.trim()
     }).join('\n\n')
 
-    // Prepare system message
-    const systemMessage = `You are an expert data analyst. Analyze the provided Excel data and answer questions about it.
-Current data context:
-${dataSummary}
-
-Provide clear, concise analysis based on the data. If you notice any interesting patterns or insights, mention them.
-If the data doesn't contain enough information to answer a question, explain what's missing.`;
-
-    console.log('Sending request to OpenAI...')
-    
-    // Send request to OpenAI
-    const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: query || "What insights can you provide about this data?" }
-        ],
-      }),
-    })
-
-    if (!openAiResponse.ok) {
-      const error = await openAiResponse.text()
-      console.error('OpenAI API error:', error)
-      throw new Error(`OpenAI API error: ${error}`)
-    }
-
-    const aiData = await openAiResponse.json()
-    const analysis = aiData.choices[0].message.content
+    const response = `I've analyzed the Excel ${fileResults.length > 1 ? 'files' : 'file'} you provided:\n\n${fileAnalysis}\n\nWhat would you like to know about the data?`
 
     // Update message with analysis
     await supabase
       .from('chat_messages')
       .update({
-        content: analysis,
+        content: response,
         status: 'completed',
         metadata: {
           processing_stage: {
@@ -181,7 +186,7 @@ If the data doesn't contain enough information to answer a question, explain wha
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const errorMessage = `I apologize, but I encountered an error while processing your request: ${error.message}`
+    const errorMessage = `I apologize, but I encountered an error while processing the Excel file: ${error.message}`
 
     if (req.body) {
       const { messageId } = await req.json()
@@ -205,7 +210,7 @@ If the data doesn't contain enough information to answer a question, explain wha
 
     return new Response(
       JSON.stringify({ 
-        error: 'Failed to process request',
+        error: 'Failed to process Excel file',
         details: error.message
       }),
       { 
