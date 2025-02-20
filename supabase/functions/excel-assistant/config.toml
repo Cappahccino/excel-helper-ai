@@ -1,4 +1,7 @@
 
-project_id = "saxnxtumstrsqowuwwbt"
+project_id = "saxnxtumstrsqowuwwbt" 
 [import_map]
-imports = { xlsx = "https://esm.sh/xlsx@0.18.5" }
+imports = { 
+  "xlsx": "https://esm.sh/xlsx@0.18.5",
+  "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.7.1"
+}
