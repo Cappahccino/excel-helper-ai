@@ -27,6 +27,17 @@ serve(async (req) => {
 
   try {
     const { fileIds, query, userId, sessionId, messageId } = await req.json()
+
+    // Initial query validation
+    if (!query || query.trim() === "") {
+      return new Response(
+        JSON.stringify({ error: "Query cannot be empty" }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('Processing request:', { fileIds, query, messageId })
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -37,6 +48,7 @@ serve(async (req) => {
 
     // Handle case with no files
     if (!fileIds?.length) {
+      console.log('No files provided, handling general query')
       const response = await handleGeneralQuery(query)
       await updateMessageWithResponse(supabase, messageId, response)
       return new Response(JSON.stringify({ message: 'Analysis complete' }), {
@@ -45,6 +57,7 @@ serve(async (req) => {
     }
 
     // Process files and collect analysis
+    console.log('Processing files:', fileIds)
     const fileAnalysis = await processFiles(supabase, fileIds, messageId)
     
     // Get previous context from the last 5 messages
@@ -57,9 +70,11 @@ serve(async (req) => {
     
     // Build system message with context
     const systemMessage = buildSystemMessage(fileAnalysis, previousMessages || [], query)
+    console.log('Built system message for analysis')
     
     // Get AI analysis
     const analysis = await getAIAnalysis(systemMessage, query)
+    console.log('Received AI analysis')
     
     // Update message with final response
     await updateMessageWithResponse(supabase, messageId, analysis)
@@ -175,21 +190,31 @@ ${JSON.stringify(sampleData, null, 2)}
     .map(msg => `${msg.role}: ${msg.content}`)
     .join('\n')
 
+  // Enhanced system message with clear instruction format
   return `
-You are an expert data analyst analyzing Excel files. You have access to the following data:
+You are an expert data analyst analyzing Excel files. You have access to the following data sources:
 
 ${fileContexts}
 
 Previous conversation context:
 ${conversationContext}
 
-Current query: ${currentQuery}
+Current user query: "${currentQuery}"
 
-Provide a clear, detailed analysis based on the available data. If comparing multiple files, highlight relationships and patterns. If you notice any interesting insights, include them. If the data doesn't contain enough information to answer fully, explain what's missing.
+Instructions:
+1. Analyze the provided data thoroughly
+2. If comparing multiple files, highlight relationships and patterns
+3. Provide specific insights from the data
+4. If any relevant information is missing, explain what would be needed
+5. Use concrete numbers and examples from the data
+6. Format your response in a clear, structured way
+
+Remember to focus on the specific data provided and the user's query.
   `.trim()
 }
 
 async function getAIAnalysis(systemMessage: string, query: string): Promise<string> {
+  console.log('Sending request to OpenAI...')
   const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -197,27 +222,32 @@ async function getAIAnalysis(systemMessage: string, query: string): Promise<stri
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4-turbo',
       messages: [
         { role: 'system', content: systemMessage },
         { role: 'user', content: query }
       ],
+      temperature: 0.7,
     }),
   })
 
   if (!openAiResponse.ok) {
-    const error = await openAiResponse.text()
-    throw new Error(`OpenAI API error: ${error}`)
+    const errorText = await openAiResponse.text()
+    console.error('OpenAI API error:', errorText)
+    throw new Error(`OpenAI API error: ${errorText}`)
   }
 
   const aiData = await openAiResponse.json()
+  console.log('Received response from OpenAI')
   return aiData.choices[0].message.content
 }
 
 async function handleGeneralQuery(query: string): Promise<string> {
+  console.log('Handling general query without files')
   const systemMessage = `
 You are an expert data analyst. The user has not provided any Excel files for analysis, 
 but has asked a general question. Provide helpful guidance or explanations about data analysis concepts.
+Please be specific and practical in your response, using examples where appropriate.
   `.trim()
 
   const response = await getAIAnalysis(systemMessage, query)
