@@ -8,215 +8,276 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface FileAnalysis {
+  fileId: string;
+  filename: string;
+  data: Record<string, any>[];
+  metadata: {
+    columns: string[];
+    rowCount: number;
+    tags: { name: string; aiContext: string | null }[];
+    role?: string;
+  };
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
     const { fileIds, query, userId, sessionId, messageId } = await req.json()
-    
-    if (!fileIds || fileIds.length === 0) {
-      throw new Error('No file IDs provided')
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    console.log('Processing files:', fileIds)
+    // Update initial status
+    await updateMessageStatus(supabase, messageId, 'processing', 'Initializing analysis...')
 
-    // Update message status to processing
-    await supabase
-      .from('chat_messages')
-      .update({
-        status: 'in_progress',
-        metadata: {
-          processing_stage: {
-            stage: 'processing',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        }
+    // Handle case with no files
+    if (!fileIds?.length) {
+      const response = await handleGeneralQuery(query)
+      await updateMessageWithResponse(supabase, messageId, response)
+      return new Response(JSON.stringify({ message: 'Analysis complete' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
-      .eq('id', messageId)
+    }
 
-    // Process each file
-    const fileResults = await Promise.all(fileIds.map(async (fileId) => {
-      console.log('Processing file:', fileId)
-      
-      // Get file info
-      const { data: file, error: fileError } = await supabase
-        .from('excel_files')
-        .select('*')
-        .eq('id', fileId)
-        .single()
-
-      if (fileError || !file) {
-        console.error('File fetch error:', fileError)
-        throw new Error(`Failed to fetch file info: ${fileError?.message}`)
-      }
-
-      // Update file status
-      await supabase
-        .from('excel_files')
-        .update({ processing_status: 'processing' })
-        .eq('id', fileId)
-
-      // Download file
-      const { data: fileData, error: downloadError } = await supabase
-        .storage
-        .from('excel_files')
-        .download(file.file_path)
-
-      if (downloadError || !fileData) {
-        console.error('File download error:', downloadError)
-        throw new Error(`Failed to download file: ${downloadError?.message}`)
-      }
-
-      // Convert file to array buffer
-      const arrayBuffer = await fileData.arrayBuffer()
-      
-      // Read workbook
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-      
-      // Process first worksheet
-      const firstSheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[firstSheetName]
-      
-      // Convert to JSON
-      const jsonData = XLSX.utils.sheet_to_json(worksheet)
-      
-      // Get column definitions
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
-      const columns = []
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-          const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })]
-          if (cell) {
-            columns.push({
-              name: cell.v.toString(),
-              type: typeof cell.v
-            })
-            break
-          }
-        }
-      }
-
-      // Create summary statistics
-      const summary = {
-        rowCount: jsonData.length,
-        columnCount: columns.length,
-        sampleData: jsonData.slice(0, 5)
-      }
-
-      // Store metadata
-      const { error: metadataError } = await supabase
-        .from('file_metadata')
-        .insert({
-          file_id: fileId,
-          column_definitions: columns,
-          row_count: jsonData.length,
-          data_summary: summary
-        })
-
-      if (metadataError) {
-        console.error('Metadata storage error:', metadataError)
-        throw new Error(`Failed to store file metadata: ${metadataError.message}`)
-      }
-
-      // Update file status to completed
-      await supabase
-        .from('excel_files')
-        .update({ 
-          processing_status: 'completed',
-          processing_completed_at: new Date().toISOString()
-        })
-        .eq('id', fileId)
-
-      return {
-        fileId,
-        filename: file.filename,
-        summary
-      }
-    }))
-
-    // Generate response message
-    const fileAnalysis = fileResults.map(result => {
-      const { filename, summary } = result
-      return `
-File: ${filename}
-- Contains ${summary.rowCount} rows and ${summary.columnCount} columns
-- Column names: ${summary.sampleData[0] ? Object.keys(summary.sampleData[0]).join(', ') : 'No data'}
-- First ${Math.min(5, summary.rowCount)} rows preview available in metadata
-      `.trim()
-    }).join('\n\n')
-
-    const response = `I've analyzed the Excel ${fileResults.length > 1 ? 'files' : 'file'} you provided:\n\n${fileAnalysis}\n\nWhat would you like to know about the data?`
-
-    // Update message with analysis
-    await supabase
+    // Process files and collect analysis
+    const fileAnalysis = await processFiles(supabase, fileIds, messageId)
+    
+    // Get previous context from the last 5 messages
+    const { data: previousMessages } = await supabase
       .from('chat_messages')
-      .update({
-        content: response,
-        status: 'completed',
-        metadata: {
-          processing_stage: {
-            stage: 'completed',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        }
-      })
-      .eq('id', messageId)
+      .select('content, role')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(5)
+    
+    // Build system message with context
+    const systemMessage = buildSystemMessage(fileAnalysis, previousMessages || [], query)
+    
+    // Get AI analysis
+    const analysis = await getAIAnalysis(systemMessage, query)
+    
+    // Update message with final response
+    await updateMessageWithResponse(supabase, messageId, analysis)
 
     return new Response(
-      JSON.stringify({ message: 'Processing complete' }),
+      JSON.stringify({ message: 'Analysis complete' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     console.error('Processing error:', error)
-
-    // Update message with error
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-
-    const errorMessage = `I apologize, but I encountered an error while processing the Excel file: ${error.message}`
-
-    if (req.body) {
-      const { messageId } = await req.json()
-      if (messageId) {
-        await supabase
-          .from('chat_messages')
-          .update({
-            content: errorMessage,
-            status: 'failed',
-            metadata: {
-              processing_stage: {
-                stage: 'failed',
-                error: error.message,
-                last_updated: Date.now()
-              }
-            }
-          })
-          .eq('id', messageId)
-      }
-    }
-
+    await handleError(supabase, error, req)
     return new Response(
-      JSON.stringify({ 
-        error: 'Failed to process Excel file',
-        details: error.message
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
+      JSON.stringify({ error: 'Failed to process request', details: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }
 })
+
+async function processFiles(supabase: any, fileIds: string[], messageId: string): Promise<FileAnalysis[]> {
+  const results: FileAnalysis[] = []
+  
+  for (const fileId of fileIds) {
+    await updateMessageStatus(supabase, messageId, 'processing', `Processing file ${fileId}...`)
+    
+    // Get file info and tags
+    const { data: file, error: fileError } = await supabase
+      .from('excel_files')
+      .select(`
+        *,
+        message_files!inner(
+          message_id,
+          role,
+          message_file_tags(
+            tag_id,
+            ai_context,
+            file_tags(
+              name
+            )
+          )
+        )
+      `)
+      .eq('id', fileId)
+      .single()
+
+    if (fileError) throw new Error(`Failed to fetch file info: ${fileError.message}`)
+
+    // Download and process file
+    const { data: fileData, error: downloadError } = await supabase
+      .storage
+      .from('excel_files')
+      .download(file.file_path)
+
+    if (downloadError) throw new Error(`Failed to download file: ${downloadError.message}`)
+
+    const arrayBuffer = await fileData.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+    // Extract tags
+    const tags = file.message_files[0]?.message_file_tags.map((tag: any) => ({
+      name: tag.file_tags.name,
+      aiContext: tag.ai_context
+    })) || []
+
+    results.push({
+      fileId,
+      filename: file.filename,
+      data: jsonData,
+      metadata: {
+        columns: Object.keys(jsonData[0] || {}),
+        rowCount: jsonData.length,
+        tags,
+        role: file.message_files[0]?.role
+      }
+    })
+  }
+
+  return results
+}
+
+function buildSystemMessage(
+  fileAnalysis: FileAnalysis[],
+  previousMessages: Array<{ content: string; role: string }>,
+  currentQuery: string
+): string {
+  // Build context from files
+  const fileContexts = fileAnalysis.map(file => {
+    const { filename, metadata, data } = file
+    const sampleData = data.slice(0, 3)
+    const tagContext = metadata.tags
+      .map(tag => `${tag.name}${tag.aiContext ? `: ${tag.aiContext}` : ''}`)
+      .join('\n')
+
+    return `
+File: ${filename}${metadata.role ? ` (${metadata.role})` : ''}
+Columns: ${metadata.columns.join(', ')}
+Row count: ${metadata.rowCount}
+Tags:
+${tagContext}
+Sample data:
+${JSON.stringify(sampleData, null, 2)}
+    `.trim()
+  }).join('\n\n')
+
+  // Build conversation context
+  const conversationContext = previousMessages
+    .map(msg => `${msg.role}: ${msg.content}`)
+    .join('\n')
+
+  return `
+You are an expert data analyst analyzing Excel files. You have access to the following data:
+
+${fileContexts}
+
+Previous conversation context:
+${conversationContext}
+
+Current query: ${currentQuery}
+
+Provide a clear, detailed analysis based on the available data. If comparing multiple files, highlight relationships and patterns. If you notice any interesting insights, include them. If the data doesn't contain enough information to answer fully, explain what's missing.
+  `.trim()
+}
+
+async function getAIAnalysis(systemMessage: string, query: string): Promise<string> {
+  const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: query }
+      ],
+    }),
+  })
+
+  if (!openAiResponse.ok) {
+    const error = await openAiResponse.text()
+    throw new Error(`OpenAI API error: ${error}`)
+  }
+
+  const aiData = await openAiResponse.json()
+  return aiData.choices[0].message.content
+}
+
+async function handleGeneralQuery(query: string): Promise<string> {
+  const systemMessage = `
+You are an expert data analyst. The user has not provided any Excel files for analysis, 
+but has asked a general question. Provide helpful guidance or explanations about data analysis concepts.
+  `.trim()
+
+  const response = await getAIAnalysis(systemMessage, query)
+  return response
+}
+
+async function updateMessageStatus(supabase: any, messageId: string, stage: string, details: string) {
+  await supabase
+    .from('chat_messages')
+    .update({
+      status: 'in_progress',
+      metadata: {
+        processing_stage: {
+          stage,
+          started_at: Date.now(),
+          last_updated: Date.now(),
+          details
+        }
+      }
+    })
+    .eq('id', messageId)
+}
+
+async function updateMessageWithResponse(supabase: any, messageId: string, content: string) {
+  await supabase
+    .from('chat_messages')
+    .update({
+      content,
+      status: 'completed',
+      metadata: {
+        processing_stage: {
+          stage: 'completed',
+          started_at: Date.now(),
+          last_updated: Date.now()
+        }
+      }
+    })
+    .eq('id', messageId)
+}
+
+async function handleError(supabase: any, error: Error, req: Request) {
+  try {
+    const { messageId } = await req.json()
+    if (messageId) {
+      await supabase
+        .from('chat_messages')
+        .update({
+          content: `I apologize, but I encountered an error while processing your request: ${error.message}`,
+          status: 'failed',
+          metadata: {
+            processing_stage: {
+              stage: 'failed',
+              error: error.message,
+              last_updated: Date.now()
+            }
+          }
+        })
+        .eq('id', messageId)
+    }
+  } catch (e) {
+    console.error('Error handling error:', e)
+  }
+}
