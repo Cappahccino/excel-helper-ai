@@ -1,12 +1,12 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from '@supabase/supabase-js'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-// Add proper error handling and logging for tag-related operations
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -25,7 +25,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Fetch files with their associated tags using LEFT JOIN
     const { data: files, error: filesError } = await supabase
       .from('excel_files')
       .select(`
@@ -51,7 +50,6 @@ serve(async (req) => {
       throw filesError;
     }
 
-    // Process files and their tags
     const processedFiles = files.map(file => {
       const fileTags = file.message_files
         ?.flatMap(mf => mf.message_file_tags)
@@ -139,7 +137,6 @@ serve(async (req) => {
     const data = await chatCompletion.json();
     const answer = data.choices[0].message.content;
 
-    // Update the message with processing information
     const { error: updateError } = await supabase
       .from('chat_messages')
       .update({

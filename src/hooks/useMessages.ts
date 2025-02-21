@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -145,7 +144,7 @@ export function useMessages(sessionId: string | null) {
               message_id: userMessage.id,
               file_id: fileId,
               tag_id: tag.id,
-              ai_context: null // This can be updated later with AI-generated context
+              ai_context: null
             }))
           );
 
@@ -155,11 +154,10 @@ export function useMessages(sessionId: string | null) {
 
           if (tagError) {
             console.error('Error creating message file tags:', tagError);
-            // We don't throw here as we want the message to be sent even if tag association fails
             toast({
-              title: "Warning",
+              title: "Note",
               description: "Message sent, but there was an issue with tag associations.",
-              variant: "warning"
+              variant: "default"
             });
           } else {
             console.log('Message file tags created successfully');
@@ -222,7 +220,6 @@ export function useMessages(sessionId: string | null) {
       });
     },
     onSuccess: async ({ userMessage, assistantMessage, tags }, variables) => {
-      // Update the cache with the new messages
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', variables.sessionId], (old) => {
         if (!old?.pages?.[0]) return old;
         
@@ -238,13 +235,12 @@ export function useMessages(sessionId: string | null) {
       
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
       
-      // Generate AI response with tag context
       generateAIResponse.mutate({
         content: variables.content,
         fileIds: variables.fileIds,
         sessionId: variables.sessionId!,
         messageId: assistantMessage.id,
-        tags: tags // Pass tags to the AI for better context
+        tags: tags
       });
     }
   });
@@ -275,7 +271,7 @@ export function useMessages(sessionId: string | null) {
           sessionId: sessionId,
           threadId: null,
           messageId,
-          tags: tags?.map(tag => ({ id: tag.id, name: tag.name })) // Pass tag information to the edge function
+          tags: tags?.map(tag => ({ id: tag.id, name: tag.name }))
         }
       });
 
