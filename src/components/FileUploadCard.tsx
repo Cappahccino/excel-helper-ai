@@ -77,6 +77,17 @@ export function FileUploadCard({
     }
   };
 
+  const handleTagsChange = (newTags: Tag[]) => {
+    const removedTags = selectedTags.filter(tag => !newTags.find(t => t.id === tag.id));
+    const addedTags = newTags.filter(tag => !selectedTags.find(t => t.id === tag.id));
+    
+    // Handle removed tags
+    removedTags.forEach(tag => onTagRemove(tag));
+    
+    // Handle added tags
+    addedTags.forEach(tag => onTagInput(tag.name));
+  };
+
   return (
     <div className="flex flex-col gap-3 p-4 bg-white rounded-lg border shadow-sm">
       <div className="flex flex-col gap-2">
@@ -107,23 +118,6 @@ export function FileUploadCard({
                   </button>
                 </div>
               )}
-              {selectedTags.length > 0 && selectedTags.map((tag) => (
-                <div
-                  key={tag.id}
-                  className={cn(
-                    "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium",
-                    getTagColor(tag.name)
-                  )}
-                >
-                  <span>{tag.name}</span>
-                  <button
-                    onClick={() => onTagRemove(tag)}
-                    className="p-0.5 hover:bg-black/10 rounded-md transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
             </div>
           </div>
           
@@ -162,10 +156,8 @@ export function FileUploadCard({
                 Tags
               </label>
               <TagSelect
-                tags={availableTags}
                 selectedTags={selectedTags}
-                onTagInput={onTagInput}
-                onRemove={onTagRemove}
+                onTagsChange={handleTagsChange}
                 className="w-full"
               />
             </div>

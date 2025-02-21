@@ -40,12 +40,33 @@ export function TagSelect({
 
   useEffect(() => {
     // In a real implementation, this would fetch from your API
-    // For now, we'll simulate some tags
-    setAvailableTags([
-      { id: '1', name: 'sales', type: 'custom' },
-      { id: '2', name: 'finance', type: 'custom' },
-      { id: '3', name: 'inventory', type: 'custom' },
-    ]);
+    const mockTags: Tag[] = [
+      { 
+        id: '1', 
+        name: 'sales', 
+        type: 'custom',
+        category: null,
+        created_at: new Date().toISOString(),
+        is_system: false
+      },
+      { 
+        id: '2', 
+        name: 'finance', 
+        type: 'custom',
+        category: null,
+        created_at: new Date().toISOString(),
+        is_system: false
+      },
+      { 
+        id: '3', 
+        name: 'inventory', 
+        type: 'custom',
+        category: null,
+        created_at: new Date().toISOString(),
+        is_system: false
+      }
+    ];
+    setAvailableTags(mockTags);
   }, []);
 
   const handleSelect = (tag: Tag) => {
@@ -64,7 +85,10 @@ export function TagSelect({
       const newTag: Tag = {
         id: `new-${Date.now()}`,
         name: inputValue.trim().toLowerCase(),
-        type: 'custom'
+        type: 'custom',
+        category: null,
+        created_at: new Date().toISOString(),
+        is_system: false
       };
       handleSelect(newTag);
       setOpen(false);
