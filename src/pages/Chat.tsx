@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatContent } from "@/components/chat/ChatContent";
 import { MessageCircle } from "lucide-react";
+import TabContent from "@/components/chat/TabContent";
 
 const Chat = () => {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -208,6 +209,14 @@ const Chat = () => {
                       isAnalyzing={status === 'in_progress'}
                       fileInfo={currentFile}
                     />
+                  </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="mt-8"
+                  >
+                    <TabContent />
                   </motion.div>
                 </div>
               </motion.div>
