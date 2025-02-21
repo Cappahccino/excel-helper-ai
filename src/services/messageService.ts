@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message } from "@/types/chat";
@@ -45,43 +44,54 @@ export async function createUserMessage(
   userId: string, 
   fileIds?: string[] | null
 ) {
-  // Start a transaction
-  const { data: message, error: messageError } = await supabase
-    .from('chat_messages')
-    .insert({
-      content,
-      role: 'user',
-      session_id: sessionId,
-      excel_file_id: fileIds?.[0] || null, // Keep for backward compatibility
-      is_ai_response: false,
-      user_id: userId,
-      status: 'completed' as const,
-      version: '1.0.0'
-    })
-    .select(`
-      *,
-      excel_files!fk_chat_messages_excel_files(filename, file_size)
-    `)
-    .single();
+  try {
+    // Create the message
+    const { data: message, error: messageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content,
+        role: 'user',
+        session_id: sessionId,
+        excel_file_id: fileIds?.[0] || null, // Keep for backward compatibility
+        is_ai_response: false,
+        user_id: userId,
+        status: 'completed' as const,
+        version: '1.0.0'
+      })
+      .select(`
+        *,
+        excel_files!fk_chat_messages_excel_files(filename, file_size)
+      `)
+      .single();
 
-  if (messageError) throw messageError;
+    if (messageError) {
+      console.error('Error creating message:', messageError);
+      throw messageError;
+    }
 
-  // If there are files, create the message_files entries
-  if (fileIds && fileIds.length > 0) {
-    const messageFiles = fileIds.map(fileId => ({
-      message_id: message.id,
-      file_id: fileId,
-      role: 'user'
-    }));
+    // If there are files, create the message_files entries
+    if (fileIds && fileIds.length > 0) {
+      const messageFiles = fileIds.map(fileId => ({
+        message_id: message.id,
+        file_id: fileId,
+        role: 'user'
+      }));
 
-    const { error: filesError } = await supabase
-      .from('message_files')
-      .insert(messageFiles);
+      const { error: filesError } = await supabase
+        .from('message_files')
+        .insert(messageFiles);
 
-    if (filesError) throw filesError;
+      if (filesError) {
+        console.error('Error creating message files:', filesError);
+        throw filesError;
+      }
+    }
+
+    return message;
+  } catch (error) {
+    console.error('Error in createUserMessage:', error);
+    throw error;
   }
-
-  return transformMessage(message as DatabaseMessage);
 }
 
 export async function createAssistantMessage(
@@ -176,4 +186,3 @@ function transformMessage(msg: DatabaseMessage): Message {
 function transformMessages(messages: DatabaseMessage[]): Message[] {
   return messages.map(transformMessage);
 }
-

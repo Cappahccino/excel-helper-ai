@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
 import { InfiniteData } from "@tanstack/react-query";
 import { Tag } from "@/types/tags";
+import { createAndAssignTag } from "@/services/tagService";
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -87,87 +88,39 @@ export function useMessages(sessionId: string | null) {
       }
 
       try {
-        let tags: Tag[] = [];
-        if (tagNames && tagNames.length > 0) {
-          console.log('Processing tags:', tagNames);
-          
-          // First, get existing tags
-          const { data: existingTags, error: existingTagsError } = await supabase
-            .from('file_tags')
-            .select('*')
-            .in('name', tagNames.map(name => name.toLowerCase()));
-
-          if (existingTagsError) {
-            console.error('Error fetching existing tags:', existingTagsError);
-            throw existingTagsError;
-          }
-
-          const existingTagNames = new Set(existingTags?.map(t => t.name.toLowerCase()) || []);
-          const newTagNames = tagNames.filter(name => 
-            !existingTagNames.has(name.toLowerCase())
-          );
-
-          if (newTagNames.length > 0) {
-            console.log('Creating new tags:', newTagNames);
-            
-            const newTagsToCreate = newTagNames.map(name => ({
-              name: name.toLowerCase(),
-              type: 'custom' as const,
-              user_id: user.id
-            }));
-
-            const { data: newTags, error: createError } = await supabase
-              .from('file_tags')
-              .insert(newTagsToCreate)
-              .select();
-
-            if (createError) {
-              console.error('Error creating new tags:', createError);
-              throw createError;
-            }
-
-            console.log('New tags created:', newTags);
-            tags = [...(existingTags || []), ...(newTags || [])];
-          } else {
-            tags = existingTags || [];
-          }
-        }
-
         console.log('Creating user message...');
         const userMessage = await createUserMessage(content, currentSessionId, user.id, fileIds);
 
-        if (tags.length > 0 && fileIds && fileIds.length > 0) {
-          console.log('Creating message file tags associations...');
+        // Process tags if they exist and we have files
+        if (tagNames && tagNames.length > 0 && fileIds && fileIds.length > 0) {
+          console.log('Processing tags:', tagNames);
           
-          const messageTags = tags.flatMap(tag => 
-            fileIds.map(fileId => ({
-              message_id: userMessage.id,
-              file_id: fileId,
-              tag_id: tag.id,
-              ai_context: null
-            }))
-          );
-
-          const { error: tagError } = await supabase
-            .from('message_file_tags')
-            .insert(messageTags);
-
-          if (tagError) {
-            console.error('Error creating message file tags:', tagError);
-            toast({
-              title: "Note",
-              description: "Message sent, but there was an issue with tag associations.",
-              variant: "default"
-            });
-          } else {
-            console.log('Message file tags created successfully');
+          for (const fileId of fileIds) {
+            for (const tagName of tagNames) {
+              try {
+                await createAndAssignTag(
+                  tagName,
+                  userMessage.id,
+                  fileId,
+                  null, // category
+                  null  // aiContext
+                );
+              } catch (error) {
+                console.error(`Error processing tag ${tagName} for file ${fileId}:`, error);
+                toast({
+                  title: "Warning",
+                  description: `Failed to process tag "${tagName}". The message will still be sent.`,
+                  variant: "default"
+                });
+              }
+            }
           }
         }
 
         console.log('Creating assistant message...');
         const assistantMessage = await createAssistantMessage(currentSessionId, user.id, fileIds);
 
-        return { userMessage, assistantMessage, tags };
+        return { userMessage, assistantMessage };
       } catch (error) {
         console.error('Error in sendMessage:', error);
         throw error;
@@ -219,7 +172,7 @@ export function useMessages(sessionId: string | null) {
         variant: "destructive"
       });
     },
-    onSuccess: async ({ userMessage, assistantMessage, tags }, variables) => {
+    onSuccess: async ({ userMessage, assistantMessage }, variables) => {
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', variables.sessionId], (old) => {
         if (!old?.pages?.[0]) return old;
         
@@ -239,8 +192,7 @@ export function useMessages(sessionId: string | null) {
         content: variables.content,
         fileIds: variables.fileIds,
         sessionId: variables.sessionId!,
-        messageId: assistantMessage.id,
-        tags: tags
+        messageId: assistantMessage.id
       });
     }
   });
@@ -250,19 +202,17 @@ export function useMessages(sessionId: string | null) {
       content, 
       fileIds, 
       sessionId, 
-      messageId,
-      tags 
+      messageId 
     }: { 
       content: string; 
       fileIds?: string[] | null; 
       sessionId: string;
       messageId: string;
-      tags?: Tag[];
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      console.log('Invoking excel-assistant function with tags:', tags);
+      console.log('Invoking excel-assistant function...');
       const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
         body: {
           fileIds,
@@ -270,8 +220,7 @@ export function useMessages(sessionId: string | null) {
           userId: user.id,
           sessionId: sessionId,
           threadId: null,
-          messageId,
-          tags: tags?.map(tag => ({ id: tag.id, name: tag.name }))
+          messageId
         }
       });
 
