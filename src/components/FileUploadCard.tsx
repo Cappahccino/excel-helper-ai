@@ -62,7 +62,7 @@ export function FileUploadCard({
 
   const handleRoleSelect = (value: string) => {
     if (value === selectedRole) {
-      onRoleSelect(null);
+      onRoleSelect(null); // Clear the role if it's clicked again
     } else {
       onRoleSelect(value);
     }
@@ -162,9 +162,10 @@ export function FileUploadCard({
                 Tags
               </label>
               <TagSelect
+                tags={availableTags}
                 selectedTags={selectedTags}
                 onTagInput={onTagInput}
-                onTagRemove={onTagRemove}
+                onRemove={onTagRemove}
                 className="w-full"
               />
             </div>

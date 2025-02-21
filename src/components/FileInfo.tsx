@@ -106,9 +106,10 @@ export function FileInfo({ filename, fileSize, fileId, messageId, className }: F
           )}
           {fileId && messageId && (
             <TagSelect
+              tags={[]}
               selectedTags={fileTags.map((ft: any) => ft.file_tags)}
               onTagInput={handleTagInput}
-              onTagRemove={handleTagRemove}
+              onRemove={handleTagRemove}
               className="mt-2"
             />
           )}

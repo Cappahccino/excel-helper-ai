@@ -1,170 +1,131 @@
 
-import { useState, useEffect } from "react";
+import { useState, useRef, KeyboardEvent, useEffect } from "react";
 import { Tag } from "@/types/tags";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Check, ChevronsUpDown, Loader2, Tag as TagIcon, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { TagFeedback } from "./TagFeedback";
 
 interface TagSelectProps {
+  tags: Tag[];
   selectedTags: Tag[];
   onTagInput: (tagName: string) => void;
-  onTagRemove: (tag: Tag) => void;
-  isLoading?: boolean;
-  error?: string;
+  onRemove: (tag: Tag) => void;
   className?: string;
 }
 
-export function TagSelect({ 
-  selectedTags, 
+export function TagSelect({
+  tags,
+  selectedTags,
   onTagInput,
-  onTagRemove,
-  isLoading,
-  error,
-  className 
+  onRemove,
+  className
 }: TagSelectProps) {
-  const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+
+  // Filter suggestions based on input
+  const suggestions = tags
+    .filter(tag => 
+      !selectedTags.find(t => t.id === tag.id) && 
+      tag.name.toLowerCase().includes(inputValue.toLowerCase())
+    )
+    .slice(0, 5);
 
   useEffect(() => {
-    const mockTags: Tag[] = [
-      { 
-        id: '1', 
-        name: 'sales', 
-        type: 'custom',
-        category: null,
-        created_at: new Date().toISOString(),
-        is_system: false
-      },
-      { 
-        id: '2', 
-        name: 'finance', 
-        type: 'custom',
-        category: null,
-        created_at: new Date().toISOString(),
-        is_system: false
-      },
-      { 
-        id: '3', 
-        name: 'inventory', 
-        type: 'custom',
-        category: null,
-        created_at: new Date().toISOString(),
-        is_system: false
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        event.target !== inputRef.current
+      ) {
+        setShowSuggestions(false);
       }
-    ];
-    setAvailableTags(mockTags);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleCreateNew = () => {
-    if (inputValue.trim()) {
-      onTagInput(inputValue.trim().toLowerCase());
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+    setShowSuggestions(true);
+    setSelectedSuggestionIndex(-1);
+  };
+
+  const handleKeyDown = async (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
+        onTagInput(suggestions[selectedSuggestionIndex].name);
+      } else if (inputValue.trim()) {
+        onTagInput(inputValue.trim());
+      }
+      
       setInputValue("");
-      setOpen(false);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => 
+        prev < suggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
     }
   };
 
-  const handleSelect = (tag: Tag) => {
-    if (!selectedTags.find(t => t.id === tag.id)) {
-      onTagInput(tag.name);
-    }
+  const handleSuggestionClick = (tag: Tag) => {
+    onTagInput(tag.name);
     setInputValue("");
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    inputRef.current?.focus();
   };
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="justify-between"
-            disabled={isLoading}
-          >
-            <div className="flex items-center gap-2">
-              <TagIcon className="w-4 h-4" />
-              <span>{selectedTags.length > 0 ? `${selectedTags.length} tags selected` : "Select tags..."}</span>
-            </div>
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <ChevronsUpDown className="w-4 h-4 opacity-50" />
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="p-0" align="start">
-          <Command>
-            <CommandInput 
-              placeholder="Search or create new tag..." 
-              value={inputValue}
-              onValueChange={setInputValue}
-            />
-            <CommandEmpty>
-              <button
-                className="flex items-center gap-2 p-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground w-full"
-                onClick={handleCreateNew}
-              >
-                Create tag "{inputValue}"
-              </button>
-            </CommandEmpty>
-            <CommandGroup>
-              {availableTags.map((tag) => (
-                <CommandItem
-                  key={tag.id}
-                  onSelect={() => handleSelect(tag)}
-                  className="flex items-center justify-between"
-                >
-                  <span>{tag.name}</span>
-                  {selectedTags.find(t => t.id === tag.id) && (
-                    <Check className="w-4 h-4" />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </Command>
-        </PopoverContent>
-      </Popover>
-
-      {selectedTags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selectedTags.map((tag) => (
-            <Badge
-              key={tag.id}
-              variant="secondary"
-              className="flex items-center gap-1"
-            >
-              {tag.name}
-              <X
-                className="w-3 h-3 cursor-pointer hover:text-destructive"
-                onClick={() => onTagRemove(tag)}
-              />
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      {(isLoading || error) && (
-        <TagFeedback
-          tags={selectedTags}
-          status={error ? 'error' : isLoading ? 'loading' : 'success'}
-          error={error}
+    <div className={className}>
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          type="text"
+          placeholder="Type to add tags..."
+          value={inputValue}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setShowSuggestions(true)}
+          className="w-full"
         />
-      )}
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div 
+            ref={dropdownRef}
+            className="absolute z-10 w-full mt-1 bg-white rounded-md border shadow-lg max-h-60 overflow-auto"
+          >
+            <div className="p-1">
+              {suggestions.map((tag, index) => (
+                <button
+                  key={tag.id}
+                  onClick={() => handleSuggestionClick(tag)}
+                  className={cn(
+                    "w-full text-left px-3 py-2 text-sm rounded",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    selectedSuggestionIndex === index && "bg-accent text-accent-foreground"
+                  )}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
