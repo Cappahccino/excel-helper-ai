@@ -21,7 +21,8 @@ import { TagFeedback } from "./TagFeedback";
 
 interface TagSelectProps {
   selectedTags: Tag[];
-  onTagsChange: (tags: Tag[]) => void;
+  onTagInput: (tagName: string) => void;
+  onTagRemove: (tag: Tag) => void;
   isLoading?: boolean;
   error?: string;
   className?: string;
@@ -29,7 +30,8 @@ interface TagSelectProps {
 
 export function TagSelect({ 
   selectedTags, 
-  onTagsChange, 
+  onTagInput,
+  onTagRemove,
   isLoading,
   error,
   className 
@@ -39,7 +41,6 @@ export function TagSelect({
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
 
   useEffect(() => {
-    // In a real implementation, this would fetch from your API
     const mockTags: Tag[] = [
       { 
         id: '1', 
@@ -69,30 +70,19 @@ export function TagSelect({
     setAvailableTags(mockTags);
   }, []);
 
-  const handleSelect = (tag: Tag) => {
-    if (!selectedTags.find(t => t.id === tag.id)) {
-      onTagsChange([...selectedTags, tag]);
-    }
-    setInputValue("");
-  };
-
-  const handleRemove = (tagId: string) => {
-    onTagsChange(selectedTags.filter(t => t.id !== tagId));
-  };
-
   const handleCreateNew = () => {
     if (inputValue.trim()) {
-      const newTag: Tag = {
-        id: `new-${Date.now()}`,
-        name: inputValue.trim().toLowerCase(),
-        type: 'custom',
-        category: null,
-        created_at: new Date().toISOString(),
-        is_system: false
-      };
-      handleSelect(newTag);
+      onTagInput(inputValue.trim().toLowerCase());
+      setInputValue("");
       setOpen(false);
     }
+  };
+
+  const handleSelect = (tag: Tag) => {
+    if (!selectedTags.find(t => t.id === tag.id)) {
+      onTagInput(tag.name);
+    }
+    setInputValue("");
   };
 
   return (
@@ -161,7 +151,7 @@ export function TagSelect({
               {tag.name}
               <X
                 className="w-3 h-3 cursor-pointer hover:text-destructive"
-                onClick={() => handleRemove(tag.id)}
+                onClick={() => onTagRemove(tag)}
               />
             </Badge>
           ))}

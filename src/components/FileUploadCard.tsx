@@ -62,7 +62,7 @@ export function FileUploadCard({
 
   const handleRoleSelect = (value: string) => {
     if (value === selectedRole) {
-      onRoleSelect(null); // Clear the role if it's clicked again
+      onRoleSelect(null);
     } else {
       onRoleSelect(value);
     }
@@ -75,17 +75,6 @@ export function FileUploadCard({
       case "supporting": return "Supporting File";
       default: return role;
     }
-  };
-
-  const handleTagsChange = (newTags: Tag[]) => {
-    const removedTags = selectedTags.filter(tag => !newTags.find(t => t.id === tag.id));
-    const addedTags = newTags.filter(tag => !selectedTags.find(t => t.id === tag.id));
-    
-    // Handle removed tags
-    removedTags.forEach(tag => onTagRemove(tag));
-    
-    // Handle added tags
-    addedTags.forEach(tag => onTagInput(tag.name));
   };
 
   return (
@@ -118,6 +107,23 @@ export function FileUploadCard({
                   </button>
                 </div>
               )}
+              {selectedTags.length > 0 && selectedTags.map((tag) => (
+                <div
+                  key={tag.id}
+                  className={cn(
+                    "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium",
+                    getTagColor(tag.name)
+                  )}
+                >
+                  <span>{tag.name}</span>
+                  <button
+                    onClick={() => onTagRemove(tag)}
+                    className="p-0.5 hover:bg-black/10 rounded-md transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
           
@@ -157,7 +163,8 @@ export function FileUploadCard({
               </label>
               <TagSelect
                 selectedTags={selectedTags}
-                onTagsChange={handleTagsChange}
+                onTagInput={onTagInput}
+                onTagRemove={onTagRemove}
                 className="w-full"
               />
             </div>

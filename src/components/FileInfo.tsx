@@ -26,19 +26,6 @@ export function FileInfo({ filename, fileSize, fileId, messageId, className }: F
     enabled: !!fileId
   });
 
-  const handleTagsChange = async (newTags: Tag[]) => {
-    // Handle tag changes here
-    const currentTags = fileTags.map((ft: any) => ft.file_tags);
-    const removedTags = currentTags.filter(tag => !newTags.find(t => t.id === tag.id));
-    const addedTags = newTags.filter(tag => !currentTags.find(t => t.id === tag.id));
-    
-    // Handle removed tags
-    removedTags.forEach((tag: Tag) => handleTagRemove(tag));
-    
-    // Handle added tags
-    addedTags.forEach((tag: Tag) => handleTagInput(tag.name));
-  };
-
   const handleTagInput = async (tagName: string) => {
     toast({
       title: "Tag added",
@@ -120,7 +107,8 @@ export function FileInfo({ filename, fileSize, fileId, messageId, className }: F
           {fileId && messageId && (
             <TagSelect
               selectedTags={fileTags.map((ft: any) => ft.file_tags)}
-              onTagsChange={handleTagsChange}
+              onTagInput={handleTagInput}
+              onTagRemove={handleTagRemove}
               className="mt-2"
             />
           )}
