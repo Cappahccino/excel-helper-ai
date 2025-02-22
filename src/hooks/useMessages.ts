@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -8,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
 import { InfiniteData } from "@tanstack/react-query";
 import { Tag } from "@/types/tags";
-import { createAndAssignTag } from "@/services/tagService";
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -95,64 +93,38 @@ export function useMessages(sessionId: string | null) {
         // Process tags if they exist and we have files
         if (tagNames && tagNames.length > 0 && fileIds && fileIds.length > 0) {
           console.log('Processing tags:', tagNames);
-          let processedTags = 0;
-          const totalTags = tagNames.length * fileIds.length;
           
-          // Create batches of tag operations
-          const batchSize = 5; // Process 5 tags at a time
-          const tagBatches = [];
-          
-          for (let i = 0; i < fileIds.length; i += batchSize) {
-            const fileBatch = fileIds.slice(i, i + batchSize);
-            const batchPromises = fileBatch.flatMap(fileId =>
-              tagNames.map(async (tagName) => {
-                try {
-                  const result = await createAndAssignTag(
-                    tagName,
-                    userMessage.id,
-                    fileId,
-                    null, // category
-                    null  // aiContext
-                  );
-                  processedTags++;
-                  console.log(`Successfully created/assigned tag ${tagName} for file ${fileId} (${processedTags}/${totalTags})`);
-                  
-                  // Show progress toast every 5 tags
-                  if (processedTags % 5 === 0 || processedTags === totalTags) {
-                    toast({
-                      title: "Processing Tags",
-                      description: `Progress: ${processedTags}/${totalTags} tags processed`,
-                      variant: "default"
-                    });
-                  }
-                  
-                  return result;
-                } catch (error) {
-                  console.error(`Error processing tag ${tagName} for file ${fileId}:`, error);
-                  toast({
-                    title: "Warning",
-                    description: `Failed to process tag "${tagName}". The message will still be sent.`,
-                    variant: "default"
-                  });
-                  return null;
-                }
-              })
-            );
-            
-            tagBatches.push(batchPromises);
-          }
+          const { data, error } = await supabase.functions.invoke('tag-operations', {
+            body: {
+              messageId: userMessage.id,
+              fileIds,
+              tagNames,
+              userId: user.id
+            }
+          });
 
-          // Process batches sequentially to avoid overwhelming the server
-          for (const batch of tagBatches) {
-            await Promise.allSettled(batch);
-          }
-
-          if (processedTags === totalTags) {
+          if (error) {
+            console.error('Error processing tags:', error);
             toast({
-              title: "Success",
-              description: `All ${totalTags} tags have been processed successfully`,
-              variant: "default"
+              title: "Warning",
+              description: "Some tags failed to process. The message will still be sent.",
+              variant: "destructive"
             });
+          } else {
+            if (data.errors && data.errors.length > 0) {
+              console.warn('Some tags failed to process:', data.errors);
+              toast({
+                title: "Warning",
+                description: `${data.results.length} tags processed successfully, ${data.errors.length} failed`,
+                variant: "default"
+              });
+            } else {
+              toast({
+                title: "Success",
+                description: `All ${data.results.length} tags processed successfully`,
+                variant: "default"
+              });
+            }
           }
         }
 
