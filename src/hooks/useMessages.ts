@@ -95,34 +95,65 @@ export function useMessages(sessionId: string | null) {
         // Process tags if they exist and we have files
         if (tagNames && tagNames.length > 0 && fileIds && fileIds.length > 0) {
           console.log('Processing tags:', tagNames);
+          let processedTags = 0;
+          const totalTags = tagNames.length * fileIds.length;
           
-          const tagPromises = fileIds.flatMap(fileId => 
-            tagNames.map(async (tagName) => {
-              try {
-                const result = await createAndAssignTag(
-                  tagName,
-                  userMessage.id,
-                  fileId,
-                  null, // category
-                  null  // aiContext
-                );
-                console.log(`Successfully created/assigned tag ${tagName} for file ${fileId}`);
-                return result;
-              } catch (error) {
-                console.error(`Error processing tag ${tagName} for file ${fileId}:`, error);
-                // Don't throw here, just notify the user and continue
-                toast({
-                  title: "Warning",
-                  description: `Failed to process tag "${tagName}". The message will still be sent.`,
-                  variant: "default"
-                });
-                return null;
-              }
-            })
-          );
+          // Create batches of tag operations
+          const batchSize = 5; // Process 5 tags at a time
+          const tagBatches = [];
+          
+          for (let i = 0; i < fileIds.length; i += batchSize) {
+            const fileBatch = fileIds.slice(i, i + batchSize);
+            const batchPromises = fileBatch.flatMap(fileId =>
+              tagNames.map(async (tagName) => {
+                try {
+                  const result = await createAndAssignTag(
+                    tagName,
+                    userMessage.id,
+                    fileId,
+                    null, // category
+                    null  // aiContext
+                  );
+                  processedTags++;
+                  console.log(`Successfully created/assigned tag ${tagName} for file ${fileId} (${processedTags}/${totalTags})`);
+                  
+                  // Show progress toast every 5 tags
+                  if (processedTags % 5 === 0 || processedTags === totalTags) {
+                    toast({
+                      title: "Processing Tags",
+                      description: `Progress: ${processedTags}/${totalTags} tags processed`,
+                      variant: "default"
+                    });
+                  }
+                  
+                  return result;
+                } catch (error) {
+                  console.error(`Error processing tag ${tagName} for file ${fileId}:`, error);
+                  toast({
+                    title: "Warning",
+                    description: `Failed to process tag "${tagName}". The message will still be sent.`,
+                    variant: "default"
+                  });
+                  return null;
+                }
+              })
+            );
+            
+            tagBatches.push(batchPromises);
+          }
 
-          // Wait for all tag operations to complete, but don't fail if some fail
-          await Promise.allSettled(tagPromises);
+          // Process batches sequentially to avoid overwhelming the server
+          for (const batch of tagBatches) {
+            await Promise.allSettled(batch);
+          }
+
+          if (processedTags === totalTags) {
+            toast({
+              title: "Success",
+              description: `All ${totalTags} tags have been processed successfully`,
+              variant: "default"
+            });
+          }
         }
 
         console.log('Creating assistant message...');
