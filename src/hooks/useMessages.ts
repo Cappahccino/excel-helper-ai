@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -95,26 +96,33 @@ export function useMessages(sessionId: string | null) {
         if (tagNames && tagNames.length > 0 && fileIds && fileIds.length > 0) {
           console.log('Processing tags:', tagNames);
           
-          for (const fileId of fileIds) {
-            for (const tagName of tagNames) {
+          const tagPromises = fileIds.flatMap(fileId => 
+            tagNames.map(async (tagName) => {
               try {
-                await createAndAssignTag(
+                const result = await createAndAssignTag(
                   tagName,
                   userMessage.id,
                   fileId,
                   null, // category
                   null  // aiContext
                 );
+                console.log(`Successfully created/assigned tag ${tagName} for file ${fileId}`);
+                return result;
               } catch (error) {
                 console.error(`Error processing tag ${tagName} for file ${fileId}:`, error);
+                // Don't throw here, just notify the user and continue
                 toast({
                   title: "Warning",
                   description: `Failed to process tag "${tagName}". The message will still be sent.`,
                   variant: "default"
                 });
+                return null;
               }
-            }
-          }
+            })
+          );
+
+          // Wait for all tag operations to complete, but don't fail if some fail
+          await Promise.allSettled(tagPromises);
         }
 
         console.log('Creating assistant message...');
