@@ -8,7 +8,15 @@ import { Tag, MessageFileTag } from "@/types/tags";
 export async function fetchTags() {
   const { data: tags, error } = await supabase
     .from('file_tags')
-    .select('*, metadata->usage_stats as usage_stats')
+    .select(`
+      id,
+      name,
+      type,
+      category,
+      created_at,
+      is_system,
+      metadata
+    `)
     .order('name');
 
   if (error) {
@@ -16,31 +24,58 @@ export async function fetchTags() {
     throw new Error(`Failed to fetch tags: ${error.message}`);
   }
   
-  return tags as (Tag & { usage_stats?: { total_uses: number; last_used: string; file_count: number } })[];
+  return (tags || []).map(tag => ({
+    ...tag,
+    usage_stats: tag.metadata?.usage_stats || { total_uses: 0, last_used: null, file_count: 0 }
+  })) as (Tag & { usage_stats?: { total_uses: number; last_used: string | null; file_count: number } })[];
 }
 
 /**
- * Creates a new tag if it doesn't exist, with transaction support
+ * Creates a new tag if it doesn't exist
  */
 export async function createTag(name: string, category: string | null = null) {
   const { data: client } = await supabase.auth.getSession();
   if (!client.session) throw new Error('Authentication required');
 
   try {
-    // Start a Supabase transaction
-    const { data, error } = await supabase.rpc('create_tag_with_validation', {
-      p_name: name.toLowerCase().trim(),
-      p_category: category,
-      p_type: 'custom',
-      p_is_system: false
-    });
+    // Check if tag exists
+    const { data: existingTag, error: searchError } = await supabase
+      .from('file_tags')
+      .select()
+      .eq('name', name.toLowerCase().trim())
+      .single();
 
-    if (error) {
-      console.error('Error in createTag transaction:', error);
-      throw new Error(`Failed to create tag: ${error.message}`);
+    if (searchError && searchError.code !== 'PGRST116') { // PGRST116 is "not found" error
+      throw searchError;
     }
 
-    return data as Tag;
+    if (existingTag) {
+      return existingTag as Tag;
+    }
+
+    // Create new tag
+    const { data: newTag, error: createError } = await supabase
+      .from('file_tags')
+      .insert({
+        name: name.toLowerCase().trim(),
+        category,
+        type: 'custom',
+        is_system: false,
+        metadata: {
+          usage_stats: {
+            total_uses: 0,
+            file_count: 0
+          }
+        }
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      throw createError;
+    }
+
+    return newTag as Tag;
   } catch (error) {
     console.error('Error in createTag:', error);
     throw error;
@@ -48,7 +83,7 @@ export async function createTag(name: string, category: string | null = null) {
 }
 
 /**
- * Assigns a tag to a file in the context of a message with transaction support
+ * Assigns a tag to a file in the context of a message
  */
 export async function assignTagToFile(
   messageId: string, 
@@ -60,25 +95,48 @@ export async function assignTagToFile(
   if (!client.session) throw new Error('Authentication required');
 
   try {
-    // Validate inputs
-    if (!messageId || !fileId || !tagId) {
-      throw new Error('Missing required parameters for tag assignment');
+    // Check if association exists
+    const { data: existingAssoc, error: searchError } = await supabase
+      .from('message_file_tags')
+      .select()
+      .match({ message_id: messageId, file_id: fileId, tag_id: tagId })
+      .single();
+
+    if (searchError && searchError.code !== 'PGRST116') {
+      throw searchError;
     }
 
-    // Use RPC call for atomic tag assignment
-    const { data, error } = await supabase.rpc('assign_tag_to_file', {
-      p_message_id: messageId,
-      p_file_id: fileId,
-      p_tag_id: tagId,
-      p_ai_context: aiContext
-    });
+    if (existingAssoc) {
+      // Update existing association
+      const { data: updatedAssoc, error: updateError } = await supabase
+        .from('message_file_tags')
+        .update({
+          usage_count: (existingAssoc.usage_count || 0) + 1,
+          ai_context: aiContext || existingAssoc.ai_context
+        })
+        .match({ message_id: messageId, file_id: fileId, tag_id: tagId })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('Error in assignTagToFile transaction:', error);
-      throw new Error(`Failed to assign tag to file: ${error.message}`);
+      if (updateError) throw updateError;
+      return updatedAssoc as MessageFileTag;
     }
 
-    return data as MessageFileTag;
+    // Create new association
+    const { data: newAssoc, error: createError } = await supabase
+      .from('message_file_tags')
+      .insert({
+        message_id: messageId,
+        file_id: fileId,
+        tag_id: tagId,
+        ai_context: aiContext,
+        usage_count: 1
+      })
+      .select()
+      .single();
+
+    if (createError) throw createError;
+    return newAssoc as MessageFileTag;
   } catch (error) {
     console.error('Error in assignTagToFile:', error);
     throw error;
@@ -102,7 +160,7 @@ export async function fetchFileTags(fileId: string) {
           type,
           category,
           is_system,
-          metadata->usage_stats
+          metadata
         )
       `)
       .eq('file_id', fileId)
@@ -121,7 +179,7 @@ export async function fetchFileTags(fileId: string) {
 }
 
 /**
- * Creates a tag if it doesn't exist and assigns it to a file with transaction support
+ * Creates a tag if it doesn't exist and assigns it to a file
  */
 export async function createAndAssignTag(
   name: string,
@@ -131,21 +189,9 @@ export async function createAndAssignTag(
   aiContext: string | null = null
 ) {
   try {
-    // Use RPC call for atomic tag creation and assignment
-    const { data, error } = await supabase.rpc('create_and_assign_tag', {
-      p_tag_name: name.toLowerCase().trim(),
-      p_message_id: messageId,
-      p_file_id: fileId,
-      p_category: category,
-      p_ai_context: aiContext
-    });
-
-    if (error) {
-      console.error('Error in createAndAssignTag transaction:', error);
-      throw new Error(`Failed to create and assign tag: ${error.message}`);
-    }
-
-    return data as { tag: Tag; messageFileTag: MessageFileTag };
+    const tag = await createTag(name, category);
+    const messageFileTag = await assignTagToFile(messageId, fileId, tag.id, aiContext);
+    return { tag, messageFileTag };
   } catch (error) {
     console.error('Error in createAndAssignTag:', error);
     throw error;
