@@ -1,6 +1,16 @@
 
 export type TagType = 'system' | 'custom';
 
+export interface TagUsageStats {
+  total_uses: number;
+  last_used: string | null;
+  file_count: number;
+}
+
+export interface TagMetadata {
+  usage_stats: TagUsageStats;
+}
+
 export interface Tag {
   id: string;
   name: string;
@@ -8,6 +18,7 @@ export interface Tag {
   category: string | null;
   created_at: string;
   is_system: boolean;
+  metadata: TagMetadata | null;
 }
 
 export interface MessageFileTag {

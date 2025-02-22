@@ -1,6 +1,5 @@
-
 import { supabase } from "@/integrations/supabase/client";
-import { Tag, MessageFileTag } from "@/types/tags";
+import { Tag, MessageFileTag, TagMetadata } from "@/types/tags";
 
 /**
  * Fetches all available tags with their usage statistics
@@ -26,8 +25,8 @@ export async function fetchTags() {
   
   return (tags || []).map(tag => ({
     ...tag,
-    usage_stats: tag.metadata?.usage_stats || { total_uses: 0, last_used: null, file_count: 0 }
-  })) as (Tag & { usage_stats?: { total_uses: number; last_used: string | null; file_count: number } })[];
+    metadata: tag.metadata as TagMetadata | null
+  })) as Tag[];
 }
 
 /**
@@ -64,9 +63,10 @@ export async function createTag(name: string, category: string | null = null) {
         metadata: {
           usage_stats: {
             total_uses: 0,
+            last_used: null,
             file_count: 0
           }
-        }
+        } as TagMetadata
       })
       .select()
       .single();
