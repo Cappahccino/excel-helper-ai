@@ -175,12 +175,19 @@ export function ChatInput({
     } else {
       // Create a new tag object
       tagToAdd = {
-        id: `temp-${Date.now()}`, // Temporary ID for new tags
+        id: `temp-${Date.now()}`,
         name: trimmedTagName,
         type: 'custom',
         category: null,
         created_at: new Date().toISOString(),
-        is_system: false
+        is_system: false,
+        metadata: {
+          usage_stats: {
+            total_uses: 0,
+            last_used: null,
+            file_count: 0
+          }
+        }
       };
     }
 

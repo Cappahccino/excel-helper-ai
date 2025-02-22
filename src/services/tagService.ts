@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Tag, MessageFileTag, TagMetadata } from "@/types/tags";
+import { Tag, MessageFileTag, TagMetadata, TagUsageStats } from "@/types/tags";
 
 /**
  * Fetches all available tags with their usage statistics
@@ -25,8 +25,14 @@ export async function fetchTags() {
   
   return (tags || []).map(tag => ({
     ...tag,
-    metadata: tag.metadata as TagMetadata | null
-  })) as Tag[];
+    metadata: tag.metadata ? {
+      usage_stats: {
+        total_uses: (tag.metadata as any)?.usage_stats?.total_uses ?? 0,
+        last_used: (tag.metadata as any)?.usage_stats?.last_used ?? null,
+        file_count: (tag.metadata as any)?.usage_stats?.file_count ?? 0
+      }
+    } : null
+  } as Tag));
 }
 
 /**
@@ -49,8 +55,25 @@ export async function createTag(name: string, category: string | null = null) {
     }
 
     if (existingTag) {
-      return existingTag as Tag;
+      return {
+        ...existingTag,
+        metadata: existingTag.metadata ? {
+          usage_stats: {
+            total_uses: (existingTag.metadata as any)?.usage_stats?.total_uses ?? 0,
+            last_used: (existingTag.metadata as any)?.usage_stats?.last_used ?? null,
+            file_count: (existingTag.metadata as any)?.usage_stats?.file_count ?? 0
+          }
+        } : null
+      } as Tag;
     }
+
+    const initialMetadata = {
+      usage_stats: {
+        total_uses: 0,
+        last_used: null,
+        file_count: 0
+      }
+    };
 
     // Create new tag
     const { data: newTag, error: createError } = await supabase
@@ -60,13 +83,7 @@ export async function createTag(name: string, category: string | null = null) {
         category,
         type: 'custom',
         is_system: false,
-        metadata: {
-          usage_stats: {
-            total_uses: 0,
-            last_used: null,
-            file_count: 0
-          }
-        } as TagMetadata
+        metadata: initialMetadata as any
       })
       .select()
       .single();
@@ -75,7 +92,10 @@ export async function createTag(name: string, category: string | null = null) {
       throw createError;
     }
 
-    return newTag as Tag;
+    return {
+      ...newTag,
+      metadata: initialMetadata
+    } as Tag;
   } catch (error) {
     console.error('Error in createTag:', error);
     throw error;
