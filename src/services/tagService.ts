@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Tag, MessageFileTag, TagMetadata, TagUsageStats } from "@/types/tags";
 
@@ -83,7 +84,8 @@ export async function createTag(name: string, category: string | null = null) {
         category,
         type: 'custom',
         is_system: false,
-        metadata: initialMetadata as any
+        metadata: initialMetadata as any,
+        user_id: client.session.user.id
       })
       .select()
       .single();
@@ -115,6 +117,29 @@ export async function assignTagToFile(
   if (!client.session) throw new Error('Authentication required');
 
   try {
+    // First verify that the message and file exist and belong to the user
+    const { data: message, error: messageError } = await supabase
+      .from('chat_messages')
+      .select('id')
+      .eq('id', messageId)
+      .eq('user_id', client.session.user.id)
+      .single();
+
+    if (messageError) {
+      throw new Error('Message not found or access denied');
+    }
+
+    const { data: file, error: fileError } = await supabase
+      .from('excel_files')
+      .select('id')
+      .eq('id', fileId)
+      .eq('user_id', client.session.user.id)
+      .single();
+
+    if (fileError) {
+      throw new Error('File not found or access denied');
+    }
+
     // Check if association exists
     const { data: existingAssoc, error: searchError } = await supabase
       .from('message_file_tags')
