@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { motion } from "framer-motion";
 
 const Index = () => {
   const [email, setEmail] = useState("");
@@ -45,47 +46,52 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F2FCE2] via-white to-[#E8F9E3] flex flex-col">
-      {/* Decorative Elements */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none"></div>
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/80 pointer-events-none"></div>
+    <div className="min-h-screen animated-bg flex flex-col">
+      {/* Logo with Floating Animation */}
+      <motion.div 
+        className="flex justify-center items-center mt-8 mb-8"
+        animate={{ y: [0, -5, 0] }}
+        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+      >
+        <span className="text-[#3cbd84] text-3xl md:text-4xl font-bold italic font-['Jersey_25']">
+          Tallyze
+        </span>
+      </motion.div>
 
       {/* Main Content */}
       <main className="flex-1 flex items-center justify-center px-4">
         <div className="max-w-4xl w-full mx-auto text-center">
-          
-          {/* Logo Positioned at the Top of Main Content */}
-          <div className="flex justify-center items-center mb-8">
-            <span className="text-[#3cbd84] text-3xl md:text-4xl font-bold italic font-['Jersey_25']">
-                Tallyze
-             </span>
-          </div>
+          {/* Animated Headings */}
+          <motion.h1 
+            className="text-5xl md:text-7xl font-bold text-gray-900 tracking-tight font-['Darker_Grotesque']"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut", staggerChildren: 0.3 }}
+          >
+            <motion.span className="block mb-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
+              Automate.
+            </motion.span>
+            <motion.span className="block mb-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
+              Analyze.
+            </motion.span>
+            <motion.span className="block" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+              Accelerate.
+            </motion.span>
+          </motion.h1>
 
-          <div className="space-y-6 mb-12">
-            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 tracking-tight font-['Darker_Grotesque']">
-              <span className="block mb-2 animate-fade-in opacity-0 [animation-delay:200ms]">Automate.</span>
-              <span className="block mb-2 animate-fade-in opacity-0 [animation-delay:400ms]">Analyze.</span>
-              <span className="block animate-fade-in opacity-0 [animation-delay:600ms]">Accelerate.</span>
-            </h1>
-            <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto font-['Darker_Grotesque']">
-              Streamline your Financial Operations with Tallyze
-            </p>
+          <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto font-['Darker_Grotesque'] mt-4">
+            Streamline your Financial Operations with Tallyze
+          </p>
 
-            <div className="w-24 h-1 bg-[#27B67A] mx-auto rounded-full"></div>
-          </div>
+          <div className="w-24 h-1 bg-[#27B67A] mx-auto rounded-full mt-6"></div>
 
-          {submitted ? (
-            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-8 max-w-md mx-auto border border-[#27B67A]/20 shadow-xl">
-              <div className="w-12 h-12 bg-[#F2FCE2] rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6 text-[#27B67A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+          {/* Waitlist Form with Glassmorphism */}
+          <div className="max-w-md mx-auto bg-white/40 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-white/20 mt-8">
+            {submitted ? (
+              <div className="text-gray-900 font-semibold text-xl">
+                ✅ Thank you for joining! We'll notify you when we launch.
               </div>
-              <p className="text-gray-900 font-semibold text-xl font-['Darker_Grotesque']">Thank you for joining!</p>
-              <p className="text-gray-600 mt-2 font-['Darker_Grotesque']">We'll notify you when we launch.</p>
-            </div>
-          ) : (
-            <div className="max-w-md mx-auto">
+            ) : (
               <form onSubmit={handleSubmit} className="group">
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="flex-1">
@@ -95,24 +101,29 @@ const Index = () => {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your email"
                       required
-                      className="w-full px-6 py-4 rounded-xl border-2 border-[#27B67A]/20 bg-white/80 backdrop-blur-sm placeholder:text-gray-400 text-gray-900 focus:outline-none focus:border-[#27B67A]/40 shadow-lg transition-all duration-300 font-['Darker_Grotesque']"
+                      className="w-full px-6 py-4 rounded-xl border-2 border-[#27B67A]/20 bg-transparent 
+                                placeholder:text-gray-400 text-gray-900 focus:outline-none focus:border-[#27B67A]/40 
+                                shadow-lg transition-all duration-300 font-['Darker_Grotesque']"
                     />
                   </div>
-                  <button
+                  <motion.button
                     type="submit"
                     disabled={isLoading}
-                    className="bg-[#27B67A] text-white px-8 py-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-[#229163] transition-all duration-300 shadow-lg disabled:opacity-50 font-['Darker_Grotesque']"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="bg-[#27B67A] text-white px-8 py-4 rounded-xl font-medium flex items-center justify-center gap-2 
+                              hover:bg-[#229163] transition-all duration-300 shadow-lg disabled:opacity-50 font-['Darker_Grotesque']"
                   >
                     <span>{isLoading ? "Joining..." : "Join Waitlist"}</span>
                     <ArrowRight className="w-5 h-5" />
-                  </button>
+                  </motion.button>
                 </div>
                 <p className="text-gray-500 text-sm mt-4 font-['Darker_Grotesque']">
                   We respect your privacy
                 </p>
               </form>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </main>
 
