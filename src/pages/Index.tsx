@@ -56,7 +56,7 @@ const Index = () => {
       <header className="relative w-full py-8">
         <div className="flex justify-center items-center">
           <img 
-            src="/lovable-uploads/587dea28-4d68-459d-bfbe-843d206d1ad6.png" 
+            src="/lovable-uploads/ed952818-c1cf-45d2-a8ed-ec764da497cc.png" 
             alt="Tallyze Logo" 
             className="h-12"
           />
