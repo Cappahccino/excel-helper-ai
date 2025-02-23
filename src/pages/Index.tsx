@@ -56,7 +56,7 @@ const Index = () => {
           
           {/* Logo Positioned at the Top of Main Content */}
           <div className="flex justify-center items-center mb-8">
-            <span className="text-[#3cbd84] text-4xl md:text-5xl font-bold italic font-['Jersey_25']">
+            <span className="text-[#3cbd84] text-3xl md:text-4xl font-bold italic font-['Jersey_25']">
                 Tallyze
              </span>
           </div>
