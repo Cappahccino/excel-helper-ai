@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -15,25 +16,26 @@ const Index = () => {
 
     try {
       const { error: dbError } = await supabase
-        .from("waitlist_users")
+        .from('waitlist_users')
         .insert([{ email }]);
 
       if (dbError) throw dbError;
 
-      const { error: emailError } = await supabase.functions.invoke("send-waitlist-email", {
-        body: { email },
-      });
+      const { error: emailError } = await supabase.functions
+        .invoke('send-waitlist-email', {
+          body: { email }
+        });
 
       if (emailError) throw emailError;
 
       setSubmitted(true);
-      setEmail("");
+      setEmail('');
       toast({
         title: "Success!",
         description: "You've been added to our waitlist. Check your email for confirmation.",
       });
     } catch (error) {
-      console.error("Error:", error);
+      console.error('Error:', error);
       toast({
         title: "Error",
         description: "Something went wrong. Please try again.",
@@ -49,20 +51,21 @@ const Index = () => {
       {/* Decorative Elements */}
       <div className="absolute inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none"></div>
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/80 pointer-events-none"></div>
+      
+      {/* Header */}
+      <header className="relative w-full py-8">
+        <div className="flex justify-center items-center">
+          <img 
+            src="/lovable-uploads/web_logo.png" 
+            alt="Tallyze Logo" 
+            className="h-12"
+          />
+        </div>
+      </header>
 
       {/* Main Content */}
       <main className="flex-1 flex items-center justify-center px-4">
         <div className="max-w-4xl w-full mx-auto text-center">
-          
-          {/* Logo Positioned at the Top of Main Content */}
-          <div className="flex justify-center items-center mb-8">
-            <img 
-              src="/lovable-uploads/web_logo.png" 
-              alt="Tallyze Logo" 
-              className="h-12"
-            />
-          </div>
-
           <div className="space-y-6 mb-12">
             <h1 className="text-5xl md:text-7xl font-bold text-gray-900 tracking-tight font-['Darker_Grotesque']">
               <span className="block mb-2 animate-fade-in opacity-0 [animation-delay:200ms]">Automate.</span>
@@ -72,7 +75,7 @@ const Index = () => {
             <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto font-['Darker_Grotesque']">
               Streamline your Financial Operations with Tallyze
             </p>
-
+            
             <div className="w-24 h-1 bg-[#27B67A] mx-auto rounded-full"></div>
           </div>
 
@@ -105,7 +108,7 @@ const Index = () => {
                     disabled={isLoading}
                     className="bg-[#27B67A] text-white px-8 py-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-[#229163] transition-all duration-300 shadow-lg disabled:opacity-50 font-['Darker_Grotesque']"
                   >
-                    <span>{isLoading ? "Joining..." : "Join Waitlist"}</span>
+                    <span>{isLoading ? 'Joining...' : 'Join Waitlist'}</span>
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>
