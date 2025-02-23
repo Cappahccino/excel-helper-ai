@@ -40,7 +40,7 @@ serve(async (req) => {
 
     console.log('Sending welcome email to:', email)
     const { data, error } = await resend.emails.send({
-      from: 'Tallyze <onboarding@resend.dev>',
+      from: 'Tallyze <noreply@waitlist.tallyze.com>',
       to: email,
       subject: 'Welcome to Tallyze – Your AI-Powered Finance Partner 🚀',
       html: emailContent,
