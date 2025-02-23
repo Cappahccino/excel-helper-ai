@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const typeformLink = "https://form.typeform.com/to/UQPZGSy6"; 
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -33,7 +35,23 @@ serve(async (req) => {
         <li>📊 Seamless integrations – Connect with Xero, QuickBooks, and your existing finance tools.</li>
         <li>🤝 A dedicated AI partner – Helping you scale with precision and accuracy.</li>
       </ul>
-      <p>In the meantime, we'd love to hear from you! <strong>What finance challenges are you facing that you'd like AI to solve?</strong></p>
+      <p>In the meantime, we'd love to hear from you! </p>
+      <p>We’re shaping Tallyze based on real user needs, and your feedback is crucial.</p>
+    
+      <p><strong>Take our 2-minute survey</strong> and help us understand how we can automate your finance workflows more effectively.</p>
+
+      <a href="${typeformLink}" style="
+      display: inline-block;
+      padding: 12px 20px;
+      margin-top: 10px;
+      background-color: #007bff;
+      color: white;
+      text-decoration: none;
+      font-size: 16px;
+      border-radius: 5px;
+      ">
+      👉 Take the Survey
+      </a>
       <p>Looking forward to helping you unlock financial efficiency and intelligence like never before.</p>
       <p><strong>Best,</strong><br>The Tallyze Team</p>
     `
