@@ -15,7 +15,7 @@ interface RequestBody {
 }
 
 interface SupabaseResponse {
-  data: any[];
+  data?: any[];
   error?: { message: string };
 }
 
@@ -42,7 +42,12 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     const fetchData: SupabaseResponse = await fetchResponse.json();
-    
+
+    if (!fetchData || !fetchData.data || !Array.isArray(fetchData.data)) {
+      console.error("Unexpected response from Supabase:", fetchData);
+      throw new Error("Failed to fetch existing waitlist entries.");
+    }
+
     if (fetchData.data.length > 0) {
       console.log("Duplicate email detected:", email);
       return new Response(
