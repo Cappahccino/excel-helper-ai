@@ -10,6 +10,12 @@ const resendApiKey = Deno.env.get("RESEND_API_KEY");
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
+// Ensure required environment variables exist
+if (!resendApiKey || !supabaseUrl || !supabaseKey) {
+  console.error("Missing required environment variables.");
+  throw new Error("Missing required environment variables.");
+}
+
 interface RequestBody {
   email: string;
 }
@@ -30,8 +36,12 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error("Email is required.");
     }
 
+    console.log(`Checking if email already exists: ${email}`);
+
     // Check if email already exists in Supabase
     const fetchUrl = `${supabaseUrl}/rest/v1/waitlist_users?email=eq.${email}&select=email`;
+    console.log("Fetching from Supabase:", fetchUrl);
+
     const fetchResponse = await fetch(fetchUrl, {
       method: "GET",
       headers: {
@@ -42,6 +52,7 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     const fetchData: SupabaseResponse = await fetchResponse.json();
+    console.log("Supabase Response:", JSON.stringify(fetchData, null, 2));
 
     if (!fetchData || !fetchData.data || !Array.isArray(fetchData.data)) {
       console.error("Unexpected response from Supabase:", fetchData);
@@ -49,7 +60,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (fetchData.data.length > 0) {
-      console.log("Duplicate email detected:", email);
+      console.log(`Duplicate email detected: ${email}`);
       return new Response(
         JSON.stringify({ success: false, message: "You are already on the waitlist!" }),
         {
@@ -58,6 +69,8 @@ serve(async (req: Request): Promise<Response> => {
         }
       );
     }
+
+    console.log(`Adding new email to waitlist: ${email}`);
 
     // Insert new waitlist entry into Supabase
     const insertResponse = await fetch(`${supabaseUrl}/rest/v1/waitlist_users`, {
@@ -71,13 +84,17 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     const insertData = await insertResponse.json();
+    console.log("Insert Response:", JSON.stringify(insertData, null, 2));
+
     if (!insertResponse.ok) {
       throw new Error(insertData.error?.message || "Failed to save email.");
     }
 
-    console.log("New waitlist signup:", email);
+    console.log("New waitlist signup added successfully:", email);
 
     // Send the email via Resend
+    console.log(`Sending welcome email to: ${email}`);
+
     const emailContent = `
       <p>Hi,</p>
       <p>As one of our early community members, you'll be among the first to experience what it's like to have an AI-powered finance partner by your side.</p>
@@ -106,9 +123,7 @@ serve(async (req: Request): Promise<Response> => {
       <p><strong>Best,</strong><br>The Tallyze Team</p>
     `;
 
-    console.log("Sending welcome email to:", email);
-
-    const response = await fetch("https://api.resend.com/v1/emails", {
+    const emailResponse = await fetch("https://api.resend.com/v1/emails", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${resendApiKey}`,
@@ -122,14 +137,15 @@ serve(async (req: Request): Promise<Response> => {
       }),
     });
 
-    const responseData = await response.json();
+    const emailData = await emailResponse.json();
+    console.log("Resend API Response:", JSON.stringify(emailData, null, 2));
 
-    if (!response.ok) {
-      console.error("Error sending email:", responseData);
-      throw new Error(responseData.message || "Failed to send email");
+    if (!emailResponse.ok) {
+      console.error("Error sending email:", emailData);
+      throw new Error(emailData.message || "Failed to send email.");
     }
 
-    console.log("Email sent successfully:", responseData);
+    console.log("Email sent successfully to:", email);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
