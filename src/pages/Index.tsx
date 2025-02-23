@@ -56,11 +56,9 @@ const Index = () => {
           
           {/* Logo Positioned at the Top of Main Content */}
           <div className="flex justify-center items-center mb-8">
-            <img 
-              src="/lovable-uploads/web_logo.png" 
-              alt="Tallyze Logo" 
-              className="h-12"
-            />
+            <span className="text-[#3cbd84] text-4xl md:text-5xl font-bold italic font-['Jersey_25']">
+                Tallyze
+             </span>
           </div>
 
           <div className="space-y-6 mb-12">
