@@ -12,7 +12,7 @@ export function useMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const mutation = useMutation({
+  const sendMessageMutation = useMutation({
     mutationFn: async ({ 
       content, 
       fileIds,
@@ -32,14 +32,12 @@ export function useMessageMutation(sessionId: string | null) {
       }
 
       try {
-        // If fileIds provided, use them directly. Otherwise, try to get active session files
         let activeFileIds = fileIds;
         if (!activeFileIds || activeFileIds.length === 0) {
           console.log('No files provided, fetching active session files...');
           activeFileIds = await getFilesWithRetry(currentSessionId);
         }
 
-        // Ensure we have files before proceeding
         if (!activeFileIds || activeFileIds.length === 0) {
           console.error('No files available for the message');
           throw new Error('No files available for the message');
@@ -48,7 +46,6 @@ export function useMessageMutation(sessionId: string | null) {
         console.log('Creating user message with files:', activeFileIds);
         const userMessage = await createUserMessage(content, currentSessionId, user.id, activeFileIds);
 
-        // Process tags if they exist and we have files
         if (tagNames && tagNames.length > 0 && activeFileIds && activeFileIds.length > 0) {
           console.log('Processing tags:', tagNames);
           
@@ -86,17 +83,14 @@ export function useMessageMutation(sessionId: string | null) {
           }
         }
 
-        // Wait a short moment for session_files to be created
         await wait(500);
 
         console.log('Creating assistant message...');
         const assistantMessage = await createAssistantMessage(currentSessionId, user.id, activeFileIds);
 
-        // Ensure we still have the files before triggering AI response
         const verifiedFileIds = await getFilesWithRetry(currentSessionId);
         console.log('Verified files before AI response:', verifiedFileIds);
 
-        // Immediately trigger the AI response
         console.log('Triggering AI response for message:', assistantMessage.id);
         const aiResponse = await supabase.functions.invoke('excel-assistant', {
           body: {
@@ -120,41 +114,6 @@ export function useMessageMutation(sessionId: string | null) {
         throw error;
       }
     },
-    onMutate: async ({ content, fileIds, tagNames, sessionId: currentSessionId }) => {
-      await queryClient.cancelQueries({ queryKey: ['chat-messages', currentSessionId] });
-
-      const previousMessages = queryClient.getQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId]);
-
-      const optimisticUserMessage: Message = {
-        id: `temp-${Date.now()}`,
-        content,
-        role: 'user',
-        session_id: currentSessionId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        excel_file_id: fileIds?.[0] || null,
-        status: 'completed',
-        is_ai_response: false,
-        version: '1.0.0',
-        excel_files: null,
-        metadata: null,
-        message_files: fileIds?.map(fileId => ({
-          file_id: fileId,
-          role: 'user'
-        }))
-      };
-
-      queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', currentSessionId], (old) => ({
-        pages: [{
-          messages: [...(old?.pages?.[0]?.messages || []), optimisticUserMessage],
-          nextCursor: old?.pages?.[0]?.nextCursor
-        },
-        ...(old?.pages?.slice(1) || [])],
-        pageParams: old?.pageParams || [null]
-      }));
-
-      return { previousMessages };
-    },
     onError: (err, variables, context) => {
       if (context?.previousMessages) {
         queryClient.setQueryData(['chat-messages', variables.sessionId], context.previousMessages);
@@ -165,22 +124,6 @@ export function useMessageMutation(sessionId: string | null) {
         description: err instanceof Error ? err.message : "Failed to send message",
         variant: "destructive"
       });
-    },
-    onSuccess: async ({ userMessage, assistantMessage }, variables) => {
-      queryClient.setQueryData<InfiniteData<MessagesResponse>>(['chat-messages', variables.sessionId], (old) => {
-        if (!old?.pages?.[0]) return old;
-        
-        return {
-          pages: [{
-            messages: [...old.pages[0].messages, assistantMessage],
-            nextCursor: old.pages[0].nextCursor
-          },
-          ...(old.pages.slice(1) || [])],
-          pageParams: old.pageParams
-        };
-      });
-      
-      await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
     }
   });
 
@@ -189,7 +132,6 @@ export function useMessageMutation(sessionId: string | null) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Create a new chat session
       const { data: session, error } = await supabase
         .from('chat_sessions')
         .insert({
@@ -229,8 +171,8 @@ export function useMessageMutation(sessionId: string | null) {
 
   return {
     sendMessage: {
-      mutate: mutation.mutate,
-      mutateAsync: mutation.mutateAsync
+      mutate: sendMessageMutation.mutate,
+      mutateAsync: sendMessageMutation.mutateAsync
     },
     createSession: {
       mutateAsync: createSessionMutation.mutateAsync
