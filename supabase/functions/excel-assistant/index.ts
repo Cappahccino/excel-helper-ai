@@ -1,7 +1,8 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,187 +10,149 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const { fileIds, query, userId, sessionId, messageId, tags } = await req.json();
-    console.log('Received request:', { fileIds, query, userId, sessionId, messageId, tags });
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
 
-    if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
+  try {
+    console.log('Starting excel-assistant function...');
+    const { fileIds, query, userId, sessionId, messageId } = await req.json();
+    
+    if (!fileIds || fileIds.length === 0) {
       throw new Error('No file IDs provided');
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    console.log('Processing files:', fileIds);
+    const fileContents = [];
 
-    const { data: files, error: filesError } = await supabase
-      .from('excel_files')
-      .select(`
-        *,
-        message_files!left(
-          message_id,
-          role,
-          message_file_tags!left(
-            tag_id,
-            ai_context,
-            file_tags(
-              name,
-              type,
-              category
-            )
-          )
-        )
-      `)
-      .in('id', fileIds);
+    // Process each file
+    for (const fileId of fileIds) {
+      console.log(`Processing file ${fileId}...`);
+      
+      // Get file metadata from database
+      const { data: file, error: fileError } = await supabaseClient
+        .from('excel_files')
+        .select('*')
+        .eq('id', fileId)
+        .single();
 
-    if (filesError) {
-      console.error('Error fetching files:', filesError);
-      throw filesError;
-    }
+      if (fileError) {
+        console.error('Error fetching file metadata:', fileError);
+        throw fileError;
+      }
 
-    const processedFiles = files.map(file => {
-      const fileTags = file.message_files
-        ?.flatMap(mf => mf.message_file_tags)
-        .filter(Boolean)
-        .map(mft => ({
-          name: mft?.file_tags?.name,
-          type: mft?.file_tags?.type,
-          category: mft?.file_tags?.category,
-          context: mft?.ai_context
-        }))
-        .filter(tag => tag.name) || [];
+      // Download file from storage
+      console.log(`Downloading file ${file.file_path}...`);
+      const { data: fileData, error: downloadError } = await supabaseClient.storage
+        .from('excel_files')
+        .download(file.file_path);
 
-      return {
-        ...file,
-        tags: fileTags
+      if (downloadError) {
+        console.error('Error downloading file:', downloadError);
+        throw downloadError;
+      }
+
+      // Convert file to array buffer
+      const arrayBuffer = await fileData.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      // Parse Excel file
+      console.log('Parsing Excel file...');
+      const workbook = XLSX.read(uint8Array, { type: 'array' });
+      
+      // Process each sheet
+      const sheetNames = workbook.SheetNames;
+      const fileInfo = {
+        filename: file.filename,
+        sheets: sheetNames.map(sheetName => {
+          const worksheet = workbook.Sheets[sheetName];
+          const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          return {
+            name: sheetName,
+            rowCount: data.length,
+            columnCount: data[0]?.length || 0,
+            preview: data.slice(0, 5)
+          };
+        })
       };
-    });
 
-    console.log('Processing files with tags:', processedFiles);
-
-    const fileContents = await Promise.all(
-      processedFiles.map(async (file) => {
-        const { data: fileData, error: storageError } = await supabase
-          .storage
-          .from('excel-files')
-          .download(file.storage_path);
-
-        if (storageError) {
-          console.error('Error downloading file:', storageError);
-          throw storageError;
-        }
-
-        const buffer = await fileData.arrayBuffer();
-        const uint8Array = new Uint8Array(buffer);
-
-        try {
-          if (file.filename.endsWith('.csv')) {
-            const decodedString = new TextDecoder('utf-8').decode(uint8Array);
-            return decodedString;
-          } else {
-            const workbook = XLSX.read(uint8Array, { type: 'array' });
-            return JSON.stringify(XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]));
-          }
-        } catch (parsingError) {
-          console.error('Error parsing file:', parsingError);
-          throw parsingError;
-        }
-      })
-    );
-
-    const prompt = `
-      You are an AI assistant that helps users analyze Excel files.
-      You will be given a query and the content of one or more Excel files.
-      Your goal is to answer the query based on the content of the Excel files.
-      Here are the files with their content:
-      ${processedFiles.map((file, index) => `Filename: ${file.filename}, Tags: ${JSON.stringify(file.tags)}, Content: ${fileContents[index]}`).join('\n')}
-      Query: ${query}
-      Response:
-    `;
-
-    const openAiUrl = 'https://api.openai.com/v1/chat/completions';
-    const openAiApiKey = Deno.env.get('OPENAI_API_KEY');
-
-    if (!openAiApiKey) {
-      throw new Error('OPENAI_API_KEY is not set');
+      fileContents.push(fileInfo);
     }
 
-    const chatCompletion = await fetch(openAiUrl, {
+    // Prepare prompt for OpenAI
+    const systemPrompt = `You are an Excel expert assistant. Analyze the following Excel files and respond to the user's query.
+File information:
+${fileContents.map(file => `
+Filename: ${file.filename}
+Sheets: ${file.sheets.map(sheet => `
+  - ${sheet.name} (${sheet.rowCount} rows × ${sheet.columnCount} columns)
+  Preview: ${JSON.stringify(sheet.preview)}`).join('\n')}
+`).join('\n')}`;
+
+    console.log('Calling OpenAI API...');
+    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: query }
+        ],
       }),
     });
 
-    if (!chatCompletion.ok) {
-      console.error('OpenAI API error:', chatCompletion.status, chatCompletion.statusText, await chatCompletion.text());
-      throw new Error(`OpenAI API error: ${chatCompletion.status} ${chatCompletion.statusText}`);
+    if (!openAIResponse.ok) {
+      const error = await openAIResponse.text();
+      console.error('OpenAI API error:', error);
+      throw new Error(`OpenAI API error: ${error}`);
     }
 
-    const data = await chatCompletion.json();
-    const answer = data.choices[0].message.content;
+    const aiResponse = await openAIResponse.json();
+    const responseContent = aiResponse.choices[0].message.content;
 
-    const { error: updateError } = await supabase
+    // Update the message in the database
+    const { error: updateError } = await supabaseClient
       .from('chat_messages')
-      .update({
-        status: 'in_progress',
-        processing_stage: {
-          stage: 'processing',
-          started_at: Date.now(),
-          last_updated: Date.now()
-        }
+      .update({ 
+        content: responseContent,
+        status: 'completed',
+        updated_at: new Date().toISOString()
       })
       .eq('id', messageId);
 
     if (updateError) {
-      console.error('Error updating message status:', updateError);
+      console.error('Error updating message:', updateError);
       throw updateError;
     }
 
-    const { error: completionError } = await supabase
-      .from('chat_messages')
-      .update({
-        content: answer,
-        status: 'completed',
-        metadata: {
-          processing_stage: {
-            stage: 'completion',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        }
-      })
-      .eq('id', messageId);
-
-    if (completionError) {
-      console.error('Error updating message:', completionError);
-      throw completionError;
-    }
-
-    return new Response(
-      JSON.stringify({ data: answer }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    );
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: 'Analysis completed successfully',
+      content: responseContent
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error) {
-    console.error('Error in excel-assistant:', error);
+    console.error('Error in excel-assistant function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      JSON.stringify({
+        error: 'Failed to process Excel files',
+        details: error.message
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   }
