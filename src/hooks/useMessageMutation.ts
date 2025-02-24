@@ -16,6 +16,54 @@ export function useMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const ensureSessionFiles = async (sessionId: string, fileIds: string[]) => {
+    try {
+      // First, get existing session files to avoid duplicates
+      const { data: existingFiles } = await supabase
+        .from('session_files')
+        .select('file_id')
+        .eq('session_id', sessionId);
+
+      const existingFileIds = new Set(existingFiles?.map(f => f.file_id) || []);
+
+      // Filter out files that already exist
+      const newFileIds = fileIds.filter(id => !existingFileIds.has(id));
+
+      if (newFileIds.length > 0) {
+        // Create new session_files entries
+        const { error } = await supabase
+          .from('session_files')
+          .insert(
+            newFileIds.map(fileId => ({
+              session_id: sessionId,
+              file_id: fileId,
+              is_active: true
+            }))
+          );
+
+        if (error) {
+          console.error('Error creating session files:', error);
+          throw error;
+        }
+      }
+
+      // Update all files to be active
+      const { error: updateError } = await supabase
+        .from('session_files')
+        .update({ is_active: true })
+        .eq('session_id', sessionId)
+        .in('file_id', fileIds);
+
+      if (updateError) {
+        console.error('Error updating session files:', updateError);
+        throw updateError;
+      }
+    } catch (error) {
+      console.error('Error in ensureSessionFiles:', error);
+      throw error;
+    }
+  };
+
   const sendMessageMutation = useMutation({
     mutationFn: async ({ 
       content, 
@@ -46,6 +94,9 @@ export function useMessageMutation(sessionId: string | null) {
           console.error('No files available for the message');
           throw new Error('No files available for the message');
         }
+
+        // Ensure session files are properly set up before proceeding
+        await ensureSessionFiles(currentSessionId, activeFileIds);
 
         console.log('Creating user message with files:', activeFileIds);
         const userMessage = await createUserMessage(content, currentSessionId, user.id, activeFileIds);
