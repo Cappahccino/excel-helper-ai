@@ -215,12 +215,23 @@ export function useMessages(sessionId: string | null) {
       
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
       
-      generateAIResponse.mutate({
-        content: variables.content,
-        fileIds: assistantMessage.message_files?.map(mf => mf.file_id) || null,
-        sessionId: variables.sessionId!,
-        messageId: assistantMessage.id
-      });
+      // Immediately trigger the AI response generation
+      try {
+        console.log('Triggering AI response for message:', assistantMessage.id);
+        await generateAIResponse.mutateAsync({
+          content: variables.content,
+          fileIds: assistantMessage.message_files?.map(mf => mf.file_id) || null,
+          sessionId: variables.sessionId!,
+          messageId: assistantMessage.id
+        });
+      } catch (error) {
+        console.error('Failed to generate AI response:', error);
+        toast({
+          title: "Error",
+          description: "Failed to generate AI response. Please try again.",
+          variant: "destructive"
+        });
+      }
     }
   });
 
@@ -254,7 +265,7 @@ export function useMessages(sessionId: string | null) {
       }
 
       console.log('Invoking excel-assistant function with files:', activeFileIds);
-      const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
+      const { data, error: aiError } = await supabase.functions.invoke('excel-assistant', {
         body: {
           fileIds: activeFileIds,
           query: content,
@@ -269,7 +280,9 @@ export function useMessages(sessionId: string | null) {
         console.error('AI Response error:', aiError);
         throw aiError;
       }
-      return { sessionId };
+
+      console.log('AI response generated successfully:', data);
+      return { sessionId, data };
     },
     onError: (error) => {
       console.error('AI Response error:', error);
