@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -6,7 +5,6 @@ import { Message, MessagesResponse } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
-import { getActiveSessionFiles } from "@/services/sessionFileService";
 import { InfiniteData } from "@tanstack/react-query";
 import { Tag } from "@/types/tags";
 
@@ -89,31 +87,17 @@ export function useMessages(sessionId: string | null) {
       }
 
       try {
-        // If no fileIds provided, get active session files
-        let activeFileIds = fileIds;
-        if (!activeFileIds || activeFileIds.length === 0) {
-          console.log('No files provided, fetching active session files...');
-          const sessionFiles = await getActiveSessionFiles(currentSessionId);
-          activeFileIds = sessionFiles.map(sf => sf.file_id);
-          console.log('Found active session files:', activeFileIds);
-        }
-
-        if (!activeFileIds || activeFileIds.length === 0) {
-          console.error('No files available for the message');
-          throw new Error('No files available for the message');
-        }
-
-        console.log('Creating user message with files:', activeFileIds);
-        const userMessage = await createUserMessage(content, currentSessionId, user.id, activeFileIds);
+        console.log('Creating user message...');
+        const userMessage = await createUserMessage(content, currentSessionId, user.id, fileIds);
 
         // Process tags if they exist and we have files
-        if (tagNames && tagNames.length > 0 && activeFileIds && activeFileIds.length > 0) {
+        if (tagNames && tagNames.length > 0 && fileIds && fileIds.length > 0) {
           console.log('Processing tags:', tagNames);
           
           const { data, error } = await supabase.functions.invoke('tag-operations', {
             body: {
               messageId: userMessage.id,
-              fileIds: activeFileIds,
+              fileIds,
               tagNames,
               userId: user.id
             }
@@ -145,7 +129,7 @@ export function useMessages(sessionId: string | null) {
         }
 
         console.log('Creating assistant message...');
-        const assistantMessage = await createAssistantMessage(currentSessionId, user.id, activeFileIds);
+        const assistantMessage = await createAssistantMessage(currentSessionId, user.id, fileIds);
 
         return { userMessage, assistantMessage };
       } catch (error) {
@@ -217,7 +201,7 @@ export function useMessages(sessionId: string | null) {
       
       generateAIResponse.mutate({
         content: variables.content,
-        fileIds: assistantMessage.message_files?.map(mf => mf.file_id) || null,
+        fileIds: variables.fileIds,
         sessionId: variables.sessionId!,
         messageId: assistantMessage.id
       });
@@ -239,24 +223,10 @@ export function useMessages(sessionId: string | null) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // If no fileIds provided, get active session files
-      let activeFileIds = fileIds;
-      if (!activeFileIds || activeFileIds.length === 0) {
-        console.log('No files provided for AI response, checking session files...');
-        const sessionFiles = await getActiveSessionFiles(sessionId);
-        activeFileIds = sessionFiles.map(sf => sf.file_id);
-        console.log('Using session files for AI response:', activeFileIds);
-      }
-
-      if (!activeFileIds || activeFileIds.length === 0) {
-        console.error('No files available for the AI response');
-        throw new Error('No files available for the AI response');
-      }
-
-      console.log('Invoking excel-assistant function with files:', activeFileIds);
+      console.log('Invoking excel-assistant function...');
       const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
         body: {
-          fileIds: activeFileIds,
+          fileIds,
           query: content,
           userId: user.id,
           sessionId: sessionId,
