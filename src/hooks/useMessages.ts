@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -8,6 +9,11 @@ import { fetchMessages, createUserMessage, createAssistantMessage } from "@/serv
 import { getActiveSessionFiles } from "@/services/sessionFileService";
 import { InfiniteData } from "@tanstack/react-query";
 import { Tag } from "@/types/tags";
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -88,15 +94,42 @@ export function useMessages(sessionId: string | null) {
       }
 
       try {
-        // If no fileIds provided, get active session files
+        // Helper function to get files with retry mechanism
+        const getFilesWithRetry = async (retries = MAX_RETRIES): Promise<string[]> => {
+          try {
+            console.log(`Attempting to get files (${retries} retries left)...`);
+            const sessionFiles = await getActiveSessionFiles(currentSessionId);
+            const activeFileIds = sessionFiles.map(sf => sf.file_id);
+            
+            if (!activeFileIds || activeFileIds.length === 0) {
+              if (retries > 0) {
+                console.log('No files found, retrying...');
+                await wait(RETRY_DELAY);
+                return getFilesWithRetry(retries - 1);
+              }
+              throw new Error('No files available after retries');
+            }
+            
+            return activeFileIds;
+          } catch (error) {
+            if (retries > 0) {
+              console.log('Error getting files, retrying...');
+              await wait(RETRY_DELAY);
+              return getFilesWithRetry(retries - 1);
+            }
+            throw error;
+          }
+        };
+
+        // If fileIds provided, use them directly. Otherwise, try to get active session files
         let activeFileIds = fileIds;
         if (!activeFileIds || activeFileIds.length === 0) {
           console.log('No files provided, fetching active session files...');
-          const sessionFiles = await getActiveSessionFiles(currentSessionId);
-          activeFileIds = sessionFiles.map(sf => sf.file_id);
+          activeFileIds = await getFilesWithRetry();
           console.log('Found active session files:', activeFileIds);
         }
 
+        // Ensure we have files before proceeding
         if (!activeFileIds || activeFileIds.length === 0) {
           console.error('No files available for the message');
           throw new Error('No files available for the message');
@@ -143,14 +176,21 @@ export function useMessages(sessionId: string | null) {
           }
         }
 
+        // Wait a short moment for session_files to be created
+        await wait(500);
+
         console.log('Creating assistant message...');
         const assistantMessage = await createAssistantMessage(currentSessionId, user.id, activeFileIds);
+
+        // Ensure we still have the files before triggering AI response
+        const verifiedFileIds = await getFilesWithRetry(1);
+        console.log('Verified files before AI response:', verifiedFileIds);
 
         // Immediately trigger the AI response
         console.log('Triggering AI response for message:', assistantMessage.id);
         const aiResponse = await supabase.functions.invoke('excel-assistant', {
           body: {
-            fileIds: activeFileIds,
+            fileIds: verifiedFileIds,
             query: content,
             userId: user.id,
             sessionId: currentSessionId,
