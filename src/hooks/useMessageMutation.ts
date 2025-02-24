@@ -184,17 +184,56 @@ export function useMessageMutation(sessionId: string | null) {
     }
   });
 
+  const createSessionMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Create a new chat session
+      const { data: session, error } = await supabase
+        .from('chat_sessions')
+        .insert({
+          user_id: user.id,
+          status: 'active',
+          chat_name: 'Untitled Chat',
+          thread_level: 0,
+          thread_position: 0,
+          thread_metadata: {
+            title: null,
+            summary: null
+          }
+        })
+        .select('session_id')
+        .single();
+
+      if (error) {
+        console.error('Error creating session:', error);
+        throw error;
+      }
+
+      if (!session) {
+        throw new Error('Failed to create session');
+      }
+
+      return session;
+    },
+    onError: (error) => {
+      console.error('Session creation error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create chat session",
+        variant: "destructive"
+      });
+    }
+  });
+
   return {
     sendMessage: {
       mutate: mutation.mutate,
       mutateAsync: mutation.mutateAsync
     },
     createSession: {
-      mutateAsync: async () => {
-        // This is a placeholder since createSession isn't implemented
-        // You should implement this if needed or remove it if not used
-        return { session_id: null };
-      }
+      mutateAsync: createSessionMutation.mutateAsync
     }
   };
 }
