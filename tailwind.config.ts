@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -19,7 +20,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        jersey: ["Jersey", "serif"],
+        bricolage: ["Bricolage Grotesque", "sans-serif"],
+        'open-sans': ["Open Sans", "sans-serif"],
       },
       colors: {
         "color-1": "hsl(var(--color-1))",
@@ -79,21 +81,31 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
-        "fade-in": {
-          "0%": { 
+        "fade-up": {
+          "0%": {
             opacity: "0",
-            transform: "translateY(10px)"
+            transform: "translateY(10px)",
           },
           "100%": {
             opacity: "1",
-            transform: "translateY(0)"
-          }
-        }
+            transform: "translateY(0)",
+          },
+        },
+        rainbow: {
+          "0%": { "background-position": "0%" },
+          "100%": { "background-position": "200%" },
+        },
+        blink: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "fade-in": "fade-in 0.5s ease-out forwards",
+        "fade-up": "fade-up 0.5s ease-out",
+        rainbow: "rainbow var(--speed, 2s) infinite linear",
+        blink: "blink 1s step-start infinite",
       },
     },
   },
