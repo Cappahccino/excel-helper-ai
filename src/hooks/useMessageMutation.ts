@@ -185,11 +185,16 @@ export function useMessageMutation(sessionId: string | null) {
   });
 
   return {
-    sendMessage: mutation.mutate,
-    createSession: async () => {
-      // This is a placeholder since createSession isn't implemented
-      // You should implement this if needed or remove it if not used
-      return null;
+    sendMessage: {
+      mutate: mutation.mutate,
+      mutateAsync: mutation.mutateAsync
+    },
+    createSession: {
+      mutateAsync: async () => {
+        // This is a placeholder since createSession isn't implemented
+        // You should implement this if needed or remove it if not used
+        return { session_id: null };
+      }
     }
   };
 }
