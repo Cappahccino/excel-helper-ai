@@ -12,7 +12,7 @@ export function useMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: async ({ 
       content, 
       fileIds,
@@ -183,4 +183,13 @@ export function useMessageMutation(sessionId: string | null) {
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
     }
   });
+
+  return {
+    sendMessage: mutation.mutate,
+    createSession: async () => {
+      // This is a placeholder since createSession isn't implemented
+      // You should implement this if needed or remove it if not used
+      return null;
+    }
+  };
 }

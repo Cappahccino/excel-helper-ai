@@ -42,7 +42,7 @@ export function useMessages(sessionId: string | null) {
     enabled: true
   });
 
-  const { createSession, sendMessage } = useMessageMutation(sessionId);
+  const { sendMessage, createSession } = useMessageMutation(sessionId);
 
   const messages = (data?.pages ?? []).flatMap(page => page.messages);
 
