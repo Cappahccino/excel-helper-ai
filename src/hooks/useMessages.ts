@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -6,8 +5,8 @@ import { Message, MessagesResponse } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import { useToast } from "@/hooks/use-toast";
 import { fetchMessages, createUserMessage, createAssistantMessage } from "@/services/messageService";
-import { getActiveSessionFiles } from "@/services/sessionFileService";
 import { InfiniteData } from "@tanstack/react-query";
+import { Tag } from "@/types/tags";
 
 export function useMessages(sessionId: string | null) {
   const queryClient = useQueryClient();
@@ -88,14 +87,6 @@ export function useMessages(sessionId: string | null) {
       }
 
       try {
-        // If no fileIds provided, get active session files
-        if (!fileIds || fileIds.length === 0) {
-          console.log('No files provided, checking session files...');
-          const sessionFiles = await getActiveSessionFiles(currentSessionId);
-          fileIds = sessionFiles.map(file => file.id);
-          console.log('Using session files:', fileIds);
-        }
-
         console.log('Creating user message...');
         const userMessage = await createUserMessage(content, currentSessionId, user.id, fileIds);
 
@@ -231,14 +222,6 @@ export function useMessages(sessionId: string | null) {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
-
-      // If no fileIds provided, get active session files
-      if (!fileIds || fileIds.length === 0) {
-        console.log('No files provided for AI response, checking session files...');
-        const sessionFiles = await getActiveSessionFiles(sessionId);
-        fileIds = sessionFiles.map(file => file.id);
-        console.log('Using session files for AI response:', fileIds);
-      }
 
       console.log('Invoking excel-assistant function...');
       const { error: aiError } = await supabase.functions.invoke('excel-assistant', {
