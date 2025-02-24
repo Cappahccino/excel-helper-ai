@@ -8,6 +8,10 @@ import { getFilesWithRetry } from "@/services/fileOperations";
 import { wait } from "@/utils/retryUtils";
 import { InfiniteData } from "@tanstack/react-query";
 
+type MutationContext = {
+  previousMessages?: InfiniteData<MessagesResponse>;
+};
+
 export function useMessageMutation(sessionId: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -114,7 +118,7 @@ export function useMessageMutation(sessionId: string | null) {
         throw error;
       }
     },
-    onError: (err, variables, context) => {
+    onError: (err, variables, context: MutationContext) => {
       if (context?.previousMessages) {
         queryClient.setQueryData(['chat-messages', variables.sessionId], context.previousMessages);
       }
