@@ -22,5 +22,8 @@ export async function getActiveSessionFiles(sessionId: string) {
     throw error;
   }
 
+  // Debug log to track the retrieved files
+  console.log('Retrieved active session files:', sessionFiles);
+
   return sessionFiles;
 }
