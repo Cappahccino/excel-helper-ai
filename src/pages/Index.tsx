@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -14,17 +15,28 @@ const Index = () => {
     setIsLoading(true);
 
     try {
+      // First, try to insert the email into the waitlist_users table
       const { error: dbError } = await supabase
         .from("waitlist_users")
         .insert([{ email }]);
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error("Database error:", dbError);
+        if (dbError.code === '23505') { // Unique violation error code
+          throw new Error("This email is already on the waitlist!");
+        }
+        throw dbError;
+      }
 
+      // If database insert succeeds, send the welcome email
       const { error: emailError } = await supabase.functions.invoke("send-waitlist-email", {
         body: { email },
       });
 
-      if (emailError) throw emailError;
+      if (emailError) {
+        console.error("Email error:", emailError);
+        throw emailError;
+      }
 
       setSubmitted(true);
       setEmail("");
@@ -32,11 +44,11 @@ const Index = () => {
         title: "Success!",
         description: "You've been added to our waitlist. Check your email for confirmation.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error:", error);
       toast({
         title: "Error",
-        description: "Something went wrong. Please try again.",
+        description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     } finally {
