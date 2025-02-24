@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -147,6 +146,24 @@ export function useMessages(sessionId: string | null) {
         console.log('Creating assistant message...');
         const assistantMessage = await createAssistantMessage(currentSessionId, user.id, activeFileIds);
 
+        // Immediately trigger the AI response
+        console.log('Triggering AI response for message:', assistantMessage.id);
+        const aiResponse = await supabase.functions.invoke('excel-assistant', {
+          body: {
+            fileIds: activeFileIds,
+            query: content,
+            userId: user.id,
+            sessionId: currentSessionId,
+            threadId: null,
+            messageId: assistantMessage.id
+          }
+        });
+
+        if (aiResponse.error) {
+          console.error('Error triggering AI response:', aiResponse.error);
+          throw aiResponse.error;
+        }
+
         return { userMessage, assistantMessage };
       } catch (error) {
         console.error('Error in sendMessage:', error);
@@ -214,83 +231,6 @@ export function useMessages(sessionId: string | null) {
       });
       
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.sessionId] });
-      
-      // Immediately trigger the AI response generation
-      try {
-        console.log('Triggering AI response for message:', assistantMessage.id);
-        await generateAIResponse.mutateAsync({
-          content: variables.content,
-          fileIds: assistantMessage.message_files?.map(mf => mf.file_id) || null,
-          sessionId: variables.sessionId!,
-          messageId: assistantMessage.id
-        });
-      } catch (error) {
-        console.error('Failed to generate AI response:', error);
-        toast({
-          title: "Error",
-          description: "Failed to generate AI response. Please try again.",
-          variant: "destructive"
-        });
-      }
-    }
-  });
-
-  const generateAIResponse = useMutation({
-    mutationFn: async ({ 
-      content, 
-      fileIds, 
-      sessionId, 
-      messageId 
-    }: { 
-      content: string; 
-      fileIds?: string[] | null; 
-      sessionId: string;
-      messageId: string;
-    }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      // If no fileIds provided, get active session files
-      let activeFileIds = fileIds;
-      if (!activeFileIds || activeFileIds.length === 0) {
-        console.log('No files provided for AI response, checking session files...');
-        const sessionFiles = await getActiveSessionFiles(sessionId);
-        activeFileIds = sessionFiles.map(sf => sf.file_id);
-        console.log('Using session files for AI response:', activeFileIds);
-      }
-
-      if (!activeFileIds || activeFileIds.length === 0) {
-        console.error('No files available for the AI response');
-        throw new Error('No files available for the AI response');
-      }
-
-      console.log('Invoking excel-assistant function with files:', activeFileIds);
-      const { data, error: aiError } = await supabase.functions.invoke('excel-assistant', {
-        body: {
-          fileIds: activeFileIds,
-          query: content,
-          userId: user.id,
-          sessionId: sessionId,
-          threadId: null,
-          messageId
-        }
-      });
-
-      if (aiError) {
-        console.error('AI Response error:', aiError);
-        throw aiError;
-      }
-
-      console.log('AI response generated successfully:', data);
-      return { sessionId, data };
-    },
-    onError: (error) => {
-      console.error('AI Response error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate AI response. Please try again.",
-        variant: "destructive"
-      });
     }
   });
 
