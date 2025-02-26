@@ -3,6 +3,12 @@ import { retryOperation } from "@/utils/retryUtils";
 import { getActiveSessionFiles } from "./sessionFileService";
 import { supabase } from "@/integrations/supabase/client";
 
+interface ValidationResult {
+  success: boolean;
+  fileId: string;
+  errors: string[];
+}
+
 export const getFilesWithRetry = async (sessionId: string): Promise<string[]> => {
   console.log('Attempting to get files for session:', sessionId);
   
@@ -16,8 +22,24 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
         throw new Error('No files available');
       }
       
-      console.log('Found active session files:', activeFileIds);
-      return activeFileIds;
+      // Validate each file's status
+      const validationResults = await Promise.all(
+        activeFileIds.map(validateFileStatus)
+      );
+
+      const validFiles = validationResults
+        .filter(result => result.success)
+        .map(result => result.fileId);
+
+      if (validFiles.length === 0) {
+        const errors = validationResults
+          .flatMap(result => result.errors)
+          .join(', ');
+        throw new Error(`No valid files available: ${errors}`);
+      }
+      
+      console.log('Found valid session files:', validFiles);
+      return validFiles;
     }, {
       maxRetries: 3,
       delay: 1000,
@@ -34,29 +56,88 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
   }
 };
 
+const validateFileStatus = async (fileId: string): Promise<ValidationResult> => {
+  const errors: string[] = [];
+
+  try {
+    // Check file exists and is properly processed
+    const { data: file, error: fileError } = await supabase
+      .from('excel_files')
+      .select('*')
+      .eq('id', fileId)
+      .is('deleted_at', null)
+      .single();
+
+    if (fileError || !file) {
+      errors.push(`File ${fileId} not found or deleted`);
+      return { success: false, fileId, errors };
+    }
+
+    // Check storage verification and processing status
+    if (!file.storage_verified) {
+      errors.push(`File ${fileId} not verified in storage`);
+    }
+
+    if (file.processing_status !== 'completed') {
+      errors.push(`File ${fileId} processing not complete (status: ${file.processing_status})`);
+    }
+
+    // Check file metadata exists
+    const { data: metadata, error: metadataError } = await supabase
+      .from('file_metadata')
+      .select('id')
+      .eq('file_id', fileId)
+      .single();
+
+    if (metadataError || !metadata) {
+      errors.push(`File ${fileId} metadata not generated`);
+    }
+
+    // Verify storage accessibility
+    const { data: storageData, error: storageError } = await supabase
+      .storage
+      .from('excel_files')
+      .download(file.file_path);
+
+    if (storageError) {
+      errors.push(`File ${fileId} not accessible in storage`);
+    }
+
+    return {
+      success: errors.length === 0,
+      fileId,
+      errors
+    };
+  } catch (error) {
+    errors.push(`Unexpected error validating file ${fileId}: ${error.message}`);
+    return {
+      success: false,
+      fileId,
+      errors
+    };
+  }
+};
+
 export const validateFileAvailability = async (fileIds: string[]): Promise<boolean> => {
   if (!fileIds.length) return false;
 
-  const { data, error } = await supabase
-    .from('excel_files')
-    .select('id, storage_verified')
-    .in('id', fileIds)
-    .is('deleted_at', null);
+  const validationResults = await Promise.all(
+    fileIds.map(validateFileStatus)
+  );
 
-  if (error) {
-    console.error('Error validating file availability:', error);
-    throw error;
+  const allFilesValid = validationResults.every(result => result.success);
+
+  if (!allFilesValid) {
+    console.warn('File validation failed:', 
+      validationResults
+        .filter(result => !result.success)
+        .map(result => ({
+          fileId: result.fileId,
+          errors: result.errors
+        }))
+    );
   }
 
-  const allFilesAvailable = data.length === fileIds.length && 
-    data.every(file => file.storage_verified);
-
-  if (!allFilesAvailable) {
-    console.warn('Some files are not available:', {
-      requested: fileIds,
-      available: data.map(f => f.id)
-    });
-  }
-
-  return allFilesAvailable;
+  return allFilesValid;
 };
+
