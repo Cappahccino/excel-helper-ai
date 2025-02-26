@@ -68,21 +68,25 @@ export async function createUserMessage(
       throw messageError;
     }
 
-    // If there are files, create the message_files entries
+    // If there are files, create the message_files entries with batch processing
     if (fileIds && fileIds.length > 0) {
-      const messageFiles = fileIds.map(fileId => ({
-        message_id: message.id,
-        file_id: fileId,
-        role: 'user'
-      }));
+      const batchSize = 10;
+      for (let i = 0; i < fileIds.length; i += batchSize) {
+        const batch = fileIds.slice(i, i + batchSize);
+        const messageFiles = batch.map(fileId => ({
+          message_id: message.id,
+          file_id: fileId,
+          role: 'user'
+        }));
 
-      const { error: filesError } = await supabase
-        .from('message_files')
-        .insert(messageFiles);
+        const { error: filesError } = await supabase
+          .from('message_files')
+          .insert(messageFiles);
 
-      if (filesError) {
-        console.error('Error creating message files:', filesError);
-        throw filesError;
+        if (filesError) {
+          console.error(`Error creating message files batch ${i}:`, filesError);
+          // Continue with other batches even if one fails
+        }
       }
     }
 
@@ -130,21 +134,25 @@ export async function createAssistantMessage(
       throw messageError;
     }
 
-    // If there are files, create the message_files entries
+    // If there are files, create the message_files entries with batch processing
     if (fileIds && fileIds.length > 0) {
-      const messageFiles = fileIds.map(fileId => ({
-        message_id: message.id,
-        file_id: fileId,
-        role: 'assistant'
-      }));
+      const batchSize = 10;
+      for (let i = 0; i < fileIds.length; i += batchSize) {
+        const batch = fileIds.slice(i, i + batchSize);
+        const messageFiles = batch.map(fileId => ({
+          message_id: message.id,
+          file_id: fileId,
+          role: 'assistant'
+        }));
 
-      const { error: filesError } = await supabase
-        .from('message_files')
-        .insert(messageFiles);
+        const { error: filesError } = await supabase
+          .from('message_files')
+          .insert(messageFiles);
 
-      if (filesError) {
-        console.error('Error creating message files for assistant:', filesError);
-        throw filesError;
+        if (filesError) {
+          console.error(`Error creating message files batch ${i} for assistant:`, filesError);
+          // Continue with other batches even if one fails
+        }
       }
     }
 
