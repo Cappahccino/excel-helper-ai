@@ -21,7 +21,12 @@ export function useMessageMutation(sessionId: string | null) {
       // First validate all files are properly processed and accessible
       const filesValid = await validateFileAvailability(fileIds);
       if (!filesValid) {
-        throw new Error("Some files are not properly processed or accessible");
+        console.warn("Some files are still processing, will retry");
+        await wait(2000); // Wait before retrying
+        const retryValid = await validateFileAvailability(fileIds);
+        if (!retryValid) {
+          throw new Error("Some files are not properly processed or accessible");
+        }
       }
 
       // Get existing session files to avoid duplicates
