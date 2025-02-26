@@ -32,4 +32,3 @@ export const ASSISTANT_INSTRUCTIONS = `You are an Excel expert assistant special
    - Provide alternative approaches when needed
 
 Remember to be thorough but concise, and always aim to provide actionable insights.`;
-
