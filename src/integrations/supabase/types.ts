@@ -17,7 +17,6 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           deployment_id: string | null
-          excel_file_id: string | null
           id: string
           is_ai_response: boolean | null
           metadata: Json | null
@@ -41,7 +40,6 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deployment_id?: string | null
-          excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
           metadata?: Json | null
@@ -65,7 +63,6 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deployment_id?: string | null
-          excel_file_id?: string | null
           id?: string
           is_ai_response?: boolean | null
           metadata?: Json | null
@@ -89,13 +86,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chat_sessions"
             referencedColumns: ["session_id"]
-          },
-          {
-            foreignKeyName: "fk_chat_messages_excel_files"
-            columns: ["excel_file_id"]
-            isOneToOne: false
-            referencedRelation: "excel_files"
-            referencedColumns: ["id"]
           },
         ]
       }
