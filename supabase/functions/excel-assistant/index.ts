@@ -40,8 +40,12 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')
     });
 
-    // Process Excel files
-    const fileContents = await processExcelFiles(fileIds);
+    // Process Excel files with improved error handling and progress tracking
+    const fileProcessingResult = await processExcelFiles(fileIds, messageId);
+    if (!fileProcessingResult.success) {
+      console.error('File processing failed:', fileProcessingResult.errors);
+      throw new Error('Failed to process Excel files');
+    }
     console.log('Files processed successfully');
 
     // Get or create assistant
@@ -62,7 +66,7 @@ serve(async (req) => {
       openai,
       assistant,
       query,
-      fileContents,
+      fileContents: fileProcessingResult.data || [],
       threadId,
       messageId,
       sessionId
@@ -73,7 +77,10 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('Error in excel-assistant function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      details: error.cause || 'Unknown error occurred'
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
