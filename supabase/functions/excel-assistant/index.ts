@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
@@ -7,10 +8,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface FileData {
+  id: string;
+  content: any[];
+  headers: string[];
+  summary?: {
+    rowCount: number;
+    columnCount: number;
+  };
+}
+
 serve(async (req) => {
   const requestId = crypto.randomUUID();
   console.log(`🚀 [${requestId}] Excel assistant started`);
 
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -24,149 +36,147 @@ serve(async (req) => {
     const { fileIds, query, userId, sessionId, messageId, action = 'query' } = await req.json();
     console.log(`📝 [${requestId}] Processing request:`, { action, fileIds, messageId });
 
-    // Handle different actions
-    if (action === 'analyze') {
-      // Single file analysis mode
-      const { fileId, filePath } = await req.json();
-      console.log(`🔍 [${requestId}] Analyzing file ${fileId}`);
+    // Verify files are ready for processing
+    const { data: files, error: filesError } = await supabase
+      .from('excel_files')
+      .select('*')
+      .in('id', fileIds)
+      .eq('storage_verified', true);
 
+    if (filesError) {
+      console.error(`❌ [${requestId}] Error fetching files:`, filesError);
+      throw filesError;
+    }
+
+    if (!files?.length) {
+      throw new Error('No processed files available for query');
+    }
+
+    // Process each file
+    const processedFiles: FileData[] = [];
+    for (const file of files) {
+      console.log(`📊 [${requestId}] Processing file ${file.id}`);
+      
       try {
-        // Update status to analyzing
+        // Update file status to processing
         await supabase
           .from('excel_files')
-          .update({ processing_status: 'analyzing' })
-          .eq('id', fileId);
+          .update({ processing_status: 'processing', processing_started_at: new Date().toISOString() })
+          .eq('id', file.id);
 
-        // Download file for analysis
+        // Download file
         const { data: fileData, error: downloadError } = await supabase.storage
           .from('excel_files')
-          .download(filePath);
+          .download(file.file_path);
 
         if (downloadError) throw downloadError;
 
-        // Read and analyze Excel file
+        // Process Excel file
         const workbook = XLSX.read(await fileData.arrayBuffer(), { type: 'array' });
-        const sheetNames = workbook.SheetNames;
-        const firstSheet = workbook.Sheets[sheetNames[0]];
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
-        // Extract column definitions
-        const headers = jsonData[0];
-        const columnDefs = headers.map((header: string, index: number) => {
-          const columnData = jsonData.slice(1).map((row: any[]) => row[index]);
-          const dataType = inferDataType(columnData);
-          return {
-            name: header,
-            type: dataType,
-            sample: columnData.slice(0, 5).filter(v => v !== undefined && v !== null)
-          };
+        // Extract headers and data
+        const headers = jsonData[0] as string[];
+        const content = jsonData.slice(1);
+
+        processedFiles.push({
+          id: file.id,
+          content,
+          headers,
+          summary: {
+            rowCount: content.length,
+            columnCount: headers.length
+          }
         });
 
-        // Store metadata
-        await supabase
-          .from('file_metadata')
-          .insert({
-            file_id: fileId,
-            column_definitions: columnDefs,
-            row_count: jsonData.length - 1,
-            data_summary: {
-              sheet_count: sheetNames.length,
-              sheets: sheetNames,
-              last_analyzed: new Date().toISOString()
-            }
-          })
-          .select()
-          .single();
-
-        // Mark as completed
+        // Mark file as completed
         await supabase
           .from('excel_files')
           .update({
             processing_status: 'completed',
             processing_completed_at: new Date().toISOString()
           })
-          .eq('id', fileId);
-
-        return new Response(
-          JSON.stringify({ 
-            success: true,
-            fileId,
-            status: 'completed'
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+          .eq('id', file.id);
 
       } catch (error) {
-        console.error(`❌ [${requestId}] Analysis error:`, error);
+        console.error(`❌ [${requestId}] Error processing file ${file.id}:`, error);
+        
+        // Update file status to error
         await supabase
           .from('excel_files')
           .update({
             processing_status: 'error',
             error_message: error.message
           })
-          .eq('id', fileId);
+          .eq('id', file.id);
 
         throw error;
       }
-    } else if (action === 'query') {
-      // Regular query mode - verify files first
-      const { data: files, error: filesError } = await supabase
-        .from('excel_files')
-        .select('*')
-        .in('id', fileIds)
-        .eq('storage_verified', true)
-        .eq('processing_status', 'completed');
-
-      if (filesError) throw filesError;
-      if (!files?.length) {
-        throw new Error('No processed files available for query');
-      }
-
-      // Process query using verified files
-      console.log(`📝 [${requestId}] Processing query: ${query} for files: ${fileIds}`);
-
-      // You would typically use the file data to perform some analysis or generate a response
-      // This is a placeholder for your actual data processing logic
-      const aiResponse = `This is a dummy response for the query: ${query} based on files: ${fileIds.join(', ')}`;
-
-      // Create assistant message
-      const { data: message, error: messageError } = await supabase
-        .from('chat_messages')
-        .insert({
-          session_id: sessionId,
-          user_id: userId,
-          content: aiResponse,
-          role: 'assistant',
-          is_ai_response: true,
-          status: 'completed'
-        })
-        .select()
-        .single();
-
-      if (messageError) {
-        console.error(`❌ [${requestId}] Message creation error:`, messageError);
-        throw messageError;
-      }
-
-      // Update the message status to completed
-      await supabase
-        .from('chat_messages')
-        .update({ status: 'completed' })
-        .eq('id', messageId);
-
-      console.log(`✅ [${requestId}] Query processed successfully`);
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message,
-          response: aiResponse 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
+    // Generate response based on processed files
+    const response = generateResponse(query, processedFiles);
+    console.log(`✍️ [${requestId}] Generated response for query:`, query);
+
+    // Update message with response
+    const { error: messageError } = await supabase
+      .from('chat_messages')
+      .update({
+        content: response,
+        status: 'completed',
+        metadata: {
+          processing_stage: {
+            stage: 'completed',
+            last_updated: Date.now()
+          }
+        }
+      })
+      .eq('id', messageId);
+
+    if (messageError) {
+      console.error(`❌ [${requestId}] Error updating message:`, messageError);
+      throw messageError;
+    }
+
+    console.log(`✅ [${requestId}] Successfully processed query`);
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        response,
+        filesProcessed: processedFiles.length
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
   } catch (error) {
-    console.error(`❌ [${requestId}] Excel assistant error:`, error);
+    console.error(`❌ Error in excel-assistant:`, error);
+    
+    // Update message status to failed
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    try {
+      await supabase
+        .from('chat_messages')
+        .update({
+          status: 'failed',
+          content: 'Sorry, there was an error processing your request. Please try again.',
+          metadata: {
+            error: error.message,
+            processing_stage: {
+              stage: 'error',
+              last_updated: Date.now()
+            }
+          }
+        })
+        .eq('id', messageId);
+    } catch (updateError) {
+      console.error('Failed to update message status:', updateError);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: false,
@@ -180,26 +190,11 @@ serve(async (req) => {
   }
 });
 
-// Helper function to infer data type from column values
-function inferDataType(values: any[]): string {
-  const nonNullValues = values.filter(v => v !== null && v !== undefined);
-  if (nonNullValues.length === 0) return 'unknown';
-
-  const types = nonNullValues.map(value => {
-    if (typeof value === 'number') {
-      return Number.isInteger(value) ? 'integer' : 'number';
-    }
-    if (typeof value === 'boolean') return 'boolean';
-    if (typeof value === 'string') {
-      // Check for date format
-      if (!isNaN(Date.parse(value))) return 'date';
-      return 'string';
-    }
-    return 'unknown';
+function generateResponse(query: string, files: FileData[]): string {
+  // Basic response generation
+  const fileSummaries = files.map(file => {
+    return `File contains ${file.summary?.rowCount} rows and ${file.summary?.columnCount} columns with headers: ${file.headers.join(', ')}`;
   });
 
-  // Return most common type
-  return types.reduce((acc, curr) => 
-    types.filter(t => t === acc).length >= types.filter(t => t === curr).length ? acc : curr
-  );
+  return `I've analyzed the files you provided:\n\n${fileSummaries.join('\n\n')}\n\nYour query was: "${query}"\n\nBased on the data, I can help you analyze these files. What specific aspects would you like to know about?`;
 }
