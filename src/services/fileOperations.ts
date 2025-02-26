@@ -8,8 +8,10 @@ interface ValidationResult {
   success: boolean;
   fileId: string;
   errors: string[];
-  file?: any;  // Store the file data for reuse
+  file?: any;
 }
+
+type ProcessingStatus = 'completed' | 'pending' | 'uploading' | 'processing' | 'analyzing' | 'error';
 
 const MAX_PROCESSING_WAIT_TIME = 30000; // 30 seconds
 const PROCESSING_CHECK_INTERVAL = 1000; // 1 second
@@ -79,13 +81,13 @@ const waitForFileProcessing = async (fileId: string): Promise<ValidationResult> 
     }
 
     // If file is still processing, wait and retry
-    if (result.file && ['pending', 'processing'].includes(result.file.processing_status)) {
+    if (result.file && ['pending', 'processing', 'analyzing'].includes(result.file.processing_status)) {
       await wait(PROCESSING_CHECK_INTERVAL);
       continue;
     }
 
-    // If file failed processing or is in an invalid state, return the error
-    if (result.file?.processing_status === 'failed') {
+    // If file has an error status or is in an invalid state, return the error
+    if (result.file?.processing_status === 'error') {
       return result;
     }
   }
@@ -139,7 +141,7 @@ const validateFileStatus = async (fileId: string): Promise<ValidationResult> => 
     // Progressive validation - check each aspect separately
     // 1. Basic file existence (already checked above)
     // 2. Processing status
-    if (file.processing_status === 'failed') {
+    if (file.processing_status === 'error') {
       validationState.errors.push(`File ${fileId} processing failed`);
       validationState.success = false;
     } else if (file.processing_status === 'completed') {
