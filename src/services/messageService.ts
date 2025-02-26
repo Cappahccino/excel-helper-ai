@@ -55,7 +55,8 @@ export async function createUserMessage(
         is_ai_response: false,
         user_id: userId,
         status: 'completed' as const,
-        version: '1.0.0'
+        version: '1.0.0',
+        migration_verified: true // Set this explicitly since we're handling files separately
       })
       .select()
       .single();
@@ -105,6 +106,7 @@ export async function createAssistantMessage(
       user_id: userId,
       status: 'in_progress' as const,
       version: '1.0.0',
+      migration_verified: true, // Set this explicitly
       deployment_id: crypto.randomUUID(),
       metadata: {
         processing_stage: {
