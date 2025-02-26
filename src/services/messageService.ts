@@ -45,6 +45,8 @@ export async function createUserMessage(
   fileIds?: string[] | null
 ) {
   try {
+    console.log('Creating user message with files:', fileIds);
+    
     // Create the message
     const { data: message, error: messageError } = await supabase
       .from('chat_messages')
@@ -56,7 +58,7 @@ export async function createUserMessage(
         user_id: userId,
         status: 'completed' as const,
         version: '1.0.0',
-        migration_verified: true // Set this explicitly since we're handling files separately
+        migration_verified: true
       })
       .select()
       .single();
@@ -84,6 +86,7 @@ export async function createUserMessage(
       }
     }
 
+    console.log('Successfully created user message with files:', message.id);
     return message;
   } catch (error) {
     console.error('Error in createUserMessage:', error);
@@ -96,47 +99,61 @@ export async function createAssistantMessage(
   userId: string, 
   fileIds?: string[] | null
 ) {
-  const { data: message, error: messageError } = await supabase
-    .from('chat_messages')
-    .insert({
-      content: '',
-      role: 'assistant',
-      session_id: sessionId,
-      is_ai_response: true,
-      user_id: userId,
-      status: 'in_progress' as const,
-      version: '1.0.0',
-      migration_verified: true, // Set this explicitly
-      deployment_id: crypto.randomUUID(),
-      metadata: {
-        processing_stage: {
-          stage: 'generating',
-          started_at: Date.now(),
-          last_updated: Date.now()
+  try {
+    console.log('Creating assistant message with files:', fileIds);
+    
+    const { data: message, error: messageError } = await supabase
+      .from('chat_messages')
+      .insert({
+        content: '',
+        role: 'assistant',
+        session_id: sessionId,
+        is_ai_response: true,
+        user_id: userId,
+        status: 'in_progress' as const,
+        version: '1.0.0',
+        migration_verified: true,
+        deployment_id: crypto.randomUUID(),
+        metadata: {
+          processing_stage: {
+            stage: 'generating',
+            started_at: Date.now(),
+            last_updated: Date.now()
+          }
         }
+      })
+      .select()
+      .single();
+
+    if (messageError) {
+      console.error('Error creating assistant message:', messageError);
+      throw messageError;
+    }
+
+    // If there are files, create the message_files entries
+    if (fileIds && fileIds.length > 0) {
+      const messageFiles = fileIds.map(fileId => ({
+        message_id: message.id,
+        file_id: fileId,
+        role: 'assistant'
+      }));
+
+      const { error: filesError } = await supabase
+        .from('message_files')
+        .insert(messageFiles);
+
+      if (filesError) {
+        console.error('Error creating message files for assistant:', filesError);
+        throw filesError;
       }
-    })
-    .select()
-    .single();
+    }
 
-  if (messageError) throw messageError;
-
-  // If there are files, create the message_files entries
-  if (fileIds && fileIds.length > 0) {
-    const messageFiles = fileIds.map(fileId => ({
-      message_id: message.id,
-      file_id: fileId,
-      role: 'assistant'
-    }));
-
-    const { error: filesError } = await supabase
-      .from('message_files')
-      .insert(messageFiles);
-
-    if (filesError) throw filesError;
+    console.log('Successfully created assistant message:', message.id);
+    return transformMessage(message as DatabaseMessage);
+  } catch (error) {
+    console.error('Error in createAssistantMessage:', error);
+    throw error;
   }
-
-  return transformMessage(message as DatabaseMessage);
 }
 
 function transformMessage(msg: DatabaseMessage): Message {

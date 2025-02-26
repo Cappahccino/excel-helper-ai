@@ -22,7 +22,8 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
         throw new Error('No files available');
       }
       
-      // Validate each file's status
+      // Validate each file's status with more detailed logging
+      console.log('Validating files:', activeFileIds);
       const validationResults = await Promise.all(
         activeFileIds.map(validateFileStatus)
       );
@@ -35,6 +36,7 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
         const errors = validationResults
           .flatMap(result => result.errors)
           .join(', ');
+        console.error('No valid files after validation:', errors);
         throw new Error(`No valid files available: ${errors}`);
       }
       
@@ -57,6 +59,7 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
 };
 
 const validateFileStatus = async (fileId: string): Promise<ValidationResult> => {
+  console.log('Validating file:', fileId);
   const errors: string[] = [];
 
   try {
@@ -69,9 +72,15 @@ const validateFileStatus = async (fileId: string): Promise<ValidationResult> => 
       .single();
 
     if (fileError || !file) {
+      console.error('File not found or deleted:', fileId);
       errors.push(`File ${fileId} not found or deleted`);
       return { success: false, fileId, errors };
     }
+
+    console.log('File status:', fileId, {
+      storage_verified: file.storage_verified,
+      processing_status: file.processing_status
+    });
 
     // Check storage verification and processing status
     if (!file.storage_verified) {
@@ -100,15 +109,20 @@ const validateFileStatus = async (fileId: string): Promise<ValidationResult> => 
       .download(file.file_path);
 
     if (storageError) {
+      console.error('Storage access error for file:', fileId, storageError);
       errors.push(`File ${fileId} not accessible in storage`);
     }
 
-    return {
+    const result = {
       success: errors.length === 0,
       fileId,
       errors
     };
+
+    console.log('Validation result for file:', fileId, result);
+    return result;
   } catch (error) {
+    console.error('Unexpected error validating file:', fileId, error);
     errors.push(`Unexpected error validating file ${fileId}: ${error.message}`);
     return {
       success: false,
