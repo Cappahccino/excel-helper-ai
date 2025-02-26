@@ -21,6 +21,7 @@ export type Database = {
           id: string
           is_ai_response: boolean | null
           metadata: Json | null
+          migration_verified: boolean | null
           openai_message_id: string | null
           openai_run_id: string | null
           processing_stage: Json | null
@@ -44,6 +45,7 @@ export type Database = {
           id?: string
           is_ai_response?: boolean | null
           metadata?: Json | null
+          migration_verified?: boolean | null
           openai_message_id?: string | null
           openai_run_id?: string | null
           processing_stage?: Json | null
@@ -67,6 +69,7 @@ export type Database = {
           id?: string
           is_ai_response?: boolean | null
           metadata?: Json | null
+          migration_verified?: boolean | null
           openai_message_id?: string | null
           openai_run_id?: string | null
           processing_stage?: Json | null

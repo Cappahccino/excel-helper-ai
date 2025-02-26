@@ -146,16 +146,13 @@ function transformMessage(msg: DatabaseMessage): Message {
     status = msg.status;
   }
 
-  // Transform message_files to include both file metadata and role
+  // Transform message_files to the correct format
   const messageFiles = msg.message_files?.map(mf => ({
     file_id: mf.file_id,
     role: mf.role,
     filename: mf.excel_files?.filename,
     file_size: mf.excel_files?.file_size
   }));
-
-  // Get the primary file info from message_files
-  const primaryFile = messageFiles?.[0]?.excel_files;
 
   return {
     id: msg.id,

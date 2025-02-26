@@ -1,4 +1,3 @@
-
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -99,8 +98,6 @@ const Chat = () => {
         status: 'in_progress',
         is_ai_response: true,
         version: '1.0.0',
-        excel_file_id: fileIdFromUrl || null,
-        excel_files: null,
         metadata: {
           processing_stage: {
             stage: 'generating',
@@ -112,7 +109,7 @@ const Chat = () => {
     }
 
     return messagesList;
-  }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId, fileIdFromUrl]);
+  }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId]);
 
   const handleSendMessage = async (message: string, fileIds?: string[] | null) => {
     if (!message.trim() && !fileIds?.length) return;
@@ -144,7 +141,6 @@ const Chat = () => {
         sessionId: currentSessionId
       });
 
-      // Only navigate after the message has been sent successfully
       if (shouldNavigate) {
         console.log('Navigating to new session...');
         navigate(`/chat?${queryParams.toString()}`);
