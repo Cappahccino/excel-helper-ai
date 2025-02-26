@@ -21,51 +21,95 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get unverified files that haven't been deleted
+    // Get unverified files or files stuck in pending state
     const { data: files, error: fetchError } = await supabase
       .from('excel_files')
       .select('*')
-      .eq('storage_verified', false)
+      .or('storage_verified.eq.false,processing_status.eq.pending')
       .is('deleted_at', null)
       .limit(50);
 
     if (fetchError) throw fetchError;
-    console.log(`📝 [${requestId}] Found ${files?.length || 0} unverified files`);
+    console.log(`📝 [${requestId}] Found ${files?.length || 0} files to verify`);
 
     const results = [];
     for (const file of files || []) {
       try {
+        console.log(`🔍 [${requestId}] Verifying file ${file.filename}`);
+        
+        // Update status to verifying
+        await supabase
+          .from('excel_files')
+          .update({ 
+            processing_status: 'verifying',
+            processing_started_at: new Date().toISOString()
+          })
+          .eq('id', file.id);
+
         // Check if file exists in storage
         const { data, error: storageError } = await supabase.storage
           .from('excel_files')
           .download(file.file_path);
 
         const isVerified = !storageError && data !== null;
-        console.log(`🔍 [${requestId}] File ${file.filename}: ${isVerified ? 'verified' : 'not found in storage'}`);
 
-        // Update file verification status
-        const { error: updateError } = await supabase
-          .from('excel_files')
-          .update({
-            storage_verified: isVerified,
-            last_accessed_at: isVerified ? new Date().toISOString() : null,
-          })
-          .eq('id', file.id);
+        if (isVerified) {
+          // File exists, update status
+          const { error: updateError } = await supabase
+            .from('excel_files')
+            .update({
+              storage_verified: true,
+              processing_status: 'processing',
+              last_accessed_at: new Date().toISOString(),
+            })
+            .eq('id', file.id);
 
-        if (updateError) throw updateError;
+          if (updateError) throw updateError;
 
-        results.push({
-          id: file.id,
-          filename: file.filename,
-          verified: isVerified,
-        });
+          // Trigger excel-assistant for analysis
+          const { error: analysisError } = await supabase.functions.invoke('excel-assistant', {
+            body: {
+              action: 'analyze',
+              fileId: file.id,
+              filePath: file.file_path
+            }
+          });
+
+          if (analysisError) {
+            console.error(`❌ [${requestId}] Analysis error for ${file.filename}:`, analysisError);
+          }
+
+          results.push({
+            id: file.id,
+            filename: file.filename,
+            verified: true,
+            status: 'processing'
+          });
+        } else {
+          // File doesn't exist, mark as error
+          await supabase
+            .from('excel_files')
+            .update({
+              storage_verified: false,
+              processing_status: 'error',
+              error_message: 'File not found in storage'
+            })
+            .eq('id', file.id);
+
+          results.push({
+            id: file.id,
+            filename: file.filename,
+            verified: false,
+            error: 'File not found in storage'
+          });
+        }
       } catch (error) {
         console.error(`❌ [${requestId}] Error verifying file ${file.filename}:`, error);
         results.push({
           id: file.id,
           filename: file.filename,
           verified: false,
-          error: error.message,
+          error: error.message
         });
       }
     }

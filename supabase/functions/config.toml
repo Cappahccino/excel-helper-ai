@@ -1,4 +1,10 @@
+
 project_id = "saxnxtumstrsqowuwwbt"
 
-[analyze-excel]
-verify_jwt = true
+[verify-storage]
+verify_jwt = false
+max_retries = 5
+
+[excel-assistant]
+verify_jwt = false
+max_retries = 3
