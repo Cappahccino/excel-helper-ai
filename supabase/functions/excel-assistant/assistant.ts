@@ -1,189 +1,201 @@
 
-import OpenAI from 'npm:openai';
-import { ASSISTANT_INSTRUCTIONS } from './config.ts';
+import OpenAI from "https://deno.land/x/openai@v4.20.1/mod.ts";
+import { ASSISTANT_INSTRUCTIONS } from "./config.ts";
+import { supabaseAdmin } from "./database.ts";
 
-export async function getOrCreateAssistant(openai: OpenAI, requestId: string): Promise<string> {
+export async function createAssistant(openai: OpenAI) {
   try {
-    const existingAssistantId = Deno.env.get('EXCEL_ASSISTANT_ID');
-    if (existingAssistantId) {
-      console.log(`[${requestId}] Using existing assistant:`, existingAssistantId);
-      return existingAssistantId;
+    // First try to get an existing assistant
+    const { data: sessions } = await supabaseAdmin
+      .from('chat_sessions')
+      .select('assistant_id')
+      .not('assistant_id', 'is', null)
+      .limit(1);
+
+    if (sessions?.[0]?.assistant_id) {
+      try {
+        const existingAssistant = await openai.beta.assistants.retrieve(sessions[0].assistant_id);
+        console.log('Using existing assistant:', existingAssistant.id);
+        return existingAssistant;
+      } catch (error) {
+        console.warn('Could not retrieve existing assistant:', error);
+      }
     }
 
-    console.log(`[${requestId}] Creating new assistant`);
+    // Create a new assistant if none exists
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
       instructions: ASSISTANT_INSTRUCTIONS,
-      model: "gpt-4-turbo",
+      model: "gpt-4-turbo-preview",
       tools: [{ type: "code_interpreter" }],
     });
 
-    console.log(`[${requestId}] Created new assistant:`, {
-      assistantId: assistant.id,
-      model: assistant.model,
-      tools: assistant.tools
-    });
-    return assistant.id;
+    console.log('Created new assistant:', assistant.id);
+    return assistant;
   } catch (error) {
-    console.error(`[${requestId}] Error in getOrCreateAssistant:`, {
-      error: error.message,
-      stack: error.stack,
-      context: { operation: 'assistant_creation' }
-    });
-    throw new Error(`Failed to create or get assistant: ${error.message}`);
-  }
-}
-
-export async function getThreadMessages(
-  openai: OpenAI,
-  threadId: string,
-  requestId: string,
-  limit: number = 10
-): Promise<any[]> {
-  try {
-    console.log(`[${requestId}] Fetching thread messages:`, {
-      threadId,
-      limit,
-      operation: 'get_thread_messages'
-    });
-
-    const messages = await openai.beta.threads.messages.list(threadId, {
-      order: 'desc',
-      limit
-    });
-
-    console.log(`[${requestId}] Thread messages retrieved:`, {
-      threadId,
-      messageCount: messages.data.length,
-      firstMessageId: messages.data[0]?.id,
-      lastMessageId: messages.data[messages.data.length - 1]?.id
-    });
-
-    return messages.data;
-  } catch (error) {
-    console.error(`[${requestId}] Error fetching thread messages:`, {
-      error: error.message,
-      threadId,
-      context: { operation: 'get_thread_messages' },
-      stack: error.stack
-    });
+    console.error('Error in createAssistant:', error);
     throw error;
   }
 }
 
-export async function streamAssistantResponse(
-  openai: OpenAI, 
-  threadId: string, 
-  runId: string,
-  requestId: string,
-  updateMessage: (content: string, isComplete: boolean) => Promise<void>,
-  maxDuration: number = 60000
-): Promise<string> {
-  let accumulatedContent = "";
-  let lastContentCheck = 0;
-  let startTime = Date.now();
-  let lastStatus = "";
-  
-  console.log(`[${requestId}] Starting assistant response stream:`, {
-    threadId,
-    runId,
-    maxDuration,
-    startTime: new Date(startTime).toISOString()
-  });
+export async function processFileWithAssistant({
+  openai,
+  assistant,
+  query,
+  fileContents,
+  threadId: existingThreadId,
+  messageId,
+  sessionId
+}: {
+  openai: OpenAI;
+  assistant: any;
+  query: string;
+  fileContents: any[];
+  threadId: string | null;
+  messageId: string;
+  sessionId: string;
+}) {
+  try {
+    // Create or retrieve thread
+    const thread = existingThreadId 
+      ? await openai.beta.threads.retrieve(existingThreadId)
+      : await openai.beta.threads.create();
 
-  while (Date.now() - startTime < maxDuration) {
-    try {
-      const run = await openai.beta.threads.runs.retrieve(threadId, runId);
-      
-      if (run.status !== lastStatus) {
-        console.log(`[${requestId}] Run status update:`, {
-          threadId,
-          runId,
-          status: run.status,
-          previousStatus: lastStatus,
-          startedAt: run.started_at,
-          completedAt: run.completed_at,
-          elapsedTime: Date.now() - startTime
-        });
-        lastStatus = run.status;
-      }
+    console.log('Using thread:', thread.id);
 
-      const shouldCheckContent =
-        run.status === "completed" ||
-        (run.status === "in_progress" &&
-          Date.now() - lastContentCheck >= 1000);
+    // Update session with thread ID if it's new
+    if (!existingThreadId) {
+      await supabaseAdmin
+        .from('chat_sessions')
+        .update({ 
+          thread_id: thread.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('session_id', sessionId);
+    }
 
-      if (shouldCheckContent) {
-        lastContentCheck = Date.now();
+    // Prepare file context
+    const fileContext = fileContents.map(file => `
+      Filename: ${file.filename}
+      Sheets: ${file.sheets.map((sheet: any) => `
+        - ${sheet.name} (${sheet.rowCount} rows × ${sheet.columnCount} columns)
+        Preview: ${JSON.stringify(sheet.preview)}`).join('\n')}
+    `).join('\n');
 
-        const messages = await openai.beta.threads.messages.list(threadId, {
-          order: "desc",
-          limit: 1
-        });
+    // Add message to thread
+    const message = await openai.beta.threads.messages.create(thread.id, {
+      role: "user",
+      content: `
+        Context: ${fileContext}
+        
+        User Query: ${query}
+      `
+    });
 
-        if (messages.data.length > 0) {
-          const message = messages.data[0];
-          console.log(`[${requestId}] Content check:`, {
-            messageId: message.id,
-            role: message.role,
-            hasContent: !!message.content,
-            contentType: message.content?.[0]?.type,
-            contentLength: message.content?.[0]?.text?.value?.length
-          });
-
-          if (message.role === "assistant" && message.content?.[0]?.text?.value) {
-            accumulatedContent = message.content[0].text.value;
-            await updateMessage(accumulatedContent, false);
-            
-            console.log(`[${requestId}] Content updated:`, {
-              messageId: message.id,
-              contentLength: accumulatedContent.length,
-              isStreaming: true
-            });
+    // Update message with OpenAI ID
+    await supabaseAdmin
+      .from('chat_messages')
+      .update({ 
+        thread_message_id: message.id,
+        status: 'in_progress',
+        metadata: {
+          processing_stage: {
+            stage: 'analyzing',
+            started_at: Date.now(),
+            last_updated: Date.now()
           }
         }
+      })
+      .eq('id', messageId);
+
+    // Run the assistant
+    const run = await openai.beta.threads.runs.create(thread.id, {
+      assistant_id: assistant.id
+    });
+
+    // Poll for completion
+    let completedRun;
+    while (true) {
+      const runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      
+      if (runStatus.status === 'completed') {
+        completedRun = runStatus;
+        break;
+      } else if (runStatus.status === 'failed' || runStatus.status === 'cancelled') {
+        throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
       }
 
-      if (run.status === "completed") {
-        console.log(`[${requestId}] Assistant response complete:`, {
-          threadId,
-          runId,
-          finalContentLength: accumulatedContent.length,
-          totalTime: Date.now() - startTime
-        });
-        
-        await updateMessage(accumulatedContent, true);
-        return accumulatedContent;
-      } else if (["failed", "cancelled", "expired"].includes(run.status)) {
-        const errorMessage = run.last_error?.message || 'Unknown error';
-        console.error(`[${requestId}] Run failed:`, {
-          threadId,
-          runId,
-          status: run.status,
-          error: run.last_error,
-          totalTime: Date.now() - startTime
-        });
-        throw new Error(`Assistant run ${run.status}: ${errorMessage}`);
-      }
+      // Update message status
+      await supabaseAdmin
+        .from('chat_messages')
+        .update({
+          metadata: {
+            processing_stage: {
+              stage: 'generating',
+              started_at: Date.now(),
+              last_updated: Date.now(),
+              completion_percentage: 50 // This is an estimate since we don't have real progress
+            }
+          }
+        })
+        .eq('id', messageId);
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error(`[${requestId}] Error in streamAssistantResponse:`, {
-        error: error.message,
-        stack: error.stack,
-        threadId,
-        runId,
-        elapsedTime: Date.now() - startTime
-      });
-      throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-  }
 
-  console.warn(`[${requestId}] Stream timeout:`, {
-    threadId,
-    runId,
-    totalTime: Date.now() - startTime,
-    maxDuration
-  });
-  throw new Error('Response streaming timed out');
+    // Get the assistant's response
+    const messages = await openai.beta.threads.messages.list(thread.id);
+    const lastMessage = messages.data.find(msg => 
+      msg.run_id === completedRun.id && msg.role === 'assistant'
+    );
+
+    if (!lastMessage) {
+      throw new Error('No response message found');
+    }
+
+    // Update the chat message with the response
+    await supabaseAdmin
+      .from('chat_messages')
+      .update({
+        content: lastMessage.content[0].text.value,
+        status: 'completed',
+        openai_message_id: lastMessage.id,
+        metadata: {
+          processing_stage: {
+            stage: 'completed',
+            started_at: Date.now(),
+            last_updated: Date.now()
+          }
+        }
+      })
+      .eq('id', messageId);
+
+    return {
+      threadId: thread.id,
+      messageId: lastMessage.id,
+      content: lastMessage.content[0].text.value
+    };
+  } catch (error) {
+    console.error('Error in processFileWithAssistant:', error);
+
+    // Update message as failed
+    await supabaseAdmin
+      .from('chat_messages')
+      .update({
+        status: 'failed',
+        content: 'Failed to process request. Please try again.',
+        metadata: {
+          error: error.message,
+          processing_stage: {
+            stage: 'failed',
+            started_at: Date.now(),
+            last_updated: Date.now()
+          }
+        }
+      })
+      .eq('id', messageId);
+
+    throw error;
+  }
 }
+
