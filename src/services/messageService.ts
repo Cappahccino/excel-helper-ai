@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message } from "@/types/chat";
@@ -8,7 +9,6 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
     .from('chat_messages')
     .select(`
       *,
-      excel_files!fk_chat_messages_excel_files(filename, file_size),
       message_files(
         file_id,
         role,
@@ -52,16 +52,12 @@ export async function createUserMessage(
         content,
         role: 'user',
         session_id: sessionId,
-        excel_file_id: fileIds?.[0] || null, // Keep for backward compatibility
         is_ai_response: false,
         user_id: userId,
         status: 'completed' as const,
         version: '1.0.0'
       })
-      .select(`
-        *,
-        excel_files!fk_chat_messages_excel_files(filename, file_size)
-      `)
+      .select()
       .single();
 
     if (messageError) {
@@ -105,7 +101,6 @@ export async function createAssistantMessage(
       content: '',
       role: 'assistant',
       session_id: sessionId,
-      excel_file_id: fileIds?.[0] || null, // Keep for backward compatibility
       is_ai_response: true,
       user_id: userId,
       status: 'in_progress' as const,
@@ -119,10 +114,7 @@ export async function createAssistantMessage(
         }
       }
     })
-    .select(`
-      *,
-      excel_files!fk_chat_messages_excel_files(filename, file_size)
-    `)
+    .select()
     .single();
 
   if (messageError) throw messageError;
@@ -162,6 +154,9 @@ function transformMessage(msg: DatabaseMessage): Message {
     file_size: mf.excel_files?.file_size
   }));
 
+  // Get the primary file info from message_files
+  const primaryFile = messageFiles?.[0]?.excel_files;
+
   return {
     id: msg.id,
     content: msg.content,
@@ -169,7 +164,6 @@ function transformMessage(msg: DatabaseMessage): Message {
     session_id: msg.session_id,
     created_at: msg.created_at,
     updated_at: msg.updated_at,
-    excel_file_id: msg.excel_file_id,
     status,
     version: msg.version || undefined,
     deployment_id: msg.deployment_id || undefined,
@@ -177,7 +171,6 @@ function transformMessage(msg: DatabaseMessage): Message {
     cleanup_reason: msg.cleanup_reason || undefined,
     deleted_at: msg.deleted_at || undefined,
     is_ai_response: msg.is_ai_response || false,
-    excel_files: msg.excel_files,
     message_files: messageFiles,
     metadata: msg.metadata as Message['metadata']
   };

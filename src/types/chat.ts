@@ -15,11 +15,6 @@ export interface Message {
   session_id: string | null;
   created_at: string;
   updated_at: string;
-  excel_file_id: string | null;
-  excel_files?: {
-    filename: string;
-    file_size: number;
-  } | null;
   status: MessageStatus;
   version?: string;
   deployment_id?: string;
@@ -31,6 +26,8 @@ export interface Message {
   message_files?: {
     file_id: string;
     role: string;
+    filename?: string;
+    file_size?: number;
   }[];
   metadata?: {
     reaction_counts?: {

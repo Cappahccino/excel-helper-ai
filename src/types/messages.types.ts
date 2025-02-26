@@ -39,18 +39,13 @@ export type DatabaseMessage = {
   session_id: string | null;
   created_at: string;
   updated_at: string;
-  excel_file_id: string | null;
-  excel_files: {
-    filename: string;
-    file_size: number;
-  } | null;
-  message_files?: MessageFile[];
-  status: Message['status'];
-  version: string | null;
   deployment_id: string | null;
   cleanup_after: string | null;
   cleanup_reason: string | null;
   deleted_at: string | null;
   is_ai_response: boolean | null;
+  message_files?: MessageFile[];
+  status: Message['status'];
+  version: string | null;
   metadata: Json;
 };
