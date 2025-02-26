@@ -15,15 +15,16 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
   try {
     const files = await retryOperation(async () => {
       const sessionFiles = await getActiveSessionFiles(sessionId);
-      const activeFileIds = sessionFiles.map(sf => sf.file_id);
-      
-      if (!activeFileIds || activeFileIds.length === 0) {
+      if (!sessionFiles || sessionFiles.length === 0) {
         console.error('No active files found for session:', sessionId);
         throw new Error('No files available');
       }
+
+      const activeFileIds = sessionFiles.map(sf => sf.file_id);
+      console.log('Found active file IDs:', activeFileIds);
       
       // Validate each file's status with more detailed logging
-      console.log('Validating files:', activeFileIds);
+      console.log('Starting validation for files:', activeFileIds);
       const validationResults = await Promise.all(
         activeFileIds.map(validateFileStatus)
       );
@@ -40,7 +41,7 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
         throw new Error(`No valid files available: ${errors}`);
       }
       
-      console.log('Found valid session files:', validFiles);
+      console.log('Successfully validated files:', validFiles);
       return validFiles;
     }, {
       maxRetries: 3,
@@ -54,39 +55,46 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
     return files;
   } catch (error) {
     console.error('Final error getting files for session:', sessionId, error);
-    throw new Error('Failed to retrieve files after multiple attempts');
+    throw error;
   }
 };
 
 const validateFileStatus = async (fileId: string): Promise<ValidationResult> => {
-  console.log('Validating file:', fileId);
+  console.log('Starting validation for file:', fileId);
   const errors: string[] = [];
 
   try {
-    // Check file exists and is properly processed
+    // Check if file exists and is properly processed
     const { data: file, error: fileError } = await supabase
       .from('excel_files')
       .select('*')
       .eq('id', fileId)
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
 
-    if (fileError || !file) {
-      console.error('File not found or deleted:', fileId);
+    if (fileError) {
+      console.error('Database error checking file:', fileId, fileError);
+      errors.push(`Database error: ${fileError.message}`);
+      return { success: false, fileId, errors };
+    }
+
+    if (!file) {
+      console.error('File not found:', fileId);
       errors.push(`File ${fileId} not found or deleted`);
       return { success: false, fileId, errors };
     }
 
-    console.log('File status:', fileId, {
+    console.log('File status check:', fileId, {
       storage_verified: file.storage_verified,
       processing_status: file.processing_status
     });
 
-    // Check storage verification and processing status
+    // Validate storage verification
     if (!file.storage_verified) {
       errors.push(`File ${fileId} not verified in storage`);
     }
 
+    // Validate processing status
     if (file.processing_status !== 'completed') {
       errors.push(`File ${fileId} processing not complete (status: ${file.processing_status})`);
     }
@@ -96,9 +104,12 @@ const validateFileStatus = async (fileId: string): Promise<ValidationResult> => 
       .from('file_metadata')
       .select('id')
       .eq('file_id', fileId)
-      .single();
+      .maybeSingle();
 
-    if (metadataError || !metadata) {
+    if (metadataError) {
+      console.error('Metadata check error:', fileId, metadataError);
+      errors.push(`Metadata check error: ${metadataError.message}`);
+    } else if (!metadata) {
       errors.push(`File ${fileId} metadata not generated`);
     }
 
@@ -109,7 +120,7 @@ const validateFileStatus = async (fileId: string): Promise<ValidationResult> => 
       .download(file.file_path);
 
     if (storageError) {
-      console.error('Storage access error for file:', fileId, storageError);
+      console.error('Storage access error:', fileId, storageError);
       errors.push(`File ${fileId} not accessible in storage`);
     }
 
@@ -133,25 +144,36 @@ const validateFileStatus = async (fileId: string): Promise<ValidationResult> => 
 };
 
 export const validateFileAvailability = async (fileIds: string[]): Promise<boolean> => {
-  if (!fileIds.length) return false;
-
-  const validationResults = await Promise.all(
-    fileIds.map(validateFileStatus)
-  );
-
-  const allFilesValid = validationResults.every(result => result.success);
-
-  if (!allFilesValid) {
-    console.warn('File validation failed:', 
-      validationResults
-        .filter(result => !result.success)
-        .map(result => ({
-          fileId: result.fileId,
-          errors: result.errors
-        }))
-    );
+  if (!fileIds.length) {
+    console.error('No file IDs provided for validation');
+    return false;
   }
 
-  return allFilesValid;
-};
+  console.log('Validating availability for files:', fileIds);
 
+  try {
+    const validationResults = await Promise.all(
+      fileIds.map(validateFileStatus)
+    );
+
+    const allFilesValid = validationResults.every(result => result.success);
+
+    if (!allFilesValid) {
+      console.warn('File validation failed:', 
+        validationResults
+          .filter(result => !result.success)
+          .map(result => ({
+            fileId: result.fileId,
+            errors: result.errors
+          }))
+      );
+    } else {
+      console.log('All files validated successfully');
+    }
+
+    return allFilesValid;
+  } catch (error) {
+    console.error('Error during file validation:', error);
+    return false;
+  }
+};
