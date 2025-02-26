@@ -1,6 +1,7 @@
 
 import { retryOperation } from "@/utils/retryUtils";
 import { getActiveSessionFiles } from "./sessionFileService";
+import { supabase } from "@/integrations/supabase/client";
 
 export const getFilesWithRetry = async (sessionId: string): Promise<string[]> => {
   console.log('Attempting to get files for session:', sessionId);
