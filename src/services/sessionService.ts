@@ -32,10 +32,12 @@ export async function createSession(userId: string) {
 
 export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
   try {
+    console.log('Ensuring session files:', { sessionId, fileIds });
+
     // Get existing session files to avoid duplicates
     const { data: existingFiles } = await supabase
       .from('session_files')
-      .select('file_id')
+      .select('file_id, excel_files(processing_status, storage_verified)')
       .eq('session_id', sessionId);
 
     const existingFileIds = new Set(existingFiles?.map(f => f.file_id) || []);
@@ -43,8 +45,10 @@ export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
     // Filter out files that already exist
     const newFileIds = fileIds.filter(id => !existingFileIds.has(id));
 
+    // Create new session_files entries
     if (newFileIds.length > 0) {
-      // Create new session_files entries
+      console.log('Adding new files to session:', newFileIds);
+      
       const { error } = await supabase
         .from('session_files')
         .insert(
@@ -71,6 +75,23 @@ export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
     if (updateError) {
       console.error('Error updating session files:', updateError);
       throw updateError;
+    }
+
+    // Trigger verification for any unverified or pending files
+    const unverifiedFiles = existingFiles?.filter(f => 
+      !f.excel_files?.storage_verified || 
+      f.excel_files?.processing_status === 'pending'
+    ).map(f => f.file_id) || [];
+
+    if (unverifiedFiles.length > 0) {
+      console.log('Triggering verification for unverified files:', unverifiedFiles);
+      const { error: verifyError } = await supabase.functions.invoke('verify-storage', {
+        body: { fileIds: unverifiedFiles }
+      });
+
+      if (verifyError) {
+        console.error('Error triggering verification:', verifyError);
+      }
     }
 
     console.log('Successfully ensured session files:', fileIds);

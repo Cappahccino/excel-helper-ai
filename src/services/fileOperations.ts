@@ -11,10 +11,11 @@ interface ValidationResult {
   file?: any;
 }
 
-type ProcessingStatus = 'completed' | 'pending' | 'uploading' | 'processing' | 'analyzing' | 'error';
+type ProcessingStatus = 'pending' | 'verifying' | 'processing' | 'analyzing' | 'completed' | 'error';
 
 const MAX_PROCESSING_WAIT_TIME = 30000; // 30 seconds
 const PROCESSING_CHECK_INTERVAL = 1000; // 1 second
+const MAX_VERIFICATION_RETRIES = 5;
 
 export const getFilesWithRetry = async (sessionId: string): Promise<string[]> => {
   console.log('Attempting to get files for session:', sessionId);
@@ -30,8 +31,8 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
       const activeFileIds = sessionFiles.map(sf => sf.file_id);
       console.log('Found active file IDs:', activeFileIds);
       
-      // Wait for files to be processed with timeout
-      const processingPromises = activeFileIds.map(waitForFileProcessing);
+      // Enhanced verification: Wait for files to be processed with status tracking
+      const processingPromises = activeFileIds.map(monitorFileProcessing);
       const processedFiles = await Promise.all(processingPromises);
       
       // Filter out any files that failed processing
@@ -46,9 +47,9 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
       console.log('Successfully validated files:', validFiles);
       return validFiles;
     }, {
-      maxRetries: 5,  // Increased retries
-      delay: 2000,    // Longer initial delay
-      backoff: 1.5,   // Gentler backoff
+      maxRetries: MAX_VERIFICATION_RETRIES,
+      delay: 2000,
+      backoff: 1.5,
       onRetry: (error, attempt) => {
         console.warn(`Retry attempt ${attempt} for session ${sessionId}:`, error.message);
       }
@@ -61,35 +62,36 @@ export const getFilesWithRetry = async (sessionId: string): Promise<string[]> =>
   }
 };
 
-const waitForFileProcessing = async (fileId: string): Promise<ValidationResult> => {
+const monitorFileProcessing = async (fileId: string): Promise<ValidationResult> => {
   const startTime = Date.now();
-  let lastStatus = '';
+  let lastStatus: ProcessingStatus | null = null;
   
   while (Date.now() - startTime < MAX_PROCESSING_WAIT_TIME) {
-    const result = await validateFileStatus(fileId);
+    const result = await checkFileStatus(fileId);
     
     // If validation succeeds, return immediately
     if (result.success) {
       return result;
     }
 
-    // Check if the status has changed
-    const currentStatus = result.file?.processing_status;
-    if (currentStatus && currentStatus !== lastStatus) {
-      console.log(`File ${fileId} processing status changed to:`, currentStatus);
-      lastStatus = currentStatus;
+    // If the status has changed, trigger appropriate actions
+    if (result.file?.processing_status !== lastStatus) {
+      console.log(`File ${fileId} status changed to:`, result.file?.processing_status);
+      lastStatus = result.file?.processing_status;
+
+      // Trigger verification if needed
+      if (result.file?.processing_status === 'pending') {
+        await triggerVerification(fileId);
+      }
     }
 
-    // If file is still processing, wait and retry
-    if (result.file && ['pending', 'processing', 'analyzing'].includes(result.file.processing_status)) {
-      await wait(PROCESSING_CHECK_INTERVAL);
-      continue;
-    }
-
-    // If file has an error status or is in an invalid state, return the error
-    if (result.file?.processing_status === 'error') {
+    // If file is in a terminal state (completed or error), return the result
+    if (result.file?.processing_status === 'completed' || result.file?.processing_status === 'error') {
       return result;
     }
+
+    // Wait before next check
+    await wait(PROCESSING_CHECK_INTERVAL);
   }
 
   return {
@@ -99,97 +101,59 @@ const waitForFileProcessing = async (fileId: string): Promise<ValidationResult> 
   };
 };
 
-const validateFileStatus = async (fileId: string): Promise<ValidationResult> => {
-  console.log('Validating file status:', fileId);
-  const errors: string[] = [];
-
+const checkFileStatus = async (fileId: string): Promise<ValidationResult> => {
   try {
-    // Check if file exists and get its status
-    const { data: file, error: fileError } = await supabase
+    const { data: file, error } = await supabase
       .from('excel_files')
       .select('*')
       .eq('id', fileId)
-      .is('deleted_at', null)
-      .maybeSingle();
+      .single();
 
-    if (fileError) {
-      console.error('Database error checking file:', fileId, fileError);
-      return { 
-        success: false, 
-        fileId, 
-        errors: [`Database error: ${fileError.message}`] 
-      };
-    }
+    if (error) throw error;
 
     if (!file) {
-      console.error('File not found:', fileId);
-      return { 
-        success: false, 
-        fileId, 
-        errors: [`File ${fileId} not found or deleted`] 
+      return {
+        success: false,
+        fileId,
+        errors: ['File not found'],
       };
     }
 
-    // Store validation state
-    const validationState = {
-      success: true,
+    // Validate file state
+    const isValid = file.storage_verified && 
+                   file.processing_status === 'completed' &&
+                   !file.deleted_at;
+
+    return {
+      success: isValid,
       fileId,
-      errors: [] as string[],
+      errors: isValid ? [] : [`File status: ${file.processing_status}, verified: ${file.storage_verified}`],
       file
     };
-
-    // Progressive validation - check each aspect separately
-    // 1. Basic file existence (already checked above)
-    // 2. Processing status
-    if (file.processing_status === 'error') {
-      validationState.errors.push(`File ${fileId} processing failed`);
-      validationState.success = false;
-    } else if (file.processing_status === 'completed') {
-      // For completed files, perform full validation
-      if (!file.storage_verified) {
-        validationState.errors.push(`File ${fileId} not verified in storage`);
-        validationState.success = false;
-      }
-
-      // Check metadata only for completed files
-      const { data: metadata, error: metadataError } = await supabase
-        .from('file_metadata')
-        .select('id')
-        .eq('file_id', fileId)
-        .maybeSingle();
-
-      if (metadataError) {
-        console.warn('Metadata check warning:', fileId, metadataError);
-        // Don't fail validation for metadata issues
-      } else if (!metadata) {
-        console.warn(`File ${fileId} metadata not generated yet`);
-        // Don't fail validation for missing metadata
-      }
-
-      // Verify storage accessibility for completed files
-      if (file.storage_verified) {
-        const { data: storageData, error: storageError } = await supabase
-          .storage
-          .from('excel_files')
-          .download(file.file_path);
-
-        if (storageError) {
-          console.error('Storage access error:', fileId, storageError);
-          validationState.errors.push(`File ${fileId} not accessible in storage`);
-          validationState.success = false;
-        }
-      }
-    }
-
-    console.log('Validation result for file:', fileId, validationState);
-    return validationState;
   } catch (error) {
-    console.error('Unexpected error validating file:', fileId, error);
+    console.error('Error checking file status:', error);
     return {
       success: false,
       fileId,
-      errors: [`Unexpected error: ${error.message}`]
+      errors: [error.message]
     };
+  }
+};
+
+const triggerVerification = async (fileId: string): Promise<void> => {
+  try {
+    console.log('Triggering verification for file:', fileId);
+    const { error } = await supabase.functions.invoke('verify-storage', {
+      body: { fileIds: [fileId] }
+    });
+
+    if (error) {
+      console.error('Error triggering verification:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Failed to trigger verification:', error);
+    throw error;
   }
 };
 
@@ -203,7 +167,7 @@ export const validateFileAvailability = async (fileIds: string[]): Promise<boole
 
   try {
     const validationPromises = fileIds.map(fileId => 
-      waitForFileProcessing(fileId)
+      monitorFileProcessing(fileId)
         .then(result => ({ fileId, ...result }))
     );
 
