@@ -22,7 +22,9 @@ export async function getActiveSessionFiles(sessionId: string) {
       excel_files!inner (
         id,
         filename,
-        file_size
+        file_size,
+        processing_status,
+        storage_verified
       )
     `)
     .eq('session_id', sessionId)
@@ -33,27 +35,37 @@ export async function getActiveSessionFiles(sessionId: string) {
     throw error;
   }
 
-  // Debug log to track the retrieved files
-  console.log('Retrieved active session files:', sessionFiles);
+  // Filter out files that aren't ready
+  const validFiles = sessionFiles?.filter(sf => 
+    sf.excel_files?.processing_status === 'completed' && 
+    sf.excel_files?.storage_verified === true
+  );
 
-  return sessionFiles as SessionFile[];
+  // Debug log to track the retrieved files
+  console.log('Retrieved active session files:', validFiles);
+
+  return validFiles as SessionFile[];
 }
 
 export async function verifyFileAssociations(sessionId: string, fileIds: string[]) {
   try {
     console.log('Verifying file associations for session:', sessionId, 'files:', fileIds);
 
-    // First, verify the files exist in excel_files
+    // First, verify the files exist and are properly processed
     const { data: existingFiles, error: filesError } = await supabase
       .from('excel_files')
-      .select('id')
+      .select('id, processing_status, storage_verified')
       .in('id', fileIds)
-      .is('deleted_at', null);
+      .is('deleted_at', null)
+      .eq('storage_verified', true)
+      .eq('processing_status', 'completed');
 
     if (filesError) throw filesError;
 
     if (!existingFiles || existingFiles.length !== fileIds.length) {
-      throw new Error('Some files are not available or have been deleted');
+      const foundIds = existingFiles?.map(f => f.id) || [];
+      const missingIds = fileIds.filter(id => !foundIds.includes(id));
+      throw new Error(`Some files are not available or not properly processed: ${missingIds.join(', ')}`);
     }
 
     // Then, verify or create session_files entries
