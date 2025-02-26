@@ -1,200 +1,187 @@
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import OpenAI from "https://deno.land/x/openai@v4.24.0/mod.ts";
+import { Database } from '../_shared/database.types.ts';
 
+// Constants for configuration
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!;
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// Initialize clients
+const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+// CORS headers for browser access
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface FileData {
-  id: string;
-  content: any[];
-  headers: string[];
-  summary?: {
-    rowCount: number;
-    columnCount: number;
-  };
+async function updateMessageStatus(messageId: string, status: string, metadata?: any) {
+  const { error } = await supabase
+    .from('chat_messages')
+    .update({
+      status,
+      metadata: {
+        ...metadata,
+        processing_stage: {
+          stage: status,
+          last_updated: Date.now()
+        }
+      }
+    })
+    .eq('id', messageId);
+
+  if (error) {
+    console.error('Error updating message status:', error);
+    throw error;
+  }
+}
+
+async function processExcelData(fileIds: string[]) {
+  const { data: files, error } = await supabase
+    .from('excel_files')
+    .select('*')
+    .in('id', fileIds);
+
+  if (error) throw error;
+  if (!files?.length) throw new Error('No files found');
+
+  return files.map(file => ({
+    id: file.id,
+    filename: file.filename,
+    status: file.processing_status,
+    size: file.file_size
+  }));
 }
 
 serve(async (req) => {
-  const requestId = crypto.randomUUID();
-  console.log(`🚀 [${requestId}] Excel assistant started`);
-
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     const { fileIds, query, userId, sessionId, messageId, action = 'query' } = await req.json();
-    console.log(`📝 [${requestId}] Processing request:`, { action, fileIds, messageId });
+    console.log('Processing request:', { fileIds, messageId, action });
 
-    // Verify files are ready for processing
-    const { data: files, error: filesError } = await supabase
-      .from('excel_files')
-      .select('*')
-      .in('id', fileIds)
-      .eq('storage_verified', true);
+    // Initial status update
+    await updateMessageStatus(messageId, 'processing', {
+      stage: 'initializing',
+      started_at: Date.now()
+    });
 
-    if (filesError) {
-      console.error(`❌ [${requestId}] Error fetching files:`, filesError);
-      throw filesError;
-    }
+    // Process Excel files
+    const files = await processExcelData(fileIds);
+    console.log('Processed files:', files);
 
-    if (!files?.length) {
-      throw new Error('No processed files available for query');
-    }
+    // Create or retrieve thread for the session
+    let thread;
+    const { data: session } = await supabase
+      .from('chat_sessions')
+      .select('thread_id')
+      .eq('session_id', sessionId)
+      .single();
 
-    // Process each file
-    const processedFiles: FileData[] = [];
-    for (const file of files) {
-      console.log(`📊 [${requestId}] Processing file ${file.id}`);
-      
-      try {
-        // Update file status to processing
-        await supabase
-          .from('excel_files')
-          .update({ processing_status: 'processing', processing_started_at: new Date().toISOString() })
-          .eq('id', file.id);
-
-        // Download file
-        const { data: fileData, error: downloadError } = await supabase.storage
-          .from('excel_files')
-          .download(file.file_path);
-
-        if (downloadError) throw downloadError;
-
-        // Process Excel file
-        const workbook = XLSX.read(await fileData.arrayBuffer(), { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-
-        // Extract headers and data
-        const headers = jsonData[0] as string[];
-        const content = jsonData.slice(1);
-
-        processedFiles.push({
-          id: file.id,
-          content,
-          headers,
-          summary: {
-            rowCount: content.length,
-            columnCount: headers.length
-          }
-        });
-
-        // Mark file as completed
-        await supabase
-          .from('excel_files')
-          .update({
-            processing_status: 'completed',
-            processing_completed_at: new Date().toISOString()
-          })
-          .eq('id', file.id);
-
-      } catch (error) {
-        console.error(`❌ [${requestId}] Error processing file ${file.id}:`, error);
-        
-        // Update file status to error
-        await supabase
-          .from('excel_files')
-          .update({
-            processing_status: 'error',
-            error_message: error.message
-          })
-          .eq('id', file.id);
-
-        throw error;
-      }
-    }
-
-    // Generate response based on processed files
-    const response = generateResponse(query, processedFiles);
-    console.log(`✍️ [${requestId}] Generated response for query:`, query);
-
-    // Update message with response
-    const { error: messageError } = await supabase
-      .from('chat_messages')
-      .update({
-        content: response,
-        status: 'completed',
-        metadata: {
-          processing_stage: {
-            stage: 'completed',
-            last_updated: Date.now()
-          }
-        }
-      })
-      .eq('id', messageId);
-
-    if (messageError) {
-      console.error(`❌ [${requestId}] Error updating message:`, messageError);
-      throw messageError;
-    }
-
-    console.log(`✅ [${requestId}] Successfully processed query`);
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        response,
-        filesProcessed: processedFiles.length
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error) {
-    console.error(`❌ Error in excel-assistant:`, error);
-    
-    // Update message status to failed
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    try {
+    if (session?.thread_id) {
+      thread = await openai.beta.threads.retrieve(session.thread_id);
+    } else {
+      thread = await openai.beta.threads.create();
       await supabase
+        .from('chat_sessions')
+        .update({ thread_id: thread.id })
+        .eq('session_id', sessionId);
+    }
+
+    // Create message in thread
+    await updateMessageStatus(messageId, 'in_progress', {
+      stage: 'analyzing',
+      thread_id: thread.id
+    });
+
+    const message = await openai.beta.threads.messages.create(thread.id, {
+      role: 'user',
+      content: `Analyze these Excel files: ${files.map(f => f.filename).join(', ')}. Query: ${query}`,
+    });
+
+    // Create run with Excel analysis assistant
+    const run = await openai.beta.threads.runs.create(thread.id, {
+      assistant_id: 'asst_excel_analyst',
+      instructions: `Analyze the Excel files and respond to: ${query}. Use code interpreter when needed.`,
+    });
+
+    // Poll for completion
+    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+    while (runStatus.status === 'in_progress' || runStatus.status === 'queued') {
+      await updateMessageStatus(messageId, 'in_progress', {
+        stage: 'generating',
+        run_id: run.id,
+        completion_percentage: runStatus.status === 'in_progress' ? 50 : 25
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+    }
+
+    if (runStatus.status === 'completed') {
+      // Get the assistant's response
+      const messages = await openai.beta.threads.messages.list(thread.id);
+      const assistantMessage = messages.data.find(m => 
+        m.run_id === run.id && m.role === 'assistant'
+      );
+
+      if (!assistantMessage) {
+        throw new Error('No assistant message found');
+      }
+
+      // Update message with response
+      const { error: updateError } = await supabase
         .from('chat_messages')
         .update({
-          status: 'failed',
-          content: 'Sorry, there was an error processing your request. Please try again.',
+          content: assistantMessage.content[0].text.value,
+          status: 'completed',
           metadata: {
-            error: error.message,
-            processing_stage: {
-              stage: 'error',
-              last_updated: Date.now()
-            }
+            completion_time: Date.now(),
+            thread_id: thread.id,
+            run_id: run.id,
+            openai_message_id: assistantMessage.id
           }
         })
         .eq('id', messageId);
-    } catch (updateError) {
-      console.error('Failed to update message status:', updateError);
+
+      if (updateError) throw updateError;
+
+      return new Response(JSON.stringify({ 
+        status: 'completed',
+        message: assistantMessage.content[0].text.value
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    } else {
+      throw new Error(`Run failed with status: ${runStatus.status}`);
     }
 
-    return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: error.message 
-      }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    );
+  } catch (error) {
+    console.error('Error in excel-assistant:', error);
+    
+    // Update message status to failed
+    try {
+      await updateMessageStatus(messageId, 'failed', {
+        error: error.message,
+        failed_at: Date.now()
+      });
+    } catch (statusError) {
+      console.error('Error updating failure status:', statusError);
+    }
+
+    return new Response(JSON.stringify({ 
+      error: error.message 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });
-
-function generateResponse(query: string, files: FileData[]): string {
-  // Basic response generation
-  const fileSummaries = files.map(file => {
-    return `File contains ${file.summary?.rowCount} rows and ${file.summary?.columnCount} columns with headers: ${file.headers.join(', ')}`;
-  });
-
-  return `I've analyzed the files you provided:\n\n${fileSummaries.join('\n\n')}\n\nYour query was: "${query}"\n\nBased on the data, I can help you analyze these files. What specific aspects would you like to know about?`;
-}
