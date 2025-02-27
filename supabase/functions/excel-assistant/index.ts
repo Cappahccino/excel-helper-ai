@@ -1,13 +1,14 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import OpenAI from "https://esm.sh/openai@4.24.1";
+import OpenAI from "https://esm.sh/openai@4.28.0";
 
 // Constants for configuration
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const MODEL = "gpt-4-1106-preview"; // Using GPT-4 Turbo
+const MODEL = "gpt-4-turbo"; // Updated model name for v2
 const MAX_POLLING_ATTEMPTS = 30;
 const POLLING_INTERVAL = 1000; // 1 second
 
@@ -25,8 +26,12 @@ if (!OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
 }
 
+// Initialize OpenAI with v2 beta header
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
+  defaultHeaders: {
+    'OpenAI-Beta': 'assistants=v2'
+  }
 });
 
 /**
@@ -90,7 +95,7 @@ async function getOrCreateAssistant() {
   console.log('Getting or creating assistant...');
   
   try {
-    // List existing assistants
+    // List existing assistants (v2 compatible)
     const assistants = await openai.beta.assistants.list({
       limit: 100,
     });
@@ -105,7 +110,7 @@ async function getOrCreateAssistant() {
       return existingAssistant;
     }
     
-    // Create new assistant if not found
+    // Create new assistant if not found (v2 compatible)
     console.log('Creating new assistant...');
     const newAssistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
@@ -165,7 +170,7 @@ async function getOrCreateThread(sessionId: string) {
       }
     }
     
-    // Create new thread
+    // Create new thread (v2 compatible)
     console.log('Creating new thread...');
     const newThread = await openai.beta.threads.create();
     console.log('Created new thread:', newThread.id);
@@ -243,6 +248,54 @@ async function processExcelData(fileIds: string[]) {
 }
 
 /**
+ * Download and prepare files for the assistant
+ */
+async function prepareFilesForAssistant(fileData: any[]) {
+  try {
+    console.log('Preparing files for assistant...');
+    
+    // For each file, download from Supabase storage and upload to OpenAI
+    const openaiFiles = [];
+    
+    for (const file of fileData) {
+      try {
+        // Download file from Supabase storage
+        console.log(`Downloading file from storage: ${file.filename}`);
+        const { data: fileContent, error: downloadError } = await supabase.storage
+          .from('excel_files')
+          .download(file.path);
+        
+        if (downloadError || !fileContent) {
+          console.error(`Error downloading file ${file.filename}:`, downloadError);
+          continue;
+        }
+        
+        // Convert to Blob
+        const blob = new Blob([fileContent], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        // Upload file to OpenAI (v2 compatible)
+        console.log(`Uploading ${file.filename} to OpenAI...`);
+        const openaiFile = await openai.files.create({
+          file: new File([blob], file.filename),
+          purpose: 'assistants'
+        });
+        
+        console.log(`File uploaded to OpenAI: ${openaiFile.id}`);
+        openaiFiles.push(openaiFile);
+      } catch (fileError) {
+        console.error(`Error processing file ${file.filename}:`, fileError);
+        // Continue with other files
+      }
+    }
+    
+    return openaiFiles;
+  } catch (error) {
+    console.error('Error in prepareFilesForAssistant:', error);
+    throw new Error(`Failed to prepare files for assistant: ${error.message}`);
+  }
+}
+
+/**
  * Add user message to thread and run assistant
  */
 async function addMessageAndRun(params: {
@@ -257,6 +310,10 @@ async function addMessageAndRun(params: {
   console.log('Adding message to thread and running assistant');
   
   try {
+    // Prepare OpenAI files
+    const openaiFiles = await prepareFilesForAssistant(fileData);
+    const fileIds = openaiFiles.map(file => file.id);
+    
     // Prepare file descriptions
     const fileDescriptions = fileData.map(file => 
       `${file.filename} (${file.size} bytes)`
@@ -272,13 +329,14 @@ Available Excel Files:
 Please analyze these Excel files and answer the query.
     `.trim();
     
-    // Add message to thread
+    // Add message to thread (v2 compatible)
     console.log('Adding message to thread:', threadId);
     const threadMessage = await openai.beta.threads.messages.create(
       threadId,
       {
         role: "user",
-        content: messageContent
+        content: messageContent,
+        file_ids: fileIds // Attach files to message (v2 change)
       }
     );
     console.log('Added message to thread, message ID:', threadMessage.id);
@@ -289,7 +347,7 @@ Please analyze these Excel files and answer the query.
       thread_message_id: threadMessage.id
     });
     
-    // Create a run
+    // Create a run (v2 compatible)
     console.log('Creating run with assistant:', assistantId);
     const run = await openai.beta.threads.runs.create(
       threadId,
@@ -328,7 +386,8 @@ Always be helpful and provide actionable suggestions when appropriate.
     return {
       threadId,
       runId: run.id,
-      messageId: threadMessage.id
+      messageId: threadMessage.id,
+      fileIds // Return OpenAI file IDs for cleanup later
     };
   } catch (error) {
     console.error('Error in addMessageAndRun:', error);
@@ -355,7 +414,7 @@ async function pollRunStatus(params: {
       attempts++;
       
       try {
-        // Get run status
+        // Get run status (v2 compatible)
         const run = await openai.beta.threads.runs.retrieve(
           threadId,
           runId
@@ -419,7 +478,7 @@ async function getAssistantResponse(params: {
   console.log('Getting assistant response from thread:', threadId);
   
   try {
-    // List messages in thread, sorted by newest first
+    // List messages in thread, sorted by newest first (v2 compatible)
     const messages = await openai.beta.threads.messages.list(
       threadId,
       { limit: 10, order: 'desc' }
@@ -434,7 +493,7 @@ async function getAssistantResponse(params: {
     
     console.log('Found assistant message:', assistantMessage.id);
     
-    // Extract content from message
+    // Extract content from message (v2 compatible)
     let responseContent = '';
     for (const contentPart of assistantMessage.content) {
       if (contentPart.type === 'text') {
@@ -464,6 +523,26 @@ async function getAssistantResponse(params: {
 }
 
 /**
+ * Clean up temporary OpenAI files
+ */
+async function cleanupOpenAIFiles(fileIds: string[]) {
+  if (!fileIds?.length) return;
+  
+  console.log(`Cleaning up ${fileIds.length} OpenAI files...`);
+  
+  for (const fileId of fileIds) {
+    try {
+      // Delete file from OpenAI (V2 compatible)
+      await openai.files.del(fileId);
+      console.log(`Deleted OpenAI file: ${fileId}`);
+    } catch (error) {
+      console.error(`Error deleting OpenAI file ${fileId}:`, error);
+      // Continue with other files
+    }
+  }
+}
+
+/**
  * Main request handler
  */
 serve(async (req) => {
@@ -475,6 +554,7 @@ serve(async (req) => {
   }
 
   let messageId = '';
+  let tempFileIds: string[] = [];
   
   try {
     if (!OPENAI_API_KEY) {
@@ -514,7 +594,7 @@ serve(async (req) => {
     console.log('Using thread:', threadId, 'and assistant:', assistantId);
 
     // Add message to thread and run assistant
-    const { runId } = await addMessageAndRun({
+    const { runId, fileIds: openaiFileIds } = await addMessageAndRun({
       threadId,
       assistantId,
       query,
@@ -522,6 +602,9 @@ serve(async (req) => {
       messageId,
       userId
     });
+    
+    // Store file IDs for cleanup
+    tempFileIds = openaiFileIds || [];
 
     // Poll run status
     const runStatus = await pollRunStatus({
@@ -541,6 +624,9 @@ serve(async (req) => {
     });
 
     console.log('Successfully processed assistant response');
+    
+    // Clean up temporary files
+    await cleanupOpenAIFiles(tempFileIds);
 
     // Return success response
     return new Response(JSON.stringify({ 
@@ -552,6 +638,15 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in excel-assistant:', error);
+    
+    // Clean up temporary files on error
+    if (tempFileIds.length > 0) {
+      try {
+        await cleanupOpenAIFiles(tempFileIds);
+      } catch (cleanupError) {
+        console.error('Error during file cleanup:', cleanupError);
+      }
+    }
     
     // Update message status to failed if messageId is available
     if (messageId) {

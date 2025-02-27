@@ -8,3 +8,4 @@ max_retries = 5
 [excel-assistant]
 verify_jwt = false
 max_retries = 3
+timeout_ms = 30000
