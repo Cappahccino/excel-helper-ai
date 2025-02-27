@@ -536,6 +536,7 @@ export type Database = {
         | "failed"
         | "cancelled"
         | "expired"
+        | "processing"
       tag_type: "system" | "custom"
     }
     CompositeTypes: {
