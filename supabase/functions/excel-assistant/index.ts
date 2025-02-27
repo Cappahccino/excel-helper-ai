@@ -20,14 +20,22 @@ const corsHeaders = {
 };
 
 async function updateMessageStatus(messageId: string, status: string, metadata?: any) {
+  console.log(`Updating message ${messageId} to status: ${status}`);
+  
   const { error } = await supabase
     .from('chat_messages')
     .update({
       status,
+      processing_stage: {
+        stage: status,
+        last_updated: Date.now(),
+        ...(metadata?.stage && { stage: metadata.stage }),
+        ...(metadata?.completion_percentage && { completion_percentage: metadata.completion_percentage })
+      },
       metadata: {
         ...metadata,
         processing_stage: {
-          stage: status,
+          stage: status === 'processing' ? metadata?.stage || 'generating' : status,
           last_updated: Date.now()
         }
       }
@@ -57,6 +65,32 @@ async function processExcelData(fileIds: string[]) {
   }));
 }
 
+async function directAnalyzeWithOpenAI(query: string, files: any[]) {
+  console.log('Analyzing with OpenAI directly', { query, files: files.map(f => f.filename) });
+  
+  try {
+    // Create a system message with file details
+    const fileDetails = files.map(f => `${f.filename} (${f.size} bytes)`).join('\n- ');
+    const systemMessage = `You are an Excel analysis assistant. The user has uploaded the following Excel files:\n- ${fileDetails}\n\nYour task is to analyze and respond to queries about these files. Be clear, concise, and helpful.`;
+
+    // Use the OpenAI API directly with the chat completions endpoint
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: query }
+      ],
+      temperature: 0.7,
+      max_tokens: 1500
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('Error in OpenAI analysis:', error);
+    throw error;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -77,91 +111,48 @@ serve(async (req) => {
     const files = await processExcelData(fileIds);
     console.log('Processed files:', files);
 
-    // Create or retrieve thread for the session
-    let thread;
-    const { data: session } = await supabase
-      .from('chat_sessions')
-      .select('thread_id')
-      .eq('session_id', sessionId)
-      .single();
-
-    if (session?.thread_id) {
-      thread = await openai.beta.threads.retrieve(session.thread_id);
-    } else {
-      thread = await openai.beta.threads.create();
-      await supabase
-        .from('chat_sessions')
-        .update({ thread_id: thread.id })
-        .eq('session_id', sessionId);
-    }
-
-    // Create message in thread
-    await updateMessageStatus(messageId, 'in_progress', {
+    // Update to analyzing stage
+    await updateMessageStatus(messageId, 'processing', {
       stage: 'analyzing',
-      thread_id: thread.id
+      completion_percentage: 25
     });
 
-    const message = await openai.beta.threads.messages.create(thread.id, {
-      role: 'user',
-      content: `Analyze these Excel files: ${files.map(f => f.filename).join(', ')}. Query: ${query}`,
+    // Directly analyze with OpenAI instead of using assistants API
+    const analysisText = await directAnalyzeWithOpenAI(query, files);
+    
+    // Update to generating stage
+    await updateMessageStatus(messageId, 'processing', {
+      stage: 'generating',
+      completion_percentage: 75
     });
 
-    // Create run with Excel analysis assistant
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: 'asst_excel_analyst',
-      instructions: `Analyze the Excel files and respond to: ${query}. Use code interpreter when needed.`,
-    });
+    console.log('Analysis completed successfully');
 
-    // Poll for completion
-    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-    while (runStatus.status === 'in_progress' || runStatus.status === 'queued') {
-      await updateMessageStatus(messageId, 'in_progress', {
-        stage: 'generating',
-        run_id: run.id,
-        completion_percentage: runStatus.status === 'in_progress' ? 50 : 25
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-    }
-
-    if (runStatus.status === 'completed') {
-      // Get the assistant's response
-      const messages = await openai.beta.threads.messages.list(thread.id);
-      const assistantMessage = messages.data.find(m => 
-        m.run_id === run.id && m.role === 'assistant'
-      );
-
-      if (!assistantMessage) {
-        throw new Error('No assistant message found');
-      }
-
-      // Update message with response
-      const { error: updateError } = await supabase
-        .from('chat_messages')
-        .update({
-          content: assistantMessage.content[0].text.value,
-          status: 'completed',
-          metadata: {
-            completion_time: Date.now(),
-            thread_id: thread.id,
-            run_id: run.id,
-            openai_message_id: assistantMessage.id
-          }
-        })
-        .eq('id', messageId);
-
-      if (updateError) throw updateError;
-
-      return new Response(JSON.stringify({ 
+    // Update message with response
+    const { error: updateError } = await supabase
+      .from('chat_messages')
+      .update({
+        content: analysisText,
         status: 'completed',
-        message: assistantMessage.content[0].text.value
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    } else {
-      throw new Error(`Run failed with status: ${runStatus.status}`);
-    }
+        processing_stage: {
+          stage: 'completed',
+          last_updated: Date.now(),
+          completion_percentage: 100
+        },
+        metadata: {
+          completion_time: Date.now()
+        }
+      })
+      .eq('id', messageId);
+
+    if (updateError) throw updateError;
+
+    return new Response(JSON.stringify({ 
+      status: 'completed',
+      message: analysisText
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
     console.error('Error in excel-assistant:', error);

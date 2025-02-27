@@ -59,7 +59,7 @@ export function MessageContent({
   const [showEditHistory, setShowEditHistory] = useState(false);
   
   const getLoadingStage = () => {
-    if (status === 'in_progress') {
+    if (status === 'in_progress' || status === 'processing') {
       const stage = metadata?.processing_stage?.stage;
       if (stage === 'generating' && metadata?.processing_stage?.completion_percentage) {
         return `${LoadingStage.Generating} (${Math.round(metadata.processing_stage.completion_percentage)}%)` as const;
@@ -75,7 +75,7 @@ export function MessageContent({
   // Show loading state while generating or when no content is available
   const showLoading = (
     role === "assistant" &&
-    status === 'in_progress'
+    (status === 'in_progress' || status === 'processing')
   );
 
   // Show content as soon as there's any content, even while still generating
