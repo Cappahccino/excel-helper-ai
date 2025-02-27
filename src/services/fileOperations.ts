@@ -13,146 +13,26 @@ interface ValidationResult {
 
 type ProcessingStatus = 'pending' | 'verifying' | 'processing' | 'analyzing' | 'completed' | 'error';
 
-const MAX_PROCESSING_WAIT_TIME = 30000; // 30 seconds
 const PROCESSING_CHECK_INTERVAL = 1000; // 1 second
-const MAX_VERIFICATION_RETRIES = 5;
+const MAX_VERIFICATION_RETRIES = 2;
 
 export const getFilesWithRetry = async (sessionId: string): Promise<string[]> => {
   console.log('Attempting to get files for session:', sessionId);
   
   try {
-    const files = await retryOperation(async () => {
-      const sessionFiles = await getActiveSessionFiles(sessionId);
-      if (!sessionFiles || sessionFiles.length === 0) {
-        console.error('No active files found for session:', sessionId);
-        throw new Error('No files available');
-      }
+    const sessionFiles = await getActiveSessionFiles(sessionId);
+    if (!sessionFiles || sessionFiles.length === 0) {
+      console.error('No active files found for session:', sessionId);
+      throw new Error('No files available');
+    }
 
-      const activeFileIds = sessionFiles.map(sf => sf.file_id);
-      console.log('Found active file IDs:', activeFileIds);
-      
-      // Enhanced verification: Wait for files to be processed with status tracking
-      const processingPromises = activeFileIds.map(monitorFileProcessing);
-      const processedFiles = await Promise.all(processingPromises);
-      
-      // Filter out any files that failed processing
-      const validFiles = processedFiles
-        .filter(result => result.success)
-        .map(result => result.fileId);
-
-      if (validFiles.length === 0) {
-        throw new Error('No valid files available after processing');
-      }
-      
-      console.log('Successfully validated files:', validFiles);
-      return validFiles;
-    }, {
-      maxRetries: MAX_VERIFICATION_RETRIES,
-      delay: 2000,
-      backoff: 1.5,
-      onRetry: (error, attempt) => {
-        console.warn(`Retry attempt ${attempt} for session ${sessionId}:`, error.message);
-      }
-    });
-
-    return files;
-  } catch (error) {
-    console.error('Final error getting files for session:', sessionId, error);
-    throw error;
-  }
-};
-
-const monitorFileProcessing = async (fileId: string): Promise<ValidationResult> => {
-  const startTime = Date.now();
-  let lastStatus: ProcessingStatus | null = null;
-  
-  while (Date.now() - startTime < MAX_PROCESSING_WAIT_TIME) {
-    const result = await checkFileStatus(fileId);
+    const activeFileIds = sessionFiles.map(sf => sf.file_id);
+    console.log('Found active file IDs:', activeFileIds);
     
-    // If validation succeeds, return immediately
-    if (result.success) {
-      return result;
-    }
-
-    // If the status has changed, trigger appropriate actions
-    if (result.file?.processing_status !== lastStatus) {
-      console.log(`File ${fileId} status changed to:`, result.file?.processing_status);
-      lastStatus = result.file?.processing_status;
-
-      // Trigger verification if needed
-      if (result.file?.processing_status === 'pending') {
-        await triggerVerification(fileId);
-      }
-    }
-
-    // If file is in a terminal state (completed or error), return the result
-    if (result.file?.processing_status === 'completed' || result.file?.processing_status === 'error') {
-      return result;
-    }
-
-    // Wait before next check
-    await wait(PROCESSING_CHECK_INTERVAL);
-  }
-
-  return {
-    success: false,
-    fileId,
-    errors: [`File processing timed out after ${MAX_PROCESSING_WAIT_TIME}ms`]
-  };
-};
-
-const checkFileStatus = async (fileId: string): Promise<ValidationResult> => {
-  try {
-    const { data: file, error } = await supabase
-      .from('excel_files')
-      .select('*')
-      .eq('id', fileId)
-      .single();
-
-    if (error) throw error;
-
-    if (!file) {
-      return {
-        success: false,
-        fileId,
-        errors: ['File not found'],
-      };
-    }
-
-    // Validate file state
-    const isValid = file.storage_verified && 
-                   file.processing_status === 'completed' &&
-                   !file.deleted_at;
-
-    return {
-      success: isValid,
-      fileId,
-      errors: isValid ? [] : [`File status: ${file.processing_status}, verified: ${file.storage_verified}`],
-      file
-    };
+    // Return active file IDs directly - simplified approach
+    return activeFileIds;
   } catch (error) {
-    console.error('Error checking file status:', error);
-    return {
-      success: false,
-      fileId,
-      errors: [error.message]
-    };
-  }
-};
-
-const triggerVerification = async (fileId: string): Promise<void> => {
-  try {
-    console.log('Triggering verification for file:', fileId);
-    const { error } = await supabase.functions.invoke('verify-storage', {
-      body: { fileIds: [fileId] }
-    });
-
-    if (error) {
-      console.error('Error triggering verification:', error);
-      throw error;
-    }
-  } catch (error) {
-    console.error('Failed to trigger verification:', error);
+    console.error('Error getting files for session:', sessionId, error);
     throw error;
   }
 };
@@ -166,41 +46,81 @@ export const validateFileAvailability = async (fileIds: string[]): Promise<boole
   console.log('Validating availability for files:', fileIds);
 
   try {
-    const validationPromises = fileIds.map(fileId => 
-      monitorFileProcessing(fileId)
-        .then(result => ({ fileId, ...result }))
-    );
-
-    const results = await Promise.all(validationPromises);
-    
-    // Consider validation successful if at least one file is valid
-    const validFiles = results.filter(result => result.success);
-    
-    if (validFiles.length === 0) {
-      console.error('No valid files found after validation:', 
-        results.map(r => ({
-          fileId: r.fileId,
-          errors: r.errors
-        }))
-      );
+    // Basic check to ensure files exist
+    const { data: files, error } = await supabase
+      .from('excel_files')
+      .select('id, filename, processing_status, storage_verified')
+      .in('id', fileIds);
+      
+    if (error) {
+      console.error('Error checking file availability:', error);
       return false;
     }
-
-    // Log warning if some files failed validation
-    if (validFiles.length < fileIds.length) {
-      console.warn(`${fileIds.length - validFiles.length} files failed validation:`,
-        results
-          .filter(r => !r.success)
-          .map(r => ({
-            fileId: r.fileId,
-            errors: r.errors
-          }))
-      );
+    
+    if (!files || files.length === 0) {
+      console.error('No files found for the provided IDs');
+      return false;
     }
-
-    return true;
+    
+    // Identify unverified files
+    const unverifiedFiles = files.filter(file => 
+      !file.storage_verified || file.processing_status !== 'completed'
+    );
+    
+    // If all files verified, return success
+    if (unverifiedFiles.length === 0) {
+      console.log('All files are verified and ready');
+      return true;
+    }
+    
+    // Try to verify unverified files
+    const unverifiedFileIds = unverifiedFiles.map(file => file.id);
+    console.log('Attempting to verify files:', unverifiedFileIds);
+    
+    // Quick verification attempt
+    const verifyResult = await supabase.functions.invoke('verify-storage', {
+      body: { fileIds: unverifiedFileIds }
+    });
+    
+    if (verifyResult.error) {
+      console.error('Error during verification:', verifyResult.error);
+      // Continue anyway since some files might be valid
+    }
+    
+    // Check if we have at least one valid file
+    const { data: validFiles } = await supabase
+      .from('excel_files')
+      .select('id')
+      .in('id', fileIds)
+      .eq('storage_verified', true)
+      .eq('processing_status', 'completed');
+      
+    const hasValidFiles = validFiles && validFiles.length > 0;
+    
+    if (hasValidFiles) {
+      console.log(`Found ${validFiles.length} valid files out of ${fileIds.length}`);
+      return true;
+    } else {
+      console.error('No valid files available after verification attempt');
+      return false;
+    }
   } catch (error) {
     console.error('Error during file validation:', error);
     return false;
+  }
+};
+
+// Simple function to trigger file verification
+export const triggerVerification = async (fileIds: string[]): Promise<void> => {
+  if (!fileIds.length) return;
+  
+  try {
+    console.log('Triggering verification for files:', fileIds);
+    await supabase.functions.invoke('verify-storage', {
+      body: { fileIds }
+    });
+  } catch (error) {
+    console.error('Error triggering verification:', error);
+    // Don't throw - let the process continue
   }
 };

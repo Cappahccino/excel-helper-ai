@@ -55,7 +55,7 @@ export function useMessageMutation(sessionId: string | null) {
       }
 
       try {
-        // Get and validate files
+        // Get files - simplified approach
         let activeFileIds = fileIds;
         if (!activeFileIds || activeFileIds.length === 0) {
           console.log('No files provided, fetching active session files...');
@@ -66,15 +66,11 @@ export function useMessageMutation(sessionId: string | null) {
           throw new Error('No files available for the message');
         }
 
-        // Validate file availability with retry
+        // Basic validation - simplified
         const filesValid = await validateFileAvailability(activeFileIds);
         if (!filesValid) {
-          console.warn("Some files are still processing, will retry");
-          await wait(2000);
-          const retryValid = await validateFileAvailability(activeFileIds);
-          if (!retryValid) {
-            throw new Error("Some files are not properly processed or accessible");
-          }
+          console.warn("Files may not be fully processed, but will attempt to continue");
+          await wait(500);
         }
 
         // Ensure session files are set up
@@ -109,16 +105,15 @@ export function useMessageMutation(sessionId: string | null) {
           }
         }
 
-        await wait(500);
+        await wait(300);
 
-        // Create assistant message
+        // Create assistant message - simplified flow
         console.log('Creating assistant message...');
         const assistantMessage = await createAssistantMessage(currentSessionId, user.id, activeFileIds);
 
-        // Verify files before AI response
-        const verifiedFileIds = await getFilesWithRetry(currentSessionId);
+        // Trigger AI response - no extra verification needed
         await triggerAIResponse({
-          fileIds: verifiedFileIds,
+          fileIds: activeFileIds,
           query: content,
           userId: user.id,
           sessionId: currentSessionId,

@@ -52,16 +52,7 @@ serve(async (req) => {
 
         console.log(`🔍 [${requestId}] Processing file ${file.filename} (${file.id})`);
         
-        // Update status to verifying
-        await supabase
-          .from('excel_files')
-          .update({ 
-            processing_status: 'verifying',
-            processing_started_at: new Date().toISOString()
-          })
-          .eq('id', fileId);
-
-        // Check if file exists in storage
+        // Single operation to check if file exists in storage
         const { data, error: storageError } = await supabase.storage
           .from('excel_files')
           .download(file.file_path);
@@ -69,12 +60,13 @@ serve(async (req) => {
         const isVerified = !storageError && data !== null;
 
         if (isVerified) {
-          // File exists, update status to verified
+          // Immediately mark as "completed" if file exists
           const { error: updateError } = await supabase
             .from('excel_files')
             .update({
               storage_verified: true,
-              processing_status: 'completed', // Change from 'processing' to 'completed'
+              processing_status: 'completed',
+              processing_completed_at: new Date().toISOString(),
               last_accessed_at: new Date().toISOString(),
             })
             .eq('id', fileId);
@@ -98,7 +90,7 @@ serve(async (req) => {
             status: 'completed'
           });
         } else {
-          // File doesn't exist, mark as error
+          // Clear error state with descriptive message
           await supabase
             .from('excel_files')
             .update({
