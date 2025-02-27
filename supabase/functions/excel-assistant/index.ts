@@ -1,27 +1,33 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import OpenAI from "https://deno.land/x/openai@v4.24.0/mod.ts";
+import OpenAI from "https://esm.sh/openai@4.24.1";
 
 // Constants for configuration
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!;
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ASSISTANT_NAME = "Excel Analysis Assistant";
-const ASSISTANT_MODEL = "gpt-4-1106-preview"; // Using GPT-4 Turbo
-const MAX_POLLING_ATTEMPTS = 50;
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const MODEL = "gpt-4-1106-preview"; // Using GPT-4 Turbo
+const MAX_POLLING_ATTEMPTS = 30;
 const POLLING_INTERVAL = 1000; // 1 second
-
-// Initialize clients
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 // CORS headers for browser access
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Initialize clients
+const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+// Verify OpenAI API key is set
+if (!OPENAI_API_KEY) {
+  console.error("OPENAI_API_KEY is not set in environment variables");
+}
+
+const openai = new OpenAI({
+  apiKey: OPENAI_API_KEY,
+});
 
 /**
  * Update message status in database
@@ -37,25 +43,17 @@ async function updateMessageStatus(
   try {
     const updateData: any = {
       status,
-      processing_stage: {
-        stage: metadata.stage || status,
-        last_updated: Date.now(),
-        ...(metadata.completion_percentage && { completion_percentage: metadata.completion_percentage })
-      }
-    };
-    
-    if (content) {
-      updateData.content = content;
-    }
-    
-    if (metadata) {
-      updateData.metadata = {
+      metadata: {
         ...metadata,
         processing_stage: {
           stage: status === 'processing' ? metadata.stage || 'generating' : status,
           last_updated: Date.now()
         }
-      };
+      }
+    };
+    
+    if (content) {
+      updateData.content = content;
     }
     
     if (metadata.openai_message_id) {
@@ -81,7 +79,7 @@ async function updateMessageStatus(
     }
   } catch (error) {
     console.error('Error in updateMessageStatus:', error);
-    throw error;
+    // Don't throw here to prevent cascading failures
   }
 }
 
@@ -99,7 +97,7 @@ async function getOrCreateAssistant() {
     
     // Find existing Excel Analysis Assistant
     const existingAssistant = assistants.data.find(
-      assistant => assistant.name === ASSISTANT_NAME
+      assistant => assistant.name === "Excel Analysis Assistant"
     );
     
     if (existingAssistant) {
@@ -110,16 +108,15 @@ async function getOrCreateAssistant() {
     // Create new assistant if not found
     console.log('Creating new assistant...');
     const newAssistant = await openai.beta.assistants.create({
-      name: ASSISTANT_NAME,
+      name: "Excel Analysis Assistant",
       instructions: 
         "You are a specialized Excel spreadsheet analysis assistant. " +
         "Your primary role is to analyze Excel files, interpret data, explain formulas, " +
         "suggest improvements, and assist with any Excel-related tasks. " +
         "You should provide clear, concise explanations and always aim to make " +
         "complex Excel concepts accessible. When appropriate, suggest formulas, " +
-        "techniques, or best practices to improve the user's spreadsheets." +
-        "Always be helpful, accurate, and thorough in your analysis.",
-      model: ASSISTANT_MODEL,
+        "techniques, or best practices to improve the user's spreadsheets.",
+      model: MODEL,
       tools: [{ type: "retrieval" }]
     });
     
@@ -127,7 +124,7 @@ async function getOrCreateAssistant() {
     return newAssistant;
   } catch (error) {
     console.error('Error in getOrCreateAssistant:', error);
-    throw error;
+    throw new Error(`Failed to create or get assistant: ${error.message}`);
   }
 }
 
@@ -153,11 +150,19 @@ async function getOrCreateThread(sessionId: string) {
     // If thread exists, return it
     if (session?.thread_id) {
       console.log('Found existing thread:', session.thread_id);
-      return {
-        threadId: session.thread_id,
-        assistantId: session.assistant_id,
-        isNew: false
-      };
+      
+      // Check if thread is valid by attempting to retrieve it
+      try {
+        await openai.beta.threads.retrieve(session.thread_id);
+        return {
+          threadId: session.thread_id,
+          assistantId: session.assistant_id,
+          isNew: false
+        };
+      } catch (threadError) {
+        console.warn('Existing thread not found on OpenAI, creating new one:', threadError.message);
+        // Continue to create a new thread
+      }
     }
     
     // Create new thread
@@ -174,7 +179,7 @@ async function getOrCreateThread(sessionId: string) {
       .update({
         thread_id: newThread.id,
         assistant_id: assistant.id,
-        openai_model: ASSISTANT_MODEL
+        openai_model: MODEL
       })
       .eq('session_id', sessionId);
       
@@ -190,7 +195,7 @@ async function getOrCreateThread(sessionId: string) {
     };
   } catch (error) {
     console.error('Error in getOrCreateThread:', error);
-    throw error;
+    throw new Error(`Thread creation failed: ${error.message}`);
   }
 }
 
@@ -201,6 +206,10 @@ async function processExcelData(fileIds: string[]) {
   console.log('Processing Excel files:', fileIds);
   
   try {
+    if (!fileIds || !fileIds.length) {
+      throw new Error('No file IDs provided');
+    }
+    
     const { data: files, error } = await supabase
       .from('excel_files')
       .select('*')
@@ -214,6 +223,8 @@ async function processExcelData(fileIds: string[]) {
     if (!files?.length) {
       throw new Error('No files found with the provided IDs');
     }
+    
+    console.log(`Found ${files.length} files:`, files.map(f => f.filename).join(', '));
 
     // Return processed file data
     return files.map(file => ({
@@ -221,11 +232,13 @@ async function processExcelData(fileIds: string[]) {
       filename: file.filename,
       status: file.processing_status,
       size: file.file_size,
-      path: file.file_path
+      path: file.file_path,
+      created_at: file.created_at,
+      user_id: file.user_id
     }));
   } catch (error) {
     console.error('Error in processExcelData:', error);
-    throw error;
+    throw new Error(`Failed to process Excel data: ${error.message}`);
   }
 }
 
@@ -297,7 +310,8 @@ Always be helpful and provide actionable suggestions when appropriate.
     const { error: sessionError } = await supabase
       .from('chat_sessions')
       .update({
-        last_run_id: run.id
+        last_run_id: run.id,
+        updated_at: new Date().toISOString()
       })
       .eq('thread_id', threadId);
       
@@ -308,7 +322,6 @@ Always be helpful and provide actionable suggestions when appropriate.
     // Update message with run ID
     await updateMessageStatus(messageId, 'processing', '', {
       stage: 'analyzing',
-      completion_percentage: 25,
       openai_run_id: run.id
     });
     
@@ -319,7 +332,7 @@ Always be helpful and provide actionable suggestions when appropriate.
     };
   } catch (error) {
     console.error('Error in addMessageAndRun:', error);
-    throw error;
+    throw new Error(`Failed to add message and run: ${error.message}`);
   }
 }
 
@@ -339,39 +352,51 @@ async function pollRunStatus(params: {
     let runStatus = null;
     
     while (attempts < MAX_POLLING_ATTEMPTS) {
-      // Get run status
-      const run = await openai.beta.threads.runs.retrieve(
-        threadId,
-        runId
-      );
+      attempts++;
       
-      console.log(`Run ${runId} status: ${run.status}, attempt: ${attempts + 1}`);
-      
-      // Update message status based on run status
-      let completionPercentage = Math.min(25 + (attempts * 5), 90);
-      await updateMessageStatus(messageId, 'processing', '', {
-        stage: 'generating',
-        completion_percentage: completionPercentage,
-        openai_run_id: runId
-      });
-      
-      // Check if run is completed or failed
-      if (run.status === 'completed') {
-        console.log('Run completed successfully');
-        runStatus = 'completed';
-        break;
-      } else if (['failed', 'cancelled', 'expired'].includes(run.status)) {
-        console.error(`Run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
-        runStatus = run.status;
-        break;
+      try {
+        // Get run status
+        const run = await openai.beta.threads.runs.retrieve(
+          threadId,
+          runId
+        );
+        
+        console.log(`Run ${runId} status: ${run.status}, attempt: ${attempts}`);
+        
+        // Update message status based on run status
+        let completionPercentage = Math.min(25 + (attempts * 5), 90);
+        await updateMessageStatus(messageId, 'processing', '', {
+          stage: 'generating',
+          completion_percentage: completionPercentage,
+          openai_run_id: runId
+        });
+        
+        // Check if run is completed or failed
+        if (run.status === 'completed') {
+          console.log('Run completed successfully');
+          runStatus = 'completed';
+          break;
+        } else if (['failed', 'cancelled', 'expired'].includes(run.status)) {
+          console.error(`Run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
+          runStatus = run.status;
+          break;
+        }
+      } catch (pollError) {
+        console.error(`Error polling run (attempt ${attempts}):`, pollError);
+        
+        // If we've reached max attempts, throw the error
+        if (attempts >= MAX_POLLING_ATTEMPTS) {
+          throw pollError;
+        }
+        
+        // Otherwise, continue polling
       }
       
       // Wait before next attempt
       await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
-      attempts++;
     }
     
-    if (!runStatus || attempts >= MAX_POLLING_ATTEMPTS) {
+    if (!runStatus) {
       console.error('Run polling timed out');
       throw new Error('Assistant response timed out');
     }
@@ -379,7 +404,7 @@ async function pollRunStatus(params: {
     return runStatus;
   } catch (error) {
     console.error('Error in pollRunStatus:', error);
-    throw error;
+    throw new Error(`Failed to poll run status: ${error.message}`);
   }
 }
 
@@ -434,7 +459,7 @@ async function getAssistantResponse(params: {
     };
   } catch (error) {
     console.error('Error in getAssistantResponse:', error);
-    throw error;
+    throw new Error(`Failed to get assistant response: ${error.message}`);
   }
 }
 
@@ -442,15 +467,33 @@ async function getAssistantResponse(params: {
  * Main request handler
  */
 serve(async (req) => {
+  console.log("Excel assistant function called");
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let messageId = '';
+  
   try {
+    if (!OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not set in environment variables');
+    }
+    
     // Parse request
-    const { fileIds, query, userId, sessionId, messageId, action = 'query' } = await req.json();
-    console.log('Processing request:', { fileIds, messageId, action, sessionId });
+    const requestData = await req.json();
+    console.log('Request data received:', Object.keys(requestData));
+    
+    const { fileIds, query, userId, sessionId, messageId: msgId, action = 'query' } = requestData;
+    messageId = msgId;
+    
+    console.log('Processing request:', { 
+      fileCount: fileIds?.length, 
+      messageId, 
+      action, 
+      sessionId: sessionId?.substring(0, 8) + '...'
+    });
 
     if (!sessionId || !messageId) {
       throw new Error('Session ID and message ID are required');
@@ -510,28 +553,27 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in excel-assistant:', error);
     
-    // Update message status to failed
-    try {
-      if (error.response?.status === 429) {
-        // Rate limit error
-        await updateMessageStatus(messageId, 'failed', 'OpenAI rate limit exceeded. Please try again later.', {
-          error: 'Rate limit exceeded',
+    // Update message status to failed if messageId is available
+    if (messageId) {
+      try {
+        const errorMessage = error.message || 'An unexpected error occurred';
+        const statusMessage = errorMessage.includes('rate limit') 
+          ? 'OpenAI rate limit exceeded. Please try again later.'
+          : errorMessage;
+          
+        await updateMessageStatus(messageId, 'failed', statusMessage, {
+          error: errorMessage,
           failed_at: Date.now()
         });
-      } else {
-        // General error
-        await updateMessageStatus(messageId, 'failed', error.message || 'An unexpected error occurred', {
-          error: error.message || 'Unknown error',
-          failed_at: Date.now()
-        });
+      } catch (statusError) {
+        console.error('Error updating failure status:', statusError);
       }
-    } catch (statusError) {
-      console.error('Error updating failure status:', statusError);
     }
 
     // Return error response
     return new Response(JSON.stringify({ 
-      error: error.message || 'An unexpected error occurred'
+      error: error.message || 'An unexpected error occurred',
+      trace: error.stack || 'No stack trace available'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
