@@ -30,6 +30,66 @@ export async function createSession(userId: string) {
   return session;
 }
 
+/**
+ * Verify file status and trigger verification if needed
+ * @param fileIds Array of file IDs to verify
+ * @returns Promise resolving to boolean indicating if files are ready
+ */
+async function verifyFileStatus(fileIds: string[]): Promise<boolean> {
+  try {
+    console.log('Verifying file status for:', fileIds);
+    
+    const { data: files, error } = await supabase
+      .from('excel_files')
+      .select('id, processing_status, storage_verified, error_message')
+      .in('id', fileIds);
+      
+    if (error) {
+      console.error('Error checking file status:', error);
+      return false;
+    }
+    
+    // Check if all files are properly verified
+    const allVerified = files?.every(file => 
+      file.storage_verified === true && 
+      file.processing_status === 'completed'
+    );
+    
+    if (allVerified) {
+      console.log('All files are verified and ready for use');
+      return true;
+    }
+    
+    // Identify unverified files
+    const unverifiedFiles = files?.filter(file => 
+      !file.storage_verified || file.processing_status !== 'completed'
+    ).map(file => file.id);
+    
+    if (!unverifiedFiles?.length) {
+      console.log('No files need verification');
+      return true;
+    }
+    
+    console.log('Files needing verification:', unverifiedFiles);
+    
+    // Trigger verification for unverified files
+    const { error: verifyError } = await supabase.functions.invoke('verify-storage', {
+      body: { fileIds: unverifiedFiles }
+    });
+    
+    if (verifyError) {
+      console.error('Error triggering verification:', verifyError);
+      return false;
+    }
+    
+    console.log('Verification triggered for files');
+    return false; // Return false since verification is in progress
+  } catch (error) {
+    console.error('Error in verifyFileStatus:', error);
+    return false;
+  }
+}
+
 export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
   try {
     console.log('Ensuring session files:', { sessionId, fileIds });
@@ -77,22 +137,8 @@ export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
       throw updateError;
     }
 
-    // Trigger verification for any unverified or pending files
-    const unverifiedFiles = existingFiles?.filter(f => 
-      !f.excel_files?.storage_verified || 
-      f.excel_files?.processing_status === 'pending'
-    ).map(f => f.file_id) || [];
-
-    if (unverifiedFiles.length > 0) {
-      console.log('Triggering verification for unverified files:', unverifiedFiles);
-      const { error: verifyError } = await supabase.functions.invoke('verify-storage', {
-        body: { fileIds: unverifiedFiles }
-      });
-
-      if (verifyError) {
-        console.error('Error triggering verification:', verifyError);
-      }
-    }
+    // Verify all files are ready for processing
+    await verifyFileStatus(fileIds);
 
     console.log('Successfully ensured session files:', fileIds);
   } catch (error) {
