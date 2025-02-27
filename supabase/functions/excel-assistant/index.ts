@@ -2,13 +2,13 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import OpenAI from "https://esm.sh/openai@4.28.0";
+import OpenAI from "https://esm.sh/openai@4.85.4";
 
 // Constants for configuration
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const MODEL = "gpt-4-turbo"; // Updated model name for v2
+const MODEL = "gpt-4-1106-preview"; // Specific model version for v2
 const MAX_POLLING_ATTEMPTS = 30;
 const POLLING_INTERVAL = 1000; // 1 second
 
@@ -18,7 +18,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Initialize clients
+// Initialize Supabase client
 const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
 // Verify OpenAI API key is set
@@ -26,12 +26,16 @@ if (!OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
 }
 
-// Initialize OpenAI with v2 beta header
+// Initialize OpenAI with v2 beta header using the latest SDK version
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
+  baseURL: "https://api.openai.com/v1",
   defaultHeaders: {
-    'OpenAI-Beta': 'assistants=v2'
-  }
+    "OpenAI-Beta": "assistants=v2"
+  },
+  dangerouslyAllowBrowser: true,
+  maxRetries: 3,
+  timeout: 30000
 });
 
 /**
@@ -118,17 +122,23 @@ async function getOrCreateAssistant() {
         "You are a specialized Excel spreadsheet analysis assistant. " +
         "Your primary role is to analyze Excel files, interpret data, explain formulas, " +
         "suggest improvements, and assist with any Excel-related tasks. " +
-        "You should provide clear, concise explanations and always aim to make " +
-        "complex Excel concepts accessible. When appropriate, suggest formulas, " +
-        "techniques, or best practices to improve the user's spreadsheets.",
+        "When appropriate, use the code interpreter to perform calculations, generate " +
+        "visualizations, or process data from the Excel files. " +
+        "Always aim to be clear, concise, and helpful. Make complex Excel concepts " +
+        "accessible and suggest formulas, techniques, or best practices to improve " +
+        "the user's spreadsheets.",
       model: MODEL,
-      tools: [{ type: "retrieval" }]
+      tools: [
+        { type: "retrieval" },
+        { type: "code_interpreter" }
+      ]
     });
     
     console.log('Created new assistant:', newAssistant.id);
     return newAssistant;
   } catch (error) {
     console.error('Error in getOrCreateAssistant:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw new Error(`Failed to create or get assistant: ${error.message}`);
   }
 }
@@ -270,10 +280,19 @@ async function prepareFilesForAssistant(fileData: any[]) {
           continue;
         }
         
-        // Convert to Blob
-        const blob = new Blob([fileContent], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        // Convert to Blob with appropriate MIME type based on file extension
+        let mimeType = 'application/octet-stream';
+        if (file.filename.endsWith('.xlsx')) {
+          mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        } else if (file.filename.endsWith('.xls')) {
+          mimeType = 'application/vnd.ms-excel';
+        } else if (file.filename.endsWith('.csv')) {
+          mimeType = 'text/csv';
+        }
         
-        // Upload file to OpenAI (v2 compatible)
+        const blob = new Blob([fileContent], { type: mimeType });
+        
+        // Upload file to OpenAI using 4.85.4 file upload
         console.log(`Uploading ${file.filename} to OpenAI...`);
         const openaiFile = await openai.files.create({
           file: new File([blob], file.filename),
@@ -326,17 +345,21 @@ User Query: ${query}
 Available Excel Files:
 - ${fileDescriptions}
 
-Please analyze these Excel files and answer the query.
+Please analyze these Excel files and answer the query. When appropriate, use code interpreter to analyze the data or create visualizations.
     `.trim();
     
-    // Add message to thread (v2 compatible)
+    // Add message to thread with v2 format
     console.log('Adding message to thread:', threadId);
     const threadMessage = await openai.beta.threads.messages.create(
       threadId,
       {
         role: "user",
         content: messageContent,
-        file_ids: fileIds // Attach files to message (v2 change)
+        file_ids: fileIds, // v2 format for file attachments
+        metadata: {
+          user_id: userId,
+          message_type: "excel_query"
+        }
       }
     );
     console.log('Added message to thread, message ID:', threadMessage.id);
@@ -347,7 +370,7 @@ Please analyze these Excel files and answer the query.
       thread_message_id: threadMessage.id
     });
     
-    // Create a run (v2 compatible)
+    // Create a run with v2 format
     console.log('Creating run with assistant:', assistantId);
     const run = await openai.beta.threads.runs.create(
       threadId,
@@ -356,10 +379,19 @@ Please analyze these Excel files and answer the query.
         instructions: `
 Analyze the Excel files mentioned in the user query.
 Focus on providing clear, accurate information about the spreadsheet data.
+Use code interpreter when it would help with:
+  - Complex calculations
+  - Data visualization
+  - Statistical analysis
+  - Summarizing large datasets
 If formulas are mentioned, explain them in detail.
 If data analysis is requested, provide thorough insights.
 Always be helpful and provide actionable suggestions when appropriate.
-        `.trim()
+        `.trim(),
+        metadata: {
+          session_id: params.userId,
+          message_id: messageId
+        }
       }
     );
     console.log('Created run:', run.id);
@@ -391,6 +423,7 @@ Always be helpful and provide actionable suggestions when appropriate.
     };
   } catch (error) {
     console.error('Error in addMessageAndRun:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw new Error(`Failed to add message and run: ${error.message}`);
   }
 }
@@ -414,7 +447,7 @@ async function pollRunStatus(params: {
       attempts++;
       
       try {
-        // Get run status (v2 compatible)
+        // Get run status with v2 format
         const run = await openai.beta.threads.runs.retrieve(
           threadId,
           runId
@@ -438,6 +471,11 @@ async function pollRunStatus(params: {
         } else if (['failed', 'cancelled', 'expired'].includes(run.status)) {
           console.error(`Run ${run.status}: ${run.last_error?.message || 'Unknown error'}`);
           runStatus = run.status;
+          break;
+        } else if (run.status === 'requires_action') {
+          // This shouldn't happen with current tools but handle just in case
+          console.warn(`Run requires action, not supported in this implementation`);
+          runStatus = 'failed';
           break;
         }
       } catch (pollError) {
@@ -478,7 +516,7 @@ async function getAssistantResponse(params: {
   console.log('Getting assistant response from thread:', threadId);
   
   try {
-    // List messages in thread, sorted by newest first (v2 compatible)
+    // List messages in thread, sorted by newest first (v2 format)
     const messages = await openai.beta.threads.messages.list(
       threadId,
       { limit: 10, order: 'desc' }
@@ -493,11 +531,22 @@ async function getAssistantResponse(params: {
     
     console.log('Found assistant message:', assistantMessage.id);
     
-    // Extract content from message (v2 compatible)
+    // Extract content from message (with v2 format)
     let responseContent = '';
+    let hasCodeOutput = false;
+    let codeOutputs = [];
+    
     for (const contentPart of assistantMessage.content) {
       if (contentPart.type === 'text') {
         responseContent += contentPart.text.value;
+      } else if (contentPart.type === 'image_file') {
+        // If there's an image, note it and include a placeholder
+        hasCodeOutput = true;
+        responseContent += `\n\n[Image Generated: Code Interpreter Output]\n\n`;
+        codeOutputs.push({
+          type: 'image',
+          file_id: contentPart.image_file.file_id
+        });
       }
     }
     
@@ -509,7 +558,9 @@ async function getAssistantResponse(params: {
     await updateMessageStatus(messageId, 'completed', responseContent, {
       stage: 'completed',
       completion_percentage: 100,
-      openai_message_id: assistantMessage.id
+      openai_message_id: assistantMessage.id,
+      has_code_output: hasCodeOutput,
+      code_outputs: codeOutputs.length ? codeOutputs : undefined
     });
     
     return {
@@ -532,7 +583,7 @@ async function cleanupOpenAIFiles(fileIds: string[]) {
   
   for (const fileId of fileIds) {
     try {
-      // Delete file from OpenAI (V2 compatible)
+      // Delete file from OpenAI
       await openai.files.del(fileId);
       console.log(`Deleted OpenAI file: ${fileId}`);
     } catch (error) {
@@ -546,7 +597,7 @@ async function cleanupOpenAIFiles(fileIds: string[]) {
  * Main request handler
  */
 serve(async (req) => {
-  console.log("Excel assistant function called");
+  console.log("Excel assistant function called with Assistants API v2");
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -638,6 +689,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in excel-assistant:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     
     // Clean up temporary files on error
     if (tempFileIds.length > 0) {

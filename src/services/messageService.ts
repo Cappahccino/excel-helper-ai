@@ -114,7 +114,7 @@ export async function createAssistantMessage(
         session_id: sessionId,
         is_ai_response: true,
         user_id: userId,
-        status: 'processing' as const, // Updated to use 'processing' instead of 'in_progress'
+        status: 'processing' as const,
         version: '1.0.0',
         migration_verified: true,
         deployment_id: crypto.randomUUID(),
@@ -165,7 +165,7 @@ export async function createAssistantMessage(
 }
 
 function transformMessage(msg: DatabaseMessage): Message {
-  let status: Message['status'] = 'processing'; // Default changed to 'processing'
+  let status: Message['status'] = 'processing'; // Default is processing
   if (msg.status === 'completed' || 
       msg.status === 'failed' || 
       msg.status === 'cancelled' || 

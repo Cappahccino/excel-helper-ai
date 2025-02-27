@@ -23,7 +23,7 @@ export async function triggerAIResponse(params: {
     console.log('Verifying files before AI processing:', params.fileIds);
     await triggerVerification(params.fileIds);
     
-    // Update message status before triggering AI - now using 'processing' instead of 'in_progress'
+    // Update message status before triggering AI
     await supabase
       .from('chat_messages')
       .update({
