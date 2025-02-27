@@ -1,14 +1,13 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import OpenAI from "https://esm.sh/openai@4.85.4";
+import OpenAI from "https://esm.sh/openai@4.20.1";
 
 // Constants for configuration
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const MODEL = "gpt-4-1106-preview"; // Specific model version for v2
+const MODEL = "gpt-4-turbo";
 const MAX_POLLING_ATTEMPTS = 30;
 const POLLING_INTERVAL = 1000; // 1 second
 
@@ -26,16 +25,13 @@ if (!OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
 }
 
-// Initialize OpenAI with v2 beta header using the latest SDK version
+// Initialize OpenAI with v2 beta header
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
-  baseURL: "https://api.openai.com/v1",
   defaultHeaders: {
     "OpenAI-Beta": "assistants=v2"
   },
-  dangerouslyAllowBrowser: true,
-  maxRetries: 3,
-  timeout: 30000
+  dangerouslyAllowBrowser: true
 });
 
 /**
@@ -292,7 +288,7 @@ async function prepareFilesForAssistant(fileData: any[]) {
         
         const blob = new Blob([fileContent], { type: mimeType });
         
-        // Upload file to OpenAI using 4.85.4 file upload
+        // Upload file to OpenAI
         console.log(`Uploading ${file.filename} to OpenAI...`);
         const openaiFile = await openai.files.create({
           file: new File([blob], file.filename),
@@ -355,7 +351,7 @@ Please analyze these Excel files and answer the query. When appropriate, use cod
       {
         role: "user",
         content: messageContent,
-        file_ids: fileIds, // v2 format for file attachments
+        file_ids: fileIds,
         metadata: {
           user_id: userId,
           message_type: "excel_query"

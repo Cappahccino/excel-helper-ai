@@ -1,3 +1,4 @@
+
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -87,7 +88,7 @@ const Chat = () => {
       return msg;
     });
 
-    if (status === 'in_progress' && !latestMessageId && !streamingContent && selectedSessionId) {
+    if (status === 'processing' && !latestMessageId && !streamingContent && selectedSessionId) {
       messagesList.unshift({
         id: 'loading-indicator',
         content: '',
@@ -95,7 +96,7 @@ const Chat = () => {
         session_id: selectedSessionId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        status: 'in_progress',
+        status: 'processing',
         is_ai_response: true,
         version: '1.0.0',
         metadata: {
@@ -213,7 +214,7 @@ const Chat = () => {
                     <ChatInput
                       onSendMessage={handleSendMessage}
                       sessionId={selectedSessionId}
-                      isAnalyzing={status === 'in_progress'}
+                      isAnalyzing={status === 'processing'}
                       fileInfo={currentFile}
                     />
                   </motion.div>
@@ -257,7 +258,7 @@ const Chat = () => {
                       <ChatInput
                         onSendMessage={handleSendMessage}
                         sessionId={selectedSessionId}
-                        isAnalyzing={status === 'in_progress'}
+                        isAnalyzing={status === 'processing'}
                         fileInfo={currentFile}
                       />
                     </div>

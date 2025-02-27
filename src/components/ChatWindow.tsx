@@ -1,3 +1,4 @@
+
 import { useRef } from "react";
 import { ScrollArea } from "./ui/scroll-area";
 import { ChatError } from "./chat/ChatError";
@@ -104,7 +105,7 @@ export function ChatWindow({
       <div className="absolute bottom-0 left-0 right-0">
         <ChatInput 
           onSendMessage={handleSendMessage}
-          isAnalyzing={status === 'in_progress'}
+          isAnalyzing={status === 'processing'}
           sessionId={sessionId}
           fileInfo={fileInfo}
         />
