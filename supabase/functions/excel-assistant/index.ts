@@ -328,6 +328,120 @@ async function prepareFilesForAssistant(fileData: any[]) {
 }
 
 /**
+ * Attach files to thread with proper v2 API handling
+ * - Handle single file case
+ * - Handle multiple files case by creating multiple messages
+ */
+async function attachFilesToThread({
+  threadId,
+  messageContent,
+  fileIds,
+  userId,
+  metadata = {}
+}: {
+  threadId: string;
+  messageContent: string;
+  fileIds: string[];
+  userId: string;
+  metadata?: Record<string, any>;
+}) {
+  try {
+    console.log(`Attaching ${fileIds.length} file(s) to thread ${threadId}`);
+    
+    const threadMessages = [];
+    
+    if (fileIds.length === 1) {
+      // ✅ If there's only ONE file, send a single API request
+      console.log(`Attaching single file (${fileIds[0]}) to message.`);
+      const message = await openai.beta.threads.messages.create(
+        threadId,
+        {
+          role: "user",
+          content: [{ type: "text", text: messageContent }],
+          file_id: fileIds[0], // v2 requires singular file_id
+          metadata: {
+            user_id: userId,
+            message_type: "excel_query",
+            ...metadata
+          }
+        },
+        {
+          headers: v2Headers
+        }
+      );
+      threadMessages.push(message);
+    } else {
+      // For multiple files, create separate messages concurrently
+      console.log(`Attaching ${fileIds.length} files in separate messages...`);
+      
+      // First message: Main content with primary file
+      const primaryMessage = await openai.beta.threads.messages.create(
+        threadId,
+        {
+          role: "user",
+          content: [{ 
+            type: "text", 
+            text: `${messageContent}\n\n[This is part 1 of ${fileIds.length} messages with file attachments]` 
+          }],
+          file_id: fileIds[0],
+          metadata: {
+            user_id: userId,
+            message_type: "excel_query",
+            is_multi_file: true,
+            file_index: 0,
+            total_files: fileIds.length,
+            ...metadata
+          }
+        },
+        {
+          headers: v2Headers
+        }
+      );
+      threadMessages.push(primaryMessage);
+      
+      // Additional messages for remaining files
+      const additionalMessagePromises = fileIds.slice(1).map(async (fileId, index) => {
+        return openai.beta.threads.messages.create(
+          threadId,
+          {
+            role: "user",
+            content: [{ 
+              type: "text", 
+              text: `Additional file for analysis: ${index + 2} of ${fileIds.length}` 
+            }],
+            file_id: fileId,
+            metadata: {
+              user_id: userId,
+              message_type: "excel_additional_file",
+              is_multi_file: true,
+              file_index: index + 1,
+              total_files: fileIds.length,
+              primary_message_id: primaryMessage.id,
+              ...metadata
+            }
+          },
+          {
+            headers: v2Headers
+          }
+        );
+      });
+      
+      const additionalMessages = await Promise.all(additionalMessagePromises);
+      threadMessages.push(...additionalMessages);
+    }
+    
+    console.log(`Successfully attached ${threadMessages.length} message(s) with files to thread`);
+    return {
+      messages: threadMessages,
+      primaryMessageId: threadMessages[0]?.id
+    };
+  } catch (error) {
+    console.error('Error in attachFilesToThread:', error);
+    throw error;
+  }
+}
+
+/**
  * Add user message to thread and run assistant
  */
 async function addMessageAndRun(params: {
@@ -361,29 +475,31 @@ Available Excel Files:
 Please analyze these Excel files and answer the query. When appropriate, use code interpreter to analyze the data or create visualizations.
     `.trim();
     
-    // Add message to thread with v2 format and explicit v2 header
-    console.log('Adding message to thread with v2 API:', threadId);
-    const threadMessage = await openai.beta.threads.messages.create(
+    // Update database with processing status
+    await updateMessageStatus(messageId, 'processing', '', {
+      stage: 'uploading_files',
+      file_count: fileIds.length
+    });
+    
+    // Attach files to thread with improved handling
+    const { messages, primaryMessageId } = await attachFilesToThread({
       threadId,
-      {
-        role: "user",
-        content: [{ type: "text", text: messageContentText }],
-        file_ids: fileIds,
-        metadata: {
-          user_id: userId,
-          message_type: "excel_query"
-        }
-      },
-      {
-        headers: v2Headers
+      messageContent: messageContentText,
+      fileIds,
+      userId,
+      metadata: {
+        query,
+        file_count: fileIds.length
       }
-    );
-    console.log('Added message to thread, message ID:', threadMessage.id);
+    });
     
     // Update database with thread message ID
     await updateMessageStatus(messageId, 'processing', '', {
       stage: 'processing',
-      thread_message_id: threadMessage.id
+      thread_message_id: primaryMessageId,
+      file_count: fileIds.length,
+      is_multi_file: fileIds.length > 1,
+      multi_file_message_ids: fileIds.length > 1 ? messages.map(m => m.id) : undefined
     });
     
     // Create a run with v2 format and explicit v2 header
@@ -406,7 +522,8 @@ Always be helpful and provide actionable suggestions when appropriate.
         `.trim(),
         metadata: {
           session_id: params.userId,
-          message_id: messageId
+          message_id: messageId,
+          file_count: fileIds.length
         }
       },
       {
@@ -437,7 +554,7 @@ Always be helpful and provide actionable suggestions when appropriate.
     return {
       threadId,
       runId: run.id,
-      messageId: threadMessage.id,
+      messageId: primaryMessageId,
       fileIds // Return OpenAI file IDs for cleanup later
     };
   } catch (error) {
