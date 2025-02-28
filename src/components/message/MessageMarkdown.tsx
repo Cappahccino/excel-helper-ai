@@ -29,16 +29,20 @@ export function MessageMarkdown({ content }: MessageMarkdownProps) {
   return (
     <ReactMarkdown
       components={{
-        code({ node, inline, className, children, ...props }) {
+        code({ node, className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || "");
-          if (!inline && match) {
+          
+          // Check if this is a code block with a language or just inline code
+          if (!props.inline && match) {
             return (
               <CodeBlock
                 language={match[1]}
-                value={String(children).replace(/\n$/, "")}
+                code={String(children).replace(/\n$/, "")}
               />
             );
           }
+          
+          // For inline code
           return (
             <code className={className} {...props}>
               {children}

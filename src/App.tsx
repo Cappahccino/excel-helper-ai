@@ -1,9 +1,10 @@
+
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { Suspense, lazy } from "react";
 import "./App.css";
-import ScrollToTop from "./components/ScrollToTop";
+import { ScrollToTop } from "./components/ScrollToTop";
 import { Toaster as ShadcnToaster } from "./components/ui/toaster";
 import Home from "./pages/Home";
 import { supabase } from "@/integrations/supabase/client";
