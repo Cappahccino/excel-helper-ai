@@ -13,6 +13,15 @@ export type MessageFile = {
   tags?: Tag[];
 };
 
+export type GeneratedImage = {
+  id: string;
+  message_id: string;
+  openai_file_id: string;
+  file_type: string;
+  created_at: string;
+  metadata?: Record<string, any>;
+};
+
 export type MessageMetadata = {
   reaction_counts?: {
     positive: number;
@@ -30,6 +39,9 @@ export type MessageMetadata = {
     edited_at: string;
   }>;
   tags?: Tag[];
+  has_images?: boolean;
+  image_count?: number;
+  generated_images?: GeneratedImage[];
 } | null;
 
 export type DatabaseMessage = {

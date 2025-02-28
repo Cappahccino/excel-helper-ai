@@ -8,11 +8,12 @@ import { FileInfo } from "../FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
 import { EditableMessage } from "./EditableMessage";
 import { useState } from "react";
-import { Clock, Edit2 } from "lucide-react";
+import { Clock, Edit2, Image } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
 import { MessageStatus } from "@/types/chat";
+import { GeneratedImage } from "@/types/messages.types";
 
 interface MessageContentProps {
   content: string;
@@ -47,6 +48,9 @@ interface MessageContentProps {
       type: string;
       file_id: string;
     }>;
+    has_images?: boolean;
+    image_count?: number;
+    generated_images?: GeneratedImage[];
   } | null;
   userReaction?: boolean | null;
 }
@@ -98,6 +102,7 @@ export function MessageContent({
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
   const fileCount = metadata?.file_count || 0;
+  const hasImages = metadata?.has_images === true || (metadata?.image_count && metadata.image_count > 0);
 
   const handleSave = (newContent: string) => {
     setIsEditing(false);
@@ -168,6 +173,7 @@ export function MessageContent({
                       )}
                     </>
                   )}
+                  
                   {hasEditHistory && !isEditing && (
                     <div className="mt-1">
                       <Button
@@ -191,6 +197,13 @@ export function MessageContent({
                           ))}
                         </div>
                       )}
+                    </div>
+                  )}
+                  
+                  {hasImages && (
+                    <div className="mt-3 text-sm text-gray-500 flex items-center">
+                      <Image className="h-4 w-4 mr-1 text-blue-500" />
+                      <span>Contains generated images</span>
                     </div>
                   )}
                 </div>

@@ -1,98 +1,98 @@
 
+import React, { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { InlineMath, BlockMath } from "react-katex";
 import { CodeBlock } from "./CodeBlock";
-import "katex/dist/katex.min.css";
-import { ComponentPropsWithoutRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface MessageMarkdownProps {
   content: string;
 }
 
-// Define the props type for the code component
-interface CodeProps extends ComponentPropsWithoutRef<"code"> {
-  inline?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}
-
 export function MessageMarkdown({ content }: MessageMarkdownProps) {
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+
+  const processedContent = useMemo(() => {
+    // Replace OpenAI image links with our edge function URLs
+    return content.replace(
+      /!\[([^\]]+)\]\(\/api\/images\/([a-zA-Z0-9-_]+)\)/g,
+      (match, altText, fileId) => {
+        // Replace with our edge function URL
+        return `![${altText}](${window.location.origin}/api/fetch-openai-image/${fileId})`;
+      }
+    );
+  }, [content]);
+
+  const handleImageError = (fileId: string) => {
+    setImageErrors(prev => ({ ...prev, [fileId]: true }));
+  };
+
   return (
     <ReactMarkdown
       components={{
-        h1: ({ children }) => (
-          <h1 className="text-2xl font-semibold mb-4 mt-6">{children}</h1>
-        ),
-        h2: ({ children }) => (
-          <h2 className="text-xl font-semibold mb-3 mt-5">{children}</h2>
-        ),
-        h3: ({ children }) => (
-          <h3 className="text-lg font-semibold mb-2 mt-4">{children}</h3>
-        ),
-        ul: ({ children }) => (
-          <ul className="list-disc pl-6 mb-4 space-y-2">{children}</ul>
-        ),
-        ol: ({ children }) => (
-          <ol className="list-decimal pl-6 mb-4 space-y-2">{children}</ol>
-        ),
-        li: ({ children }) => (
-          <li className="text-sm text-gray-800">{children}</li>
-        ),
-        code: ({ inline, className, children }: CodeProps) => {
-          const match = /language-(\w+)/.exec(className || '');
-          const language = match ? match[1] : 'typescript';
-          
-          if (inline) {
+        code({ node, inline, className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || "");
+          if (!inline && match) {
             return (
-              <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">
-                {children}
-              </code>
-            );
-          }
-
-          return (
-            <CodeBlock
-              code={String(children).replace(/\n$/, '')}
-              language={language}
-              className="my-4"
-            />
-          );
-        },
-        p: ({ children }) => {
-          if (typeof children === "string") {
-            const parts = children.split(/(INLINEMATH{.*?}|BLOCKMATH{.*?})/g);
-            return (
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                {parts.map((part, index) => {
-                  if (part.startsWith("INLINEMATH{")) {
-                    const latex = part.slice(11, -1);
-                    return (
-                      <span key={index}>
-                        <InlineMath math={latex} />
-                      </span>
-                    );
-                  } else if (part.startsWith("BLOCKMATH{")) {
-                    const latex = part.slice(10, -1);
-                    return (
-                      <div key={index}>
-                        <BlockMath math={latex} />
-                      </div>
-                    );
-                  }
-                  return part;
-                })}
-              </p>
+              <CodeBlock
+                language={match[1]}
+                value={String(children).replace(/\n$/, "")}
+              />
             );
           }
           return (
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">
+            <code className={className} {...props}>
               {children}
-            </p>
+            </code>
           );
         },
+        img({ node, alt, src, ...props }) {
+          // Extract the file ID from the URL
+          const fileIdMatch = src?.match(/\/api\/fetch-openai-image\/([a-zA-Z0-9-_]+)/);
+          const fileId = fileIdMatch ? fileIdMatch[1] : null;
+          
+          // Check if this image had an error loading
+          const hasError = fileId ? imageErrors[fileId] : false;
+          
+          if (hasError) {
+            return (
+              <div className="flex flex-col items-center p-4 border border-gray-200 rounded-md bg-gray-50 my-2">
+                <p className="text-gray-500 text-sm">
+                  Unable to load OpenAI generated image
+                </p>
+                <button 
+                  className="text-xs text-blue-500 mt-1 hover:underline"
+                  onClick={() => {
+                    if (fileId) {
+                      setImageErrors(prev => ({ ...prev, [fileId]: false }));
+                    }
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            );
+          }
+          
+          if (fileId) {
+            // Add authorization headers if this is an OpenAI image
+            return (
+              <img
+                src={src}
+                alt={alt || 'OpenAI generated image'}
+                onError={() => fileId && handleImageError(fileId)}
+                className="rounded-md shadow-md max-w-full my-4"
+                style={{ maxHeight: '500px', objectFit: 'contain' }}
+                {...props}
+              />
+            );
+          }
+          
+          // Regular image
+          return <img src={src} alt={alt || ''} {...props} />;
+        }
       }}
     >
-      {content}
+      {processedContent}
     </ReactMarkdown>
   );
 }
