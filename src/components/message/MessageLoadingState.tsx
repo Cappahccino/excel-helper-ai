@@ -6,7 +6,8 @@ export enum LoadingStage {
   Analyzing = "analyzing",
   Processing = "processing",
   Generating = "generating",
-  InProgress = "in_progress"
+  InProgress = "in_progress",
+  UploadingFiles = "uploading_files" // New stage for file uploads
 }
 
 // Type for percentage-based generating stage
@@ -16,25 +17,41 @@ type LoadingStageType = LoadingStage | GeneratingStage;
 interface MessageLoadingStateProps {
   stage?: LoadingStageType;
   className?: string;
+  fileCount?: number;
 }
 
 const messages: Record<LoadingStage, string> = {
   [LoadingStage.Analyzing]: "Analyzing request...",
   [LoadingStage.Processing]: "Processing data...",
   [LoadingStage.Generating]: "Generating response...",
-  [LoadingStage.InProgress]: "Processing..."
+  [LoadingStage.InProgress]: "Processing...",
+  [LoadingStage.UploadingFiles]: "Uploading files..." // Message for file upload stage
 };
 
-export function MessageLoadingState({ stage = LoadingStage.Processing, className }: MessageLoadingStateProps) {
+export function MessageLoadingState({ 
+  stage = LoadingStage.Processing, 
+  className,
+  fileCount = 0
+}: MessageLoadingStateProps) {
   // Handle percentage-based generating message
-  const baseMessage = typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`)
-    ? `Generating response ${stage.split('(')[1].split(')')[0]}`
-    : messages[stage as LoadingStage] || messages[LoadingStage.Processing];
+  const isGeneratingWithPercent = typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`);
+  
+  // Create the base message with additional context if needed
+  let baseMessage = '';
+  
+  if (isGeneratingWithPercent) {
+    baseMessage = `Generating response ${stage.split('(')[1].split(')')[0]}`;
+  } else if (stage === LoadingStage.UploadingFiles && fileCount > 0) {
+    baseMessage = `Uploading ${fileCount} file${fileCount > 1 ? 's' : ''}...`;
+  } else {
+    baseMessage = messages[stage as LoadingStage] || messages[LoadingStage.Processing];
+  }
 
   const shouldPulse = stage === LoadingStage.Generating || 
                      stage === LoadingStage.Processing || 
                      stage === LoadingStage.InProgress ||
-                     (typeof stage === 'string' && stage.startsWith(`${LoadingStage.Generating} (`));
+                     stage === LoadingStage.UploadingFiles ||
+                     isGeneratingWithPercent;
 
   return (
     <div className={cn(

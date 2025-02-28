@@ -40,6 +40,14 @@ export interface Message {
       previous_content: string;
       edited_at: string;
     }>;
+    is_multi_file?: boolean;
+    multi_file_message_ids?: string[];
+    file_count?: number;
+    has_code_output?: boolean;
+    code_outputs?: Array<{
+      type: string;
+      file_id: string;
+    }>;
   } | null;
 }
 

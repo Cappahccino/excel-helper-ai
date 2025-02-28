@@ -40,6 +40,13 @@ interface MessageContentProps {
       last_updated: number;
       completion_percentage?: number;
     };
+    is_multi_file?: boolean;
+    file_count?: number;
+    has_code_output?: boolean;
+    code_outputs?: Array<{
+      type: string;
+      file_id: string;
+    }>;
   } | null;
   userReaction?: boolean | null;
 }
@@ -61,9 +68,15 @@ export function MessageContent({
   const getLoadingStage = () => {
     if (status === 'processing') {
       const stage = metadata?.processing_stage?.stage;
+      
+      if (stage === 'uploading_files') {
+        return LoadingStage.UploadingFiles;
+      }
+      
       if (stage === 'generating' && metadata?.processing_stage?.completion_percentage) {
         return `${LoadingStage.Generating} (${Math.round(metadata.processing_stage.completion_percentage)}%)` as const;
       }
+      
       return stage === 'analyzing' ? LoadingStage.Analyzing 
         : stage === 'processing' ? LoadingStage.Processing
         : stage === 'generating' ? LoadingStage.Generating
@@ -84,6 +97,7 @@ export function MessageContent({
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
+  const fileCount = metadata?.file_count || 0;
 
   const handleSave = (newContent: string) => {
     setIsEditing(false);
@@ -113,6 +127,7 @@ export function MessageContent({
                 <MessageLoadingState 
                   stage={getLoadingStage()}
                   className="shadow-sm border border-slate-200"
+                  fileCount={fileCount}
                 />
               </motion.div>
             )}
