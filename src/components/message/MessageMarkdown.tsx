@@ -33,7 +33,7 @@ export function MessageMarkdown({ content }: MessageMarkdownProps) {
           const match = /language-(\w+)/.exec(className || "");
           
           // Check if this is a code block with a language or just inline code
-          if (!props.inline && match) {
+          if (match && !(props as any).inline) {
             return (
               <CodeBlock
                 language={match[1]}
