@@ -759,10 +759,9 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds: string[]) {
 
 /**
  * Main request handler
- */
-serve(async (req) => {
+ */serve(async (req) => {
   console.log("Excel assistant function called with Assistants API v2");
-  
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -770,39 +769,30 @@ serve(async (req) => {
 
   let messageId = '';
   let tempFileIds: string[] = [];
-  
+  let imageFileIds: string[] = [];
+
   try {
     if (!OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY is not set in environment variables');
     }
-    
+
     // Parse request
     const requestData = await req.json();
     console.log('Request data received:', Object.keys(requestData));
-    
+
     const { fileIds, query, userId, sessionId, messageId: msgId, action = 'query' } = requestData;
     messageId = msgId;
-    
-    console.log('Processing request:', { 
-      fileCount: fileIds?.length, 
-      messageId, 
-      action, 
+
+    console.log('Processing request:', {
+      fileCount: fileIds?.length,
+      messageId,
+      action,
       sessionId: sessionId?.substring(0, 8) + '...'
     });
 
     if (!sessionId || !messageId) {
       throw new Error('Session ID and message ID are required');
     }
-
-    // Update initial message status
-    await updateMessageStatus(messageId, 'processing', '', {
-      stage: 'initializing',
-      started_at: Date.now()
-    });
-
-    // Process Excel files
-    const fileData = await processExcelData(fileIds);
-    console.log('Processed files:', fileData.map(f => f.filename));
 
     // Get or create thread with v2 API
     const { threadId, assistantId } = await getOrCreateThread(sessionId);
@@ -813,38 +803,32 @@ serve(async (req) => {
       threadId,
       assistantId,
       query,
-      fileData,
+      fileData: await processExcelData(fileIds),
       messageId,
       userId
     });
-    
+
     // Store file IDs for cleanup
     tempFileIds = openaiFileIds || [];
 
     // Poll run status with v2 API
-    const runStatus = await pollRunStatus({
-      threadId,
-      runId,
-      messageId
-    });
+    const runStatus = await pollRunStatus({ threadId, runId, messageId });
 
     if (runStatus !== 'completed') {
       throw new Error(`Run ${runStatus}`);
     }
 
     // Get assistant response with v2 API
-    const response = await getAssistantResponse({
-      threadId,
-      messageId
-    });
+    const response = await getAssistantResponse({ threadId, messageId });
 
     console.log('Successfully processed assistant response');
-    
-    // Clean up temporary files
-    await cleanupOpenAIFiles(tempFileIds);
+    imageFileIds = response.imageFileIds;
+
+    // Clean up only Excel file IDs (NOT image file IDs)
+    await cleanupOpenAIFiles(tempFileIds, imageFileIds);
 
     // Return success response
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       status: 'completed',
       message: response.content
     }), {
@@ -853,16 +837,12 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in excel-assistant:', error);
-    console.error('Error details:', JSON.stringify(error, null, 2));
-    
-    // Clean up temporary files on error
-    if (tempFileIds.length > 0) {
-      try {
-        await cleanupOpenAIFiles(tempFileIds);
-      } catch (cleanupError) {
-        console.error('Error during file cleanup:', cleanupError);
-      }
-    }
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+});
     
     // Update message status to failed if messageId is available
     if (messageId) {
