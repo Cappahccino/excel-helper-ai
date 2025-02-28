@@ -8,7 +8,7 @@ import { FileInfo } from "../FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
 import { EditableMessage } from "./EditableMessage";
 import { useState } from "react";
-import { Clock, Edit2, Image } from "lucide-react";
+import { Clock, Edit2, Image, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
