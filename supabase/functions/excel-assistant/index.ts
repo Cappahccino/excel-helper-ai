@@ -348,6 +348,15 @@ async function attachFilesToThread({
   try {
     console.log(`Attaching ${fileIds.length} file(s) to thread ${threadId}`);
 
+    // Helper to stringify all metadata values
+    const stringifyMetadata = (metadataObj: Record<string, any>): Record<string, string> => {
+      const result: Record<string, string> = {};
+      for (const [key, value] of Object.entries(metadataObj)) {
+        result[key] = String(value); // Convert every value to string
+      }
+      return result;
+    };
+
     const threadMessages = [];
 
     if (fileIds.length === 1) {
@@ -358,12 +367,16 @@ async function attachFilesToThread({
         {
           role: "user",
           content: [{ type: "text", text: messageContent }],
-          attachments: [{ file_id: fileIds[0], tools: [{ type: "code_interpreter" }] }], // ✅ Correct usage
-          metadata: {
+          attachments: [{ 
+            file_id: fileIds[0], 
+            tools: [{ type: "code_interpreter" }] 
+          }],
+          metadata: stringifyMetadata({
             user_id: userId,
             message_type: "excel_query",
+            is_multi_file: "false",
             ...metadata
-          }
+          })
         },
         { headers: v2Headers }
       );
@@ -378,15 +391,18 @@ async function attachFilesToThread({
         {
           role: "user",
           content: [{ type: "text", text: `${messageContent}\n\n[Part 1 of ${fileIds.length} messages]` }],
-          attachments: [{ file_id: fileIds[0], tools: [{ type: "code_interpreter" }] }], // ✅ Correct usage
-          metadata: {
+          attachments: [{ 
+            file_id: fileIds[0], 
+            tools: [{ type: "code_interpreter" }] 
+          }],
+          metadata: stringifyMetadata({
             user_id: userId,
             message_type: "excel_query",
             is_multi_file: "true",
-            file_index: 0,
+            file_index: "0",
             total_files: fileIds.length,
             ...metadata
-          }
+          })
         },
         { headers: v2Headers }
       );
@@ -401,16 +417,19 @@ async function attachFilesToThread({
             {
               role: "user",
               content: [{ type: "text", text: `Additional file ${index + 2} of ${fileIds.length}` }],
-              attachments: [{ file_id: fileId, tools: [{ type: "code_interpreter" }] }], // ✅ Correct usage
-              metadata: {
+              attachments: [{ 
+                file_id: fileId, 
+                tools: [{ type: "code_interpreter" }] 
+              }],
+              metadata: stringifyMetadata({
                 user_id: userId,
                 message_type: "excel_additional_file",
-                is_multi_file: true,
-                file_index: (index + 1).toString(),
+                is_multi_file: "true",
+                file_index: index + 1,
                 total_files: fileIds.length,
                 primary_message_id: primaryMessage.id,
                 ...metadata
-              }
+              })
             },
             { headers: v2Headers }
           );
@@ -507,7 +526,11 @@ If formulas are mentioned, explain them in detail.
 If data analysis is requested, provide thorough insights.
 Always be helpful and provide actionable suggestions when appropriate.
         `.trim(),
-        metadata: { session_id: params.userId, message_id: messageId, file_count: fileIds.length }
+        metadata: { 
+          session_id: String(params.userId), 
+          message_id: String(messageId), 
+          file_count: String(fileIds.length) 
+        }
       },
       { headers: v2Headers }
     );
