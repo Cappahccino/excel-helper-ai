@@ -520,6 +520,11 @@ Use code interpreter when it would help with:
   - Summarizing large datasets
 If formulas are mentioned, explain them in detail.
 If data analysis is requested, provide thorough insights.
+If an image is generated using the code interpreter, provide a detailed description of the image in plain language.
+Instead of saying '[Image Generated]', explain:
+  - What the image represents.
+  - What insights it provides.
+  - Key observations from the chart or visualization.
 Always be helpful and provide actionable suggestions when appropriate.
         `.trim(),
         metadata: { 
