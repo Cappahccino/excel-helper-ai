@@ -737,12 +737,15 @@ async function getAssistantResponse(params: {
 /**
  * Clean up temporary OpenAI files
  */
-async function cleanupOpenAIFiles(fileIds: string[]) {
+async function cleanupOpenAIFiles(fileIds: string[], imageFileIds: string[]) {
   if (!fileIds?.length) return;
-  
-  console.log(`Cleaning up ${fileIds.length} OpenAI files...`);
-  
-  for (const fileId of fileIds) {
+
+  // Exclude image file IDs from cleanup
+  const excelFileIds = fileIds.filter(id => !imageFileIds.includes(id));
+
+  console.log(`Cleaning up ${excelFileIds.length} OpenAI files...`);
+
+  for (const fileId of excelFileIds) {
     try {
       // Delete file from OpenAI
       await openai.files.del(fileId);
