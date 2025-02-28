@@ -1,5 +1,6 @@
-
+export const DEFAULT_AI_MODEL = "gpt-4-turbo";
 export const ASSISTANT_INSTRUCTIONS = `You are an Excel expert assistant specializing in analyzing and explaining Excel data. Follow these guidelines:
+
 
 1. Data Analysis:
    - Always provide detailed insights about the data structure and content
