@@ -395,6 +395,44 @@ export type Database = {
           },
         ]
       }
+      message_generated_images: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          file_type: string | null
+          id: string
+          message_id: string
+          metadata: Json | null
+          openai_file_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          file_type?: string | null
+          id?: string
+          message_id: string
+          metadata?: Json | null
+          openai_file_id: string
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          file_type?: string | null
+          id?: string
+          message_id?: string
+          metadata?: Json | null
+          openai_file_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_generated_images_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_reactions: {
         Row: {
           created_at: string | null
