@@ -115,17 +115,15 @@ export function MessageContent({
     try {
       setLoadingImages(prev => ({ ...prev, [image.file_id]: true }));
       
-      // Create a download URL for the image
+      // Get the file ID
       const openaiFileId = image.file_id;
       if (!openaiFileId) {
         throw new Error('No file ID available');
       }
       
-      // Construct OpenAI content URL
-      const imageUrl = `https://api.openai.com/v1/files/${openaiFileId}/content`;
+      // Open in new tab - the backend will need to handle authentication and serving the image
+      window.open(`/api/images/${openaiFileId}`, '_blank');
       
-      // Open in new tab
-      window.open(imageUrl, '_blank');
     } catch (error) {
       console.error('Error viewing image:', error);
       toast({
@@ -215,7 +213,8 @@ export function MessageContent({
                         {images.map((image, index) => (
                           <div 
                             key={image.file_id} 
-                            className="border border-gray-200 rounded-md overflow-hidden shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors"
+                            className="border border-gray-200 rounded-md overflow-hidden shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+                            onClick={() => handleViewImage(image)}
                           >
                             <div className="p-3 flex justify-between items-center">
                               <span className="text-sm font-medium text-gray-700">
@@ -226,7 +225,10 @@ export function MessageContent({
                                   variant="ghost"
                                   size="sm"
                                   className="h-8 w-8 p-0"
-                                  onClick={() => handleViewImage(image)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewImage(image);
+                                  }}
                                   disabled={loadingImages[image.file_id]}
                                 >
                                   {loadingImages[image.file_id] ? (
@@ -237,9 +239,10 @@ export function MessageContent({
                                 </Button>
                               </div>
                             </div>
-                            <div className="p-4 border-t border-gray-200 bg-white">
-                              <div className="text-center text-sm text-gray-500">
-                                Click to view image
+                            <div className="p-4 border-t border-gray-200 bg-white flex items-center justify-center">
+                              <div className="text-center text-sm text-gray-500 flex items-center gap-2">
+                                <Image className="h-4 w-4" />
+                                <span>Click to view image</span>
                               </div>
                             </div>
                           </div>
