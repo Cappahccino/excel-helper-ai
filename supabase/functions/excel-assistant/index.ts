@@ -406,7 +406,7 @@ async function attachFilesToThread({
                 user_id: userId,
                 message_type: "excel_additional_file",
                 is_multi_file: true,
-                file_index: index + 1,
+                file_index: (index + 1).toString(),
                 total_files: fileIds.length,
                 primary_message_id: primaryMessage.id,
                 ...metadata
