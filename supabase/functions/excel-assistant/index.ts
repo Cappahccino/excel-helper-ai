@@ -358,7 +358,7 @@ async function attachFilesToThread({
         {
           role: "user",
           content: [{ type: "text", text: messageContent }],
-          attachments: [{ file_id: fileIds[0], tools: [{ type: "code_interpreter" }] }] // ✅ Correct usage
+          attachments: [{ file_id: fileIds[0], tools: [{ type: "code_interpreter" }] }], // ✅ Correct usage
           metadata: {
             user_id: userId,
             message_type: "excel_query",
@@ -401,7 +401,7 @@ async function attachFilesToThread({
             {
               role: "user",
               content: [{ type: "text", text: `Additional file ${index + 2} of ${fileIds.length}` }],
-              attachments: [{ file_id: fileId, tools: ["code_interpreter"] }], // ✅ Correct usage
+              attachments: [{ file_id: fileId, tools: [{ type: "code_interpreter" }] }], // ✅ Correct usage
               metadata: {
                 user_id: userId,
                 message_type: "excel_additional_file",
