@@ -1,63 +1,11 @@
 
-import { Message } from "./chat";
-import { Json } from "@/integrations/supabase/types";
-import { Tag } from "./tags";
-
-export type MessageFile = {
-  file_id: string;
-  role: string;
-  excel_files?: {
-    filename: string;
-    file_size: number;
-  };
-  tags?: Tag[];
-};
-
-export type GeneratedImage = {
+export interface GeneratedImage {
   id: string;
-  message_id: string;
   openai_file_id: string;
-  file_type: string;
-  created_at: string;
-  metadata?: Record<string, any>;
-};
-
-export type MessageMetadata = {
-  reaction_counts?: {
-    positive: number;
-    negative: number;
-  };
-  processing_stage?: {
-    stage: string;
-    started_at: number;
-    last_updated: number;
-    completion_percentage?: number;
-  };
-  user_reaction?: boolean | null;
-  edit_history?: Array<{
-    previous_content: string;
-    edited_at: string;
-  }>;
-  tags?: Tag[];
-  has_images?: boolean;
-  image_count?: number;
-  generated_images?: GeneratedImage[];
-} | null;
-
-export type DatabaseMessage = {
-  id: string;
-  content: string;
-  role: string;
-  session_id: string | null;
-  created_at: string;
-  updated_at: string;
-  deployment_id: string | null;
-  cleanup_after: string | null;
-  cleanup_reason: string | null;
-  deleted_at: string | null;
-  is_ai_response: boolean | null;
-  message_files?: MessageFile[];
-  status: Message['status'];
-  version: string | null;
-  metadata: Json;
-};
+  created_at?: string;
+  cached?: boolean;
+  last_accessed?: string;
+  prompt?: string;
+  model?: string;
+  size?: string;
+}

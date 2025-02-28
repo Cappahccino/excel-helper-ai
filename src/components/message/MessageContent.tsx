@@ -68,6 +68,7 @@ export function MessageContent({
 }: MessageContentProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showEditHistory, setShowEditHistory] = useState(false);
+  const [showImageInfo, setShowImageInfo] = useState(false);
   
   const getLoadingStage = () => {
     if (status === 'processing') {
@@ -103,6 +104,7 @@ export function MessageContent({
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
   const fileCount = metadata?.file_count || 0;
   const hasImages = metadata?.has_images === true || (metadata?.image_count && metadata.image_count > 0);
+  const generatedImages = metadata?.generated_images || [];
 
   const handleSave = (newContent: string) => {
     setIsEditing(false);
@@ -201,9 +203,49 @@ export function MessageContent({
                   )}
                   
                   {hasImages && (
-                    <div className="mt-3 text-sm text-gray-500 flex items-center">
-                      <Image className="h-4 w-4 mr-1 text-blue-500" />
-                      <span>Contains generated images</span>
+                    <div className="mt-3">
+                      <div 
+                        className="text-sm text-gray-500 flex items-center cursor-pointer hover:text-gray-700"
+                        onClick={() => setShowImageInfo(!showImageInfo)}
+                      >
+                        <Image className="h-4 w-4 mr-1 text-blue-500" />
+                        <span>
+                          {generatedImages.length > 0 
+                            ? `${generatedImages.length} generated ${generatedImages.length === 1 ? 'image' : 'images'}`
+                            : 'Contains generated images'}
+                        </span>
+                        <span className="ml-1 text-xs text-blue-500 hover:underline">
+                          {showImageInfo ? 'Hide info' : 'View info'}
+                        </span>
+                      </div>
+                      
+                      {showImageInfo && generatedImages.length > 0 && (
+                        <div className="mt-2 space-y-2 text-xs">
+                          {generatedImages.map((img, idx) => (
+                            <div key={idx} className="border-l-2 border-blue-100 pl-2 py-1">
+                              <div className="flex flex-wrap gap-x-4">
+                                <span className="text-gray-500">ID: {img.id.substring(0, 8)}...</span>
+                                {img.cached && (
+                                  <span className="text-green-500">Cached</span>
+                                )}
+                                {img.last_accessed && (
+                                  <span className="text-gray-500">
+                                    Last viewed: {formatDistance(new Date(img.last_accessed), new Date(), { addSuffix: true })}
+                                  </span>
+                                )}
+                                <a 
+                                  href={`${window.location.origin}/api/fetch-openai-image/${img.openai_file_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-500 hover:underline flex items-center gap-1"
+                                >
+                                  View image <ExternalLink size={10} />
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

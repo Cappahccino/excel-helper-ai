@@ -8,6 +8,7 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { Toaster as ShadcnToaster } from "./components/ui/toaster";
 import Home from "./pages/Home";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 const Auth = lazy(() => import("./pages/Auth"));
 const Files = lazy(() => import("./pages/Files"));
@@ -27,32 +28,42 @@ const queryClient = new QueryClient({
 });
 
 const proxyFetchOpenAIImage = async (fileId: string) => {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
-  
-  if (!token) {
-    throw new Error('Unauthorized');
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    
+    if (!token) {
+      throw new Error('Unauthorized');
+    }
+    
+    const supabaseUrl = (supabase as any).supabaseUrl;
+    if (!supabaseUrl) {
+      throw new Error('Supabase URL not available');
+    }
+    
+    const functionUrl = `${supabaseUrl}/functions/v1/fetch-openai-image/${fileId}`;
+    
+    const response = await fetch(functionUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching OpenAI image:', error);
+    toast({
+      title: "Image Error",
+      description: `Failed to load image: ${error.message}`,
+      variant: "destructive"
+    });
+    throw error;
   }
-  
-  const supabaseUrl = (supabase as any).supabaseUrl;
-  if (!supabaseUrl) {
-    throw new Error('Supabase URL not available');
-  }
-  
-  const functionUrl = `${supabaseUrl}/functions/v1/fetch-openai-image/${fileId}`;
-  
-  const response = await fetch(functionUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-  }
-  
-  return response;
 };
 
 const OpenAIImageHandler = async (request: Request) => {
@@ -65,10 +76,31 @@ const OpenAIImageHandler = async (request: Request) => {
     }
     
     const response = await proxyFetchOpenAIImage(fileId);
-    return response;
+    
+    // Copy all headers from the Supabase response
+    const headers = new Headers();
+    response.headers.forEach((value, key) => {
+      headers.set(key, value);
+    });
+    
+    // Ensure cache headers are set for better performance
+    if (!headers.has('Cache-Control')) {
+      headers.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+    }
+    
+    return new Response(response.body, { 
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
   } catch (error) {
-    console.error('Error fetching OpenAI image:', error);
-    return new Response(`Error: ${error.message}`, { status: 500 });
+    console.error('Error handling OpenAI image:', error);
+    return new Response(`Error: ${error.message}`, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'text/plain'
+      }
+    });
   }
 };
 
