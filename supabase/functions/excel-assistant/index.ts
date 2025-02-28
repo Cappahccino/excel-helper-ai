@@ -678,18 +678,34 @@ async function getAssistantResponse(params: {
     let responseContent = '';
     let hasCodeOutput = false;
     let codeOutputs = [];
-    
+    let imageFileIds: string[] = [];
+
+
     for (const contentPart of assistantMessage.content) {
-      if (contentPart.type === 'text') {
-        responseContent += contentPart.text.value;
-      } else if (contentPart.type === 'image_file') {
-        // If there's an image, note it and include a placeholder
-        hasCodeOutput = true;
-        responseContent += `\n\n[Image Generated: Code Interpreter Output]\n\n`;
-        codeOutputs.push({
-          type: 'image',
-          file_id: contentPart.image_file.file_id
-        });
+      if (contentPart.type === "text") {
+        responseContent += contentPart.text.value + "\n\n";
+      } else if (contentPart.type === "image_file") {
+        imageFileIds.push(contentPart.image_file.file_id);
+      }
+    }
+
+    // ✅ Store generated image file IDs in `message_generated_images`
+    if (imageFileIds.length > 0) {
+      const imageData = imageFileIds.map(fileId => ({
+        message_id: messageId,
+        openai_file_id: fileId,
+        file_type: "image",
+        created_at: new Date().toISOString(),
+        metadata: JSON.stringify({ source: "OpenAI Code Interpreter" }),
+        deleted_at: null,  // Ensures soft deletion support
+      }));
+
+    const { error } = await supabase.from("message_generated_images").insert(imageData);
+
+      if (error) {
+        console.error("Error saving image file IDs:", error);
+      } else {
+        console.log("✅ Image file IDs saved in message_generated_images:", imageFileIds);
       }
     }
     
@@ -697,21 +713,23 @@ async function getAssistantResponse(params: {
       throw new Error('Empty assistant response');
     }
     
-    // Update message with response
-    await updateMessageStatus(messageId, 'completed', responseContent, {
-      stage: 'completed',
-      completion_percentage: 100,
-      openai_message_id: assistantMessage.id,
-      has_code_output: hasCodeOutput,
-      code_outputs: codeOutputs.length ? codeOutputs : undefined
-    });
-    
-    return {
-      content: responseContent,
-      messageId: assistantMessage.id
-    };
+     // ✅ Update `chat_messages` with response details
+    await supabase
+      .from("chat_messages")
+      .update({
+        status: "completed",
+        content: responseContent,
+        metadata: {
+          openai_message_id: assistantMessage.id,
+          has_code_output: imageFileIds.length > 0,
+          image_file_ids: imageFileIds.length ? imageFileIds : undefined,
+        }
+      })
+      .eq("id", messageId);
+
+    return { content: responseContent, imageFileIds, messageId: assistantMessage.id };
   } catch (error) {
-    console.error('Error in getAssistantResponse:', error);
+    console.error("Error in getAssistantResponse:", error);
     throw new Error(`Failed to get assistant response: ${error.message}`);
   }
 }
