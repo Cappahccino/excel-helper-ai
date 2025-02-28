@@ -5,20 +5,17 @@ import { Highlight } from "prism-react-renderer";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-export interface CodeBlockProps {
+interface CodeBlockProps {
+  code: string;
   language?: string;
-  value?: string;
-  code?: string; // Adding this for compatibility
   className?: string;
 }
 
-export function CodeBlock({ code, value, language = "typescript", className }: CodeBlockProps) {
+export function CodeBlock({ code, language = "typescript", className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  // Use either code or value prop, preferring code
-  const codeContent = code || value || "";
 
   const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(codeContent);
+    await navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -40,7 +37,7 @@ export function CodeBlock({ code, value, language = "typescript", className }: C
         </Button>
       </div>
       <Highlight
-        code={codeContent.trim()}
+        code={code.trim()}
         language={language}
       >
         {({ className, style, tokens, getLineProps, getTokenProps }) => (

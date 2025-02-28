@@ -1,192 +1,106 @@
 
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "sonner";
-import { Suspense, lazy } from "react";
-import "./App.css";
-import { ScrollToTop } from "./components/ScrollToTop";
-import { Toaster as ShadcnToaster } from "./components/ui/toaster";
-import Home from "./pages/Home";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import Index from "./pages/Index";
+import Home from "./pages/Home";
+import Auth from "./pages/Auth";
+import Chat from "./pages/Chat";
+import Files from "./pages/Files";
+import Account from "./pages/Account";
+import Pricing from "./pages/Pricing";
+import Workflows from "./pages/Workflows";
+import Canvas from "./pages/Canvas";
 
-const Auth = lazy(() => import("./pages/Auth"));
-const Files = lazy(() => import("./pages/Files"));
-const Chat = lazy(() => import("./pages/Chat"));
-const Canvas = lazy(() => import("./pages/Canvas"));
-const Account = lazy(() => import("./pages/Account"));
-const Workflows = lazy(() => import("./pages/Workflows"));
-const Pricing = lazy(() => import("./pages/Pricing"));
+const queryClient = new QueryClient();
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    },
-  },
-});
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const [session, setSession] = useState<boolean | null>(null);
 
-const proxyFetchOpenAIImage = async (fileId: string) => {
-  try {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    
-    if (!token) {
-      throw new Error('Unauthorized');
-    }
-    
-    const supabaseUrl = (supabase as any).supabaseUrl;
-    if (!supabaseUrl) {
-      throw new Error('Supabase URL not available');
-    }
-    
-    const functionUrl = `${supabaseUrl}/functions/v1/fetch-openai-image/${fileId}`;
-    
-    const response = await fetch(functionUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(!!session);
     });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('Error fetching OpenAI image:', error);
-    toast({
-      title: "Image Error",
-      description: `Failed to load image: ${error.message}`,
-      variant: "destructive"
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(!!session);
     });
-    throw error;
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (session === null) {
+    return null; // Loading state
   }
+
+  if (!session) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  return <>{children}</>;
 };
 
-const OpenAIImageHandler = async (request: Request) => {
-  try {
-    const url = new URL(request.url);
-    const fileId = url.pathname.replace('/api/fetch-openai-image/', '');
-    
-    if (!fileId) {
-      return new Response('File ID is required', { status: 400 });
-    }
-    
-    const response = await proxyFetchOpenAIImage(fileId);
-    
-    // Copy all headers from the Supabase response
-    const headers = new Headers();
-    response.headers.forEach((value, key) => {
-      headers.set(key, value);
-    });
-    
-    // Ensure cache headers are set for better performance
-    if (!headers.has('Cache-Control')) {
-      headers.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
-    }
-    
-    return new Response(response.body, { 
-      status: response.status,
-      statusText: response.statusText,
-      headers
-    });
-  } catch (error) {
-    console.error('Error handling OpenAI image:', error);
-    return new Response(`Error: ${error.message}`, { 
-      status: 500,
-      headers: {
-        'Content-Type': 'text/plain'
-      }
-    });
-  }
-};
-
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <Home />,
-  },
-  {
-    path: "/auth",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Auth />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/files",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Files />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/chat",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Chat />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/canvas",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Canvas />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/account",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Account />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/workflows",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Workflows />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/pricing",
-    element: (
-      <Suspense fallback={<div>Loading...</div>}>
-        <Pricing />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/api/fetch-openai-image/:fileId",
-    loader: ({ params }) => {
-      return null;
-    },
-    action: async ({ request }) => {
-      return OpenAIImageHandler(request);
-    },
-  }
-]);
-
-function App() {
-  return (
-    <>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        <ScrollToTop />
-      </QueryClientProvider>
-      <Toaster closeButton position="top-right" />
-      <ShadcnToaster />
-    </>
-  );
-}
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route
+            path="/workflows"
+            element={
+              <ProtectedRoute>
+                <Workflows />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/canvas"
+            element={
+              <ProtectedRoute>
+                <Canvas />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chat"
+            element={
+              <ProtectedRoute>
+                <Chat />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/files"
+            element={
+              <ProtectedRoute>
+                <Files />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <Account />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 export default App;
