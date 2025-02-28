@@ -1,5 +1,5 @@
 
-import OpenAI from "https://deno.land/x/openai@v4.20.1/mod.ts";
+import OpenAI from "https://esm.sh/openai@4.20.1";
 import { ASSISTANT_INSTRUCTIONS } from "./config.ts";
 import { supabaseAdmin } from "./database.ts";
 
@@ -26,8 +26,11 @@ export async function createAssistant(openai: OpenAI) {
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
       instructions: ASSISTANT_INSTRUCTIONS,
-      model: "gpt-4-turbo-preview",
-      tools: [{ type: "code_interpreter" }],
+      model: "gpt-4-turbo",
+      tools: [
+        { type: "retrieval" },
+        { type: "code_interpreter" }
+      ]
     });
 
     console.log('Created new assistant:', assistant.id);
@@ -82,14 +85,10 @@ export async function processFileWithAssistant({
         Preview: ${JSON.stringify(sheet.preview)}`).join('\n')}
     `).join('\n');
 
-    // Add message to thread
+    // Add message to thread with v2 format
     const message = await openai.beta.threads.messages.create(thread.id, {
       role: "user",
-      content: `
-        Context: ${fileContext}
-        
-        User Query: ${query}
-      `
+      content: [{ type: "text", text: `Context: ${fileContext}\n\nUser Query: ${query}` }]
     });
 
     // Update message with OpenAI ID
@@ -97,7 +96,7 @@ export async function processFileWithAssistant({
       .from('chat_messages')
       .update({ 
         thread_message_id: message.id,
-        status: 'in_progress',
+        status: 'processing',
         metadata: {
           processing_stage: {
             stage: 'analyzing',
@@ -113,19 +112,18 @@ export async function processFileWithAssistant({
       assistant_id: assistant.id
     });
 
-    // Poll for completion
+    // Poll for completion and handle different statuses
     let completedRun;
-    while (true) {
+    let attempts = 0;
+    
+    while (attempts < 30) { // Maximum 30 attempts
+      attempts++;
       const runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      
-      if (runStatus.status === 'completed') {
-        completedRun = runStatus;
-        break;
-      } else if (runStatus.status === 'failed' || runStatus.status === 'cancelled') {
-        throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
-      }
 
-      // Update message status
+      console.log(`Run status: ${runStatus.status}, attempt: ${attempts}`);
+
+      // Update message status (progress tracking)
+      const completionPercentage = Math.min(25 + (attempts * 5), 90);
       await supabaseAdmin
         .from('chat_messages')
         .update({
@@ -134,38 +132,75 @@ export async function processFileWithAssistant({
               stage: 'generating',
               started_at: Date.now(),
               last_updated: Date.now(),
-              completion_percentage: 50 // This is an estimate since we don't have real progress
+              completion_percentage: completionPercentage
             }
           }
         })
         .eq('id', messageId);
 
+      if (runStatus.status === 'completed') {
+        completedRun = runStatus;
+        break;
+      } else if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
+        throw new Error(`Run ${runStatus.status}: ${runStatus.last_error?.message || 'Unknown error'}`);
+      } else if (runStatus.status === "requires_action") {
+        console.warn("Run requires action, but no handler is implemented.");
+        throw new Error("Run requires action, which is not yet supported.");
+      }
+
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    // Get the assistant's response
+    if (!completedRun) {
+      throw new Error('Run polling timed out');
+    }
+
+    // Get the assistant's response with v2 format
     const messages = await openai.beta.threads.messages.list(thread.id);
-    const lastMessage = messages.data.find(msg => 
-      msg.run_id === completedRun.id && msg.role === 'assistant'
-    );
+    const lastMessage = messages.data.find(msg => msg.run_id === completedRun.id && msg.role === 'assistant');
 
     if (!lastMessage) {
       throw new Error('No response message found');
+    }
+
+    // Extract content from different content types
+    let responseText = '';
+    let hasCodeOutput = false;
+    let codeOutputs = [];
+    
+    for (const contentPart of lastMessage.content) {
+      if (contentPart.type === 'text') {
+        responseText += contentPart.text.value;
+      } else if (contentPart.type === 'image_file') {
+        hasCodeOutput = true;
+        responseText += `\n\n[Image Generated: Code Interpreter Output]\n\n`;
+        codeOutputs.push({
+          type: 'image',
+          file_id: contentPart.image_file.file_id
+        });
+      }
+    }
+
+    if (!responseText.trim()) {
+      throw new Error('Empty assistant response');
     }
 
     // Update the chat message with the response
     await supabaseAdmin
       .from('chat_messages')
       .update({
-        content: lastMessage.content[0].text.value,
+        content: responseText,
         status: 'completed',
         openai_message_id: lastMessage.id,
         metadata: {
           processing_stage: {
             stage: 'completed',
             started_at: Date.now(),
-            last_updated: Date.now()
-          }
+            last_updated: Date.now(),
+            completion_percentage: 100
+          },
+          has_code_output: hasCodeOutput,
+          code_outputs: codeOutputs.length ? codeOutputs : undefined
         }
       })
       .eq('id', messageId);
@@ -173,17 +208,17 @@ export async function processFileWithAssistant({
     return {
       threadId: thread.id,
       messageId: lastMessage.id,
-      content: lastMessage.content[0].text.value
+      content: responseText
     };
   } catch (error) {
     console.error('Error in processFileWithAssistant:', error);
 
-    // Update message as failed
+    // Ensure failure is properly updated in Supabase
     await supabaseAdmin
       .from('chat_messages')
       .update({
         status: 'failed',
-        content: 'Failed to process request. Please try again.',
+        content: error.message || 'Failed to process request. Please try again.',
         metadata: {
           error: error.message,
           processing_stage: {

@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
@@ -151,7 +152,7 @@ async function getOrCreateThread(sessionId: string) {
       .from('chat_sessions')
       .select('thread_id, assistant_id')
       .eq('session_id', sessionId)
-      .single();
+      .maybeSingle();
       
     if (sessionError && sessionError.code !== 'PGRST116') {
       console.error('Error fetching session:', sessionError);
@@ -335,7 +336,7 @@ async function addMessageAndRun(params: {
     ).join('\n- ');
     
     // Prepare message content with file context
-    const messageContent = `
+    const messageContentText = `
 User Query: ${query}
 
 Available Excel Files:
@@ -350,7 +351,7 @@ Please analyze these Excel files and answer the query. When appropriate, use cod
       threadId,
       {
         role: "user",
-        content: messageContent,
+        content: [{ type: "text", text: messageContentText }],
         file_ids: fileIds,
         metadata: {
           user_id: userId,
