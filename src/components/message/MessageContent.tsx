@@ -121,7 +121,7 @@ export function MessageContent({
         throw new Error('No file ID available');
       }
       
-      // Open in new tab - the backend will need to handle authentication and serving the image
+      // Open in new tab - using the serve-image edge function
       window.open(`/api/images/${openaiFileId}`, '_blank');
       
     } catch (error) {
