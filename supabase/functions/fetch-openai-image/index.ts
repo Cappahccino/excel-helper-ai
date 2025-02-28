@@ -10,7 +10,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
 
-// Create a Supabase client
+// Create Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY') || '';
@@ -35,8 +35,7 @@ serve(async (req) => {
     // Extract file ID from URL
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(part => part);
-    
-    // Check if the URL is valid
+
     if (pathParts.length < 2 || pathParts[0] !== 'fetch-openai-image') {
       return new Response(JSON.stringify({ error: 'Invalid request path' }), {
         status: 400,
@@ -45,7 +44,7 @@ serve(async (req) => {
     }
 
     const fileId = pathParts[1];
-    
+
     // Validate file ID
     if (!fileId || typeof fileId !== 'string') {
       return new Response(JSON.stringify({ error: 'File ID is required' }), {
@@ -56,7 +55,7 @@ serve(async (req) => {
 
     console.log(`Fetching OpenAI image with file ID: ${fileId}`);
 
-    // Verify user has access to this image
+    // Verify user session
     const { data: session } = await supabase.auth.getSession(req);
     if (!session?.session?.user?.id) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -64,10 +63,10 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    
+
     const userId = session.session.user.id;
-    
-    // Check if this user has access to this image
+
+    // Check if this user has access to the image
     const { data: imageData, error: imageError } = await supabase
       .from('message_generated_images')
       .select('message_generated_images.*, chat_messages.user_id')
@@ -93,7 +92,44 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    
+
+    // Check if the image has already been cached in Supabase Storage
+    const storagePath = `${fileId}.png`;
+    const { data: storageFiles, error: storageError } = await supabase.storage
+      .from('generated-images')
+      .list('', { 
+        search: fileId,
+        limit: 1
+      });
+
+    if (!storageError && storageFiles && storageFiles.length > 0) {
+      console.log('Serving cached image from Supabase Storage');
+      const { data: publicURL } = supabase.storage
+        .from('generated-images')
+        .getPublicUrl(storagePath);
+
+      // Update access timestamp
+      await supabase
+        .from('message_generated_images')
+        .update({ 
+          metadata: { 
+            ...imageData.metadata, 
+            last_accessed: new Date().toISOString() 
+          } 
+        })
+        .eq('id', imageData.id);
+
+      // Redirect to the public URL
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          'Location': publicURL.publicUrl,
+          'Cache-Control': 'public, max-age=86400'
+        }
+      });
+    }
+
     // Fetch image from OpenAI
     const response = await fetch(`https://api.openai.com/v1/files/${fileId}/content`, {
       method: 'GET',
@@ -117,10 +153,30 @@ serve(async (req) => {
     const imageBytes = await response.arrayBuffer();
     const contentType = response.headers.get('content-type') || 'image/png';
     
+    // Cache the image in Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('generated-images')
+      .upload(storagePath, new Blob([imageBytes], { type: contentType }), {
+        contentType,
+        upsert: true
+      });
+    
+    if (uploadError) {
+      console.error('Error caching image in storage:', uploadError);
+    } else {
+      console.log('Successfully cached image in storage:', uploadData);
+    }
+    
     // Update access timestamp
     await supabase
       .from('message_generated_images')
-      .update({ metadata: { ...imageData.metadata, last_accessed: new Date().toISOString() } })
+      .update({ 
+        metadata: { 
+          ...imageData.metadata, 
+          last_accessed: new Date().toISOString(),
+          cached: !uploadError
+        } 
+      })
       .eq('id', imageData.id);
       
     // Return the image with proper content type
