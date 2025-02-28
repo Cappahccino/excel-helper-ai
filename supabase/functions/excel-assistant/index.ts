@@ -35,6 +35,11 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true
 });
 
+// Ensure v2 headers are present for all API calls
+const v2Headers = {
+  "OpenAI-Beta": "assistants=v2"
+};
+
 /**
  * Update message status in database
  */
@@ -93,12 +98,14 @@ async function updateMessageStatus(
  * Get or create an OpenAI Assistant for Excel analysis
  */
 async function getOrCreateAssistant() {
-  console.log('Getting or creating assistant...');
+  console.log('Getting or creating assistant with v2 API...');
   
   try {
-    // List existing assistants (v2 compatible)
+    // List existing assistants with v2 header
     const assistants = await openai.beta.assistants.list({
       limit: 100,
+    }, {
+      headers: v2Headers
     });
     
     // Find existing Excel Analysis Assistant
@@ -108,11 +115,14 @@ async function getOrCreateAssistant() {
     
     if (existingAssistant) {
       console.log('Found existing assistant:', existingAssistant.id);
-      return existingAssistant;
+      // Retrieve with v2 header to ensure compatibility
+      return await openai.beta.assistants.retrieve(existingAssistant.id, {
+        headers: v2Headers
+      });
     }
     
-    // Create new assistant if not found (v2 compatible)
-    console.log('Creating new assistant...');
+    // Create new assistant if not found with v2 header
+    console.log('Creating new assistant with v2 API...');
     const newAssistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
       instructions: 
@@ -129,6 +139,8 @@ async function getOrCreateAssistant() {
         { type: "retrieval" },
         { type: "code_interpreter" }
       ]
+    }, {
+      headers: v2Headers
     });
     
     console.log('Created new assistant:', newAssistant.id);
@@ -144,7 +156,7 @@ async function getOrCreateAssistant() {
  * Get or create a thread for the session
  */
 async function getOrCreateThread(sessionId: string) {
-  console.log('Getting or creating thread for session:', sessionId);
+  console.log('Getting or creating thread for session with v2 API:', sessionId);
   
   try {
     // Check if session already has a thread
@@ -163,9 +175,11 @@ async function getOrCreateThread(sessionId: string) {
     if (session?.thread_id) {
       console.log('Found existing thread:', session.thread_id);
       
-      // Check if thread is valid by attempting to retrieve it
+      // Check if thread is valid by attempting to retrieve it with v2 header
       try {
-        await openai.beta.threads.retrieve(session.thread_id);
+        await openai.beta.threads.retrieve(session.thread_id, {
+          headers: v2Headers
+        });
         return {
           threadId: session.thread_id,
           assistantId: session.assistant_id,
@@ -177,9 +191,11 @@ async function getOrCreateThread(sessionId: string) {
       }
     }
     
-    // Create new thread (v2 compatible)
-    console.log('Creating new thread...');
-    const newThread = await openai.beta.threads.create();
+    // Create new thread with v2 header
+    console.log('Creating new thread with v2 API...');
+    const newThread = await openai.beta.threads.create({}, {
+      headers: v2Headers
+    });
     console.log('Created new thread:', newThread.id);
     
     // Get or create assistant
@@ -323,7 +339,7 @@ async function addMessageAndRun(params: {
   userId: string;
 }) {
   const { threadId, assistantId, query, fileData, messageId, userId } = params;
-  console.log('Adding message to thread and running assistant');
+  console.log('Adding message to thread and running assistant with v2 API');
   
   try {
     // Prepare OpenAI files
@@ -345,8 +361,8 @@ Available Excel Files:
 Please analyze these Excel files and answer the query. When appropriate, use code interpreter to analyze the data or create visualizations.
     `.trim();
     
-    // Add message to thread with v2 format
-    console.log('Adding message to thread:', threadId);
+    // Add message to thread with v2 format and explicit v2 header
+    console.log('Adding message to thread with v2 API:', threadId);
     const threadMessage = await openai.beta.threads.messages.create(
       threadId,
       {
@@ -357,6 +373,9 @@ Please analyze these Excel files and answer the query. When appropriate, use cod
           user_id: userId,
           message_type: "excel_query"
         }
+      },
+      {
+        headers: v2Headers
       }
     );
     console.log('Added message to thread, message ID:', threadMessage.id);
@@ -367,8 +386,8 @@ Please analyze these Excel files and answer the query. When appropriate, use cod
       thread_message_id: threadMessage.id
     });
     
-    // Create a run with v2 format
-    console.log('Creating run with assistant:', assistantId);
+    // Create a run with v2 format and explicit v2 header
+    console.log('Creating run with assistant with v2 API:', assistantId);
     const run = await openai.beta.threads.runs.create(
       threadId,
       {
@@ -389,6 +408,9 @@ Always be helpful and provide actionable suggestions when appropriate.
           session_id: params.userId,
           message_id: messageId
         }
+      },
+      {
+        headers: v2Headers
       }
     );
     console.log('Created run:', run.id);
@@ -434,7 +456,7 @@ async function pollRunStatus(params: {
   messageId: string;
 }) {
   const { threadId, runId, messageId } = params;
-  console.log(`Polling run status for run: ${runId}, message: ${messageId}`);
+  console.log(`Polling run status with v2 API for run: ${runId}, message: ${messageId}`);
   
   try {
     let attempts = 0;
@@ -444,10 +466,13 @@ async function pollRunStatus(params: {
       attempts++;
       
       try {
-        // Get run status with v2 format
+        // Get run status with v2 format and explicit v2 header
         const run = await openai.beta.threads.runs.retrieve(
           threadId,
-          runId
+          runId,
+          {
+            headers: v2Headers
+          }
         );
         
         console.log(`Run ${runId} status: ${run.status}, attempt: ${attempts}`);
@@ -510,13 +535,19 @@ async function getAssistantResponse(params: {
   messageId: string;
 }) {
   const { threadId, messageId } = params;
-  console.log('Getting assistant response from thread:', threadId);
+  console.log('Getting assistant response from thread with v2 API:', threadId);
   
   try {
-    // List messages in thread, sorted by newest first (v2 format)
+    // List messages in thread, sorted by newest first with explicit v2 header
     const messages = await openai.beta.threads.messages.list(
       threadId,
-      { limit: 10, order: 'desc' }
+      { 
+        limit: 10, 
+        order: 'desc' 
+      },
+      {
+        headers: v2Headers
+      }
     );
     
     // Find the most recent assistant message
@@ -637,11 +668,11 @@ serve(async (req) => {
     const fileData = await processExcelData(fileIds);
     console.log('Processed files:', fileData.map(f => f.filename));
 
-    // Get or create thread
+    // Get or create thread with v2 API
     const { threadId, assistantId } = await getOrCreateThread(sessionId);
     console.log('Using thread:', threadId, 'and assistant:', assistantId);
 
-    // Add message to thread and run assistant
+    // Add message to thread and run assistant with v2 API
     const { runId, fileIds: openaiFileIds } = await addMessageAndRun({
       threadId,
       assistantId,
@@ -654,7 +685,7 @@ serve(async (req) => {
     // Store file IDs for cleanup
     tempFileIds = openaiFileIds || [];
 
-    // Poll run status
+    // Poll run status with v2 API
     const runStatus = await pollRunStatus({
       threadId,
       runId,
@@ -665,7 +696,7 @@ serve(async (req) => {
       throw new Error(`Run ${runStatus}`);
     }
 
-    // Get assistant response
+    // Get assistant response with v2 API
     const response = await getAssistantResponse({
       threadId,
       messageId

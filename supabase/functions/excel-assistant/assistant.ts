@@ -3,6 +3,11 @@ import OpenAI from "https://esm.sh/openai@4.20.1";
 import { ASSISTANT_INSTRUCTIONS } from "./config.ts";
 import { supabaseAdmin } from "./database.ts";
 
+// Ensure v2 headers are present for all API calls
+const v2Headers = {
+  "OpenAI-Beta": "assistants=v2"
+};
+
 export async function createAssistant(openai: OpenAI) {
   try {
     // First try to get an existing assistant
@@ -14,7 +19,11 @@ export async function createAssistant(openai: OpenAI) {
 
     if (sessions?.[0]?.assistant_id) {
       try {
-        const existingAssistant = await openai.beta.assistants.retrieve(sessions[0].assistant_id);
+        // Use v2 headers explicitly
+        const existingAssistant = await openai.beta.assistants.retrieve(
+          sessions[0].assistant_id,
+          { headers: v2Headers }
+        );
         console.log('Using existing assistant:', existingAssistant.id);
         return existingAssistant;
       } catch (error) {
@@ -22,7 +31,7 @@ export async function createAssistant(openai: OpenAI) {
       }
     }
 
-    // Create a new assistant if none exists
+    // Create a new assistant if none exists with v2 headers
     const assistant = await openai.beta.assistants.create({
       name: "Excel Analysis Assistant",
       instructions: ASSISTANT_INSTRUCTIONS,
@@ -31,7 +40,7 @@ export async function createAssistant(openai: OpenAI) {
         { type: "retrieval" },
         { type: "code_interpreter" }
       ]
-    });
+    }, { headers: v2Headers });
 
     console.log('Created new assistant:', assistant.id);
     return assistant;
@@ -59,10 +68,10 @@ export async function processFileWithAssistant({
   sessionId: string;
 }) {
   try {
-    // Create or retrieve thread
+    // Create or retrieve thread with v2 headers
     const thread = existingThreadId 
-      ? await openai.beta.threads.retrieve(existingThreadId)
-      : await openai.beta.threads.create();
+      ? await openai.beta.threads.retrieve(existingThreadId, { headers: v2Headers })
+      : await openai.beta.threads.create({}, { headers: v2Headers });
 
     console.log('Using thread:', thread.id);
 
@@ -85,11 +94,15 @@ export async function processFileWithAssistant({
         Preview: ${JSON.stringify(sheet.preview)}`).join('\n')}
     `).join('\n');
 
-    // Add message to thread with v2 format
-    const message = await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content: [{ type: "text", text: `Context: ${fileContext}\n\nUser Query: ${query}` }]
-    });
+    // Add message to thread with v2 format and explicit v2 headers
+    const message = await openai.beta.threads.messages.create(
+      thread.id, 
+      {
+        role: "user",
+        content: [{ type: "text", text: `Context: ${fileContext}\n\nUser Query: ${query}` }]
+      },
+      { headers: v2Headers }
+    );
 
     // Update message with OpenAI ID
     await supabaseAdmin
@@ -107,10 +120,14 @@ export async function processFileWithAssistant({
       })
       .eq('id', messageId);
 
-    // Run the assistant
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: assistant.id
-    });
+    // Run the assistant with v2 headers
+    const run = await openai.beta.threads.runs.create(
+      thread.id, 
+      {
+        assistant_id: assistant.id
+      },
+      { headers: v2Headers }
+    );
 
     // Poll for completion and handle different statuses
     let completedRun;
@@ -118,7 +135,12 @@ export async function processFileWithAssistant({
     
     while (attempts < 30) { // Maximum 30 attempts
       attempts++;
-      const runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      // Use v2 headers in run retrieval
+      const runStatus = await openai.beta.threads.runs.retrieve(
+        thread.id, 
+        run.id,
+        { headers: v2Headers }
+      );
 
       console.log(`Run status: ${runStatus.status}, attempt: ${attempts}`);
 
@@ -155,8 +177,13 @@ export async function processFileWithAssistant({
       throw new Error('Run polling timed out');
     }
 
-    // Get the assistant's response with v2 format
-    const messages = await openai.beta.threads.messages.list(thread.id);
+    // Get the assistant's response with v2 format and headers
+    const messages = await openai.beta.threads.messages.list(
+      thread.id,
+      { limit: 10, order: 'desc' },
+      { headers: v2Headers }
+    );
+    
     const lastMessage = messages.data.find(msg => msg.run_id === completedRun.id && msg.role === 'assistant');
 
     if (!lastMessage) {
