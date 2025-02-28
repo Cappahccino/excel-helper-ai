@@ -8,11 +8,14 @@ import { FileInfo } from "../FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
 import { EditableMessage } from "./EditableMessage";
 import { useState } from "react";
-import { Clock, Edit2 } from "lucide-react";
+import { Clock, Edit2, Download, ExternalLink, Image } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
 import { MessageStatus } from "@/types/chat";
+import { MessageImage } from "@/types/messages.types";
+import { Skeleton } from "../ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 
 interface MessageContentProps {
   content: string;
@@ -47,6 +50,7 @@ interface MessageContentProps {
       type: string;
       file_id: string;
     }>;
+    images?: MessageImage[];
   } | null;
   userReaction?: boolean | null;
 }
@@ -64,6 +68,8 @@ export function MessageContent({
 }: MessageContentProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showEditHistory, setShowEditHistory] = useState(false);
+  const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
+  const { toast } = useToast();
   
   const getLoadingStage = () => {
     if (status === 'processing') {
@@ -98,9 +104,38 @@ export function MessageContent({
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
   const fileCount = metadata?.file_count || 0;
+  const images = metadata?.images || [];
+  const hasImages = images.length > 0;
 
   const handleSave = (newContent: string) => {
     setIsEditing(false);
+  };
+
+  const handleViewImage = async (image: MessageImage) => {
+    try {
+      setLoadingImages(prev => ({ ...prev, [image.file_id]: true }));
+      
+      // Create a download URL for the image
+      const openaiFileId = image.file_id;
+      if (!openaiFileId) {
+        throw new Error('No file ID available');
+      }
+      
+      // Construct OpenAI content URL
+      const imageUrl = `https://api.openai.com/v1/files/${openaiFileId}/content`;
+      
+      // Open in new tab
+      window.open(imageUrl, '_blank');
+    } catch (error) {
+      console.error('Error viewing image:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load image. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingImages(prev => ({ ...prev, [image.file_id]: false }));
+    }
   };
 
   return (
@@ -168,6 +203,51 @@ export function MessageContent({
                       )}
                     </>
                   )}
+                  
+                  {/* Display any generated images */}
+                  {hasImages && (
+                    <div className="mt-4 space-y-2">
+                      <div className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <Image className="h-4 w-4" />
+                        <span>Generated Images</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {images.map((image, index) => (
+                          <div 
+                            key={image.file_id} 
+                            className="border border-gray-200 rounded-md overflow-hidden shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="p-3 flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-700">
+                                Image {index + 1}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => handleViewImage(image)}
+                                  disabled={loadingImages[image.file_id]}
+                                >
+                                  {loadingImages[image.file_id] ? (
+                                    <Skeleton className="h-4 w-4 rounded-full animate-spin" />
+                                  ) : (
+                                    <ExternalLink className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="p-4 border-t border-gray-200 bg-white">
+                              <div className="text-center text-sm text-gray-500">
+                                Click to view image
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   {hasEditHistory && !isEditing && (
                     <div className="mt-1">
                       <Button

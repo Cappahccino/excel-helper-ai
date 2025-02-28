@@ -1,7 +1,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { DatabaseMessage } from "@/types/messages.types";
-import { Message } from "@/types/chat";
+import { DatabaseMessage, MessageFile, MessageImage } from "@/types/messages.types";
+import { Message, MessageStatus } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
 
 export async function fetchMessages(sessionId: string, cursor: string | null = null) {
@@ -17,6 +17,11 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
           filename,
           file_size
         )
+      ),
+      message_generated_images(
+        id,
+        openai_file_id,
+        file_type
       )
     `)
     .eq('session_id', sessionId)
@@ -181,6 +186,24 @@ function transformMessage(msg: DatabaseMessage): Message {
     file_size: mf.excel_files?.file_size
   }));
 
+  // Transform generated images if present
+  const generatedImages = (msg as any).message_generated_images?.map(img => ({
+    file_id: img.openai_file_id,
+    file_type: img.file_type || 'image'
+  })) || [];
+
+  // Merge images from metadata with generated images
+  const metadataImages = (msg.metadata as any)?.images || [];
+  const allImages = [...metadataImages, ...generatedImages].filter((img, index, self) => 
+    index === self.findIndex(t => t.file_id === img.file_id)
+  );
+
+  // Create the transformed metadata
+  const metadataWithImages = {
+    ...(msg.metadata as any || {}),
+    images: allImages.length > 0 ? allImages : undefined
+  };
+
   return {
     id: msg.id,
     content: msg.content,
@@ -196,7 +219,7 @@ function transformMessage(msg: DatabaseMessage): Message {
     deleted_at: msg.deleted_at || undefined,
     is_ai_response: msg.is_ai_response || false,
     message_files: messageFiles,
-    metadata: msg.metadata as Message['metadata']
+    metadata: metadataWithImages
   };
 }
 

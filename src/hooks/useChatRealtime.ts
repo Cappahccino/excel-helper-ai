@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { Message, ProcessingStage } from '@/types/chat';
 import { useQueryClient } from '@tanstack/react-query';
+import { storeGeneratedImages } from '@/services/aiService';
+import { MessageImage } from '@/types/messages.types';
 
 interface UseChatRealtimeProps {
   sessionId: string | null;
@@ -43,6 +45,16 @@ export function useChatRealtime({ sessionId, refetch, onAssistantMessage }: UseC
             setContent(message.content);
             setLatestMessageId(message.id);
             setProcessingStage(message.metadata?.processing_stage);
+            
+            // Handle image generation
+            if (message.status === 'completed' && message.metadata?.images?.length) {
+              try {
+                const images = message.metadata.images as MessageImage[];
+                await storeGeneratedImages(message.id, images);
+              } catch (error) {
+                console.error('Error storing image references:', error);
+              }
+            }
             
             // Update the message in the query cache immediately
             queryClient.setQueryData(['chat-messages', sessionId], (old: any) => {

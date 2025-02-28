@@ -28,10 +28,12 @@ export async function triggerAIResponse(params: {
       .from('chat_messages')
       .update({
         status: 'processing',
-        processing_stage: {
-          stage: 'generating',
-          started_at: Date.now(),
-          last_updated: Date.now()
+        metadata: {
+          processing_stage: {
+            stage: 'generating',
+            started_at: Date.now(),
+            last_updated: Date.now()
+          }
         }
       })
       .eq('id', params.messageId);
@@ -46,7 +48,8 @@ export async function triggerAIResponse(params: {
         sessionId: params.sessionId,
         threadId: null,
         messageId: params.messageId,
-        action: 'query'
+        action: 'query',
+        includeImages: true
       }
     });
 
@@ -59,10 +62,12 @@ export async function triggerAIResponse(params: {
         .update({
           status: 'failed',
           content: 'Failed to generate response. Please try again.',
-          processing_stage: {
-            stage: 'failed',
-            error: aiResponse.error.message,
-            last_updated: Date.now()
+          metadata: {
+            processing_stage: {
+              stage: 'failed',
+              error: aiResponse.error.message,
+              last_updated: Date.now()
+            }
           }
         })
         .eq('id', params.messageId);
@@ -81,10 +86,12 @@ export async function triggerAIResponse(params: {
         .update({
           status: 'failed',
           content: error.message || 'An error occurred during processing',
-          processing_stage: {
-            stage: 'failed',
-            error: error.message,
-            last_updated: Date.now()
+          metadata: {
+            processing_stage: {
+              stage: 'failed',
+              error: error.message,
+              last_updated: Date.now()
+            }
           }
         })
         .eq('id', params.messageId);
@@ -93,5 +100,39 @@ export async function triggerAIResponse(params: {
     }
     
     throw error;
+  }
+}
+
+/**
+ * Store references to generated images
+ */
+export async function storeGeneratedImages(messageId: string, images: Array<{
+  file_id: string;
+  file_type?: string;
+}>) {
+  if (!images || images.length === 0) return { success: true, count: 0 };
+  
+  try {
+    const imageEntries = images.map(image => ({
+      message_id: messageId,
+      openai_file_id: image.file_id,
+      file_type: image.file_type || 'image',
+      created_at: new Date().toISOString()
+    }));
+    
+    const { data, error } = await supabase
+      .from('message_generated_images')
+      .insert(imageEntries)
+      .select();
+      
+    if (error) {
+      console.error('Error storing generated images:', error);
+      return { success: false, error, count: 0 };
+    }
+    
+    return { success: true, count: data?.length || 0 };
+  } catch (error) {
+    console.error('Error in storeGeneratedImages:', error);
+    return { success: false, error, count: 0 };
   }
 }
