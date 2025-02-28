@@ -828,7 +828,7 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds: string[] | nu
     imageFileIds = response.imageFileIds;
 
     // Clean up only Excel file IDs (NOT image file IDs)
-    await cleanupOpenAIFiles(tempFileIds, imageFileIds);
+    await cleanupOpenAIFiles(tempFileIds, imageFileIds || []);
 
     // Return success response
     return new Response(JSON.stringify({
