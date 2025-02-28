@@ -348,11 +348,11 @@ async function attachFilesToThread({
   try {
     console.log(`Attaching ${fileIds.length} file(s) to thread ${threadId}`);
 
-    // Helper to stringify all metadata values
+    // Convert all metadata values to strings
     const stringifyMetadata = (metadataObj: Record<string, any>): Record<string, string> => {
       const result: Record<string, string> = {};
       for (const [key, value] of Object.entries(metadataObj)) {
-        result[key] = String(value); // Convert every value to string
+        result[key] = String(value); // Convert every value to a string
       }
       return result;
     };
@@ -360,7 +360,6 @@ async function attachFilesToThread({
     const threadMessages = [];
 
     if (fileIds.length === 1) {
-      // ✅ If there's only ONE file, send a single API request
       console.log(`Attaching single file (${fileIds[0]}) to message.`);
       const message = await openai.beta.threads.messages.create(
         threadId,
@@ -382,9 +381,6 @@ async function attachFilesToThread({
       );
       threadMessages.push(message);
     } else {
-      // ✅ If MULTIPLE files, send multiple API requests
-
-      // First message: User query with the first file
       console.log(`Sending first message with user query and primary file.`);
       const primaryMessage = await openai.beta.threads.messages.create(
         threadId,
@@ -408,7 +404,6 @@ async function attachFilesToThread({
       );
       threadMessages.push(primaryMessage);
 
-      // Additional messages for the remaining files (sent in parallel for performance)
       console.log(`Attaching additional ${fileIds.length - 1} files separately.`);
       const additionalMessages = await Promise.all(
         fileIds.slice(1).map(async (fileId, index) => {
@@ -425,9 +420,9 @@ async function attachFilesToThread({
                 user_id: userId,
                 message_type: "excel_additional_file",
                 is_multi_file: "true",
-                file_index: index + 1,
-                total_files: fileIds.length,
-                primary_message_id: primaryMessage.id,
+                file_index: String(index + 1),  // ✅ Convert number to string
+                total_files: String(fileIds.length),  // ✅ Convert number to string
+                primary_message_id: String(primaryMessage.id),
                 ...metadata
               })
             },
@@ -449,6 +444,7 @@ async function attachFilesToThread({
     throw error;
   }
 }
+
 
 /**
  * Add user message to thread and run assistant
