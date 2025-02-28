@@ -382,7 +382,7 @@ async function attachFilesToThread({
           metadata: {
             user_id: userId,
             message_type: "excel_query",
-            is_multi_file: true,
+            is_multi_file: "true",
             file_index: 0,
             total_files: fileIds.length,
             ...metadata
