@@ -357,7 +357,7 @@ async function attachFilesToThread({
         {
           role: "user",
           content: [{ type: "text", text: messageContent }],
-          file_id: fileIds[0], // v2 requires singular `file_id`
+          file_ids: [fileIds[0]],  // ✅ Fix: Use file_ids (array) instead of file_id
           metadata: {
             user_id: userId,
             message_type: "excel_query",
@@ -377,7 +377,7 @@ async function attachFilesToThread({
         {
           role: "user",
           content: [{ type: "text", text: `${messageContent}\n\n[Part 1 of ${fileIds.length} messages]` }],
-          file_id: fileIds[0],
+          file_ids: [fileIds[0]], // ✅ Fix: Use file_ids instead of file_id
           metadata: {
             user_id: userId,
             message_type: "excel_query",
@@ -400,7 +400,7 @@ async function attachFilesToThread({
             {
               role: "user",
               content: [{ type: "text", text: `Additional file ${index + 2} of ${fileIds.length}` }],
-              file_id: fileId,
+              file_ids: [fileId], // ✅ Fix: Use file_ids instead of file_id
               metadata: {
                 user_id: userId,
                 message_type: "excel_additional_file",
@@ -511,25 +511,6 @@ Always be helpful and provide actionable suggestions when appropriate.
       { headers: v2Headers }
     );
     console.log('Created run:', run.id);
-
-    // Update session with last run ID
-    const { error: sessionError } = await supabase
-      .from('chat_sessions')
-      .update({
-        last_run_id: run.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('thread_id', threadId);
-      
-    if (sessionError) {
-      console.error('Error updating session with run ID:', sessionError);
-    }
-    
-    // Update message with run ID
-    await updateMessageStatus(messageId, 'processing', '', {
-      stage: 'analyzing',
-      openai_run_id: run.id
-    });
 
     return { threadId, runId: run.id, messageId: primaryMessageId, fileIds };
   } catch (error) {
