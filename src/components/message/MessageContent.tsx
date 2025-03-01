@@ -1,4 +1,4 @@
-
+import { useState, useRef, useEffect } from "react";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { MessageAvatar } from "./MessageAvatar";
 import { MessageActions } from "./MessageActions";
@@ -7,12 +7,30 @@ import { ReactionButtons } from "./ReactionButtons";
 import { FileInfo } from "../FileInfo";
 import { motion, AnimatePresence } from "framer-motion";
 import { EditableMessage } from "./EditableMessage";
-import { useState } from "react";
-import { Clock, Edit2 } from "lucide-react";
+import { Clock, Edit2, Trash2, Copy, Share2, Bookmark, BookmarkCheck } from "lucide-react";
 import { Button } from "../ui/button";
 import { formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
 import { MessageStatus } from "@/types/chat";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface MessageContentProps {
   content: string;
@@ -49,6 +67,10 @@ interface MessageContentProps {
     }>;
   } | null;
   userReaction?: boolean | null;
+  highlightedMessageId?: string | null;
+  searchTerm?: string;
+  onDelete?: (messageId: string) => Promise<void>;
+  onEdit?: (messageId: string, content: string) => Promise<void>;
 }
 
 export function MessageContent({ 
@@ -60,11 +82,24 @@ export function MessageContent({
   status = 'completed',
   messageId,
   metadata,
-  userReaction
+  userReaction,
+  highlightedMessageId,
+  searchTerm = "",
+  onDelete,
+  onEdit
 }: MessageContentProps) {
+  // State
   const [isEditing, setIsEditing] = useState(false);
   const [showEditHistory, setShowEditHistory] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const messageRef = useRef<HTMLDivElement>(null);
   
+  // Highlight message if it matches the highlighted ID
+  const isHighlighted = highlightedMessageId === messageId;
+  
+  // Get loading stage
   const getLoadingStage = () => {
     if (status === 'processing') {
       const stage = metadata?.processing_stage?.stage;
@@ -94,17 +129,87 @@ export function MessageContent({
   // Show content as soon as there's any content, even while still generating
   const showContent = content.trim().length > 0;
   
+  // Edit history
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
   const fileCount = metadata?.file_count || 0;
 
-  const handleSave = (newContent: string) => {
-    setIsEditing(false);
+  // Save handler
+  const handleSave = async (newContent: string) => {
+    try {
+      if (onEdit) {
+        await onEdit(messageId, newContent);
+      }
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error saving edited message:", error);
+    }
   };
 
+  // Delete handler
+  const handleDelete = async () => {
+    try {
+      if (onDelete) {
+        await onDelete(messageId);
+      }
+      setIsDeleteDialogOpen(false);
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  };
+
+  // Copy message content to clipboard
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(content);
+  };
+
+  // Toggle bookmark
+  const toggleBookmark = () => {
+    setIsBookmarked(!isBookmarked);
+    // In a real implementation, you would save this to backend storage
+  };
+
+  // Share message handler
+  const shareMessage = () => {
+    // This would be implemented to share a link to this message
+    console.log("Share message", messageId);
+  };
+
+  // Highlight search terms in content
+  useEffect(() => {
+    if (!searchTerm || !messageRef.current) return;
+    
+    try {
+      const contentElement = messageRef.current.querySelector('.message-content');
+      if (!contentElement) return;
+      
+      // Reset any previous highlighting
+      contentElement.innerHTML = contentElement.textContent || '';
+      
+      if (!searchTerm.trim()) return;
+      
+      // Use a simple text search and replace approach
+      const regex = new RegExp(searchTerm, 'gi');
+      contentElement.innerHTML = contentElement.textContent!.replace(
+        regex,
+        match => `<mark class="bg-yellow-200 px-0.5 rounded">${match}</mark>`
+      );
+    } catch (error) {
+      console.error("Error highlighting search terms:", error);
+    }
+  }, [searchTerm, content]);
+
   return (
-    <div className={`group relative flex gap-3 ${role === 'assistant' ? 'items-start' : 'items-center'}`}>
+    <div 
+      id={`message-${messageId}`}
+      ref={messageRef}
+      className={cn(
+        "group/message relative flex gap-3", 
+        role === 'assistant' ? 'items-start' : 'items-center',
+        isHighlighted && "bg-yellow-50 border border-yellow-200 p-2 rounded-lg -mx-2 duration-1000 transition-colors"
+      )}
+    >
       <MessageAvatar role={role} />
       <div className="flex-1">
         {role === 'user' && fileInfo && (
@@ -154,20 +259,71 @@ export function MessageContent({
                       onSave={handleSave}
                     />
                   ) : (
-                    <>
+                    <div className="message-content">
                       <MessageMarkdown content={content} />
-                      {role === 'user' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute -right-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => setIsEditing(true)}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </>
+                    </div>
                   )}
+                  
+                  {/* Action buttons for options */}
+                  {!isEditing && role === 'user' && (
+                    <div className="absolute -right-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <DropdownMenu onOpenChange={setShowMoreOptions}>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7">
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Message options
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                              <Edit2 className="mr-2 h-4 w-4" />
+                              <span>Edit message</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={copyToClipboard}>
+                              <Copy className="mr-2 h-4 w-4" />
+                              <span>Copy message</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={toggleBookmark}>
+                              {isBookmarked ? (
+                                <>
+                                  <BookmarkCheck className="mr-2 h-4 w-4" />
+                                  <span>Remove bookmark</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Bookmark className="mr-2 h-4 w-4" />
+                                  <span>Add bookmark</span>
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={shareMessage}>
+                              <Share2 className="mr-2 h-4 w-4" />
+                              <span>Share message</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => setIsDeleteDialogOpen(true)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            <span>Delete message</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
+                  
+                  {/* Edit history */}
                   {hasEditHistory && !isEditing && (
                     <div className="mt-1">
                       <Button
@@ -207,6 +363,24 @@ export function MessageContent({
           </AnimatePresence>
         </div>
       </div>
+      
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete message</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this message? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
