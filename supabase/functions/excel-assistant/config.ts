@@ -1,3 +1,4 @@
+
 /**
  * Excel Assistant Configuration
  */
@@ -5,6 +6,8 @@
 // OpenAI configuration
 export const OPENAI_CONFIG = {
   MODEL: "gpt-4o-mini",
+  ASSISTANT_ID: Deno.env.get("OPENAI_ASSISTANT_ID") || "",
+  OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || "",
   SYSTEM_PROMPT: `You are Excel Assistant, an AI specialized in data analysis, calculation, visualization, and providing insights from Excel/CSV data.
 
 Guidelines:
@@ -59,6 +62,12 @@ Output:
     'text/x-csv',
     'text/plain'
   ]
+};
+
+export const SUPABASE_CONFIG = {
+  URL: Deno.env.get("SUPABASE_URL") || "",
+  ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY") || "",
+  SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
 };
 
 export const ASSISTANT_INSTRUCTIONS = `You are an Excel expert assistant specializing in analyzing and explaining Excel data. Follow these guidelines:
