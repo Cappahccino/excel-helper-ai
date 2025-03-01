@@ -12,7 +12,7 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
       message_files(
         file_id,
         role,
-        excel_files!message_files_file_id_fkey(
+        excel_files(
           id,
           filename,
           file_size
