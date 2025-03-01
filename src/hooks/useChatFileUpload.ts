@@ -134,9 +134,13 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
     
     // Remove from state
     setUploadState(prev => prev.filter(state => state.id !== fileId));
-    setFiles(prev => prev.filter(f => 
-      !prev.find(state => state.id === fileId && state.file.name === f.name)
-    ));
+    setFiles(prev => prev.filter(f => {
+      // Find the state item for this fileId
+      const stateItem = uploadState.find(state => state.id === fileId);
+      // Only keep files that don't match the file in the state item we're removing
+      return !stateItem || stateItem.file !== f;
+    }));
+    
     setUploadProgress(prev => {
       const { [fileId]: _, ...rest } = prev;
       return rest;
@@ -267,11 +271,11 @@ export const useChatFileUpload = (): UseChatFileUploadReturn => {
         .upload(filePath, sanitizedFile, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: (progress) => {
-            // Calculate upload percentage
-            const percentage = Math.round((progress.loaded / progress.total) * 50);
-            setProgressForFile(stateId, percentage);
-          }
+        })
+        .then(result => {
+          // Handle progress manually since onUploadProgress isn't supported
+          setProgressForFile(stateId, 50);
+          return result;
         });
 
       if (uploadError) throw uploadError;
