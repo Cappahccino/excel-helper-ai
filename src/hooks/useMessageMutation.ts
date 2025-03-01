@@ -9,7 +9,7 @@ import { wait } from "@/utils/retryUtils";
 import { InfiniteData } from "@tanstack/react-query";
 import { createSession, ensureSessionFiles } from "@/services/sessionService";
 import { processMessageTags } from "@/services/tagOperations";
-import { triggerAIResponse } from "@/services/aiService";
+import { triggerAIResponse, AIServiceErrorType, AIServiceError } from "@/services/aiService";
 
 type MutationContext = {
   previousMessages?: InfiniteData<MessagesResponse>;
@@ -55,7 +55,9 @@ export function useMessageMutation(sessionId: string | null) {
       }
 
       try {
-        // Get files - simplified approach
+        console.log('Starting message send flow with session:', currentSessionId);
+        
+        // Get files with improved logging
         let activeFileIds = fileIds;
         if (!activeFileIds || activeFileIds.length === 0) {
           console.log('No files provided, fetching active session files...');
@@ -66,14 +68,26 @@ export function useMessageMutation(sessionId: string | null) {
           throw new Error('No files available for the message');
         }
 
-        // Basic validation - simplified
+        console.log('Using file IDs:', activeFileIds);
+        
+        // Enhanced validation with detailed logging
+        console.log('Validating file availability...');
         const filesValid = await validateFileAvailability(activeFileIds);
+        
         if (!filesValid) {
-          console.warn("Files may not be fully processed, but will attempt to continue");
+          console.warn("Files may not be ready for processing");
+          toast({
+            title: "Warning",
+            description: "Some files may not be fully processed yet. The message will still be sent, but the response might be delayed.",
+            variant: "default"
+          });
           await wait(500);
+        } else {
+          console.log("All files validated successfully");
         }
 
         // Ensure session files are set up
+        console.log('Ensuring session files are properly associated...');
         await ensureSessionFiles(currentSessionId, activeFileIds);
 
         // Create user message
@@ -107,18 +121,61 @@ export function useMessageMutation(sessionId: string | null) {
 
         await wait(300);
 
-        // Create assistant message - simplified flow
+        // Create assistant message with improved logging
         console.log('Creating assistant message...');
         const assistantMessage = await createAssistantMessage(currentSessionId, user.id, activeFileIds);
+        console.log('Assistant message created with ID:', assistantMessage.id);
 
-        // Trigger AI response - no extra verification needed
-        await triggerAIResponse({
-          fileIds: activeFileIds,
-          query: content,
-          userId: user.id,
-          sessionId: currentSessionId,
-          messageId: assistantMessage.id
-        });
+        // Trigger AI response with enhanced file verification
+        console.log('Triggering AI processing...');
+        try {
+          await triggerAIResponse({
+            fileIds: activeFileIds,
+            query: content,
+            userId: user.id,
+            sessionId: currentSessionId,
+            messageId: assistantMessage.id
+          });
+          console.log('AI processing triggered successfully');
+        } catch (error) {
+          // Handle specific error types from AI service
+          if (error instanceof AIServiceError) {
+            console.error(`AI Service error (${error.type}):`, error.message);
+            
+            let toastMessage = "An error occurred while processing your request.";
+            
+            switch (error.type) {
+              case AIServiceErrorType.NO_FILES:
+                toastMessage = "No files available for processing. Please upload files first.";
+                break;
+              case AIServiceErrorType.VERIFICATION_FAILED:
+                toastMessage = "File verification failed. Files may not be ready or may be corrupted.";
+                break;
+              case AIServiceErrorType.NETWORK_ERROR:
+                toastMessage = "Network error during AI processing. Please try again.";
+                break;
+              default:
+                toastMessage = "Error processing your request. Please try again.";
+            }
+            
+            toast({
+              title: "Processing Error",
+              description: toastMessage,
+              variant: "destructive"
+            });
+          } else {
+            // Handle generic errors
+            console.error('Generic error triggering AI:', error);
+            toast({
+              title: "Error",
+              description: error instanceof Error ? error.message : "Failed to process message",
+              variant: "destructive"
+            });
+          }
+          
+          // We don't rethrow here to allow the UI to continue showing messages
+          // The error handling is done via the message status updates
+        }
 
         return { userMessage, assistantMessage };
       } catch (error) {
