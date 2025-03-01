@@ -73,7 +73,7 @@ export function ChatWindow({
       <div className="flex-1 overflow-hidden" ref={chatContainerRef}>
         <ScrollArea 
           className="h-full"
-          onScroll={(e: React.UIEvent<HTMLDivElement>) => handleScroll(e)}
+          onScroll={handleScroll}
         >
           <div className="p-4 pb-24">
             <ChatContent
