@@ -49,7 +49,7 @@ export function ChatSidebar() {
         </SidebarHeader>
         <SidebarContent className="flex-1 flex flex-col">
           <NavigationMenu isOpen={open} />
-          <SidebarFooter />
+          <SidebarFooter isOpen={open} />
         </SidebarContent>
       </SidebarBody>
     </Sidebar>

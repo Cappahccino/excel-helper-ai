@@ -452,7 +452,7 @@ const Chat = () => {
                     ) : (
                       <h1 className="font-medium truncate max-w-[200px] sm:max-w-xs">
                         {selectedSessionId ? (
-                          messages[0]?.excel_files?.filename || "Conversation"
+                          messages[0]?.message_files?.[0]?.filename || "Conversation"
                         ) : (
                           "New Conversation"
                         )}

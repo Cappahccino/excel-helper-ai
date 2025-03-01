@@ -91,7 +91,7 @@ export function NavigationMenu({ isOpen }: NavigationMenuProps) {
         </div>
         <Separator className="mb-2 opacity-50" />
         
-        <ThreadsList />
+        <ThreadsList isOpen={isOpen} />
 
         <SidebarMenu className="space-y-1">
           {workspaceNavLinks.map((link) => (

@@ -6,7 +6,11 @@ import { motion } from "framer-motion";
 import { SidebarMenuButton } from "@/components/ui/sidebar-new";
 import { supabase } from "@/integrations/supabase/client";
 
-export function SidebarFooter() {
+interface SidebarFooterProps {
+  isOpen?: boolean;
+}
+
+export function SidebarFooter({ isOpen = true }: SidebarFooterProps) {
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -23,8 +27,8 @@ export function SidebarFooter() {
         <LogOut className="h-4 w-4" />
         <motion.span
           animate={{ 
-            opacity: true ? 1 : 0,
-            width: true ? 'auto' : 0,
+            opacity: isOpen ? 1 : 0,
+            width: isOpen ? 'auto' : 0,
           }}
           className="text-sm font-medium truncate"
         >

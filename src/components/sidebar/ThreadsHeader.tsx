@@ -6,9 +6,14 @@ import { motion } from "framer-motion";
 interface ThreadsHeaderProps {
   isExpanded: boolean;
   onToggle: () => void;
+  isOpen?: boolean;
 }
 
-export const ThreadsHeader: React.FC<ThreadsHeaderProps> = ({ isExpanded, onToggle }) => (
+export const ThreadsHeader: React.FC<ThreadsHeaderProps> = ({ 
+  isExpanded, 
+  onToggle,
+  isOpen = true
+}) => (
   <motion.div
     animate={{ opacity: 1 }}
     className="overflow-hidden"
@@ -31,8 +36,8 @@ export const ThreadsHeader: React.FC<ThreadsHeaderProps> = ({ isExpanded, onTogg
         )}
         <motion.span
           animate={{ 
-            opacity: true ? 1 : 0,
-            width: true ? 'auto' : 0,
+            opacity: isOpen ? 1 : 0,
+            width: isOpen ? 'auto' : 0,
           }}
           className="overflow-hidden whitespace-nowrap"
         >

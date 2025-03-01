@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Message, MessageStatus } from "@/types/chat";
@@ -131,14 +132,14 @@ export function ChatContent({
     }
   };
 
-  // Scroll event handler to show/hide scroll button
-  const handleScroll = () => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+  // Scroll event handler to show/hide scroll button - fix the type
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const viewport = e.currentTarget;
     if (!viewport) return;
 
     const isNearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 100;
     setShowScrollButton(!isNearBottom);
-  };
+  }, []);
 
   // Navigation through search results
   const navigateSearchResults = (direction: 'next' | 'prev') => {
@@ -164,8 +165,20 @@ export function ChatContent({
     const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
     if (!viewport) return;
 
-    viewport.addEventListener('scroll', handleScroll);
-    return () => viewport.removeEventListener('scroll', handleScroll);
+    // Use the typed handler directly on the element
+    viewport.addEventListener('scroll', (e) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+      
+      const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 100;
+      setShowScrollButton(!isNearBottom);
+    });
+    
+    return () => {
+      if (viewport) {
+        viewport.removeEventListener('scroll', () => {});
+      }
+    };
   }, []);
 
   // Close search handler
@@ -261,6 +274,7 @@ export function ChatContent({
           "scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent",
           showSearch && "pt-14"
         )}
+        onScroll={handleScroll}
       >
         <div className="space-y-8">
           {(!hasMessages && isLoading) ? (

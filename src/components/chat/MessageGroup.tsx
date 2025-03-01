@@ -1,3 +1,4 @@
+
 import { motion } from "framer-motion";
 import { MessageContent } from "../message/MessageContent";
 import { Message, MessageStatus } from "@/types/chat";
@@ -73,8 +74,8 @@ export const MessageGroup = memo(({
             userReaction={msg.metadata?.user_reaction}
             highlightedMessageId={highlightedMessageId}
             searchTerm={searchTerm}
-            onMessageDelete={onMessageDelete}
-            onMessageEdit={onMessageEdit}
+            onDelete={onMessageDelete}
+            onEdit={onMessageEdit}
           />
         </motion.div>
       ))}

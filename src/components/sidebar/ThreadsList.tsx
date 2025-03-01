@@ -11,7 +11,11 @@ import { ThreadsHeader } from "./ThreadsHeader";
 import { transformThreadMetadata } from "./utils/threadUtils";
 import type { Thread } from "./types/thread";
 
-export function ThreadsList() {
+interface ThreadsListProps {
+  isOpen?: boolean;
+}
+
+export function ThreadsList({ isOpen = true }: ThreadsListProps) {
   const [isChatsExpanded, setIsChatsExpanded] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -100,6 +104,7 @@ export function ThreadsList() {
       <ThreadsHeader 
         isExpanded={isChatsExpanded} 
         onToggle={() => setIsChatsExpanded(!isChatsExpanded)} 
+        isOpen={isOpen}
       />
       <AnimatePresence>
         {isChatsExpanded && (
@@ -126,6 +131,7 @@ export function ThreadsList() {
                       thread={thread}
                       currentSessionId={currentSessionId}
                       onThreadClick={handleThreadClick}
+                      isOpen={isOpen}
                     />
                   ))
                 )}

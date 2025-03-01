@@ -11,13 +11,15 @@ interface ThreadItemProps {
   level?: number;
   currentSessionId: string | null;
   onThreadClick: (sessionId: string) => void;
+  isOpen?: boolean;
 }
 
 export const ThreadItem: React.FC<ThreadItemProps> = ({ 
   thread, 
   level = 0, 
   currentSessionId,
-  onThreadClick 
+  onThreadClick,
+  isOpen = true
 }) => (
   <>
     <SidebarMenuItem>
@@ -31,8 +33,8 @@ export const ThreadItem: React.FC<ThreadItemProps> = ({
         <MessageSquare className="h-4 w-4 shrink-0" />
         <motion.div
           animate={{ 
-            opacity: true ? 1 : 0,
-            width: true ? 'auto' : 0,
+            opacity: isOpen ? 1 : 0,
+            width: isOpen ? 'auto' : 0,
           }}
           className="flex flex-col items-start overflow-hidden"
         >
@@ -54,6 +56,7 @@ export const ThreadItem: React.FC<ThreadItemProps> = ({
         level={level + 1}
         currentSessionId={currentSessionId}
         onThreadClick={onThreadClick}
+        isOpen={isOpen}
       />
     ))}
   </>
