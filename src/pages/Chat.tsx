@@ -1,3 +1,5 @@
+
+// Update the import path for OptimisticMessage
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileUploadZone } from "@/components/FileUploadZone";
 import { useChatFileUpload } from "@/hooks/useChatFileUpload";
@@ -18,6 +20,7 @@ import TabContent from "@/components/chat/TabContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { OptimisticMessage } from "@/components/OptimisticMessage";
 import {
   Dialog,
   DialogContent,
