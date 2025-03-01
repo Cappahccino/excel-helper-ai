@@ -8,12 +8,6 @@ export interface ProcessingStage {
   completion_percentage?: number;
 }
 
-export interface MessageImage {
-  file_id: string;
-  image_url?: string;
-  file_type?: string;
-}
-
 export interface Message {
   id: string;
   content: string;
@@ -54,7 +48,6 @@ export interface Message {
       type: string;
       file_id: string;
     }>;
-    images?: MessageImage[];
   } | null;
 }
 

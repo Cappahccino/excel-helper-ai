@@ -1,3 +1,4 @@
+
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, FileSpreadsheet, X } from "lucide-react";
@@ -36,19 +37,13 @@ export function FileUploadZone({
     [onFileUpload, onUploadComplete]
   );
 
-  const acceptConfig = {
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx', '.xltx'],
-    'application/vnd.ms-excel.sheet.macroEnabled.12': ['.xlsm', '.xltm'],
-    'application/vnd.ms-excel.sheet.binary.macroEnabled.12': ['.xlsb'],
-    'application/vnd.ms-excel': ['.xls', '.xlt', '.xla', '.xlw', '.xlr'],
-    'application/vnd.ms-excel.addin.macroEnabled.12': ['.xlam'],
-    'text/csv': ['.csv'],
-    'application/xml': ['.xml']
-  };
-
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: acceptConfig,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': FILE_CONFIG.ALLOWED_EXCEL_EXTENSIONS,
+      'application/vnd.ms-excel': ['.xls'],
+      'text/csv': ['.csv'],
+    },
     multiple: true,
     maxSize: FILE_CONFIG.MAX_FILE_SIZE,
   });
@@ -85,9 +80,6 @@ export function FileUploadZone({
               or click to browse
             </p>
             <p className="text-xs text-gray-400 mt-2">
-              Supported formats: .xlsx, .xlsm, .xlsb, .xls, .csv, and more
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
               Maximum file size per file: 10MB
             </p>
           </div>

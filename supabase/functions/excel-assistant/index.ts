@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
@@ -645,109 +646,103 @@ async function pollRunStatus(params: {
 /**
  * Get assistant response from thread
  */
-async function getAssistantResponse(params: { threadId: string; messageId: string; }) {
+async function getAssistantResponse(params: {
+  threadId: string;
+  messageId: string;
+}) {
   const { threadId, messageId } = params;
   console.log('Getting assistant response from thread with v2 API:', threadId);
-
+  
   try {
-    const messages = await openai.beta.threads.messages.list(threadId, { limit: 10, order: 'desc' }, { headers: v2Headers });
+    // List messages in thread, sorted by newest first with explicit v2 header
+    const messages = await openai.beta.threads.messages.list(
+      threadId,
+      { 
+        limit: 10, 
+        order: 'desc' 
+      },
+      {
+        headers: v2Headers
+      }
+    );
+    
+    // Find the most recent assistant message
     const assistantMessage = messages.data.find(msg => msg.role === 'assistant');
-
+    
     if (!assistantMessage) {
       throw new Error('No assistant response found');
     }
-
+    
     console.log('Found assistant message:', assistantMessage.id);
-
+    
+    // Extract content from message (with v2 format)
     let responseContent = '';
-    let imageFileIds: string[] = [];
-
+    let hasCodeOutput = false;
+    let codeOutputs = [];
+    
     for (const contentPart of assistantMessage.content) {
-      if (contentPart.type === "text") {
-        responseContent += contentPart.text.value + "\n\n";
-      } else if (contentPart.type === "image_file") {
-        imageFileIds.push(contentPart.image_file.file_id);
+      if (contentPart.type === 'text') {
+        responseContent += contentPart.text.value;
+      } else if (contentPart.type === 'image_file') {
+        // If there's an image, note it and include a placeholder
+        hasCodeOutput = true;
+        responseContent += `\n\n[Image Generated: Code Interpreter Output]\n\n`;
+        codeOutputs.push({
+          type: 'image',
+          file_id: contentPart.image_file.file_id
+        });
       }
     }
-
-    // ✅ Ensure imageFileIds is an array
-    imageFileIds = imageFileIds || [];
-
-    // ✅ Store generated image file IDs in the database
-    if (imageFileIds.length > 0) {
-      const imageData = imageFileIds.map(fileId => ({
-        message_id: messageId,
-        openai_file_id: fileId,
-        file_type: "image",
-        created_at: new Date().toISOString(),
-        metadata: JSON.stringify({ source: "OpenAI Code Interpreter" }),
-        deleted_at: null,  // Ensures soft deletion support
-      }));
-
-      const { error } = await supabase.from("message_generated_images").insert(imageData);
-
-      if (error) {
-        console.error("Error saving image file IDs:", error);
-      } else {
-        console.log("✅ Image file IDs saved in message_generated_images:", imageFileIds);
-      }
-    }
-
+    
     if (!responseContent.trim()) {
       throw new Error('Empty assistant response');
     }
-
-    // ✅ Update chat_messages with response details
-    await supabase
-      .from("chat_messages")
-      .update({
-        status: "completed",
-        content: responseContent,
-        metadata: {
-          openai_message_id: assistantMessage.id,
-          has_code_output: imageFileIds.length > 0,
-          image_file_ids: imageFileIds.length ? imageFileIds : undefined,
-        }
-      })
-      .eq("id", messageId);
-
-    return { content: responseContent, imageFileIds, messageId: assistantMessage.id };
+    
+    // Update message with response
+    await updateMessageStatus(messageId, 'completed', responseContent, {
+      stage: 'completed',
+      completion_percentage: 100,
+      openai_message_id: assistantMessage.id,
+      has_code_output: hasCodeOutput,
+      code_outputs: codeOutputs.length ? codeOutputs : undefined
+    });
+    
+    return {
+      content: responseContent,
+      messageId: assistantMessage.id
+    };
   } catch (error) {
-    console.error("Error in getAssistantResponse:", error);
+    console.error('Error in getAssistantResponse:', error);
     throw new Error(`Failed to get assistant response: ${error.message}`);
   }
 }
 
-
 /**
  * Clean up temporary OpenAI files
  */
-async function cleanupOpenAIFiles(fileIds: string[], imageFileIds?: string[]) {
-  if (!fileIds || fileIds.length === 0) return;
-
-  // ✅ Ensure imageFileIds is ALWAYS an array
-  const safeImageFileIds = Array.isArray(imageFileIds) ? imageFileIds : [];
-
-  // ✅ Filter out image file IDs to keep only Excel-related file IDs
-  const excelFileIds = fileIds.filter(id => !safeImageFileIds.includes(id));
-
-  console.log(`Cleaning up ${excelFileIds.length} OpenAI files...`, { excelFileIds, safeImageFileIds });
-
-  for (const fileId of excelFileIds) {
+async function cleanupOpenAIFiles(fileIds: string[]) {
+  if (!fileIds?.length) return;
+  
+  console.log(`Cleaning up ${fileIds.length} OpenAI files...`);
+  
+  for (const fileId of fileIds) {
     try {
+      // Delete file from OpenAI
       await openai.files.del(fileId);
-      console.log(`✅ Deleted OpenAI file: ${fileId}`);
+      console.log(`Deleted OpenAI file: ${fileId}`);
     } catch (error) {
-      console.error(`❌ Error deleting OpenAI file ${fileId}:`, error);
+      console.error(`Error deleting OpenAI file ${fileId}:`, error);
+      // Continue with other files
     }
   }
 }
 
 /**
  * Main request handler
- */serve(async (req) => {
+ */
+serve(async (req) => {
   console.log("Excel assistant function called with Assistants API v2");
-
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -755,30 +750,39 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds?: string[]) {
 
   let messageId = '';
   let tempFileIds: string[] = [];
-  let imageFileIds: string[] = [];
-
+  
   try {
     if (!OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY is not set in environment variables');
     }
-
+    
     // Parse request
     const requestData = await req.json();
     console.log('Request data received:', Object.keys(requestData));
-
+    
     const { fileIds, query, userId, sessionId, messageId: msgId, action = 'query' } = requestData;
     messageId = msgId;
-
-    console.log('Processing request:', {
-      fileCount: fileIds?.length,
-      messageId,
-      action,
+    
+    console.log('Processing request:', { 
+      fileCount: fileIds?.length, 
+      messageId, 
+      action, 
       sessionId: sessionId?.substring(0, 8) + '...'
     });
 
     if (!sessionId || !messageId) {
       throw new Error('Session ID and message ID are required');
     }
+
+    // Update initial message status
+    await updateMessageStatus(messageId, 'processing', '', {
+      stage: 'initializing',
+      started_at: Date.now()
+    });
+
+    // Process Excel files
+    const fileData = await processExcelData(fileIds);
+    console.log('Processed files:', fileData.map(f => f.filename));
 
     // Get or create thread with v2 API
     const { threadId, assistantId } = await getOrCreateThread(sessionId);
@@ -789,33 +793,38 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds?: string[]) {
       threadId,
       assistantId,
       query,
-      fileData: await processExcelData(fileIds),
+      fileData,
       messageId,
       userId
     });
-
+    
     // Store file IDs for cleanup
     tempFileIds = openaiFileIds || [];
 
     // Poll run status with v2 API
-    const runStatus = await pollRunStatus({ threadId, runId, messageId });
+    const runStatus = await pollRunStatus({
+      threadId,
+      runId,
+      messageId
+    });
 
     if (runStatus !== 'completed') {
       throw new Error(`Run ${runStatus}`);
     }
 
     // Get assistant response with v2 API
-    const response = await getAssistantResponse({ threadId, messageId });
-    const imageFileIds = response.imageFileIds || [];
+    const response = await getAssistantResponse({
+      threadId,
+      messageId
+    });
 
     console.log('Successfully processed assistant response');
-    imageFileIds = response.imageFileIds;
-
-    // Clean up only Excel file IDs (NOT image file IDs)
-    await cleanupOpenAIFiles(tempFileIds, imageFileIds || []);
+    
+    // Clean up temporary files
+    await cleanupOpenAIFiles(tempFileIds);
 
     // Return success response
-    return new Response(JSON.stringify({
+    return new Response(JSON.stringify({ 
       status: 'completed',
       message: response.content
     }), {
@@ -824,12 +833,16 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds?: string[]) {
 
   } catch (error) {
     console.error('Error in excel-assistant:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-});
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    
+    // Clean up temporary files on error
+    if (tempFileIds.length > 0) {
+      try {
+        await cleanupOpenAIFiles(tempFileIds);
+      } catch (cleanupError) {
+        console.error('Error during file cleanup:', cleanupError);
+      }
+    }
     
     // Update message status to failed if messageId is available
     if (messageId) {

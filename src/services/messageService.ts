@@ -1,6 +1,7 @@
+
 import { supabase } from "@/integrations/supabase/client";
-import { DatabaseMessage, MessageFile, MessageImage } from "@/types/messages.types";
-import { Message, MessageStatus } from "@/types/chat";
+import { DatabaseMessage } from "@/types/messages.types";
+import { Message } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
 
 export async function fetchMessages(sessionId: string, cursor: string | null = null) {
@@ -10,12 +11,12 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
       *,
       message_files(
         file_id,
-        role
-      ),
-      message_generated_images(
-        id,
-        openai_file_id,
-        file_type
+        role,
+        excel_files!message_files_file_id_fkey(
+          id,
+          filename,
+          file_size
+        )
       )
     `)
     .eq('session_id', sessionId)
@@ -176,27 +177,9 @@ function transformMessage(msg: DatabaseMessage): Message {
   const messageFiles = msg.message_files?.map(mf => ({
     file_id: mf.file_id,
     role: mf.role,
-    filename: undefined,
-    file_size: undefined
+    filename: mf.excel_files?.filename,
+    file_size: mf.excel_files?.file_size
   }));
-
-  // Transform generated images if present
-  const generatedImages = (msg as any).message_generated_images?.map(img => ({
-    file_id: img.openai_file_id,
-    file_type: img.file_type || 'image'
-  })) || [];
-
-  // Merge images from metadata with generated images
-  const metadataImages = (msg.metadata as any)?.images || [];
-  const allImages = [...metadataImages, ...generatedImages].filter((img, index, self) => 
-    index === self.findIndex(t => t.file_id === img.file_id)
-  );
-
-  // Create the transformed metadata
-  const metadataWithImages = {
-    ...(msg.metadata as any || {}),
-    images: allImages.length > 0 ? allImages : undefined
-  };
 
   return {
     id: msg.id,
@@ -213,7 +196,7 @@ function transformMessage(msg: DatabaseMessage): Message {
     deleted_at: msg.deleted_at || undefined,
     is_ai_response: msg.is_ai_response || false,
     message_files: messageFiles,
-    metadata: metadataWithImages
+    metadata: msg.metadata as Message['metadata']
   };
 }
 

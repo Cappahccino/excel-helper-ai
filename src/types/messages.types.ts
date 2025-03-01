@@ -13,12 +13,6 @@ export type MessageFile = {
   tags?: Tag[];
 };
 
-export type MessageImage = {
-  file_id: string;
-  image_url?: string;
-  file_type?: string;
-};
-
 export type MessageMetadata = {
   reaction_counts?: {
     positive: number;
@@ -36,12 +30,6 @@ export type MessageMetadata = {
     edited_at: string;
   }>;
   tags?: Tag[];
-  has_code_output?: boolean;
-  code_outputs?: Array<{
-    type: string;
-    file_id: string;
-  }>;
-  images?: MessageImage[];
 } | null;
 
 export type DatabaseMessage = {

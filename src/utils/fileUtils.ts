@@ -1,4 +1,3 @@
-
 import { FILE_CONFIG } from "@/config/fileConfig";
 
 export const sanitizeFileName = (fileName: string): string => {
@@ -6,30 +5,14 @@ export const sanitizeFileName = (fileName: string): string => {
 };
 
 export const validateFile = (file: File): { isValid: boolean; error?: string } => {
-  // First, validate by file extension
   const fileExtension = ('.' + file.name.split('.').pop()?.toLowerCase()) as typeof FILE_CONFIG.ALLOWED_EXCEL_EXTENSIONS[number];
   
   if (!FILE_CONFIG.ALLOWED_EXCEL_EXTENSIONS.includes(fileExtension)) {
-    return { 
-      isValid: false, 
-      error: `Invalid file type. Supported formats: ${FILE_CONFIG.ALLOWED_EXCEL_EXTENSIONS.join(', ')}` 
-    };
+    return { isValid: false, error: "Invalid file type. Please upload an Excel file." };
   }
 
-  // Add more robust MIME type validation with fallbacks
-  // Some browsers/systems report different MIME types for the same file type
-  const isValidMimeType = FILE_CONFIG.MIME_TYPES.some(mimeType => {
-    return file.type === mimeType || 
-           // Handle empty MIME types (some browsers might not detect it correctly)
-           (file.type === '' && 
-            (fileExtension === '.csv' || 
-             fileExtension === '.xlsx' || 
-             fileExtension === '.xls'));
-  });
-
-  if (!isValidMimeType) {
-    console.warn(`File MIME type "${file.type}" with extension "${fileExtension}" may not be fully supported`);
-    // Don't reject based on MIME type alone if extension is valid
+  if (!FILE_CONFIG.MIME_TYPES.includes(file.type as typeof FILE_CONFIG.MIME_TYPES[number])) {
+    return { isValid: false, error: "Invalid file format. Please upload a valid Excel file." };
   }
 
   if (file.size > FILE_CONFIG.MAX_FILE_SIZE) {
