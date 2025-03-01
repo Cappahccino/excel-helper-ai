@@ -4,6 +4,7 @@ import { NodeDefinition } from '@/types/workflow';
 import { supabase } from "@/integrations/supabase/client";
 import { triggerAIResponse } from "@/services/aiService";
 
+
 interface AIAnalysisConfig {
   operation: 'analyze' | 'summarize' | 'extract' | 'classify' | 'generate_formula' | 'custom';
   prompt?: string;
@@ -279,114 +280,26 @@ async function callAIService(params: {
   userId: string;
 }) {
   try {
-    // This should integrate with your existing AI service
-    // We'll create a simplified mock for now
-    const response = await mockAIService(params.query, params.data);
-    return response;
+    // Call your Supabase Edge Function
+    const { data: responseData, error } = await supabase.functions.invoke('ai-service', {
+      body: {
+        operation: params.data.type,
+        query: params.query,
+        data: params.data.data,
+        options: params.data.options || {},
+        userId: params.userId
+      }
+    });
+
+    if (error) throw error;
+    
+    return responseData;
   } catch (error) {
     console.error('AI service error:', error);
     throw new Error(`AI service error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-// Mock AI service for testing - replace with your actual implementation
-async function mockAIService(query: string, data: any) {
-  // Simulate API latency
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Process based on operation type
-  switch (data.type) {
-    case 'analysis':
-      return {
-        content: 'Analysis of the data shows several key patterns...',
-        insights: [
-          'The average value is trending upward month over month',
-          'There are 3 outliers in the dataset that should be investigated',
-          'Category A has 25% higher performance than Category B'
-        ],
-        statistics: {
-          min: 1250,
-          max: 8750,
-          avg: 4320,
-          median: 4100
-        },
-        recommendations: [
-          'Consider removing outliers for more accurate analysis',
-          'Focus marketing efforts on Category A for better returns'
-        ],
-        visualizations: [
-          { type: 'line', title: 'Trend Analysis' },
-          { type: 'bar', title: 'Category Comparison' }
-        ]
-      };
-      
-    case 'summarization':
-      return {
-        content: 'The dataset contains information about sales performance across different regions and product categories...',
-        keyPoints: [
-          'North region has the highest sales volume',
-          'Product category X is the top performer',
-          'Q4 shows seasonal increases in all regions'
-        ],
-        metadata: {
-          rowCount: Array.isArray(data.data) ? data.data.length : 0,
-          timeRange: 'Jan 2023 - Dec 2023'
-        }
-      };
-      
-    case 'extraction':
-      return {
-        content: data.format === 'json' ? { extractedData: 'sample' } : 'Extracted data in text format',
-        extractedData: [
-          { name: 'John Doe', email: 'john@example.com' },
-          { name: 'Jane Smith', email: 'jane@example.com' }
-        ],
-        confidence: 0.92,
-        metadata: {
-          processedCharacters: 5000,
-          matchedPatterns: 8
-        }
-      };
-      
-    case 'classification':
-      return {
-        content: 'Classification results',
-        classifications: [
-          { id: 0, categories: ['Category A'] },
-          { id: 1, categories: ['Category B', 'Category C'] }
-        ],
-        confidence: 0.85
-      };
-      
-    case 'formula_generation':
-      return {
-        content: '=SUMIFS(Sales,Region,"North",Quarter,"Q4")',
-        formula: '=SUMIFS(Sales,Region,"North",Quarter,"Q4")',
-        explanation: 'This formula calculates the sum of sales for the North region in Q4',
-        examples: [
-          { input: { region: 'North', quarter: 'Q4' }, output: '12500' }
-        ],
-        alternativeFormulas: [
-          '=SUMPRODUCT((Region="North")*(Quarter="Q4")*Sales)'
-        ]
-      };
-      
-    case 'custom':
-      return {
-        content: 'Custom AI operation result',
-        metadata: {
-          processingTime: '1.2s',
-          complexity: 'medium'
-        }
-      };
-      
-    default:
-      return {
-        content: 'Processed data result',
-        metadata: {}
-      };
-  }
-}
 
 // Helper functions for data processing
 
@@ -414,77 +327,4 @@ function inferSchema(data: any[]) {
   }
   
   return schema;
-}
-
-function buildAnalysisPrompt(data: any[], options: any) {
-  const dataPreview = JSON.stringify(data.slice(0, 5), null, 2);
-  
-  let prompt = `Analyze the following dataset and provide insights:\n\n${dataPreview}\n\n`;
-  
-  if (options.detectOutliers) {
-    prompt += 'Identify any outliers in the data. ';
-  }
-  
-  if (options.findPatterns) {
-    prompt += 'Find patterns and correlations between fields. ';
-  }
-  
-  if (options.identifyTrends) {
-    prompt += 'Identify trends over time if temporal data is present. ';
-  }
-  
-  if (options.suggestImprovements) {
-    prompt += 'Suggest actionable improvements based on the data. ';
-  }
-  
-  return prompt;
-}
-
-function formatClassificationResults(data: any[], aiResponse: string, categories: string[]) {
-  // Simple parsing logic - in practice, this would need to be more robust
-  // and specific to the format of your AI service's response
-  try {
-    // Try to parse as JSON first
-    return JSON.parse(aiResponse);
-  } catch (e) {
-    // Fallback: extract classification from text
-    return data.map((item, index) => {
-      // Very simplified matching - real implementation would be more sophisticated
-      let matchedCategories = [];
-      
-      for (const category of categories) {
-        if (aiResponse.includes(`${index}:${category}`) || 
-            aiResponse.includes(`item ${index}:${category}`) ||
-            aiResponse.includes(`${index} - ${category}`)) {
-          matchedCategories.push(category);
-        }
-      }
-      
-      return {
-        id: index,
-        item: item,
-        categories: matchedCategories.length > 0 ? matchedCategories : ['Uncategorized']
-      };
-    });
-  }
-}
-
-function calculateCategoryDistribution(classifications: any[], categories: string[]) {
-  const distribution: Record<string, number> = {};
-  
-  // Initialize counts
-  for (const category of categories) {
-    distribution[category] = 0;
-  }
-  
-  // Count occurrences
-  for (const classification of classifications) {
-    for (const category of classification.categories) {
-      if (distribution[category] !== undefined) {
-        distribution[category]++;
-      }
-    }
-  }
-  
-  return distribution;
 }
