@@ -1,4 +1,3 @@
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { ExcelData, ProcessingError, ProcessingResponse } from "./types.ts";
@@ -229,3 +228,60 @@ export async function processExcelFiles(fileIds: string[], messageId?: string): 
     };
   }
 }
+
+/**
+ * Get file extension from filename
+ */
+export const getFileExtension = (filename: string): string | null => {
+  if (!filename) return null;
+  const parts = filename.split('.');
+  return parts.length > 1 ? `.${parts.pop()?.toLowerCase()}` : null;
+};
+
+/**
+ * Get appropriate MIME type based on file extension
+ */
+export const getMimeTypeFromExtension = (extension: string | null): string => {
+  if (!extension) return 'application/octet-stream';
+
+  // Map file extensions to their MIME types
+  switch (extension.toLowerCase()) {
+    // Modern Excel formats
+    case '.xlsx':
+    case '.xltx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      
+    // Excel macro-enabled formats
+    case '.xlsm':
+    case '.xltm':
+      return 'application/vnd.ms-excel.sheet.macroEnabled.12';
+      
+    // Excel binary format
+    case '.xlsb':
+      return 'application/vnd.ms-excel.sheet.binary.macroEnabled.12';
+      
+    // Excel add-in formats
+    case '.xlam':
+      return 'application/vnd.ms-excel.addin.macroEnabled.12';
+      
+    // Legacy Excel formats
+    case '.xls':
+    case '.xlt':
+    case '.xla':
+    case '.xlw':
+    case '.xlr':
+      return 'application/vnd.ms-excel';
+      
+    // CSV format
+    case '.csv':
+      return 'text/csv';
+      
+    // XML spreadsheet format
+    case '.xml':
+      return 'application/xml';
+      
+    // Default for unknown
+    default:
+      return 'application/octet-stream';
+  }
+};
