@@ -823,6 +823,7 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds: string[] | nu
 
     // Get assistant response with v2 API
     const response = await getAssistantResponse({ threadId, messageId });
+    const imageFileIds = response.imageFileIds || [];
 
     console.log('Successfully processed assistant response');
     imageFileIds = response.imageFileIds;
