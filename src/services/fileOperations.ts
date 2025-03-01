@@ -51,10 +51,16 @@ export const validateFileAvailability = async (fileIds: string[]): Promise<boole
     for (let attempt = 1; attempt <= MAX_VERIFICATION_RETRIES; attempt++) {
       console.log(`File validation attempt ${attempt}/${MAX_VERIFICATION_RETRIES}`);
       
-      // Check file existence and status
+      // Check file existence and status - fixed the query to select file_metadata as a separate relation
       const { data: files, error } = await supabase
         .from('excel_files')
-        .select('id, filename, processing_status, storage_verified, file_metadata')
+        .select(`
+          id, 
+          filename, 
+          processing_status, 
+          storage_verified,
+          file_metadata (id)
+        `)
         .in('id', fileIds);
         
       if (error) {
