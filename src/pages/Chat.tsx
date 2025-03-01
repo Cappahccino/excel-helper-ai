@@ -1,4 +1,3 @@
-
 // Update the import path for OptimisticMessage
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileUploadZone } from "@/components/FileUploadZone";
@@ -38,6 +37,12 @@ const Chat = () => {
   const [sessionName, setSessionName] = useState("");
   const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [pendingMessage, setPendingMessage: any] = useState<{
+    content: string;
+    fileIds?: string[] | null;
+    tagNames?: string[] | null;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
@@ -176,12 +181,13 @@ const Chat = () => {
     }
   }, [fetchNextPage, hasNextPage, messagesLoading]);
 
-  // Send message handler
+  // Send message handler (updated)
   const handleSendMessage = async (message: string, fileIds?: string[] | null, tagNames?: string[] | null) => {
     if (!message.trim() && !fileIds?.length) return;
 
     try {
       setIsCreatingSession(true);
+      setPendingMessage({ content: message, fileIds, tagNames });
       
       let currentSessionId = selectedSessionId;
       let shouldNavigate = false;
@@ -190,6 +196,7 @@ const Chat = () => {
       // Create new session if needed
       if (!currentSessionId) {
         console.log('Creating new session...');
+        setIsTransitioning(true);
         const newSession = await createSession.mutateAsync();
         currentSessionId = newSession.session_id;
         shouldNavigate = true;
@@ -241,6 +248,8 @@ const Chat = () => {
       await queryClient.invalidateQueries({ queryKey: ['chat-messages', selectedSessionId] });
     } finally {
       setIsCreatingSession(false);
+      setIsTransitioning(false);
+      setPendingMessage(null);
     }
   };
 
@@ -440,6 +449,22 @@ const Chat = () => {
                   </motion.div>
                 </div>
               </motion.div>
+            ) : !showMessages && pendingMessage ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="flex-grow flex flex-col p-4"
+              >
+                <OptimisticMessage
+                  message={pendingMessage.content}
+                  fileInfo={currentFile}
+                />
+                <div className="flex items-center justify-center mt-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-excel" />
+                  <span className="ml-2 text-sm text-gray-600">Creating new chat...</span>
+                </div>
+              </motion.div>
             ) : (
               <motion.div
                 initial={{ opacity: 0 }}
@@ -498,16 +523,11 @@ const Chat = () => {
                   ref={chatContainerRef}
                 >
                   {isLoading && messages.length === 0 ? (
-                    <div className="flex-grow flex flex-col overflow-hidden bg-white/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100/50 mb-24 p-4">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="flex gap-3 mb-6 animate-pulse">
-                          <Skeleton className="h-8 w-8 rounded-full" />
-                          <div className="flex-1">
-                            <Skeleton className="h-4 w-32 mb-2" />
-                            <Skeleton className="h-16 w-full" />
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex-grow flex flex-col items-center justify-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-excel" />
+                      <span className="mt-2 text-sm text-gray-600">
+                        {isTransitioning ? 'Setting up your chat...' : 'Loading messages...'}
+                      </span>
                     </div>
                   ) : (
                     <motion.div
