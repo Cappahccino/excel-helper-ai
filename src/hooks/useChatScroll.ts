@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect, RefObject, useCallback } from "react";
 import { Message } from "@/types/chat";
 
@@ -82,11 +83,11 @@ export function useChatScroll({
     }
   }, [smoothScroll]);
 
-  // Function to handle scroll events
-  const handleScroll = useCallback((e: Event) => {
+  // Modified function to handle scroll events with the correct React UIEvent type
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     if (isScrolling) return;
     
-    const viewport = e.target as HTMLElement;
+    const viewport = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = viewport;
     
     // Store current scroll position for use in useEffect
@@ -109,17 +110,16 @@ export function useChatScroll({
     lastScrollTopRef.current = scrollTop;
   }, [isScrolling, threshold]);
 
-  // Set up scroll event listeners
+  // Set up scroll event listeners - this is no longer needed as we're using the onScroll prop
   useEffect(() => {
-    const viewport = getViewportElement();
-    if (!viewport) return;
-    
-    viewport.addEventListener('scroll', handleScroll, { passive: true });
-    
+    // No need to add event listeners manually when using the onScroll prop
     return () => {
-      viewport.removeEventListener('scroll', handleScroll);
+      // Cleanup any timeouts when unmounting
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
-  }, [getViewportElement, handleScroll]);
+  }, []);
 
   // Handle initial scroll and new messages
   useEffect(() => {
