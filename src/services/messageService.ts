@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage, MessageFile, MessageImage } from "@/types/messages.types";
 import { Message, MessageStatus } from "@/types/chat";
@@ -11,12 +10,7 @@ export async function fetchMessages(sessionId: string, cursor: string | null = n
       *,
       message_files(
         file_id,
-        role,
-        excel_files(
-          id,
-          filename,
-          file_size
-        )
+        role
       ),
       message_generated_images(
         id,
@@ -182,8 +176,8 @@ function transformMessage(msg: DatabaseMessage): Message {
   const messageFiles = msg.message_files?.map(mf => ({
     file_id: mf.file_id,
     role: mf.role,
-    filename: mf.excel_files?.filename,
-    file_size: mf.excel_files?.file_size
+    filename: undefined,
+    file_size: undefined
   }));
 
   // Transform generated images if present
