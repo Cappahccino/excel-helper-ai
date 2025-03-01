@@ -38,7 +38,7 @@ const Chat = () => {
   const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [pendingMessage, setPendingMessage: any] = useState<{
+  const [pendingMessage, setPendingMessage] = useState<{
     content: string;
     fileIds?: string[] | null;
     tagNames?: string[] | null;
