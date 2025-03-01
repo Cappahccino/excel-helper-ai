@@ -332,7 +332,7 @@ function applyAggregateOperation(data: any[], config: any): any[] {
 }
 
 function applyJoinOperation(leftData: any[], rightData: any[], config: any): any[] {
-  const { leftField, rightField, type = 'inner' } = config;
+  const { leftField, rightField, type = 'inner', includeFields = [] } = config;
   
   // Create a map of right data by join field for faster lookup
   const rightMap = new Map();
@@ -341,4 +341,145 @@ function applyJoinOperation(leftData: any[], rightData: any[], config: any): any
     if (!rightMap.has(key)) {
       rightMap.set(key, []);
     }
-    rightMap.get(key).push(right
+    rightMap.get(key).push(rightRow);
+  }
+  
+  const result: any[] = [];
+  
+  // Perform the join based on the specified type
+  switch (type) {
+    case 'inner':
+      // Inner join - only rows with matches in both datasets
+      for (const leftRow of leftData) {
+        const leftKey = String(leftRow[leftField]);
+        const rightRows = rightMap.get(leftKey) || [];
+        
+        for (const rightRow of rightRows) {
+          const joinedRow = { ...leftRow };
+          
+          // Add specified fields from right side
+          for (const field of includeFields) {
+            joinedRow[field] = rightRow[field];
+          }
+          
+          result.push(joinedRow);
+        }
+      }
+      break;
+      
+    case 'left':
+      // Left join - all rows from left dataset, with matches from right where available
+      for (const leftRow of leftData) {
+        const leftKey = String(leftRow[leftField]);
+        const rightRows = rightMap.get(leftKey) || [];
+        
+        if (rightRows.length > 0) {
+          // Left row has matches on the right
+          for (const rightRow of rightRows) {
+            const joinedRow = { ...leftRow };
+            
+            // Add specified fields from right side
+            for (const field of includeFields) {
+              joinedRow[field] = rightRow[field];
+            }
+            
+            result.push(joinedRow);
+          }
+        } else {
+          // No matches on right - include left row with nulls for right fields
+          const joinedRow = { ...leftRow };
+          
+          // Add specified fields from right side as null
+          for (const field of includeFields) {
+            joinedRow[field] = null;
+          }
+          
+          result.push(joinedRow);
+        }
+      }
+      break;
+      
+    case 'right':
+      // Right join - all rows from right dataset, with matches from left where available
+      const leftMap = new Map();
+      for (const leftRow of leftData) {
+        const key = String(leftRow[leftField]);
+        if (!leftMap.has(key)) {
+          leftMap.set(key, []);
+        }
+        leftMap.get(key).push(leftRow);
+      }
+      
+      for (const rightRow of rightData) {
+        const rightKey = String(rightRow[rightField]);
+        const leftRows = leftMap.get(rightKey) || [];
+        
+        if (leftRows.length > 0) {
+          // Right row has matches on the left
+          for (const leftRow of leftRows) {
+            const joinedRow = { ...leftRow };
+            
+            // Add specified fields from right side
+            for (const field of includeFields) {
+              joinedRow[field] = rightRow[field];
+            }
+            
+            result.push(joinedRow);
+          }
+        } else {
+          // No matches on left - create a row with nulls for left fields and right values
+          const joinedRow: Record<string, any> = {};
+          
+          // Add all fields from right side
+          for (const field of includeFields) {
+            joinedRow[field] = rightRow[field];
+          }
+          
+          // Add left dataset fields as null
+          for (const key of Object.keys(leftData[0] || {})) {
+            if (!(key in joinedRow)) {
+              joinedRow[key] = null;
+            }
+          }
+          
+          result.push(joinedRow);
+        }
+      }
+      break;
+      
+    case 'full':
+      // Full outer join - all rows from both datasets
+      // First, do a left join
+      const leftJoin = applyJoinOperation(leftData, rightData, { ...config, type: 'left' });
+      
+      // Then add right rows that don't have a match on the left
+      const leftKeys = new Set(leftData.map(row => String(row[leftField])));
+      
+      for (const rightRow of rightData) {
+        const rightKey = String(rightRow[rightField]);
+        
+        if (!leftKeys.has(rightKey)) {
+          // This right row doesn't have a match on the left
+          const joinedRow: Record<string, any> = {};
+          
+          // Add specified fields from right side
+          for (const field of includeFields) {
+            joinedRow[field] = rightRow[field];
+          }
+          
+          // Add left dataset fields as null
+          for (const key of Object.keys(leftData[0] || {})) {
+            if (!(key in joinedRow)) {
+              joinedRow[key] = null;
+            }
+          }
+          
+          leftJoin.push(joinedRow);
+        }
+      }
+      
+      return leftJoin;
+  }
+  
+  return result;
+}
