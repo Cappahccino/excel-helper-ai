@@ -723,23 +723,22 @@ async function getAssistantResponse(params: { threadId: string; messageId: strin
  * Clean up temporary OpenAI files
  */
 async function cleanupOpenAIFiles(fileIds: string[], imageFileIds?: string[]) {
-  if (!fileIds?.length) return;
+  if (!fileIds || fileIds.length === 0) return;
 
-  // ✅ Ensure `imageFileIds` is always an array
-  imageFileIds = Array.isArray(imageFileIds) ? imageFileIds : [];
+  // ✅ Ensure imageFileIds is ALWAYS an array
+  const safeImageFileIds = Array.isArray(imageFileIds) ? imageFileIds : [];
 
-  // ✅ Exclude image file IDs from cleanup
-  const excelFileIds = fileIds.filter(id => !imageFileIds.includes(id));
+  // ✅ Filter out image file IDs to keep only Excel-related file IDs
+  const excelFileIds = fileIds.filter(id => !safeImageFileIds.includes(id));
 
-  console.log(`Cleaning up ${excelFileIds.length} OpenAI files...`, { excelFileIds, imageFileIds });
+  console.log(`Cleaning up ${excelFileIds.length} OpenAI files...`, { excelFileIds, safeImageFileIds });
 
   for (const fileId of excelFileIds) {
     try {
-      // Delete file from OpenAI
       await openai.files.del(fileId);
-      console.log(`Deleted OpenAI file: ${fileId}`);
+      console.log(`✅ Deleted OpenAI file: ${fileId}`);
     } catch (error) {
-      console.error(`Error deleting OpenAI file ${fileId}:`, error);
+      console.error(`❌ Error deleting OpenAI file ${fileId}:`, error);
     }
   }
 }
