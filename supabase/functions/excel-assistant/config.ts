@@ -5,7 +5,7 @@
 
 // OpenAI configuration
 export const OPENAI_CONFIG = {
-  MODEL: "gpt-4o-mini",
+  MODEL: "gpt-4-turbo",
   ASSISTANT_ID: Deno.env.get("OPENAI_ASSISTANT_ID") || "",
   OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || "",
   SYSTEM_PROMPT: `You are Excel Assistant, an AI specialized in data analysis, calculation, visualization, and providing insights from Excel/CSV data.
