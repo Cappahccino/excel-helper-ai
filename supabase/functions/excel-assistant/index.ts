@@ -645,41 +645,22 @@ async function pollRunStatus(params: {
 /**
  * Get assistant response from thread
  */
-async function getAssistantResponse(params: {
-  threadId: string;
-  messageId: string;
-}) {
+async function getAssistantResponse(params: { threadId: string; messageId: string; }) {
   const { threadId, messageId } = params;
   console.log('Getting assistant response from thread with v2 API:', threadId);
-  
+
   try {
-    // List messages in thread, sorted by newest first with explicit v2 header
-    const messages = await openai.beta.threads.messages.list(
-      threadId,
-      { 
-        limit: 10, 
-        order: 'desc' 
-      },
-      {
-        headers: v2Headers
-      }
-    );
-    
-    // Find the most recent assistant message
+    const messages = await openai.beta.threads.messages.list(threadId, { limit: 10, order: 'desc' }, { headers: v2Headers });
     const assistantMessage = messages.data.find(msg => msg.role === 'assistant');
-    
+
     if (!assistantMessage) {
       throw new Error('No assistant response found');
     }
-    
-    console.log('Found assistant message:', assistantMessage.id);
-    
-    // Extract content from message (with v2 format)
-    let responseContent = '';
-    let hasCodeOutput = false;
-    let codeOutputs = [];
-    let imageFileIds: string[] = [];
 
+    console.log('Found assistant message:', assistantMessage.id);
+
+    let responseContent = '';
+    let imageFileIds: string[] = [];
 
     for (const contentPart of assistantMessage.content) {
       if (contentPart.type === "text") {
@@ -689,7 +670,10 @@ async function getAssistantResponse(params: {
       }
     }
 
-    // ✅ Store generated image file IDs in `message_generated_images`
+    // ✅ Ensure imageFileIds is an array
+    imageFileIds = imageFileIds || [];
+
+    // ✅ Store generated image file IDs in the database
     if (imageFileIds.length > 0) {
       const imageData = imageFileIds.map(fileId => ({
         message_id: messageId,
@@ -700,7 +684,7 @@ async function getAssistantResponse(params: {
         deleted_at: null,  // Ensures soft deletion support
       }));
 
-    const { error } = await supabase.from("message_generated_images").insert(imageData);
+      const { error } = await supabase.from("message_generated_images").insert(imageData);
 
       if (error) {
         console.error("Error saving image file IDs:", error);
@@ -708,12 +692,12 @@ async function getAssistantResponse(params: {
         console.log("✅ Image file IDs saved in message_generated_images:", imageFileIds);
       }
     }
-    
+
     if (!responseContent.trim()) {
       throw new Error('Empty assistant response');
     }
-    
-     // ✅ Update `chat_messages` with response details
+
+    // ✅ Update chat_messages with response details
     await supabase
       .from("chat_messages")
       .update({
@@ -734,19 +718,20 @@ async function getAssistantResponse(params: {
   }
 }
 
+
 /**
  * Clean up temporary OpenAI files
  */
-async function cleanupOpenAIFiles(fileIds: string[], imageFileIds: string[] | null | undefined = []) {
+async function cleanupOpenAIFiles(fileIds: string[], imageFileIds?: string[]) {
   if (!fileIds?.length) return;
 
   // ✅ Ensure `imageFileIds` is always an array
   imageFileIds = Array.isArray(imageFileIds) ? imageFileIds : [];
 
-  // Exclude image file IDs from cleanup
+  // ✅ Exclude image file IDs from cleanup
   const excelFileIds = fileIds.filter(id => !imageFileIds.includes(id));
 
-  console.log(`Cleaning up ${excelFileIds.length} OpenAI files...`);
+  console.log(`Cleaning up ${excelFileIds.length} OpenAI files...`, { excelFileIds, imageFileIds });
 
   for (const fileId of excelFileIds) {
     try {
@@ -755,7 +740,6 @@ async function cleanupOpenAIFiles(fileIds: string[], imageFileIds: string[] | nu
       console.log(`Deleted OpenAI file: ${fileId}`);
     } catch (error) {
       console.error(`Error deleting OpenAI file ${fileId}:`, error);
-      // Continue with other files
     }
   }
 }
