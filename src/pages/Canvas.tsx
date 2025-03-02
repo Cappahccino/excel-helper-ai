@@ -1,616 +1,693 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileUploadZone } from "@/components/FileUploadZone";
-import { useChatFileUpload } from "@/hooks/useChatFileUpload";
-import { useLocation, useNavigate } from "react-router-dom";
-import { ChatSidebar } from "@/components/ChatSidebar";
-import { SidebarProvider } from "@/components/ui/sidebar-new";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChatInput } from "@/components/ChatInput";
-import { useChatMessages } from "@/hooks/useChatMessages";
-import { useChatRealtime } from "@/hooks/useChatRealtime";
-import { Message } from "@/types/chat";
+
+import { useCallback, useEffect, useState, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ChatContent } from "@/components/chat/ChatContent";
-import { MessageCircle, Loader2, FilePlus, Save, X, Edit2 } from "lucide-react";
-import TabContent from "@/components/chat/TabContent";
-import { Skeleton } from "@/components/ui/skeleton";
+import { 
+  ReactFlow, 
+  Background, 
+  Controls, 
+  MiniMap, 
+  Panel, 
+  useNodesState, 
+  useEdgesState, 
+  addEdge,
+  Node,
+  Edge,
+  Connection
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { Loader2, Save, Play, Plus, Settings, FileJson, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SidebarProvider } from "@/components/ui/sidebar-new";
+import { mapDatabaseWorkflowToWorkflow, WorkflowNode, WorkflowDefinition, WorkflowNodeData } from "@/types/workflow";
+import DataInputNode from "@/components/workflow/nodes/DataInputNode";
+import DataProcessingNode from "@/components/workflow/nodes/DataProcessingNode";
+import AINode from "@/components/workflow/nodes/AINode";
+import OutputNode from "@/components/workflow/nodes/OutputNode";
+import IntegrationNode from "@/components/workflow/nodes/IntegrationNode";
+import ControlNode from "@/components/workflow/nodes/ControlNode";
+import SpreadsheetGeneratorNode from "@/components/workflow/nodes/SpreadsheetGeneratorNode";
+import NodeLibrary from "@/components/workflow/NodeLibrary";
+import NodeConfigPanel from "@/components/workflow/NodeConfigPanel";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { OptimisticMessage } from "@/components/OptimisticMessage";
-import {
+import { 
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  DialogFooter
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { useMediaQuery } from "@/hooks/use-media-query";
-import { WorkflowDefinition, mapDatabaseWorkflowToWorkflow } from "@/types/workflow";
+
+// Define node types for the flow
+const nodeTypes = {
+  dataInput: DataInputNode as any,
+  dataProcessing: DataProcessingNode as any, 
+  aiNode: AINode as any,
+  output: OutputNode as any,
+  integration: IntegrationNode as any,
+  control: ControlNode as any,
+  spreadsheetGenerator: SpreadsheetGeneratorNode as any
+};
 
 const Canvas = () => {
-  // State and refs
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [sessionName, setSessionName] = useState("");
-  const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState<{
-    content: string;
-    fileIds?: string[] | null;
-    tagNames?: string[] | null;
-  } | null>(null);
-  const [nodes, setNodes] = useState<any[]>([]);
-  const [edges, setEdges] = useState<any[]>([]);
-  const [workflowName, setWorkflowName] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const isInitialLoad = useRef(true);
-  const isMobile = useMediaQuery("(max-width: 768px)");
-
-  // Hooks
-  const location = useLocation();
+  // Router and state hooks
+  const { workflowId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const searchParams = new URLSearchParams(location.search);
-  const selectedSessionId = searchParams.get('sessionId');
-  const fileIdFromUrl = searchParams.get('fileId');
-
-  // File upload hook
-  const {
-    files,
-    isUploading,
-    uploadProgress,
-    handleFileUpload,
-    resetUpload,
-    fileIds
-  } = useChatFileUpload();
-
-  // Selected file query
-  const { 
-    data: selectedFile, 
-    isLoading: fileLoading 
-  } = useQuery({
-    queryKey: ['excel-file', fileIdFromUrl],
-    queryFn: async () => {
-      if (!fileIdFromUrl) return null;
-      const { data, error } = await supabase
-        .from('excel_files')
-        .select('*')
-        .eq('id', fileIdFromUrl)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!fileIdFromUrl && !selectedSessionId
-  });
-
-  // Chat messages hook
-  const {
-    messages: baseMessages,
-    isLoading: messagesLoading,
-    sendMessage: sendMessageMutation,
-    createSession,
-    formatTimestamp,
-    groupMessagesByDate,
-    refetch,
-    hasNextPage,
-    fetchNextPage
-  } = useChatMessages(selectedSessionId);
-
-  // Message update handler
-  const handleAssistantMessage = useCallback((message: Message) => {
-    console.log('Assistant message updated:', message);
-  }, []);
-
-  // Realtime updates hook
-  const { status, latestMessageId, processingStage, content: streamingContent } = useChatRealtime({
-    sessionId: selectedSessionId,
-    refetch,
-    onAssistantMessage: handleAssistantMessage
-  });
-
-  // Process messages including live updates
-  const messages = useMemo(() => {
-    const messagesList = baseMessages.map(msg => {
-      if (msg.id === latestMessageId) {
-        return {
-          ...msg,
-          content: streamingContent || msg.content,
-          status: status || msg.status,
-          metadata: {
-            ...msg.metadata,
-            processing_stage: processingStage || msg.metadata?.processing_stage
-          }
-        };
-      }
-      return msg;
-    });
-
-    if (status === 'processing' && !latestMessageId && !streamingContent && selectedSessionId) {
-      messagesList.unshift({
-        id: 'loading-indicator',
-        content: '',
-        role: 'assistant',
-        session_id: selectedSessionId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status: 'processing',
-        is_ai_response: true,
-        version: '1.0.0',
-        metadata: {
-          processing_stage: {
-            stage: 'generating',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        }
-      });
-    }
-
-    return messagesList;
-  }, [baseMessages, latestMessageId, streamingContent, status, processingStage, selectedSessionId]);
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    if (messages.length > 0 && chatContainerRef.current && !isInitialLoad.current) {
-      const chatContainer = chatContainerRef.current;
-      const scrollElement = chatContainer.querySelector('[data-radix-scroll-area-viewport]');
-      
-      if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
-      }
-    }
-    
-    if (isInitialLoad.current && messages.length > 0) {
-      isInitialLoad.current = false;
-    }
-  }, [messages.length]);
-
-  // Load more messages when scrolling up
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (!hasNextPage || messagesLoading) return;
-    
-    const target = e.target as HTMLDivElement;
-    if (target.scrollTop === 0) {
-      const scrollPosition = target.scrollHeight;
-      
-      fetchNextPage().then(() => {
-        if (target.scrollHeight !== scrollPosition) {
-          target.scrollTop = target.scrollHeight - scrollPosition;
-        }
-      });
-    }
-  }, [fetchNextPage, hasNextPage, messagesLoading]);
-
-  // Send message handler (updated)
-  const handleSendMessage = async (message: string, fileIds?: string[] | null, tagNames?: string[] | null) => {
-    if (!message.trim() && !fileIds?.length) return;
-
-    try {
-      setIsCreatingSession(true);
-      setPendingMessage({ content: message, fileIds, tagNames });
-      
-      let currentSessionId = selectedSessionId;
-      let shouldNavigate = false;
-      let queryParams = new URLSearchParams(location.search);
-      
-      // Create new session if needed
-      if (!currentSessionId) {
-        console.log('Creating new session...');
-        setIsTransitioning(true);
-        const newSession = await createSession.mutateAsync();
-        currentSessionId = newSession.session_id;
-        shouldNavigate = true;
-        
-        queryParams = new URLSearchParams();
-        queryParams.set('sessionId', currentSessionId);
-        if (fileIds?.length) {
-          queryParams.set('fileId', fileIds[0]);
-        }
-        
-        // If session was named, update it
-        if (sessionName.trim()) {
-          try {
-            await supabase
-              .from('chat_sessions')
-              .update({ 
-                chat_name: sessionName.trim(),
-                thread_metadata: { title: sessionName.trim(), summary: null }
-              })
-              .eq('session_id', currentSessionId);
-          } catch (error) {
-            console.error('Failed to update session name:', error);
-          }
-        }
-      }
-
-      // Send the message
-      console.log('Sending message to session:', currentSessionId);
-      await sendMessageMutation.mutateAsync({
-        content: message,
-        fileIds: fileIds || [],
-        tagNames: tagNames || [],
-        sessionId: currentSessionId
-      });
-
-      if (shouldNavigate) {
-        console.log('Navigating to new session...');
-        navigate(`/chat?${queryParams.toString()}`);
-      }
-
-      resetUpload();
-    } catch (error) {
-      console.error('Send message error:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to send message",
-        variant: "destructive"
-      });
-      await queryClient.invalidateQueries({ queryKey: ['chat-messages', selectedSessionId] });
-    } finally {
-      setIsCreatingSession(false);
-      setIsTransitioning(false);
-      setPendingMessage(null);
-    }
-  };
-
-  // Drag and drop file handling
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const files = Array.from(e.dataTransfer.files);
-      await handleFileUpload(files, selectedSessionId);
-    }
-  };
-
-  // Handle file input change
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      await handleFileUpload(files, selectedSessionId);
-    }
-  };
-
-  // Create new session dialog
-  const handleCreateNewSession = () => {
-    setSessionName("");
-    setIsSessionDialogOpen(true);
-  };
-
-  const handleSessionCreate = () => {
-    setIsSessionDialogOpen(false);
-    // Reset state for new chat
-    resetUpload();
-    navigate("/chat");
-  };
-
-  const activeFileId = fileIds[0] || fileIdFromUrl;
   
-  const currentFile = selectedFile || (files[0] ? {
-    filename: files[0].name,
-    file_size: files[0].size
-  } : null);
+  // Workflow state
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
+  const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [workflowName, setWorkflowName] = useState("");
+  const [workflowDesc, setWorkflowDesc] = useState("");
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [autoSaveTimeout, setAutoSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  const showMessages = selectedSessionId || isCreatingSession;
-  const isLoading = messagesLoading || fileLoading || isCreatingSession;
-
-  // Update loadWorkflow function to handle definition properly
-  const loadWorkflow = async (id: string) => {
-    setIsProcessing(true);
-    try {
+  // Load workflow data if workflowId is provided
+  const { 
+    data: workflow, 
+    isLoading: workflowLoading,
+    refetch: refetchWorkflow
+  } = useQuery({
+    queryKey: ['workflow', workflowId],
+    queryFn: async () => {
+      if (!workflowId) return null;
       const { data, error } = await supabase
         .from('workflows')
         .select('*')
-        .eq('id', id)
-        .single();
-      
+        .eq('id', workflowId)
+        .maybeSingle();
+        
       if (error) throw error;
       
       if (data) {
-        setWorkflowName(data.name);
-        
-        // Use the helper function to parse the workflow definition
-        const workflow = mapDatabaseWorkflowToWorkflow(data);
-        setNodes(workflow.definition.nodes);
-        setEdges(workflow.definition.edges);
+        const parsedWorkflow = mapDatabaseWorkflowToWorkflow(data);
+        return parsedWorkflow;
       }
-    } catch (err) {
-      console.error('Error loading workflow:', err);
+      return null;
+    },
+    enabled: !!workflowId
+  });
+
+  // Initialize workflow from data
+  useEffect(() => {
+    if (workflow) {
+      setWorkflowName(workflow.name);
+      setWorkflowDesc(workflow.description || "");
+      setNodes(workflow.definition.nodes as any[]);
+      setEdges(workflow.definition.edges as any[]);
+    }
+  }, [workflow, setNodes, setEdges]);
+
+  // Create a new workflow and navigate to it
+  const createNewWorkflow = async () => {
+    try {
+      setIsProcessing(true);
+      
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) throw new Error("User not authenticated");
+      
+      const { data, error } = await supabase.from('workflows').insert({
+        name: 'Untitled Workflow',
+        description: '',
+        created_by: userData.user.id,
+        definition: JSON.stringify({ nodes: [], edges: [] }),
+        status: 'draft',
+        trigger_type: 'manual',
+        is_template: false
+      }).select().single();
+      
+      if (error) throw error;
+      
+      navigate(`/canvas/${data.id}`);
       toast({
-        title: 'Error',
-        description: 'Failed to load workflow',
-        variant: 'destructive',
+        title: "Success",
+        description: "New workflow created",
+      });
+    } catch (error) {
+      console.error('Failed to create workflow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create workflow",
+        variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
     }
   };
 
+  // Save current workflow
+  const saveWorkflow = async (name?: string, description?: string) => {
+    if (!workflowId) return;
+    
+    try {
+      setIsProcessing(true);
+      
+      const saveData = {
+        name: name || workflowName || "Untitled Workflow",
+        description: description || workflowDesc || "",
+        definition: JSON.stringify({ nodes, edges }),
+      };
+      
+      const { error } = await supabase
+        .from('workflows')
+        .update(saveData)
+        .eq('id', workflowId);
+        
+      if (error) throw error;
+      
+      setWorkflowName(saveData.name);
+      setWorkflowDesc(saveData.description);
+      
+      toast({
+        title: "Success",
+        description: "Workflow saved successfully",
+      });
+      
+      setShowSaveDialog(false);
+      refetchWorkflow();
+    } catch (error) {
+      console.error('Error saving workflow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save workflow",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Execute workflow
+  const runWorkflow = async () => {
+    if (!workflowId) return;
+    
+    try {
+      setIsProcessing(true);
+      
+      const { data, error } = await supabase
+        .rpc('start_workflow_execution', { 
+          workflow_id: workflowId,
+          inputs: {}
+        });
+        
+      if (error) throw error;
+      
+      toast({
+        title: "Workflow Started",
+        description: `Execution ID: ${data.execution_id}`,
+      });
+    } catch (error) {
+      console.error('Error running workflow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to run workflow",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle node selection
+  const onNodeClick = (_: any, node: Node) => {
+    setSelectedNode(node as any);
+    setIsConfigOpen(true);
+  };
+
+  // Handle node deselection
+  const onPaneClick = () => {
+    setSelectedNode(null);
+    setIsConfigOpen(false);
+  };
+
+  // Handle edge connections
+  const onConnect = useCallback((connection: Connection) => {
+    setEdges(edges => addEdge(connection, edges));
+    
+    // Trigger autosave when connecting edges
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    
+    const timeoutId = setTimeout(() => {
+      if (workflowId) saveWorkflow();
+    }, 2000);
+    
+    setAutoSaveTimeout(timeoutId);
+  }, [setEdges, workflowId, autoSaveTimeout]);
+
+  // Handle node configuration updates
+  const updateNodeConfig = useCallback((config: any) => {
+    if (!selectedNode) return;
+    
+    setNodes(nodes => 
+      nodes.map(node => 
+        node.id === selectedNode.id 
+          ? { 
+              ...node, 
+              data: {
+                ...node.data,
+                config: { ...config }
+              }
+            } 
+          : node
+      )
+    );
+    
+    // Trigger autosave when updating node config
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    
+    const timeoutId = setTimeout(() => {
+      if (workflowId) saveWorkflow();
+    }, 2000);
+    
+    setAutoSaveTimeout(timeoutId);
+  }, [selectedNode, setNodes, workflowId, autoSaveTimeout]);
+
+  // Handle adding new nodes from the library
+  const onAddNode = useCallback((nodeType: string, nodeCategory: string, nodeName: string) => {
+    // Create unique ID
+    const id = `${nodeType}_${Date.now()}`;
+    
+    // Define default config based on node type
+    let defaultConfig = {};
+    if (nodeType.includes('excel') || nodeType.includes('csv')) {
+      defaultConfig = { fileId: null, hasHeaders: true };
+    } else if (nodeType.includes('ai')) {
+      defaultConfig = { prompt: "", analysisType: "general" };
+    } else if (nodeType.includes('spreadsheet')) {
+      defaultConfig = { filename: "output.xlsx", sheets: [] };
+    }
+    
+    // Create new node
+    const newNode: WorkflowNode = {
+      id,
+      type: nodeCategory,
+      position: { x: 100, y: 100 },
+      data: {
+        label: nodeName,
+        type: nodeType as any,
+        config: defaultConfig
+      } as WorkflowNodeData
+    };
+    
+    setNodes((nodes) => [...nodes, newNode as any]);
+    setIsLibraryOpen(false);
+    
+    // Trigger autosave when adding new node
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    
+    const timeoutId = setTimeout(() => {
+      if (workflowId) saveWorkflow();
+    }, 2000);
+    
+    setAutoSaveTimeout(timeoutId);
+  }, [setNodes, workflowId, autoSaveTimeout]);
+
+  // Handle node deletion
+  const deleteSelectedNode = () => {
+    if (!selectedNode) return;
+    
+    // Remove connected edges
+    setEdges(edges => 
+      edges.filter(edge => 
+        edge.source !== selectedNode.id && edge.target !== selectedNode.id
+      )
+    );
+    
+    // Remove node
+    setNodes(nodes => 
+      nodes.filter(node => node.id !== selectedNode.id)
+    );
+    
+    setSelectedNode(null);
+    setIsConfigOpen(false);
+    
+    // Trigger autosave when deleting node
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    
+    const timeoutId = setTimeout(() => {
+      if (workflowId) saveWorkflow();
+    }, 2000);
+    
+    setAutoSaveTimeout(timeoutId);
+  };
+
+  // Handle node duplication
+  const duplicateSelectedNode = () => {
+    if (!selectedNode) return;
+    
+    // Create duplicate with new ID
+    const newId = `${selectedNode.id}_copy_${Date.now()}`;
+    const duplicatedNode = {
+      ...selectedNode,
+      id: newId,
+      position: {
+        x: selectedNode.position.x + 50,
+        y: selectedNode.position.y + 50
+      }
+    };
+    
+    setNodes(nodes => [...nodes, duplicatedNode as any]);
+    
+    // Trigger autosave when duplicating node
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    
+    const timeoutId = setTimeout(() => {
+      if (workflowId) saveWorkflow();
+    }, 2000);
+    
+    setAutoSaveTimeout(timeoutId);
+  };
+
+  // Cleanup autosave on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+      }
+    };
+  }, [autoSaveTimeout]);
+
   return (
     <SidebarProvider>
-      <div 
-        className="flex min-h-screen w-full bg-gradient-to-br from-gray-50 to-gray-100"
-        onDragEnter={handleDragEnter}
-      >
-        {/* Drag overlay */}
-        {dragActive && (
-          <div 
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center"
-            onDragLeave={handleDragLeave}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-          >
-            <div className="bg-white rounded-xl p-8 shadow-2xl border-2 border-dashed border-excel animate-pulse">
-              <FilePlus className="w-16 h-16 text-excel mb-4 mx-auto" />
-              <p className="text-xl font-medium text-center">Drop your Excel files here</p>
+      <div className="flex flex-col h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => navigate('/workflows')}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-semibold">
+                {workflowName || 'Untitled Workflow'}
+              </h1>
+              <p className="text-sm text-gray-500">
+                {workflowDesc || 'No description'}
+              </p>
             </div>
           </div>
-        )}
-
-        {/* Sidebar */}
-        <div className="fixed left-0 top-0 h-full z-10">
-          <ChatSidebar />
+          
+          <div className="flex items-center gap-2">
+            {!workflowId ? (
+              <Button 
+                onClick={createNewWorkflow} 
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Plus className="h-4 w-4 mr-2" />
+                )}
+                Create Workflow
+              </Button>
+            ) : (
+              <>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowSaveDialog(true)} 
+                  disabled={isProcessing}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+                <Button 
+                  variant="default" 
+                  onClick={runWorkflow} 
+                  disabled={isProcessing || nodes.length === 0}
+                >
+                  {isProcessing ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  Run
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-
+      
         {/* Main content */}
-        <div className="flex-1 flex flex-col transition-all duration-300 ease-in-out ml-[60px] sidebar-expanded:ml-[300px]">
-          {/* Session name dialog */}
-          <Dialog open={isSessionDialogOpen} onOpenChange={setIsSessionDialogOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>New Conversation</DialogTitle>
-                <DialogDescription>
-                  Give your conversation a name to help you find it later
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <Input
-                  placeholder="e.g. Q1 Sales Analysis"
-                  value={sessionName}
-                  onChange={(e) => setSessionName(e.target.value)}
-                  autoFocus
+        <div className="flex-1 flex overflow-hidden">
+          {/* Workflow canvas */}
+          <div className="flex-1 h-full" ref={reactFlowWrapper}>
+            {workflowLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-2">Loading workflow...</span>
+              </div>
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                fitView
+                minZoom={0.1}
+                maxZoom={1.5}
+                proOptions={{ hideAttribution: true }}
+              >
+                <Panel position="top-right">
+                  <Tabs defaultValue="nodes" className="w-[300px]">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="nodes">Nodes</TabsTrigger>
+                      <TabsTrigger value="settings">Settings</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="nodes" className="bg-white border rounded-md mt-2">
+                      <Button 
+                        className="w-full"
+                        onClick={() => setIsLibraryOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Node
+                      </Button>
+                    </TabsContent>
+                    <TabsContent value="settings" className="bg-white border rounded-md mt-2 p-4">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Workflow Name</label>
+                          <Input 
+                            value={workflowName} 
+                            onChange={(e) => setWorkflowName(e.target.value)}
+                            placeholder="Enter workflow name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Description</label>
+                          <Input 
+                            value={workflowDesc} 
+                            onChange={(e) => setWorkflowDesc(e.target.value)}
+                            placeholder="Enter description"
+                          />
+                        </div>
+                        <Button 
+                          className="w-full"
+                          onClick={() => saveWorkflow(workflowName, workflowDesc)}
+                          disabled={isProcessing}
+                        >
+                          {isProcessing ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Save className="h-4 w-4 mr-2" />
+                          )}
+                          Save Changes
+                        </Button>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </Panel>
+                <Controls />
+                <MiniMap 
+                  nodeStrokeColor={(n) => {
+                    if (n.id === selectedNode?.id) return '#ff0072';
+                    return '#ddd';
+                  }}
+                  nodeColor={(n) => {
+                    switch (n.type) {
+                      case 'dataInput': return '#d0eaff';
+                      case 'dataProcessing': return '#e6f9e6';
+                      case 'aiNode': return '#f8e3ff';
+                      case 'output': return '#ffe6e6';
+                      case 'integration': return '#fff4cc';
+                      case 'control': return '#e6e6ff';
+                      case 'spreadsheetGenerator': return '#ccf2e8';
+                      default: return '#eee';
+                    }
+                  }}
+                />
+                <Background gap={16} size={1} />
+              </ReactFlow>
+            )}
+          </div>
+          
+          {/* Config panel */}
+          {isConfigOpen && selectedNode && (
+            <div className="w-96 border-l border-gray-200 bg-white overflow-auto">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 className="font-semibold">Node Configuration</h2>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setIsConfigOpen(false)}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              </div>
+              <ScrollArea className="h-[calc(100vh-10rem)]">
+                <NodeConfigPanel 
+                  node={selectedNode as any}
+                  onUpdateConfig={updateNodeConfig}
+                  onDelete={deleteSelectedNode}
+                  onDuplicate={duplicateSelectedNode}
+                  onClose={() => setIsConfigOpen(false)}
+                  readOnly={false}
+                />
+              </ScrollArea>
+            </div>
+          )}
+        </div>
+        
+        {/* Node library dialog */}
+        <NodeLibrary 
+          isOpen={isLibraryOpen}
+          onClose={() => setIsLibraryOpen(false)}
+          onAddNode={onAddNode}
+          nodeCategories={[
+            { 
+              name: 'Data Input', 
+              id: 'dataInput',
+              nodes: [
+                { name: 'Excel Input', type: 'excelInput', description: 'Import data from Excel file' },
+                { name: 'CSV Input', type: 'csvInput', description: 'Import data from CSV file' },
+                { name: 'API Source', type: 'apiSource', description: 'Fetch data from API' },
+                { name: 'User Input', type: 'userInput', description: 'Accept user defined input' }
+              ]
+            },
+            { 
+              name: 'Data Processing', 
+              id: 'dataProcessing',
+              nodes: [
+                { name: 'Transform', type: 'dataTransform', description: 'Transform data structure' },
+                { name: 'Clean Data', type: 'dataCleaning', description: 'Clean and format data' },
+                { name: 'Formula', type: 'formulaNode', description: 'Apply formula to data' },
+                { name: 'Filter', type: 'filterNode', description: 'Filter data based on conditions' }
+              ]
+            },
+            { 
+              name: 'AI', 
+              id: 'aiNode',
+              nodes: [
+                { name: 'Analyze', type: 'aiAnalyze', description: 'Analyze data with AI' },
+                { name: 'Classify', type: 'aiClassify', description: 'Classify data with AI' },
+                { name: 'Summarize', type: 'aiSummarize', description: 'Summarize data with AI' }
+              ]
+            },
+            { 
+              name: 'Output', 
+              id: 'output',
+              nodes: [
+                { name: 'Excel Output', type: 'excelOutput', description: 'Export data to Excel' },
+                { name: 'Dashboard', type: 'dashboardOutput', description: 'Create visualization dashboard' },
+                { name: 'Email Notify', type: 'emailNotify', description: 'Send email notification' }
+              ]
+            },
+            { 
+              name: 'Integrations', 
+              id: 'integration',
+              nodes: [
+                { name: 'Xero', type: 'xeroConnect', description: 'Connect to Xero accounting' },
+                { name: 'Salesforce', type: 'salesforceConnect', description: 'Connect to Salesforce CRM' },
+                { name: 'Google Sheets', type: 'googleSheetsConnect', description: 'Connect to Google Sheets' }
+              ]
+            },
+            { 
+              name: 'Control', 
+              id: 'control',
+              nodes: [
+                { name: 'Conditional', type: 'conditionalBranch', description: 'Create conditional branch' },
+                { name: 'Loop', type: 'loopNode', description: 'Loop through data' },
+                { name: 'Merge', type: 'mergeNode', description: 'Merge multiple data sources' }
+              ]
+            },
+            { 
+              name: 'Generators', 
+              id: 'spreadsheetGenerator',
+              nodes: [
+                { name: 'Spreadsheet', type: 'spreadsheetGenerator', description: 'Generate complete spreadsheet' }
+              ]
+            }
+          ]}
+        />
+        
+        {/* Save workflow dialog */}
+        <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Save Workflow</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Workflow Name</label>
+                <Input 
+                  value={workflowName} 
+                  onChange={(e) => setWorkflowName(e.target.value)}
+                  placeholder="Enter workflow name"
                 />
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsSessionDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSessionCreate}>
-                  Create
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <AnimatePresence mode="wait">
-            {!showMessages ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className="flex-grow flex items-center justify-center px-4 lg:px-6"
-              >
-                <div className="w-full max-w-3xl mx-auto">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.1 }}
-                    className="text-center mb-8"
-                  >
-                    <div className="flex justify-center mb-6">
-                      <div className="p-4 rounded-full bg-green-100">
-                        <MessageCircle className="w-8 h-8 text-green-600" />
-                      </div>
-                    </div>
-                    <h2 className="text-3xl font-semibold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-4">
-                      Welcome to Excel Assistant
-                    </h2>
-                    <p className="text-gray-600 text-lg max-w-xl mx-auto">
-                      Ask me anything about Excel, or upload a file for analysis using the paperclip button below.
-                    </p>
-                  </motion.div>
-
-                  {/* Actions buttons for new session */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                    className="flex flex-wrap gap-4 justify-center mb-6"
-                  >
-                    <Button 
-                      variant="outline" 
-                      className="gap-2"
-                      onClick={handleCreateNewSession}
-                    >
-                      <FilePlus className="w-4 h-4" />
-                      New Conversation
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="gap-2"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileInputChange}
-                        accept=".xlsx,.xls,.csv"
-                        multiple
-                      />
-                      <FilePlus className="w-4 h-4" />
-                      Upload Excel File
-                    </Button>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="backdrop-blur-sm bg-white/80 rounded-xl shadow-lg border border-gray-100"
-                  >
-                    <ChatInput
-                      onSendMessage={handleSendMessage}
-                      sessionId={selectedSessionId}
-                      isAnalyzing={status === 'processing'}
-                      fileInfo={currentFile}
-                    />
-                  </motion.div>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="mt-8"
-                  >
-                    <TabContent />
-                  </motion.div>
-                </div>
-              </motion.div>
-            ) : !showMessages && pendingMessage ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="flex-grow flex flex-col p-4"
-              >
-                <OptimisticMessage
-                  message={pendingMessage.content}
-                  fileInfo={currentFile}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input 
+                  value={workflowDesc} 
+                  onChange={(e) => setWorkflowDesc(e.target.value)}
+                  placeholder="Enter workflow description (optional)"
                 />
-                <div className="flex items-center justify-center mt-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-excel" />
-                  <span className="ml-2 text-sm text-gray-600">Creating new chat...</span>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex-grow flex flex-col h-[calc(100vh-80px)]"
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => saveWorkflow(workflowName, workflowDesc)}
+                disabled={isProcessing}
               >
-                {/* Chat header */}
-                <div className="bg-white/80 backdrop-blur-sm border-b border-gray-100/50 p-2 sm:p-4 flex items-center justify-between sticky top-0 z-10">
-                  <div className="flex items-center gap-3">
-                    {isLoading ? (
-                      <Skeleton className="h-5 w-40" />
-                    ) : (
-                      <h1 className="font-medium truncate max-w-[200px] sm:max-w-xs">
-                        {selectedSessionId ? (
-                          messages[0]?.message_files?.[0]?.filename || "Conversation"
-                        ) : (
-                          "New Conversation"
-                        )}
-                      </h1>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!isMobile && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="gap-1"
-                        onClick={handleCreateNewSession}
-                      >
-                        <FilePlus className="h-4 w-4" />
-                        <span className="hidden sm:inline">New Chat</span>
-                      </Button>
-                    )}
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="gap-1" 
-                      onClick={() => fileInputRef.current?.click()}>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileInputChange}
-                        accept=".xlsx,.xls,.csv"
-                        multiple
-                      />
-                      <FilePlus className="h-4 w-4" />
-                      <span className="hidden sm:inline">Upload</span>
-                    </Button>
-                  </div>
-                </div>
-
-                <div 
-                  className="w-full mx-auto max-w-7xl flex-grow flex flex-col px-4 lg:px-6 pt-4"
-                  ref={chatContainerRef}
-                >
-                  {isLoading && messages.length === 0 ? (
-                    <div className="flex-grow flex flex-col items-center justify-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-excel" />
-                      <span className="mt-2 text-sm text-gray-600">
-                        {isTransitioning ? 'Setting up your chat...' : 'Loading messages...'}
-                      </span>
-                    </div>
-                  ) : (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="flex-grow flex flex-col overflow-hidden bg-white/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100/50 mb-24"
-                    >
-                      <ScrollArea 
-                        className="flex-1 h-full p-4" 
-                        onScroll={handleScroll}
-                        data-chat-container
-                      >
-                        <ChatContent
-                          messages={messages}
-                          isLoading={messagesLoading}
-                          formatTimestamp={formatTimestamp}
-                          groupMessagesByDate={groupMessagesByDate}
-                          latestMessageId={latestMessageId}
-                          status={status}
-                        />
-                      </ScrollArea>
-                    </motion.div>
-                  )}
-                </div>
-
-                {/* Input area */}
-                <div className="fixed bottom-0 left-[60px] right-0 transition-all duration-300 ease-in-out sidebar-expanded:left-[300px]">
-                  <div className="w-full max-w-7xl mx-auto px-4 pb-4">
-                    <div className="backdrop-blur-md bg-white/90 shadow-lg rounded-xl border border-gray-100/50">
-                      <ChatInput
-                        onSendMessage={handleSendMessage}
-                        sessionId={selectedSessionId}
-                        isAnalyzing={status === 'processing'}
-                        fileInfo={currentFile}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </SidebarProvider>
   );
