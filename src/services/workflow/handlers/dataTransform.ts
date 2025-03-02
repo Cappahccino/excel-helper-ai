@@ -1,318 +1,306 @@
 
-import { NodeHandler, NodeInputs, NodeOutputs } from '@/types/workflow';
-import { NodeTypeDefinition } from '@/types/workflow';
+import { NodeInputs, NodeOutputs, NodeTypeDefinition } from '@/types/workflow';
 
-// Helper functions
-const parseFormula = (formula: string) => {
-  try {
-    // Simple formula parsing for demonstration
-    // In a real implementation, this would be much more sophisticated
-    // Replace field references with actual values from data
-    return formula;
-  } catch (error) {
-    console.error('Error parsing formula:', error);
-    return null;
-  }
-};
+// Helper functions for data transformation
 
-// Data transformation functions
-const applyTransformations = (data: any[], operations: any[]) => {
-  if (!Array.isArray(data) || !Array.isArray(operations) || operations.length === 0) {
-    return data;
+// Clean column names
+function cleanColumnNames(data: any[]): any[] {
+  if (!data || !Array.isArray(data) || data.length === 0) return [];
+  
+  return data.map(row => {
+    const cleanedRow: Record<string, any> = {};
+    
+    Object.entries(row).forEach(([key, value]) => {
+      // Replace spaces with underscores, remove special characters, convert to lowercase
+      const cleanKey = key
+        .replace(/\s+/g, '_')
+        .replace(/[^\w_]/g, '')
+        .toLowerCase();
+      
+      cleanedRow[cleanKey] = value;
+    });
+    
+    return cleanedRow;
+  });
+}
+
+// Handle missing values
+function handleMissingValues(data: any[], options: { strategy: string; defaultValue?: any }): any[] {
+  if (!data || !Array.isArray(data) || data.length === 0) return [];
+  
+  const { strategy, defaultValue = null } = options;
+  
+  return data.map(row => {
+    const newRow: Record<string, any> = {};
+    
+    Object.entries(row).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') {
+        switch (strategy) {
+          case 'remove':
+            // Skip this entry
+            break;
+          case 'default':
+            newRow[key] = defaultValue;
+            break;
+          case 'mean':
+            // For now just use default, in reality would calculate mean from column
+            newRow[key] = defaultValue;
+            break;
+          default:
+            newRow[key] = value;
+        }
+      } else {
+        newRow[key] = value;
+      }
+    });
+    
+    return newRow;
+  });
+}
+
+// Apply formula to a column
+function applyFormula(data: any[], formulaConfig: { column: string; formula: string }): any[] {
+  if (!data || !Array.isArray(data) || data.length === 0) return [];
+  
+  const { column, formula } = formulaConfig;
+  
+  // Create a safe evaluation function
+  const safeEval = (expr: string, row: Record<string, any>): any => {
+    // Replace column references with actual values
+    let evalExpr = expr;
+    
+    Object.keys(row).forEach(key => {
+      const regex = new RegExp(`\\[${key}\\]`, 'g');
+      const value = typeof row[key] === 'number' ? row[key] : `"${row[key]}"`;
+      evalExpr = evalExpr.replace(regex, value);
+    });
+    
+    try {
+      // Using Function constructor is safer than eval
+      // This is still not completely safe for user input
+      // eslint-disable-next-line no-new-func
+      return Function(`"use strict"; return (${evalExpr})`)();
+    } catch (error) {
+      console.error('Error evaluating formula:', error);
+      return null;
+    }
+  };
+  
+  return data.map(row => {
+    const newRow = { ...row };
+    newRow[column] = safeEval(formula, row);
+    return newRow;
+  });
+}
+
+// Filter data based on conditions
+function filterData(data: any[], conditions: { column: string; operator: string; value: any }[]): any[] {
+  if (!data || !Array.isArray(data) || data.length === 0 || !conditions || conditions.length === 0) {
+    return data || [];
   }
   
+  return data.filter(row => {
+    return conditions.every(condition => {
+      const { column, operator, value } = condition;
+      const rowValue = row[column];
+      
+      switch (operator) {
+        case 'equals':
+          return rowValue === value;
+        case 'notEquals':
+          return rowValue !== value;
+        case 'greaterThan':
+          return rowValue > value;
+        case 'lessThan':
+          return rowValue < value;
+        case 'contains':
+          return String(rowValue).includes(String(value));
+        case 'startsWith':
+          return String(rowValue).startsWith(String(value));
+        case 'endsWith':
+          return String(rowValue).endsWith(String(value));
+        default:
+          return true;
+      }
+    });
+  });
+}
+
+// Handler functions for different node types
+
+// Handle data transform node
+export async function handleDataTransform(inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> {
+  const data = inputs.data || [];
+  
+  if (!Array.isArray(data) || data.length === 0) {
+    return { data: [] };
+  }
+  
+  const operations = config.operations || [];
   let transformedData = [...data];
   
   for (const operation of operations) {
-    switch (operation.type) {
-      case 'rename':
-        transformedData = transformedData.map(item => {
-          const newItem = {...item};
-          if (operation.oldField && operation.newField) {
-            newItem[operation.newField] = item[operation.oldField];
-            delete newItem[operation.oldField];
-          }
-          return newItem;
+    const { type, ...params } = operation;
+    
+    switch (type) {
+      case 'select_columns':
+        // Select only specified columns
+        const columns = params.columns || [];
+        transformedData = transformedData.map(row => {
+          const newRow: Record<string, any> = {};
+          columns.forEach((col: string) => {
+            if (col in row) {
+              newRow[col] = row[col];
+            }
+          });
+          return newRow;
         });
         break;
         
-      case 'select':
-        if (Array.isArray(operation.fields)) {
-          transformedData = transformedData.map(item => {
-            const newItem: Record<string, any> = {};
-            operation.fields.forEach((field: string) => {
-              if (field in item) {
-                newItem[field] = item[field];
-              }
-            });
-            return newItem;
+      case 'rename_columns':
+        // Rename columns
+        const renames = params.renames || {};
+        transformedData = transformedData.map(row => {
+          const newRow: Record<string, any> = { ...row };
+          Object.entries(renames).forEach(([oldName, newName]) => {
+            if (oldName in newRow) {
+              newRow[newName as string] = newRow[oldName];
+              delete newRow[oldName];
+            }
           });
-        }
+          return newRow;
+        });
         break;
         
       case 'calculate':
-        transformedData = transformedData.map(item => {
-          const newItem = {...item};
-          if (operation.targetField && operation.formula) {
-            try {
-              // This is a simplified implementation
-              // In a real app, you'd use a formula parser/evaluator
-              let formula = operation.formula;
-              for (const [key, value] of Object.entries(item)) {
-                formula = formula.replace(new RegExp(`\\[${key}\\]`, 'g'), String(value));
-              }
-              // Very basic evaluation - in production, use a safe evaluator
-              newItem[operation.targetField] = eval(formula);
-            } catch (e) {
-              console.error('Formula evaluation error:', e);
-              newItem[operation.targetField] = null;
+        // Calculate new columns
+        const calculations = params.calculations || [];
+        transformedData = transformedData.map(row => {
+          const newRow = { ...row };
+          calculations.forEach((calc: { column: string; formula: string }) => {
+            // For simplicity, just use the formula application function
+            const result = applyFormula([row], { column: calc.column, formula: calc.formula });
+            if (result.length > 0) {
+              newRow[calc.column] = result[0][calc.column];
             }
-          }
-          return newItem;
+          });
+          return newRow;
         });
         break;
         
       default:
         // Unknown operation type
-        console.warn(`Unknown operation type: ${operation.type}`);
+        console.warn(`Unknown operation type: ${type}`);
     }
   }
   
-  return transformedData;
-};
+  return { data: transformedData };
+}
 
-// Data cleaning functions
-const applyCleaningRules = (data: any[], rules: any[]) => {
-  if (!Array.isArray(data) || !Array.isArray(rules) || rules.length === 0) {
-    return data;
+// Handle data cleaning node
+export async function handleDataCleaning(inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> {
+  const data = inputs.data || [];
+  
+  if (!Array.isArray(data)) {
+    return { data: [] };
   }
   
+  const rules = config.rules || [];
   let cleanedData = [...data];
   
   for (const rule of rules) {
-    switch (rule.type) {
-      case 'removeNull':
-        if (rule.field) {
-          cleanedData = cleanedData.filter(item => item[rule.field] != null);
-        }
+    const { type, ...params } = rule;
+    
+    switch (type) {
+      case 'clean_column_names':
+        cleanedData = cleanColumnNames(cleanedData);
         break;
         
-      case 'trimWhitespace':
-        if (rule.field) {
-          cleanedData = cleanedData.map(item => {
-            const newItem = {...item};
-            if (typeof newItem[rule.field] === 'string') {
-              newItem[rule.field] = newItem[rule.field].trim();
-            }
-            return newItem;
-          });
-        }
+      case 'handle_missing_values':
+        cleanedData = handleMissingValues(cleanedData, params);
         break;
         
-      case 'convertType':
-        if (rule.field && rule.toType) {
-          cleanedData = cleanedData.map(item => {
-            const newItem = {...item};
-            try {
-              switch (rule.toType) {
+      case 'remove_duplicates':
+        // Simple duplicate removal based on all columns
+        const seen = new Set();
+        cleanedData = cleanedData.filter(row => {
+          const rowStr = JSON.stringify(row);
+          if (seen.has(rowStr)) {
+            return false;
+          }
+          seen.add(rowStr);
+          return true;
+        });
+        break;
+        
+      case 'type_conversion':
+        // Convert column types
+        const conversions = params.conversions || [];
+        cleanedData = cleanedData.map(row => {
+          const newRow = { ...row };
+          conversions.forEach((conv: { column: string; type: string }) => {
+            if (conv.column in newRow) {
+              const value = newRow[conv.column];
+              
+              switch (conv.type) {
                 case 'number':
-                  newItem[rule.field] = Number(newItem[rule.field]);
+                  newRow[conv.column] = Number(value);
                   break;
                 case 'string':
-                  newItem[rule.field] = String(newItem[rule.field]);
+                  newRow[conv.column] = String(value);
                   break;
                 case 'boolean':
-                  newItem[rule.field] = Boolean(newItem[rule.field]);
+                  newRow[conv.column] = Boolean(value);
                   break;
                 case 'date':
-                  newItem[rule.field] = new Date(newItem[rule.field]);
+                  newRow[conv.column] = new Date(value).toISOString();
                   break;
               }
-            } catch (e) {
-              console.error('Type conversion error:', e);
             }
-            return newItem;
           });
-        }
+          return newRow;
+        });
         break;
-        
-      default:
-        // Unknown rule type
-        console.warn(`Unknown cleaning rule type: ${rule.type}`);
     }
   }
   
-  return cleanedData;
-};
+  return { data: cleanedData };
+}
 
-// Formula application
-const applyFormula = (data: any[], formula: string) => {
-  if (!Array.isArray(data) || !formula) {
-    return data;
+// Handle formula node
+export async function handleFormulaNode(inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> {
+  const data = inputs.data || [];
+  
+  if (!Array.isArray(data)) {
+    return { data: [] };
   }
   
-  try {
-    // Parse the formula - this is a simplified implementation
-    const parsedFormula = parseFormula(formula);
-    if (!parsedFormula) {
-      return data;
-    }
-    
-    // Apply formula to each item
-    return data.map(item => {
-      try {
-        // This is a simplified implementation
-        // In a real app, you'd use a formula parser/evaluator
-        let formulaStr = formula;
-        for (const [key, value] of Object.entries(item)) {
-          formulaStr = formulaStr.replace(new RegExp(`\\[${key}\\]`, 'g'), String(value));
-        }
-        // Very basic evaluation - in production, use a safe evaluator
-        return eval(formulaStr);
-      } catch (e) {
-        console.error('Formula application error:', e);
-        return item;
-      }
-    });
-  } catch (error) {
-    console.error('Formula processing error:', error);
-    return data;
-  }
-};
-
-// Filtering functions
-const applyFilters = (data: any[], conditions: any[]) => {
-  if (!Array.isArray(data) || !Array.isArray(conditions) || conditions.length === 0) {
-    return data;
+  // Extract formula from config
+  const { column = 'result', formula } = config;
+  
+  if (!formula) {
+    return { data };
   }
   
-  // Apply each condition as a filter
-  return data.filter(item => {
-    for (const condition of conditions) {
-      if (!evaluateCondition(item, condition)) {
-        return false;
-      }
-    }
-    return true;
-  });
-};
-
-const evaluateCondition = (item: any, condition: any) => {
-  const { field, operator, value } = condition;
+  // Apply formula to data
+  const transformedData = applyFormula(data, { column, formula });
   
-  if (!field || !operator) {
-    return true; // Skip invalid conditions
+  return { data: transformedData };
+}
+
+// Handle filter node
+export async function handleFilterNode(inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> {
+  const data = inputs.data || [];
+  
+  if (!Array.isArray(data)) {
+    return { data: [] };
   }
   
-  const itemValue = item[field];
+  // Extract conditions from config
+  const conditions = config.conditions || [];
   
-  switch (operator) {
-    case 'equals':
-      return itemValue === value;
-    case 'notEquals':
-      return itemValue !== value;
-    case 'greaterThan':
-      return itemValue > value;
-    case 'lessThan':
-      return itemValue < value;
-    case 'contains':
-      return String(itemValue).includes(String(value));
-    case 'startsWith':
-      return String(itemValue).startsWith(String(value));
-    case 'endsWith':
-      return String(itemValue).endsWith(String(value));
-    case 'isNull':
-      return itemValue === null || itemValue === undefined;
-    case 'isNotNull':
-      return itemValue !== null && itemValue !== undefined;
-    case 'isTrue':
-      return Boolean(itemValue) === true;
-    case 'isFalse':
-      return Boolean(itemValue) === false;
-    default:
-      console.warn(`Unknown operator: ${operator}`);
-      return true;
-  }
-};
-
-// Handler implementations
-export const handleDataTransform = async (inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> => {
-  try {
-    const inputData = inputs.data || [];
-    const operations = config.operations || [];
-    
-    const transformedData = applyTransformations(inputData, operations);
-    
-    return {
-      data: transformedData
-    };
-  } catch (error) {
-    console.error('[Data Transform] Error:', error);
-    throw error;
-  }
-};
-
-export const handleDataCleaning = async (inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> => {
-  try {
-    const inputData = inputs.data || [];
-    const rules = config.rules || [];
-    
-    const cleanedData = applyCleaningRules(inputData, rules);
-    
-    return {
-      data: cleanedData
-    };
-  } catch (error) {
-    console.error('[Data Cleaning] Error:', error);
-    throw error;
-  }
-};
-
-export const handleFormulaNode = async (inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> => {
-  try {
-    const inputData = inputs.data || [];
-    const formula = config.formula || '';
-    
-    const processedData = applyFormula(inputData, formula);
-    
-    return {
-      data: processedData
-    };
-  } catch (error) {
-    console.error('[Formula Node] Error:', error);
-    throw error;
-  }
-};
-
-export const handleFilterNode = async (inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> => {
-  try {
-    const inputData = inputs.data || [];
-    const conditions = config.conditions || [];
-    
-    const filteredData = applyFilters(inputData, conditions);
-    
-    return {
-      data: filteredData
-    };
-  } catch (error) {
-    console.error('[Filter Node] Error:', error);
-    throw error;
-  }
-};
-
-// Export the node handlers
-export const dataTransformHandler: NodeHandler = {
-  execute: handleDataTransform
-};
-
-export const dataCleaningHandler: NodeHandler = {
-  execute: handleDataCleaning
-};
-
-export const formulaNodeHandler: NodeHandler = {
-  execute: handleFormulaNode
-};
-
-export const filterNodeHandler: NodeHandler = {
-  execute: handleFilterNode
-};
+  // Apply filters
+  const filteredData = filterData(data, conditions);
+  
+  return { data: filteredData };
+}

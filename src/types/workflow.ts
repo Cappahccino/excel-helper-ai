@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -105,6 +106,7 @@ export type WorkflowNodeData =
 export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
   data?: T;
   selected?: boolean;
+  id?: string;
 };
 
 // Export Edge type from ReactFlow for use in our application
@@ -207,7 +209,7 @@ export interface Workflow {
 export interface WorkflowExecution {
   id?: string;
   workflow_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | string; // Allow string for database compatibility
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
   node_states?: Record<string, any>;

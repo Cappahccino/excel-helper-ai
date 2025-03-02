@@ -11,16 +11,16 @@ const defaultData: AINodeData = {
   config: {}
 };
 
-const AINode = ({ data = defaultData, selected }: { data?: any, selected?: boolean }) => {
+const AINode = ({ data, selected }: { data?: AINodeData, selected?: boolean }) => {
   // Use provided data or fallback to default data
-  const nodeData = {
+  const nodeData: AINodeData = data ? {
     ...defaultData,
-    ...(data || {}),
+    ...data,
     config: {
       ...defaultData.config,
-      ...(data?.config || {})
+      ...(data.config || {})
     }
-  };
+  } : defaultData;
 
   // Node color based on type or configuration
   const getNodeColor = () => {

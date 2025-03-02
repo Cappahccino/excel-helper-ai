@@ -1,32 +1,47 @@
 
-import { NodeHandler, NodeInputs, NodeOutputs } from '@/types/workflow';
+import { NodeInputs, NodeOutputs, NodeTypeDefinition } from '@/types/workflow';
 
-export const handleSpreadsheetGeneration = async (inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> => {
-  try {
-    const inputData = inputs.data || [];
-    const filename = config.filename || 'generated.xlsx';
-    const sheets = config.sheets || [];
-    
-    console.log(`[Spreadsheet Generator] Generating spreadsheet: ${filename}`);
-    console.log(`[Spreadsheet Generator] Number of sheets: ${sheets.length}`);
-    
-    // For testing purposes, simulate successful generation with delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Return mock result
-    return {
-      success: true,
-      filename,
-      sheetCount: sheets.length,
-      fileSize: Math.floor(Math.random() * 1024 * 100) + 1024 // Random file size between 1KB and 100KB
-    };
-  } catch (error) {
-    console.error('[Spreadsheet Generator] Error:', error);
-    throw error;
-  }
-};
+// Handle spreadsheet generation
+export async function handleSpreadsheetGeneration(inputs: NodeInputs, config: Record<string, any>): Promise<NodeOutputs> {
+  const data = inputs.data || [];
+  const { filename = 'generated.xlsx', sheets = [] } = config;
+  
+  console.log(`Generating spreadsheet: ${filename} with ${sheets.length} sheets`);
+  console.log('Input data:', data);
+  
+  // This would actually generate an Excel file in a real implementation
+  // For now, just return a placeholder response
+  
+  return {
+    success: true,
+    filename,
+    sheetCount: sheets.length,
+    message: `Generated spreadsheet ${filename} with ${sheets.length} sheets`
+  };
+}
 
-// Export the node handler
-export const spreadsheetGeneratorHandler: NodeHandler = {
-  execute: handleSpreadsheetGeneration
+export const spreadsheetGeneratorNodeDefinition: NodeTypeDefinition = {
+  type: 'spreadsheetGenerator',
+  name: 'Spreadsheet Generator',
+  category: 'output',
+  description: 'Generates complex Excel spreadsheets',
+  icon: 'file-spreadsheet',
+  defaultConfig: {
+    filename: 'generated.xlsx',
+    sheets: []
+  },
+  inputs: [
+    {
+      name: 'data',
+      type: 'data',
+      dataType: 'array'
+    }
+  ],
+  outputs: [
+    {
+      name: 'file',
+      type: 'file',
+      dataType: 'excel'
+    }
+  ]
 };

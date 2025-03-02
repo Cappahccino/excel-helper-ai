@@ -14,16 +14,16 @@ const defaultData: SpreadsheetGeneratorNodeData = {
   }
 };
 
-const SpreadsheetGeneratorNode = ({ data = defaultData, selected }: { data?: any, selected?: boolean }) => {
+const SpreadsheetGeneratorNode = ({ data, selected }: { data?: SpreadsheetGeneratorNodeData, selected?: boolean }) => {
   // Use provided data or fallback to default data
-  const nodeData = {
+  const nodeData: SpreadsheetGeneratorNodeData = data ? {
     ...defaultData,
-    ...(data || {}),
+    ...data,
     config: {
       ...defaultData.config,
-      ...(data?.config || {})
+      ...(data.config || {})
     }
-  };
+  } : defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>
