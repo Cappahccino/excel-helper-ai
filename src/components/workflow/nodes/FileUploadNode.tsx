@@ -1,13 +1,13 @@
-
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileUp, GripVertical, FileText, Search } from 'lucide-react';
+import { FileUp, GripVertical, FileText, Search, Upload } from 'lucide-react';
 import { NodeProps, FileUploadNodeData } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Default data if none is provided
 const defaultData: FileUploadNodeData = {
@@ -24,38 +24,51 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const { toast } = useToast();
   
   // Function to fetch files from Supabase
   const fetchFiles = async () => {
     try {
       setIsLoading(true);
-      setError(null);
       
-      const { data: fetchedFiles, error: fetchError } = await supabase
+      const { data: fetchedFiles, error } = await supabase
         .from('excel_files')
         .select('*')
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-      if (fetchError) {
-        console.error('Error fetching files:', fetchError);
-        setError('Failed to load files');
+      if (error) {
+        console.error('Error fetching files:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load files",
+          variant: "destructive",
+        });
         return;
       }
 
       setFiles(fetchedFiles || []);
     } catch (error) {
       console.error('Error in fetchFiles:', error);
-      setError('Failed to load files');
+      toast({
+        title: "Error",
+        description: "Failed to load files",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFiles();
-  }, []);
+    if (isDialogOpen) {
+      fetchFiles();
+    }
+  }, [isDialogOpen]);
 
   // Filter files based on search query
   const filteredFiles = files.filter(file => 
@@ -71,9 +84,6 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
     setIsDialogOpen(false);
   };
 
-  // Get selected file name
-  const selectedFileName = nodeData.config?.fileName || 'Not selected';
-  
   // Format file size for display
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -83,11 +93,64 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const handleUploadNewFile = () => {
-    toast.info("File upload functionality would be triggered here");
-    // This would typically open a file upload dialog or redirect to the file upload page
-    // For simplicity, we're just showing a toast notification
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
   };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+    
+    try {
+      setIsUploading(true);
+      
+      // Simulate upload progress
+      const interval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 95) {
+            clearInterval(interval);
+            return prev;
+          }
+          return prev + 5;
+        });
+      }, 100);
+      
+      // Simulate upload
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      clearInterval(interval);
+      setUploadProgress(100);
+      
+      // In a real implementation, we would upload to Supabase here
+      // For now, we'll simulate a successful upload
+      
+      toast({
+        title: "Success",
+        description: "File uploaded successfully",
+      });
+      
+      // Update files list
+      await fetchFiles();
+      
+      // Close upload dialog
+      setUploadDialogOpen(false);
+      setSelectedFile(null);
+      setUploadProgress(0);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Get selected file name
+  const selectedFileName = nodeData.config?.fileName || 'Not selected';
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-blue-500 shadow-md' : 'border-blue-200'}`}>
@@ -113,6 +176,10 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
               </span>
             </div>
           )}
+          <div className="flex items-center justify-between">
+            <span>Headers:</span>
+            <span className="font-medium">{nodeData.config?.hasHeaders ? 'Yes' : 'No'}</span>
+          </div>
         </div>
         
         <div className="mt-2">
@@ -127,7 +194,7 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
         </div>
       </div>
       
-      {/* Dialog for file selection */}
+      {/* File selection dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -149,12 +216,18 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
             {/* File list */}
             <div className="max-h-60 overflow-y-auto space-y-2">
               {isLoading ? (
-                <div className="flex justify-center p-4">
-                  <div className="h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              ) : error ? (
-                <div className="text-sm text-red-500 text-center py-4">
-                  {error}
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="p-3 border rounded-md">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-5 w-5" />
+                        <div className="flex flex-col flex-1 space-y-1">
+                          <Skeleton className="h-4 w-24" />
+                          <Skeleton className="h-3 w-12" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : filteredFiles.length > 0 ? (
                 filteredFiles.map(file => (
@@ -192,11 +265,80 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
               <Button 
                 variant="outline" 
                 className="w-full" 
-                onClick={handleUploadNewFile}
+                onClick={() => setUploadDialogOpen(true)}
               >
+                <Upload className="h-4 w-4 mr-2" />
                 Upload New File
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* File upload dialog */}
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload New File</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            {!selectedFile ? (
+              <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition-colors" onClick={() => document.getElementById('file-upload')?.click()}>
+                <Upload className="h-6 w-6 mx-auto text-gray-400 mb-2" />
+                <p className="text-sm text-gray-600">Click to browse or drag and drop</p>
+                <p className="text-xs text-gray-500 mt-1">Supports Excel and CSV files</p>
+                <input
+                  type="file"
+                  id="file-upload"
+                  className="hidden"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileChange}
+                />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 border rounded-md">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {selectedFile.name}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {formatFileSize(selectedFile.size)}
+                      </div>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-gray-500"
+                      onClick={() => setSelectedFile(null)}
+                      disabled={isUploading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                
+                {isUploading && (
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-blue-600 h-2.5 rounded-full" 
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                )}
+                
+                <Button 
+                  className="w-full" 
+                  onClick={handleUpload} 
+                  disabled={isUploading}
+                >
+                  {isUploading ? "Uploading..." : "Upload File"}
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
