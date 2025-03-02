@@ -1,196 +1,409 @@
+import { SupabaseClient } from "@supabase/supabase-js";
+import { Database } from "@/types/supabase";
+import { Json } from "@supabase/supabase-js";
 
-// Import types and utilities
-import { supabase } from '@/integrations/supabase/client';
-import { v4 as uuidv4 } from 'uuid';
-import { 
-  Workflow, 
-  WorkflowExecution, 
-  WorkflowNode, 
-  Edge,
-  mapDatabaseExecutionToWorkflowExecution
-} from '@/types/workflow';
-
-// Import node handlers
-import { handleExcelInput } from './workflow/handlers/excelInput';
-import { 
-  handleDataTransform, 
-  handleDataCleaning,
-  handleFilterNode
-} from './workflow/handlers/dataTransform';
-
-// Since these handlers don't exist yet, we'll create placeholders
-// or comment them out until they're implemented
-// Commented out imports that don't exist yet
-// import { handleFormulaNode } from './workflow/handlers/dataTransform';
-// import { handleApiRequest } from './workflow/handlers/apiIntegration';
-// import { handleSpreadsheetGeneration } from './workflow/handlers/spreadsheetGenerator';
-
-// Create placeholders for missing handlers
-const handleFormulaNode = async (inputs: any, config: any) => {
-  console.log('Formula node handler not implemented yet');
-  return { data: inputs.data };
-};
-
-const handleApiRequest = async (inputs: any, config: any) => {
-  console.log('API request handler not implemented yet');
-  return { data: [] };
-};
-
-const handleSpreadsheetGeneration = async (inputs: any, config: any) => {
-  console.log('Spreadsheet generator handler not implemented yet');
-  return { fileId: null };
-};
-
-// Node handlers registry
-const nodeHandlers: Record<string, (inputs: any, config: any) => Promise<any>> = {
-  excelInput: handleExcelInput,
-  dataTransform: handleDataTransform,
-  dataCleaning: handleDataCleaning,
-  formulaNode: handleFormulaNode,
-  filterNode: handleFilterNode,
-  apiSource: handleApiRequest,
-  spreadsheetGenerator: handleSpreadsheetGeneration,
-};
-
-// Helper functions
-
-// Create a new workflow
-export async function createWorkflow(
-  name: string,
-  description: string,
-  nodes: WorkflowNode[] = [],
-  edges: Edge[] = [],
-  isTemplate: boolean = false,
-  tags: string[] = []
-): Promise<string | null> {
-  try {
-    const userId = (await supabase.auth.getUser()).data.user?.id;
-    
-    if (!userId) {
-      console.error('User not authenticated');
-      return null;
-    }
-    
-    const workflowId = uuidv4();
-    
-    const { error } = await supabase.from('workflows').insert({
-      id: workflowId,
-      name,
-      description,
-      definition: JSON.stringify({ nodes, edges }),
-      is_template: isTemplate,
-      tags,
-      user_id: userId,
-      created_by: userId,  // Add this field to satisfy the constraint
-    });
-    
-    if (error) throw error;
-    
-    return workflowId;
-  } catch (error) {
-    console.error('Error creating workflow:', error);
-    return null;
-  }
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  definition: Json;
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  version: number;
+  is_template: boolean;
+  folder_id: string;
+  last_run_at: string;
+  last_run_status: string;
+  icon: string;
+  color: string;
 }
 
-// Get a workflow by ID
-export async function getWorkflow(id: string): Promise<Workflow | null> {
-  try {
+export interface Node {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  data: any;
+}
+
+export interface Edge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle: string | null;
+  targetHandle: string | null;
+}
+
+export interface Execution {
+  id: string;
+  workflow_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  log: Json;
+}
+
+export interface ExecutionNode {
+  id: string;
+  execution_id: string;
+  node_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  log: Json;
+}
+
+export interface ExecutionEdge {
+  id: string;
+  execution_id: string;
+  edge_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  log: Json;
+}
+
+export interface WorkflowEngineParams {
+  supabase: SupabaseClient<Database>;
+  workflowId: string;
+  inputs?: { [key: string]: any };
+}
+
+export class WorkflowEngine {
+  private supabase: SupabaseClient<Database>;
+  private workflowId: string;
+  private workflow?: Workflow;
+  private nodes?: Node[];
+  private edges?: Edge[];
+  private inputs?: { [key: string]: any };
+  private executionId?: string;
+
+  constructor(params: WorkflowEngineParams) {
+    this.supabase = params.supabase;
+    this.workflowId = params.workflowId;
+    this.inputs = params.inputs;
+  }
+
+  async init() {
+    try {
+      // Get workflow from database
+      const { data: workflow, error: workflowError } = await this.supabase
+        .from('workflows')
+        .select('*')
+        .eq('id', this.workflowId)
+        .single();
+
+      if (workflowError) {
+        throw new Error(`Error fetching workflow: ${workflowError.message}`);
+      }
+
+      if (!workflow) {
+        throw new Error(`Workflow not found: ${this.workflowId}`);
+      }
+
+      this.workflow = workflow;
+
+      // Get nodes and edges from workflow definition
+      const definition = JSON.parse(this.workflow.definition as string);
+      this.nodes = definition.nodes;
+      this.edges = definition.edges;
+
+      if (!this.nodes || !this.edges) {
+        throw new Error(`Workflow definition is invalid: ${this.workflowId}`);
+      }
+
+      // Create execution
+      const { data: execution, error: executionError } = await this.supabase
+        .from('executions')
+        .insert({
+          workflow_id: this.workflowId,
+          status: 'running',
+          log: {
+            init: 'Workflow execution started',
+          },
+        })
+        .select('*')
+        .single();
+
+      if (executionError) {
+        throw new Error(`Error creating execution: ${executionError.message}`);
+      }
+
+      if (!execution) {
+        throw new Error(`Error creating execution: ${this.workflowId}`);
+      }
+
+      this.executionId = execution.id;
+
+      console.log(`Workflow ${this.workflowId} execution ${this.executionId} started`);
+
+    } catch (error: any) {
+      console.error(`Error initializing workflow engine: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async run() {
+    if (!this.workflow || !this.nodes || !this.edges || !this.executionId) {
+      throw new Error(`Workflow engine not initialized`);
+    }
+
+    try {
+      // Get start node
+      const startNode = this.nodes.find((node) => node.type === 'start');
+
+      if (!startNode) {
+        throw new Error(`Workflow ${this.workflowId} does not have a start node`);
+      }
+
+      // Run workflow
+      await this.runNode(startNode, this.inputs);
+
+      // Update execution status
+      await this.supabase
+        .from('executions')
+        .update({
+          status: 'completed',
+          log: {
+            completed: 'Workflow execution completed',
+          },
+        })
+        .eq('id', this.executionId);
+
+      console.log(`Workflow ${this.workflowId} execution ${this.executionId} completed`);
+
+    } catch (error: any) {
+      console.error(`Error running workflow: ${error.message}`);
+
+      // Update execution status
+      await this.supabase
+        .from('executions')
+        .update({
+          status: 'failed',
+          log: {
+            error: error.message,
+          },
+        })
+        .eq('id', this.executionId);
+
+      throw error;
+    }
+  }
+
+  async runNode(node: Node, inputs: { [key: string]: any } | undefined) {
+    if (!this.supabase || !this.executionId) {
+      throw new Error(`Workflow engine not initialized`);
+    }
+
+    try {
+      // Create execution node
+      const { data: executionNode, error: executionNodeError } = await this.supabase
+        .from('execution_nodes')
+        .insert({
+          execution_id: this.executionId,
+          node_id: node.id,
+          status: 'running',
+          log: {
+            init: `Node ${node.id} execution started`,
+          },
+        })
+        .select('*')
+        .single();
+
+      if (executionNodeError) {
+        throw new Error(`Error creating execution node: ${executionNodeError.message}`);
+      }
+
+      if (!executionNode) {
+        throw new Error(`Error creating execution node: ${node.id}`);
+      }
+
+      // Get node handler
+      const nodeHandler = this.getNodeHandler(node.type);
+
+      if (!nodeHandler) {
+        throw new Error(`Node handler not found: ${node.type}`);
+      }
+
+      // Run node
+      const outputs = await nodeHandler({
+        supabase: this.supabase,
+        node,
+        inputs,
+        executionId: this.executionId,
+        executionNodeId: executionNode.id,
+      });
+
+      // Update execution node status
+      await this.supabase
+        .from('execution_nodes')
+        .update({
+          status: 'completed',
+          log: {
+            completed: `Node ${node.id} execution completed`,
+            outputs,
+          },
+        })
+        .eq('id', executionNode.id);
+
+      // Get next nodes
+      const nextNodes = this.getNextNodes(node);
+
+      // Run next nodes
+      for (const nextNode of nextNodes) {
+        await this.runNode(nextNode, outputs);
+      }
+
+    } catch (error: any) {
+      console.error(`Error running node ${node.id}: ${error.message}`);
+
+      // Update execution node status
+      await this.supabase
+        .from('execution_nodes')
+        .update({
+          status: 'failed',
+          log: {
+            error: error.message,
+          },
+        })
+        .eq('id', node.id);
+
+      throw error;
+    }
+  }
+
+  getNodeHandler(nodeType: string) {
+    switch (nodeType) {
+      case 'dataInput':
+        return async ({ node }: { node: Node }) => {
+          // Return node data config as outputs
+          return node.data.config;
+        };
+      case 'dataTransform':
+        return async ({ node, inputs }: { node: Node, inputs: { [key: string]: any } | undefined }) => {
+          if (!inputs) {
+            throw new Error(`Data transform node ${node.id} requires inputs`);
+          }
+
+          // Get transform function from node data config
+          const transformFunction = node.data.config.transformFunction;
+
+          if (!transformFunction) {
+            throw new Error(`Data transform node ${node.id} does not have a transform function`);
+          }
+
+          // Run transform function
+          const outputs = new Function('inputs', transformFunction)(inputs);
+
+          return outputs;
+        };
+      default:
+        return null;
+    }
+  }
+
+  getNextNodes(node: Node): Node[] {
+    if (!this.edges || !this.nodes) {
+      return [];
+    }
+
+    // Get next edges
+    const nextEdges = this.edges.filter((edge) => edge.source === node.id);
+
+    // Get next nodes
+    const nextNodes = nextEdges.map((edge) => {
+      const nextNode = this.nodes?.find((node) => node.id === edge.target);
+      if (!nextNode) {
+        throw new Error(`Node not found: ${edge.target}`);
+      }
+      return nextNode;
+    });
+
+    return nextNodes;
+  }
+
+  static async getWorkflows(supabase: SupabaseClient<Database>) {
+    const { data, error } = await supabase
+      .from('workflows')
+      .select('*');
+
+    if (error) {
+      console.error('Error fetching workflows:', error);
+      return [];
+    }
+
+    return data || [];
+  }
+
+  static async getWorkflow(supabase: SupabaseClient<Database>, workflowId: string) {
     const { data, error } = await supabase
       .from('workflows')
       .select('*')
-      .eq('id', id)
+      .eq('id', workflowId)
       .single();
-    
-    if (error) throw error;
-    
-    if (!data) return null;
-    
-    // Parse the workflow definition
-    let definition;
-    try {
-      definition = typeof data.definition === 'string'
-        ? JSON.parse(data.definition)
-        : data.definition;
-    } catch (e) {
-      console.error('Error parsing workflow definition:', e);
-      definition = { nodes: [], edges: [] };
-    }
-    
-    return {
-      id: data.id,
-      name: data.name,
-      description: data.description,
-      definition: {
-        nodes: definition.nodes || [],
-        edges: definition.edges || []
-      },
-      created_at: data.created_at,
-      updated_at: data.updated_at,
-      user_id: data.user_id,
-      is_template: data.is_template,
-      tags: data.tags
-    };
-  } catch (error) {
-    console.error('Error getting workflow:', error);
-    return null;
-  }
-}
 
-// Get workflow executions
-export async function getWorkflowExecutions(workflowId: string): Promise<WorkflowExecution[]> {
-  try {
-    const { data, error } = await supabase
-      .from('workflow_executions')
-      .select('*')
-      .eq('workflow_id', workflowId)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    
-    if (!data) return [];
-    
-    // Use type assertion to fix deep typization issue
-    const executions = data.map(execution => mapDatabaseExecutionToWorkflowExecution(execution));
-    
-    return executions as WorkflowExecution[];
-  } catch (error) {
-    console.error('Error getting workflow executions:', error);
-    return [];
-  }
-}
-
-// Execute a workflow
-export async function executeWorkflow(workflowId: string, inputs: Record<string, any> = {}): Promise<string | null> {
-  try {
-    const workflow = await getWorkflow(workflowId);
-    
-    if (!workflow) {
-      console.error('Workflow not found');
+    if (error) {
+      console.error('Error fetching workflow:', error);
       return null;
     }
-    
-    const executionId = uuidv4();
-    const userId = (await supabase.auth.getUser()).data.user?.id;
-    
-    // Create execution record
-    const { error } = await supabase.from('workflow_executions').insert({
-      id: executionId,
-      workflow_id: workflowId,
-      status: 'pending',
-      inputs,
-      initiated_by: userId,
-      started_at: new Date().toISOString()
-    });
-    
-    if (error) throw error;
-    
-    // Trigger execution (this would be handled by a background process in a real app)
-    // For now, we're just returning the execution ID
-    
-    return executionId;
-  } catch (error) {
-    console.error('Error executing workflow:', error);
-    return null;
+
+    return data || null;
+  }
+
+  static async duplicateWorkflow(supabase: SupabaseClient<Database>, workflowId: string, userId: string) {
+    try {
+      // Fetch the original workflow
+      const { data: workflow, error: workflowError } = await supabase
+        .from('workflows')
+        .select('*')
+        .eq('id', workflowId)
+        .single();
+
+      if (workflowError) {
+        throw new Error(`Error fetching workflow: ${workflowError.message}`);
+      }
+
+      if (!workflow) {
+        throw new Error(`Workflow not found: ${workflowId}`);
+      }
+
+      // Extract relevant data for duplication
+      const { name, description, definition, folder_id, is_template, icon, color } = workflow;
+
+      const createdBy = workflow.created_by;
+      const workflowTags: any[] = []; // Use a default empty array if tags don't exist
+
+      // Create a new workflow with the same data
+      const { data: newWorkflow, error: newWorkflowError } = await supabase
+        .from('workflows')
+        .insert({
+          name: `${name} - Copy`,
+          description,
+          definition,
+          created_by: userId,
+          folder_id,
+          is_template,
+          icon,
+          color,
+          user_id: userId,
+          tags: workflowTags,
+        })
+        .select('*')
+        .single();
+
+      if (newWorkflowError) {
+        throw new Error(`Error creating workflow: ${newWorkflowError.message}`);
+      }
+
+      if (!newWorkflow) {
+        throw new Error(`Error creating workflow copy for workflow: ${workflowId}`);
+      }
+
+      return newWorkflow;
+
+    } catch (error: any) {
+      console.error(`Error duplicating workflow: ${error.message}`);
+      throw error;
+    }
   }
 }
