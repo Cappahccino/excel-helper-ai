@@ -1,4 +1,5 @@
-import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
+
+import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps, MouseEvent, NodeMouseHandler } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -108,8 +109,8 @@ export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
   id?: string;
 };
 
-// Define handlers for node drag events with proper types
-export type NodeDragHandler = ReactFlowNodeProps['onDragStart'];
+// Define handlers for node drag events with proper types from ReactFlow
+export type NodeDragHandler = (event: React.MouseEvent, node: ReactFlowNode, nodes: ReactFlowNode[]) => void;
 
 // Export Edge type from ReactFlow for use in our application
 export type Edge = ReactFlowEdge;

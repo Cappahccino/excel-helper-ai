@@ -1,6 +1,6 @@
-
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   Controls,
   Node,
@@ -10,7 +10,6 @@ import ReactFlow, {
   useReactFlow,
   MiniMap,
   NodeTypes,
-  NodeDragHandler,
   NodeMouseHandler,
   EdgeMouseHandler,
   Connection,
@@ -43,7 +42,9 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   WorkflowNodeData,
   WorkflowNode,
-  SpreadsheetGeneratorNodeData
+  SpreadsheetGeneratorNodeData,
+  NodeDragHandler,
+  NodeLibraryProps
 } from '@/types/workflow';
 
 // Set custom node types
@@ -443,130 +444,182 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     setHistoryIndex(0);
   }, []);
 
+  // Fix the NodeLibrary component props
+  const libraryProps: NodeLibraryProps = {
+    isOpen: libraryOpen,
+    onClose: () => setLibraryOpen(false),
+    onAddNode: (nodeType, nodeCategory, nodeLabel) => {
+      // Implementation for adding nodes
+      // This would be called from the NodeLibrary component
+    },
+    nodeCategories: [
+      {
+        id: 'input',
+        name: 'Data Input',
+        items: [
+          { type: 'excelInput', label: 'Excel Input', icon: 'file-spreadsheet' },
+          { type: 'csvInput', label: 'CSV Input', icon: 'file-text' },
+          { type: 'apiSource', label: 'API Source', icon: 'api' },
+          { type: 'userInput', label: 'User Input', icon: 'user' }
+        ]
+      },
+      {
+        id: 'processing',
+        name: 'Data Processing',
+        items: [
+          { type: 'dataTransform', label: 'Transform', icon: 'transform' },
+          { type: 'dataCleaning', label: 'Clean Data', icon: 'filter' },
+          { type: 'formulaNode', label: 'Formula', icon: 'function-square' },
+          { type: 'filterNode', label: 'Filter', icon: 'filter' }
+        ]
+      },
+      {
+        id: 'ai',
+        name: 'AI & Analysis',
+        items: [
+          { type: 'aiAnalyze', label: 'AI Analyze', icon: 'brain' },
+          { type: 'aiClassify', label: 'AI Classify', icon: 'layers' },
+          { type: 'aiSummarize', label: 'AI Summarize', icon: 'list-checks' }
+        ]
+      },
+      {
+        id: 'output',
+        name: 'Output & Visualization',
+        items: [
+          { type: 'excelOutput', label: 'Excel Output', icon: 'file-spreadsheet' },
+          { type: 'dashboardOutput', label: 'Dashboard', icon: 'layout-dashboard' },
+          { type: 'emailNotify', label: 'Email Notification', icon: 'mail' }
+        ]
+      }
+    ]
+  };
+
   return (
     <div className="flex h-full w-full" ref={reactFlowWrapper}>
       <Sheet open={libraryOpen} onOpenChange={setLibraryOpen}>
         <SheetContent side={isMobile ? "bottom" : "left"} className={isMobile ? "h-[80vh]" : ""}>
-          <NodeLibrary onClose={() => setLibraryOpen(false)} />
+          <NodeLibrary {...libraryProps} />
         </SheetContent>
       </Sheet>
 
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeDragStart={onNodeDragStart}
-        onNodeDragStop={onNodeDragStop}
-        onNodeClick={onNodeClick}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-        fitView
-        snapToGrid={true}
-        snapGrid={[15, 15]}
-        connectionLineStyle={{ stroke: '#888', strokeWidth: 2 }}
-        defaultEdgeOptions={{
-          style: { stroke: '#888', strokeWidth: 2 },
-          type: 'smoothstep',
-          animated: true
-        }}
-        proOptions={{ hideAttribution: true }}
-        className="bg-gray-50"
-      >
-        <Background />
-        <Controls />
-        <MiniMap
-          nodeColor={(n) => {
-            switch (n.type) {
-              case 'dataInput': return '#c6e6f8';
-              case 'dataProcessing': return '#d4f8c6';
-              case 'aiNode': return '#f8e6c6';
-              case 'outputNode': return '#f8c6c6';
-              case 'integrationNode': return '#e6c6f8';
-              case 'controlNode': return '#c6f8e6';
-              case 'spreadsheetGenerator': return '#f8f8c6';
-              default: return '#c6c6c6';
-            }
+      <div className="h-full w-full">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDragStop={onNodeDragStop}
+          onNodeClick={onNodeClick}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          fitView
+          snapToGrid={true}
+          snapGrid={[15, 15]}
+          connectionLineStyle={{ stroke: '#888', strokeWidth: 2 }}
+          defaultEdgeOptions={{
+            style: { stroke: '#888', strokeWidth: 2 },
+            type: 'smoothstep',
+            animated: true
           }}
-          className="bg-white border border-gray-200 shadow-sm"
-        />
-        <Panel position="top-center" className="bg-white rounded-lg shadow-md border border-gray-200 px-4 py-2 flex gap-2 items-center">
-          <h2 className="font-bold text-lg mr-4">{workflowName || "Untitled Workflow"}</h2>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setLibraryOpen(true)} 
-                  disabled={readOnly}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add Node
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add new nodes</TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={undo}
-                  disabled={historyIndex <= 0}
-                >
-                  <Undo className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Undo</TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={redo}
-                  disabled={historyIndex >= history.length - 1}
-                >
-                  <Redo className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Redo</TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={saveWorkflow}
-                  disabled={readOnly || saveInProgress}
-                >
-                  <Save className="h-4 w-4 mr-1" /> Save
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Save workflow</TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="success"
-                  size="sm"
-                  onClick={runWorkflow}
-                  disabled={!nodes.length}
-                >
-                  <Play className="h-4 w-4 mr-1" /> Run
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Run workflow</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </Panel>
-      </ReactFlow>
+          proOptions={{ hideAttribution: true }}
+          className="bg-gray-50"
+        >
+          <Background />
+          <Controls />
+          <MiniMap
+            nodeColor={(n) => {
+              switch (n.type) {
+                case 'dataInput': return '#c6e6f8';
+                case 'dataProcessing': return '#d4f8c6';
+                case 'aiNode': return '#f8e6c6';
+                case 'outputNode': return '#f8c6c6';
+                case 'integrationNode': return '#e6c6f8';
+                case 'controlNode': return '#c6f8e6';
+                case 'spreadsheetGenerator': return '#f8f8c6';
+                default: return '#c6c6c6';
+              }
+            }}
+            className="bg-white border border-gray-200 shadow-sm"
+          />
+          <Panel position="top-center" className="bg-white rounded-lg shadow-md border border-gray-200 px-4 py-2 flex gap-2 items-center">
+            <h2 className="font-bold text-lg mr-4">{workflowName || "Untitled Workflow"}</h2>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setLibraryOpen(true)} 
+                    disabled={readOnly}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Add Node
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add new nodes</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={undo}
+                    disabled={historyIndex <= 0}
+                  >
+                    <Undo className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Undo</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={redo}
+                    disabled={historyIndex >= history.length - 1}
+                  >
+                    <Redo className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Redo</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={saveWorkflow}
+                    disabled={readOnly || saveInProgress}
+                  >
+                    <Save className="h-4 w-4 mr-1" /> Save
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Save workflow</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={runWorkflow}
+                    disabled={!nodes.length}
+                  >
+                    <Play className="h-4 w-4 mr-1" /> Run
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Run workflow</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </Panel>
+        </ReactFlow>
+      </div>
 
       {selectedNode && (
         <div className={`absolute right-0 top-0 h-full transition-transform duration-300 transform ${configPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
