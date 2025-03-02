@@ -67,7 +67,7 @@ const NODE_CATEGORIES = {
     icon: <Table className="w-4 h-4" />,
     description: 'Nodes for transforming and manipulating data',
     color: 'bg-green-100 border-green-400',
-    nodes: ['dataTransform', 'dataCleaning', 'formulaNode', 'filterNode']
+    nodes: ['dataTransform', 'dataCleaning', 'formulaNode', 'filterNode', 'spreadsheetGenerator']
   },
   ai: {
     label: 'AI',
