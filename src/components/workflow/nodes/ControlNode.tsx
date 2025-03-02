@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Edit2, GripVertical, GitBranch, RefreshCw, MergeTool } from 'lucide-react';
+import { Edit2, GripVertical, GitBranch, RefreshCw, Git, GitMerge } from 'lucide-react';
 import { NodeProps, ControlNodeData } from '@/types/workflow';
 
 // Default data if none is provided
@@ -23,7 +23,7 @@ const ControlNode: React.FC<NodeProps<ControlNodeData>> = ({ data, selected }) =
       case 'loopNode':
         return <RefreshCw className="h-4 w-4 text-gray-500" />;
       case 'mergeNode':
-        return <MergeTool className="h-4 w-4 text-gray-500" />;
+        return <GitMerge className="h-4 w-4 text-gray-500" />;
       default:
         return <Edit2 className="h-4 w-4 text-gray-500" />;
     }
