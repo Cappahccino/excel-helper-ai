@@ -4,13 +4,16 @@ import { Handle, Position } from '@xyflow/react';
 import { Table, GripVertical } from 'lucide-react';
 import { NodeProps, DataProcessingNodeData } from '@/types/workflow';
 
-const DataProcessingNode = ({ data, selected }: NodeProps<DataProcessingNodeData>) => {
-  // Create default data if none is provided
-  const nodeData: DataProcessingNodeData = data || {
-    label: 'Data Processing',
-    type: 'dataTransform',
-    config: {}
-  };
+// Default data if none is provided
+const defaultData: DataProcessingNodeData = {
+  label: 'Data Processing',
+  type: 'dataTransform',
+  config: {}
+};
+
+const DataProcessingNode: React.FC<NodeProps<DataProcessingNodeData>> = ({ data, selected }) => {
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>

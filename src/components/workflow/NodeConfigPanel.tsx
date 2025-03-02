@@ -12,8 +12,8 @@ import { Copy, Save, Trash } from "lucide-react";
 import { WorkflowNode, WorkflowNodeData } from '@/types/workflow';
 
 export interface NodeConfigPanelProps {
-  nodeData: WorkflowNodeData;
-  onUpdateConfig: (updatedNodeData: Partial<WorkflowNodeData>) => void;
+  node: WorkflowNode;
+  onUpdateConfig: (updatedConfig: any) => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onClose: () => void;
@@ -21,28 +21,36 @@ export interface NodeConfigPanelProps {
 }
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
-  nodeData,
+  node,
   onUpdateConfig,
   onDelete,
   onDuplicate,
   onClose,
   readOnly = false
 }) => {
+  const nodeData = node.data;
+
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdateConfig({ label: e.target.value });
+    onUpdateConfig({ 
+      ...nodeData,
+      label: e.target.value 
+    });
   };
 
   const handleConfigChange = (key: string, value: any) => {
     onUpdateConfig({
+      ...nodeData,
       config: {
         ...nodeData.config,
         [key]: value,
       },
-    } as Partial<WorkflowNodeData>);
+    });
   };
 
   // Render different config options based on node type
   const renderNodeSpecificConfig = () => {
+    if (!nodeData) return null;
+    
     switch (nodeData.type) {
       case 'excelInput':
       case 'csvInput':
@@ -53,7 +61,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
               <Label htmlFor="fileId">File ID</Label>
               <Input
                 id="fileId"
-                value={nodeData.config.fileId || ''}
+                value={nodeData.config?.fileId || ''}
                 onChange={(e) => handleConfigChange('fileId', e.target.value)}
                 readOnly={readOnly}
               />
@@ -64,7 +72,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 <Label htmlFor="hasHeaders">Has Headers</Label>
                 <Switch
                   id="hasHeaders"
-                  checked={!!nodeData.config.hasHeaders}
+                  checked={!!nodeData.config?.hasHeaders}
                   onCheckedChange={(checked) => handleConfigChange('hasHeaders', checked)}
                   disabled={readOnly}
                 />
@@ -79,7 +87,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
             <Label htmlFor="formula">Formula</Label>
             <Textarea
               id="formula"
-              value={nodeData.config.formula || ''}
+              value={nodeData.config?.formula || ''}
               onChange={(e) => handleConfigChange('formula', e.target.value)}
               readOnly={readOnly}
               rows={5}
@@ -94,7 +102,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
             <div className="space-y-2">
               <Label htmlFor="analysisType">Analysis Type</Label>
               <Select
-                value={nodeData.config.analysisType || 'general'}
+                value={nodeData.config?.analysisType || 'general'}
                 onValueChange={(value) => handleConfigChange('analysisType', value)}
                 disabled={readOnly}
               >
@@ -115,10 +123,10 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                 <Label htmlFor="detectOutliers">Detect Outliers</Label>
                 <Switch
                   id="detectOutliers"
-                  checked={!!(nodeData.config.analysisOptions?.detectOutliers)}
+                  checked={!!(nodeData.config?.analysisOptions?.detectOutliers)}
                   onCheckedChange={(checked) => 
                     handleConfigChange('analysisOptions', {
-                      ...nodeData.config.analysisOptions,
+                      ...nodeData.config?.analysisOptions,
                       detectOutliers: checked
                     })
                   }
@@ -132,11 +140,25 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
       default:
         return (
           <CardDescription>
-            This node type ({nodeData.type}) doesn't have specific configuration options.
+            This node type ({nodeData.type || 'unknown'}) doesn't have specific configuration options.
           </CardDescription>
         );
     }
   };
+
+  if (!node || !nodeData) {
+    return (
+      <Card className="w-[400px] h-full overflow-y-auto">
+        <CardHeader className="sticky top-0 bg-white z-10 border-b">
+          <div className="flex justify-between items-center">
+            <CardTitle>No Node Selected</CardTitle>
+            <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
+          </div>
+          <CardDescription>Select a node to configure</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-[400px] h-full overflow-y-auto">
@@ -152,7 +174,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
           <Label htmlFor="node-label">Label</Label>
           <Input
             id="node-label"
-            value={nodeData.label}
+            value={nodeData.label || ''}
             onChange={handleLabelChange}
             readOnly={readOnly}
           />
@@ -170,7 +192,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
             <div className="space-y-2">
               <Label htmlFor="node-color">Node Color</Label>
               <Select 
-                value={nodeData.config.color || "blue"} 
+                value={nodeData.config?.color || "default"} 
                 onValueChange={(color) => handleConfigChange('color', color)}
                 disabled={readOnly}
               >
@@ -183,6 +205,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
                   <SelectItem value="red">Red</SelectItem>
                   <SelectItem value="purple">Purple</SelectItem>
                   <SelectItem value="orange">Orange</SelectItem>
+                  <SelectItem value="default">Default</SelectItem>
                 </SelectContent>
               </Select>
             </div>

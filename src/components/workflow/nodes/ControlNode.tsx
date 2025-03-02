@@ -4,13 +4,16 @@ import { Handle, Position } from '@xyflow/react';
 import { Edit2, GripVertical } from 'lucide-react';
 import { NodeProps, ControlNodeData } from '@/types/workflow';
 
-const ControlNode = ({ data, selected }: NodeProps<ControlNodeData>) => {
-  // Create default data if none is provided
-  const nodeData: ControlNodeData = data || {
-    label: 'Control',
-    type: 'conditionalBranch',
-    config: {}
-  };
+// Default data if none is provided
+const defaultData: ControlNodeData = {
+  label: 'Control',
+  type: 'conditionalBranch',
+  config: {}
+};
+
+const ControlNode: React.FC<NodeProps<ControlNodeData>> = ({ data, selected }) => {
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-gray-500 shadow-md' : 'border-gray-200'}`}>

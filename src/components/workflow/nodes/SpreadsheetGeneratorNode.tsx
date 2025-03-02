@@ -4,16 +4,19 @@ import { Handle, Position } from '@xyflow/react';
 import { FileSpreadsheet, GripVertical } from 'lucide-react';
 import { NodeProps, SpreadsheetGeneratorNodeData } from '@/types/workflow';
 
-const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps<SpreadsheetGeneratorNodeData>) => {
-  // Create default data if none is provided
-  const nodeData: SpreadsheetGeneratorNodeData = data || {
-    label: 'Spreadsheet Generator',
-    type: 'spreadsheetGenerator',
-    config: {
-      filename: 'generated.xlsx',
-      sheets: []
-    }
-  };
+// Default data if none is provided
+const defaultData: SpreadsheetGeneratorNodeData = {
+  label: 'Spreadsheet Generator',
+  type: 'spreadsheetGenerator',
+  config: {
+    filename: 'generated.xlsx',
+    sheets: []
+  }
+};
+
+const SpreadsheetGeneratorNode: React.FC<NodeProps<SpreadsheetGeneratorNodeData>> = ({ data, selected }) => {
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>

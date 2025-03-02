@@ -15,7 +15,9 @@ import {
   addEdge,
   Node,
   Edge,
-  Connection
+  Connection,
+  OnNodesChange,
+  OnEdgesChange
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Loader2, Save, Play, Plus, Settings, FileJson, ArrowLeft } from "lucide-react";
@@ -44,14 +46,24 @@ import {
 
 // Define node types for the flow
 const nodeTypes = {
-  dataInput: DataInputNode as any,
-  dataProcessing: DataProcessingNode as any, 
-  aiNode: AINode as any,
-  output: OutputNode as any,
-  integration: IntegrationNode as any,
-  control: ControlNode as any,
-  spreadsheetGenerator: SpreadsheetGeneratorNode as any
+  dataInput: DataInputNode,
+  dataProcessing: DataProcessingNode,
+  aiNode: AINode,
+  output: OutputNode,
+  integration: IntegrationNode,
+  control: ControlNode,
+  spreadsheetGenerator: SpreadsheetGeneratorNode
 };
+
+interface NodeCategory {
+  name: string;
+  id: string;
+  nodes: Array<{
+    name: string;
+    type: string;
+    description: string;
+  }>;
+}
 
 const Canvas = () => {
   // Router and state hooks
@@ -103,8 +115,8 @@ const Canvas = () => {
     if (workflow) {
       setWorkflowName(workflow.name);
       setWorkflowDesc(workflow.description || "");
-      setNodes(workflow.definition.nodes as any[]);
-      setEdges(workflow.definition.edges as any[]);
+      setNodes(workflow.definition.nodes as Node[]);
+      setEdges(workflow.definition.edges as Edge[]);
     }
   }, [workflow, setNodes, setEdges]);
 
@@ -204,7 +216,7 @@ const Canvas = () => {
       
       toast({
         title: "Workflow Started",
-        description: `Execution ID: ${data.execution_id}`,
+        description: `Execution ID: ${data?.execution_id || 'unknown'}`,
       });
     } catch (error) {
       console.error('Error running workflow:', error);
@@ -219,16 +231,16 @@ const Canvas = () => {
   };
 
   // Handle node selection
-  const onNodeClick = (_: any, node: Node) => {
-    setSelectedNode(node as any);
+  const onNodeClick = useCallback((_: any, node: Node) => {
+    setSelectedNode(node as WorkflowNode);
     setIsConfigOpen(true);
-  };
+  }, []);
 
   // Handle node deselection
-  const onPaneClick = () => {
+  const onPaneClick = useCallback(() => {
     setSelectedNode(null);
     setIsConfigOpen(false);
-  };
+  }, []);
 
   // Handle edge connections
   const onConnect = useCallback((connection: Connection) => {
@@ -244,7 +256,7 @@ const Canvas = () => {
     }, 2000);
     
     setAutoSaveTimeout(timeoutId);
-  }, [setEdges, workflowId, autoSaveTimeout]);
+  }, [setEdges, workflowId, autoSaveTimeout, saveWorkflow]);
 
   // Handle node configuration updates
   const updateNodeConfig = useCallback((config: any) => {
@@ -255,10 +267,7 @@ const Canvas = () => {
         node.id === selectedNode.id 
           ? { 
               ...node, 
-              data: {
-                ...node.data,
-                config: { ...config }
-              }
+              data: config
             } 
           : node
       )
@@ -274,7 +283,7 @@ const Canvas = () => {
     }, 2000);
     
     setAutoSaveTimeout(timeoutId);
-  }, [selectedNode, setNodes, workflowId, autoSaveTimeout]);
+  }, [selectedNode, setNodes, workflowId, autoSaveTimeout, saveWorkflow]);
 
   // Handle adding new nodes from the library
   const onAddNode = useCallback((nodeType: string, nodeCategory: string, nodeName: string) => {
@@ -298,12 +307,12 @@ const Canvas = () => {
       position: { x: 100, y: 100 },
       data: {
         label: nodeName,
-        type: nodeType as any,
+        type: nodeType,
         config: defaultConfig
       } as WorkflowNodeData
     };
     
-    setNodes((nodes) => [...nodes, newNode as any]);
+    setNodes((nodes) => [...nodes, newNode as Node]);
     setIsLibraryOpen(false);
     
     // Trigger autosave when adding new node
@@ -316,10 +325,10 @@ const Canvas = () => {
     }, 2000);
     
     setAutoSaveTimeout(timeoutId);
-  }, [setNodes, workflowId, autoSaveTimeout]);
+  }, [setNodes, workflowId, autoSaveTimeout, saveWorkflow]);
 
   // Handle node deletion
-  const deleteSelectedNode = () => {
+  const deleteSelectedNode = useCallback(() => {
     if (!selectedNode) return;
     
     // Remove connected edges
@@ -347,10 +356,10 @@ const Canvas = () => {
     }, 2000);
     
     setAutoSaveTimeout(timeoutId);
-  };
+  }, [selectedNode, setNodes, setEdges, workflowId, autoSaveTimeout, saveWorkflow]);
 
   // Handle node duplication
-  const duplicateSelectedNode = () => {
+  const duplicateSelectedNode = useCallback(() => {
     if (!selectedNode) return;
     
     // Create duplicate with new ID
@@ -359,12 +368,12 @@ const Canvas = () => {
       ...selectedNode,
       id: newId,
       position: {
-        x: selectedNode.position.x + 50,
-        y: selectedNode.position.y + 50
+        x: (selectedNode.position?.x || 0) + 50,
+        y: (selectedNode.position?.y || 0) + 50
       }
     };
     
-    setNodes(nodes => [...nodes, duplicatedNode as any]);
+    setNodes(nodes => [...nodes, duplicatedNode as Node]);
     
     // Trigger autosave when duplicating node
     if (autoSaveTimeout) {
@@ -376,7 +385,7 @@ const Canvas = () => {
     }, 2000);
     
     setAutoSaveTimeout(timeoutId);
-  };
+  }, [selectedNode, setNodes, workflowId, autoSaveTimeout, saveWorkflow]);
 
   // Cleanup autosave on unmount
   useEffect(() => {
@@ -386,6 +395,73 @@ const Canvas = () => {
       }
     };
   }, [autoSaveTimeout]);
+
+  // Node categories for library
+  const nodeCategories: NodeCategory[] = [
+    { 
+      name: 'Data Input', 
+      id: 'dataInput',
+      nodes: [
+        { name: 'Excel Input', type: 'excelInput', description: 'Import data from Excel file' },
+        { name: 'CSV Input', type: 'csvInput', description: 'Import data from CSV file' },
+        { name: 'API Source', type: 'apiSource', description: 'Fetch data from API' },
+        { name: 'User Input', type: 'userInput', description: 'Accept user defined input' }
+      ]
+    },
+    { 
+      name: 'Data Processing', 
+      id: 'dataProcessing',
+      nodes: [
+        { name: 'Transform', type: 'dataTransform', description: 'Transform data structure' },
+        { name: 'Clean Data', type: 'dataCleaning', description: 'Clean and format data' },
+        { name: 'Formula', type: 'formulaNode', description: 'Apply formula to data' },
+        { name: 'Filter', type: 'filterNode', description: 'Filter data based on conditions' }
+      ]
+    },
+    { 
+      name: 'AI', 
+      id: 'aiNode',
+      nodes: [
+        { name: 'Analyze', type: 'aiAnalyze', description: 'Analyze data with AI' },
+        { name: 'Classify', type: 'aiClassify', description: 'Classify data with AI' },
+        { name: 'Summarize', type: 'aiSummarize', description: 'Summarize data with AI' }
+      ]
+    },
+    { 
+      name: 'Output', 
+      id: 'output',
+      nodes: [
+        { name: 'Excel Output', type: 'excelOutput', description: 'Export data to Excel' },
+        { name: 'Dashboard', type: 'dashboardOutput', description: 'Create visualization dashboard' },
+        { name: 'Email Notify', type: 'emailNotify', description: 'Send email notification' }
+      ]
+    },
+    { 
+      name: 'Integrations', 
+      id: 'integration',
+      nodes: [
+        { name: 'Xero', type: 'xeroConnect', description: 'Connect to Xero accounting' },
+        { name: 'Salesforce', type: 'salesforceConnect', description: 'Connect to Salesforce CRM' },
+        { name: 'Google Sheets', type: 'googleSheetsConnect', description: 'Connect to Google Sheets' }
+      ]
+    },
+    { 
+      name: 'Control', 
+      id: 'control',
+      nodes: [
+        { name: 'Conditional', type: 'conditionalBranch', description: 'Create conditional branch' },
+        { name: 'Loop', type: 'loopNode', description: 'Loop through data' },
+        { name: 'Merge', type: 'mergeNode', description: 'Merge multiple data sources' }
+      ]
+    },
+    { 
+      name: 'Generators', 
+      id: 'spreadsheetGenerator',
+      nodes: [
+        { name: 'Spreadsheet', type: 'spreadsheetGenerator', description: 'Generate complete spreadsheet' }
+      ]
+    }
+  ];
 
   return (
     <SidebarProvider>
@@ -562,7 +638,7 @@ const Canvas = () => {
               </div>
               <ScrollArea className="h-[calc(100vh-10rem)]">
                 <NodeConfigPanel 
-                  node={selectedNode as any}
+                  node={selectedNode}
                   onUpdateConfig={updateNodeConfig}
                   onDelete={deleteSelectedNode}
                   onDuplicate={duplicateSelectedNode}
@@ -579,71 +655,7 @@ const Canvas = () => {
           isOpen={isLibraryOpen}
           onClose={() => setIsLibraryOpen(false)}
           onAddNode={onAddNode}
-          nodeCategories={[
-            { 
-              name: 'Data Input', 
-              id: 'dataInput',
-              nodes: [
-                { name: 'Excel Input', type: 'excelInput', description: 'Import data from Excel file' },
-                { name: 'CSV Input', type: 'csvInput', description: 'Import data from CSV file' },
-                { name: 'API Source', type: 'apiSource', description: 'Fetch data from API' },
-                { name: 'User Input', type: 'userInput', description: 'Accept user defined input' }
-              ]
-            },
-            { 
-              name: 'Data Processing', 
-              id: 'dataProcessing',
-              nodes: [
-                { name: 'Transform', type: 'dataTransform', description: 'Transform data structure' },
-                { name: 'Clean Data', type: 'dataCleaning', description: 'Clean and format data' },
-                { name: 'Formula', type: 'formulaNode', description: 'Apply formula to data' },
-                { name: 'Filter', type: 'filterNode', description: 'Filter data based on conditions' }
-              ]
-            },
-            { 
-              name: 'AI', 
-              id: 'aiNode',
-              nodes: [
-                { name: 'Analyze', type: 'aiAnalyze', description: 'Analyze data with AI' },
-                { name: 'Classify', type: 'aiClassify', description: 'Classify data with AI' },
-                { name: 'Summarize', type: 'aiSummarize', description: 'Summarize data with AI' }
-              ]
-            },
-            { 
-              name: 'Output', 
-              id: 'output',
-              nodes: [
-                { name: 'Excel Output', type: 'excelOutput', description: 'Export data to Excel' },
-                { name: 'Dashboard', type: 'dashboardOutput', description: 'Create visualization dashboard' },
-                { name: 'Email Notify', type: 'emailNotify', description: 'Send email notification' }
-              ]
-            },
-            { 
-              name: 'Integrations', 
-              id: 'integration',
-              nodes: [
-                { name: 'Xero', type: 'xeroConnect', description: 'Connect to Xero accounting' },
-                { name: 'Salesforce', type: 'salesforceConnect', description: 'Connect to Salesforce CRM' },
-                { name: 'Google Sheets', type: 'googleSheetsConnect', description: 'Connect to Google Sheets' }
-              ]
-            },
-            { 
-              name: 'Control', 
-              id: 'control',
-              nodes: [
-                { name: 'Conditional', type: 'conditionalBranch', description: 'Create conditional branch' },
-                { name: 'Loop', type: 'loopNode', description: 'Loop through data' },
-                { name: 'Merge', type: 'mergeNode', description: 'Merge multiple data sources' }
-              ]
-            },
-            { 
-              name: 'Generators', 
-              id: 'spreadsheetGenerator',
-              nodes: [
-                { name: 'Spreadsheet', type: 'spreadsheetGenerator', description: 'Generate complete spreadsheet' }
-              ]
-            }
-          ]}
+          nodeCategories={nodeCategories}
         />
         
         {/* Save workflow dialog */}

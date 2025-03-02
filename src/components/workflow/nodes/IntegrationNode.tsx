@@ -4,13 +4,16 @@ import { Handle, Position } from '@xyflow/react';
 import { FileSearch, GripVertical } from 'lucide-react';
 import { NodeProps, IntegrationNodeData } from '@/types/workflow';
 
-const IntegrationNode = ({ data, selected }: NodeProps<IntegrationNodeData>) => {
-  // Create default data if none is provided
-  const nodeData: IntegrationNodeData = data || {
-    label: 'Integration',
-    type: 'xeroConnect',
-    config: {}
-  };
+// Default data if none is provided
+const defaultData: IntegrationNodeData = {
+  label: 'Integration',
+  type: 'xeroConnect',
+  config: {}
+};
+
+const IntegrationNode: React.FC<NodeProps<IntegrationNodeData>> = ({ data, selected }) => {
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-orange-500 shadow-md' : 'border-orange-200'}`}>

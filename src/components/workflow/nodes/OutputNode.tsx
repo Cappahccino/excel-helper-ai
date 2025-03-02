@@ -4,13 +4,16 @@ import { Handle, Position } from '@xyflow/react';
 import { FileText, GripVertical } from 'lucide-react';
 import { NodeProps, OutputNodeData } from '@/types/workflow';
 
-const OutputNode = ({ data, selected }: NodeProps<OutputNodeData>) => {
-  // Create default data if none is provided
-  const nodeData: OutputNodeData = data || {
-    label: 'Output',
-    type: 'excelOutput',
-    config: {}
-  };
+// Default data if none is provided
+const defaultData: OutputNodeData = {
+  label: 'Output',
+  type: 'excelOutput',
+  config: {}
+};
+
+const OutputNode: React.FC<NodeProps<OutputNodeData>> = ({ data, selected }) => {
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-red-500 shadow-md' : 'border-red-200'}`}>

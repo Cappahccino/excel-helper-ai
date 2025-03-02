@@ -4,13 +4,16 @@ import { Handle, Position } from '@xyflow/react';
 import { Database, GripVertical } from 'lucide-react';
 import { NodeProps, DataInputNodeData } from '@/types/workflow';
 
-const DataInputNode = ({ data, selected }: NodeProps<DataInputNodeData>) => {
-  // Create default data if none is provided
-  const nodeData: DataInputNodeData = data || {
-    label: 'Data Input',
-    type: 'excelInput',
-    config: {}
-  };
+// Default data if none is provided
+const defaultData: DataInputNodeData = {
+  label: 'Data Input',
+  type: 'excelInput',
+  config: {}
+};
+
+const DataInputNode: React.FC<NodeProps<DataInputNodeData>> = ({ data, selected }) => {
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-blue-500 shadow-md' : 'border-blue-200'}`}>

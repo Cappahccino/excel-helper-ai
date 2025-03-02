@@ -1,5 +1,5 @@
 
-import { Node, NodeProps as XyflowNodeProps, Edge } from '@xyflow/react';
+import { Node, NodeProps as XyflowNodeProps, Edge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -101,10 +101,10 @@ export type WorkflowNodeData =
   | ControlNodeData 
   | SpreadsheetGeneratorNodeData;
 
-// Modified XyFlow node props with specific data type
-export type NodeProps<T extends BaseNodeData = BaseNodeData> = XyflowNodeProps<T>;
+// Use ReactFlow's NodeProps for our nodes
+export type NodeProps<T extends BaseNodeData = BaseNodeData> = ReactFlowNodeProps<T>;
 
-// Add Workflow Node type that combines XyFlow's Node type with our specific data
+// Add Workflow Node type that extends XyFlow's Node type with our specific data
 export type WorkflowNode = Node<WorkflowNodeData>;
 
 // Workflow definition types
