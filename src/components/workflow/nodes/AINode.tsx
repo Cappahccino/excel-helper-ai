@@ -13,7 +13,7 @@ const defaultData: AINodeData = {
 
 const AINode: React.FC<NodeProps<AINodeData>> = ({ data, selected }) => {
   // Use provided data or fallback to default data
-  const nodeData = data || defaultData;
+  const nodeData = data ? data as AINodeData : defaultData;
   const { type, label, config } = nodeData;
 
   // Node color based on type or configuration

@@ -13,7 +13,7 @@ const defaultData: DataProcessingNodeData = {
 
 const DataProcessingNode: React.FC<NodeProps<DataProcessingNodeData>> = ({ data, selected }) => {
   // Use provided data or fallback to default data
-  const nodeData = data || defaultData;
+  const nodeData = data ? data as DataProcessingNodeData : defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>

@@ -13,7 +13,7 @@ const defaultData: OutputNodeData = {
 
 const OutputNode: React.FC<NodeProps<OutputNodeData>> = ({ data, selected }) => {
   // Use provided data or fallback to default data
-  const nodeData = data || defaultData;
+  const nodeData = data ? data as OutputNodeData : defaultData;
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-red-500 shadow-md' : 'border-red-200'}`}>

@@ -1,707 +1,580 @@
 
-import { useCallback, useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { 
   ReactFlow, 
   Background, 
   Controls, 
   MiniMap, 
-  Panel, 
   useNodesState, 
   useEdgesState, 
-  addEdge,
-  Node,
-  Edge,
+  addEdge, 
+  Panel,
   Connection,
-  OnNodesChange,
-  OnEdgesChange
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import { Loader2, Save, Play, Plus, Settings, FileJson, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SidebarProvider } from "@/components/ui/sidebar-new";
-import { mapDatabaseWorkflowToWorkflow, WorkflowNode, WorkflowDefinition, WorkflowNodeData } from "@/types/workflow";
-import DataInputNode from "@/components/workflow/nodes/DataInputNode";
-import DataProcessingNode from "@/components/workflow/nodes/DataProcessingNode";
-import AINode from "@/components/workflow/nodes/AINode";
-import OutputNode from "@/components/workflow/nodes/OutputNode";
-import IntegrationNode from "@/components/workflow/nodes/IntegrationNode";
-import ControlNode from "@/components/workflow/nodes/ControlNode";
-import SpreadsheetGeneratorNode from "@/components/workflow/nodes/SpreadsheetGeneratorNode";
-import NodeLibrary from "@/components/workflow/NodeLibrary";
-import NodeConfigPanel from "@/components/workflow/NodeConfigPanel";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter
-} from "@/components/ui/dialog";
+  NodeTypes,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { v4 as uuidv4 } from 'uuid';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { Save, Play, Undo, Redo } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { useMediaQuery } from '@/hooks/use-media-query';
 
-// Define node types for the flow
-const nodeTypes = {
-  dataInput: DataInputNode,
-  dataProcessing: DataProcessingNode,
-  aiNode: AINode,
-  output: OutputNode,
-  integration: IntegrationNode,
-  control: ControlNode,
-  spreadsheetGenerator: SpreadsheetGeneratorNode
-};
+// Node components
+import DataInputNode from '@/components/workflow/nodes/DataInputNode';
+import DataProcessingNode from '@/components/workflow/nodes/DataProcessingNode';
+import AINode from '@/components/workflow/nodes/AINode';
+import OutputNode from '@/components/workflow/nodes/OutputNode';
+import IntegrationNode from '@/components/workflow/nodes/IntegrationNode';
+import ControlNode from '@/components/workflow/nodes/ControlNode';
+import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 
-interface NodeCategory {
-  name: string;
-  id: string;
-  nodes: Array<{
-    name: string;
-    type: string;
-    description: string;
-  }>;
-}
+// Import types
+import { WorkflowNode, WorkflowNodeData, Edge } from '@/types/workflow';
 
+// Define component for Canvas
 const Canvas = () => {
-  // Router and state hooks
-  const { workflowId } = useParams();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  
-  // Workflow state
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
+  const { workflowId } = useParams<{ workflowId: string }>();
+  const [workflowName, setWorkflowName] = useState('New Workflow');
+  const [workflowDescription, setWorkflowDescription] = useState('');
+  const [nodeLibraryOpen, setNodeLibraryOpen] = useState(false);
+  const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [workflowName, setWorkflowName] = useState("");
-  const [workflowDesc, setWorkflowDesc] = useState("");
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [autoSaveTimeout, setAutoSaveTimeout] = useState<NodeJS.Timeout | null>(null);
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodeCategories, setNodeCategories] = useState<any[]>([]);
+  const [loadingWorkflow, setLoadingWorkflow] = useState(true);
+  const [loadingExecution, setLoadingExecution] = useState(false);
+  const [history, setHistory] = useState<{ nodes: WorkflowNode[]; edges: Edge[] }[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // Load workflow data if workflowId is provided
-  const { 
-    data: workflow, 
-    isLoading: workflowLoading,
-    refetch: refetchWorkflow
-  } = useQuery({
-    queryKey: ['workflow', workflowId],
-    queryFn: async () => {
-      if (!workflowId) return null;
+  // Setup node types
+  const nodeTypes: NodeTypes = {
+    dataInput: DataInputNode,
+    dataProcessing: DataProcessingNode,
+    aiNode: AINode,
+    outputNode: OutputNode,
+    integrationNode: IntegrationNode,
+    controlNode: ControlNode,
+    spreadsheetGenerator: SpreadsheetGeneratorNode,
+  };
+
+  // Load workflow data
+  useEffect(() => {
+    if (workflowId && workflowId !== 'new') {
+      fetchWorkflow(workflowId);
+    } else {
+      setLoadingWorkflow(false);
+      // Initialize with empty history
+      setHistory([{ nodes: [], edges: [] }]);
+      setHistoryIndex(0);
+    }
+    
+    // Setup node categories
+    setupNodeCategories();
+  }, [workflowId]);
+
+  // Setup node categories for the node library
+  const setupNodeCategories = () => {
+    const categories = [
+      {
+        id: 'input',
+        name: 'Input',
+        description: 'Data input nodes',
+        nodes: [
+          { name: 'Excel Input', type: 'excelInput', description: 'Import data from Excel files' },
+          { name: 'CSV Input', type: 'csvInput', description: 'Import data from CSV files' },
+          { name: 'API Source', type: 'apiSource', description: 'Fetch data from APIs' },
+          { name: 'User Input', type: 'userInput', description: 'Get input from users' }
+        ]
+      },
+      {
+        id: 'processing',
+        name: 'Processing',
+        description: 'Data transformation nodes',
+        nodes: [
+          { name: 'Transform', type: 'dataTransform', description: 'Transform data structure' },
+          { name: 'Data Cleaning', type: 'dataCleaning', description: 'Clean and prepare data' },
+          { name: 'Formula', type: 'formulaNode', description: 'Apply formulas to data' },
+          { name: 'Filter', type: 'filterNode', description: 'Filter data based on conditions' }
+        ]
+      },
+      {
+        id: 'ai',
+        name: 'AI & Analytics',
+        description: 'AI-powered data analysis',
+        nodes: [
+          { name: 'AI Analysis', type: 'aiAnalyze', description: 'Analyze data with AI' },
+          { name: 'AI Classification', type: 'aiClassify', description: 'Categorize data with AI' },
+          { name: 'AI Summarization', type: 'aiSummarize', description: 'Summarize data with AI' }
+        ]
+      },
+      {
+        id: 'output',
+        name: 'Output',
+        description: 'Data output destinations',
+        nodes: [
+          { name: 'Excel Output', type: 'excelOutput', description: 'Export data to Excel' },
+          { name: 'Dashboard', type: 'dashboardOutput', description: 'Create interactive dashboards' },
+          { name: 'Email Notification', type: 'emailNotify', description: 'Send email notifications' }
+        ]
+      },
+      {
+        id: 'integration',
+        name: 'Integrations',
+        description: 'Connect to external services',
+        nodes: [
+          { name: 'Xero', type: 'xeroConnect', description: 'Connect to Xero accounting' },
+          { name: 'Salesforce', type: 'salesforceConnect', description: 'Connect to Salesforce CRM' },
+          { name: 'Google Sheets', type: 'googleSheetsConnect', description: 'Connect to Google Sheets' }
+        ]
+      },
+      {
+        id: 'control',
+        name: 'Flow Control',
+        description: 'Control workflow execution',
+        nodes: [
+          { name: 'Condition', type: 'conditionalBranch', description: 'Branch based on conditions' },
+          { name: 'Loop', type: 'loopNode', description: 'Loop over data items' },
+          { name: 'Merge', type: 'mergeNode', description: 'Merge multiple data streams' }
+        ]
+      },
+      {
+        id: 'spreadsheet',
+        name: 'Spreadsheet',
+        description: 'Spreadsheet generation',
+        nodes: [
+          { name: 'Spreadsheet Generator', type: 'spreadsheetGenerator', description: 'Generate complex Excel spreadsheets' }
+        ]
+      }
+    ];
+    
+    setNodeCategories(categories);
+  };
+
+  // Fetch workflow from Supabase
+  const fetchWorkflow = async (id: string) => {
+    try {
       const { data, error } = await supabase
         .from('workflows')
         .select('*')
-        .eq('id', workflowId)
-        .maybeSingle();
-        
+        .eq('id', id)
+        .single();
+      
       if (error) throw error;
       
       if (data) {
-        const parsedWorkflow = mapDatabaseWorkflowToWorkflow(data);
-        return parsedWorkflow;
+        setWorkflowName(data.name);
+        setWorkflowDescription(data.description || '');
+        
+        const definition = typeof data.definition === 'string'
+          ? JSON.parse(data.definition)
+          : data.definition;
+        
+        if (definition && definition.nodes && definition.edges) {
+          setNodes(definition.nodes);
+          setEdges(definition.edges);
+          
+          // Initialize history with the loaded workflow
+          setHistory([{ nodes: definition.nodes, edges: definition.edges }]);
+          setHistoryIndex(0);
+        }
       }
-      return null;
-    },
-    enabled: !!workflowId
-  });
-
-  // Initialize workflow from data
-  useEffect(() => {
-    if (workflow) {
-      setWorkflowName(workflow.name);
-      setWorkflowDesc(workflow.description || "");
-      setNodes(workflow.definition.nodes as Node[]);
-      setEdges(workflow.definition.edges as Edge[]);
-    }
-  }, [workflow, setNodes, setEdges]);
-
-  // Create a new workflow and navigate to it
-  const createNewWorkflow = async () => {
-    try {
-      setIsProcessing(true);
-      
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData?.user) throw new Error("User not authenticated");
-      
-      const { data, error } = await supabase.from('workflows').insert({
-        name: 'Untitled Workflow',
-        description: '',
-        created_by: userData.user.id,
-        definition: JSON.stringify({ nodes: [], edges: [] }),
-        status: 'draft',
-        trigger_type: 'manual',
-        is_template: false
-      }).select().single();
-      
-      if (error) throw error;
-      
-      navigate(`/canvas/${data.id}`);
-      toast({
-        title: "Success",
-        description: "New workflow created",
-      });
     } catch (error) {
-      console.error('Failed to create workflow:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create workflow",
-        variant: "destructive",
-      });
+      console.error('Error loading workflow:', error);
+      toast.error('Failed to load workflow');
     } finally {
-      setIsProcessing(false);
+      setLoadingWorkflow(false);
     }
   };
 
-  // Save current workflow
-  const saveWorkflow = async (name?: string, description?: string) => {
-    if (!workflowId) return;
-    
+  // Record history when nodes or edges change
+  const recordHistory = useCallback(
+    (newNodes: WorkflowNode[], newEdges: Edge[]) => {
+      if (historyIndex < history.length - 1) {
+        // If we're not at the end of the history, truncate it
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push({ nodes: newNodes, edges: newEdges });
+        setHistory(newHistory);
+        setHistoryIndex(historyIndex + 1);
+      } else {
+        // Just add to the end of the history
+        setHistory([...history, { nodes: newNodes, edges: newEdges }]);
+        setHistoryIndex(historyIndex + 1);
+      }
+    },
+    [history, historyIndex]
+  );
+
+  // Handle undo
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      const prevState = history[prevIndex];
+      setNodes(prevState.nodes);
+      setEdges(prevState.edges);
+      setHistoryIndex(prevIndex);
+    }
+  };
+
+  // Handle redo
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const nextState = history[nextIndex];
+      setNodes(nextState.nodes);
+      setEdges(nextState.edges);
+      setHistoryIndex(nextIndex);
+    }
+  };
+
+  // Connect nodes
+  const onConnect = useCallback((connection: Connection) => {
+    const newEdges = addEdge({
+      ...connection,
+      animated: true,
+      style: { stroke: '#555' },
+    }, edges);
+    setEdges(newEdges);
+    recordHistory(nodes, newEdges);
+  }, [nodes, edges, recordHistory]);
+
+  // Handle node click
+  const onNodeClick = useCallback((event: React.MouseEvent, node: WorkflowNode) => {
+    setSelectedNode(node);
+    setConfigPanelOpen(true);
+  }, []);
+
+  // Save workflow
+  const saveWorkflow = async () => {
     try {
-      setIsProcessing(true);
-      
-      const saveData = {
-        name: name || workflowName || "Untitled Workflow",
-        description: description || workflowDesc || "",
-        definition: JSON.stringify({ nodes, edges }),
+      const workflow = {
+        name: workflowName,
+        description: workflowDescription,
+        definition: {
+          nodes,
+          edges,
+        },
+        user_id: (await supabase.auth.getUser()).data.user?.id,
       };
       
-      const { error } = await supabase
-        .from('workflows')
-        .update(saveData)
-        .eq('id', workflowId);
-        
-      if (error) throw error;
+      let response;
       
-      setWorkflowName(saveData.name);
-      setWorkflowDesc(saveData.description);
+      if (workflowId && workflowId !== 'new') {
+        // Update existing workflow
+        response = await supabase
+          .from('workflows')
+          .update(workflow)
+          .eq('id', workflowId);
+      } else {
+        // Create new workflow
+        response = await supabase
+          .from('workflows')
+          .insert(workflow);
+      }
       
-      toast({
-        title: "Success",
-        description: "Workflow saved successfully",
-      });
+      if (response.error) throw response.error;
       
-      setShowSaveDialog(false);
-      refetchWorkflow();
+      toast.success('Workflow saved successfully');
     } catch (error) {
       console.error('Error saving workflow:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save workflow",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
+      toast.error('Failed to save workflow');
     }
   };
 
-  // Execute workflow
+  // Run workflow
   const runWorkflow = async () => {
-    if (!workflowId) return;
+    if (!workflowId || workflowId === 'new') {
+      toast.error('Please save the workflow before running it');
+      return;
+    }
+    
+    setLoadingExecution(true);
     
     try {
-      setIsProcessing(true);
-      
-      const { data, error } = await supabase
-        .rpc('start_workflow_execution', { 
+      const { data, error } = await supabase.functions.invoke('run-workflow', {
+        body: {
           workflow_id: workflowId,
-          inputs: {}
-        });
-        
+        },
+      });
+      
       if (error) throw error;
       
-      toast({
-        title: "Workflow Started",
-        description: `Execution ID: ${data?.execution_id || 'unknown'}`,
-      });
+      toast.success(`Workflow execution started: ${data.execution_id}`);
     } catch (error) {
       console.error('Error running workflow:', error);
-      toast({
-        title: "Error",
-        description: "Failed to run workflow",
-        variant: "destructive",
-      });
+      toast.error('Failed to run workflow');
     } finally {
-      setIsProcessing(false);
+      setLoadingExecution(false);
     }
   };
 
-  // Handle node selection
-  const onNodeClick = useCallback((_: any, node: Node) => {
-    setSelectedNode(node as WorkflowNode);
-    setIsConfigOpen(true);
-  }, []);
+  // Update node configuration
+  const handleNodeConfigUpdate = (updatedConfig: Partial<WorkflowNodeData>) => {
+    if (!selectedNode) return;
+    
+    const updatedNodes = nodes.map(node => {
+      if (node.id === selectedNode.id) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            ...updatedConfig,
+          },
+        };
+      }
+      return node;
+    });
+    
+    setNodes(updatedNodes);
+    recordHistory(updatedNodes, edges);
+    
+    // Update selected node
+    const updatedNode = updatedNodes.find(n => n.id === selectedNode.id);
+    if (updatedNode) {
+      setSelectedNode(updatedNode);
+    }
+  };
 
-  // Handle node deselection
-  const onPaneClick = useCallback(() => {
+  // Delete node
+  const handleNodeDelete = () => {
+    if (!selectedNode) return;
+    
+    const newNodes = nodes.filter(n => n.id !== selectedNode.id);
+    const newEdges = edges.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id);
+    
+    setNodes(newNodes);
+    setEdges(newEdges);
     setSelectedNode(null);
-    setIsConfigOpen(false);
-  }, []);
+    setConfigPanelOpen(false);
+    
+    recordHistory(newNodes, newEdges);
+  };
 
-  // Handle edge connections
-  const onConnect = useCallback((connection: Connection) => {
-    setEdges(edges => addEdge(connection, edges));
-    
-    // Trigger autosave when connecting edges
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-    
-    const timeoutId = setTimeout(() => {
-      if (workflowId) saveWorkflow();
-    }, 2000);
-    
-    setAutoSaveTimeout(timeoutId);
-  }, [setEdges, workflowId, autoSaveTimeout, saveWorkflow]);
-
-  // Handle node configuration updates
-  const updateNodeConfig = useCallback((config: any) => {
+  // Duplicate node
+  const handleNodeDuplicate = () => {
     if (!selectedNode) return;
     
-    setNodes(nodes => 
-      nodes.map(node => 
-        node.id === selectedNode.id 
-          ? { 
-              ...node, 
-              data: config
-            } 
-          : node
-      )
-    );
-    
-    // Trigger autosave when updating node config
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-    
-    const timeoutId = setTimeout(() => {
-      if (workflowId) saveWorkflow();
-    }, 2000);
-    
-    setAutoSaveTimeout(timeoutId);
-  }, [selectedNode, setNodes, workflowId, autoSaveTimeout, saveWorkflow]);
-
-  // Handle adding new nodes from the library
-  const onAddNode = useCallback((nodeType: string, nodeCategory: string, nodeName: string) => {
-    // Create unique ID
-    const id = `${nodeType}_${Date.now()}`;
-    
-    // Define default config based on node type
-    let defaultConfig = {};
-    if (nodeType.includes('excel') || nodeType.includes('csv')) {
-      defaultConfig = { fileId: null, hasHeaders: true };
-    } else if (nodeType.includes('ai')) {
-      defaultConfig = { prompt: "", analysisType: "general" };
-    } else if (nodeType.includes('spreadsheet')) {
-      defaultConfig = { filename: "output.xlsx", sheets: [] };
-    }
-    
-    // Create new node
-    const newNode: WorkflowNode = {
-      id,
-      type: nodeCategory,
-      position: { x: 100, y: 100 },
-      data: {
-        label: nodeName,
-        type: nodeType,
-        config: defaultConfig
-      } as WorkflowNodeData
-    };
-    
-    setNodes((nodes) => [...nodes, newNode as Node]);
-    setIsLibraryOpen(false);
-    
-    // Trigger autosave when adding new node
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-    
-    const timeoutId = setTimeout(() => {
-      if (workflowId) saveWorkflow();
-    }, 2000);
-    
-    setAutoSaveTimeout(timeoutId);
-  }, [setNodes, workflowId, autoSaveTimeout, saveWorkflow]);
-
-  // Handle node deletion
-  const deleteSelectedNode = useCallback(() => {
-    if (!selectedNode) return;
-    
-    // Remove connected edges
-    setEdges(edges => 
-      edges.filter(edge => 
-        edge.source !== selectedNode.id && edge.target !== selectedNode.id
-      )
-    );
-    
-    // Remove node
-    setNodes(nodes => 
-      nodes.filter(node => node.id !== selectedNode.id)
-    );
-    
-    setSelectedNode(null);
-    setIsConfigOpen(false);
-    
-    // Trigger autosave when deleting node
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-    
-    const timeoutId = setTimeout(() => {
-      if (workflowId) saveWorkflow();
-    }, 2000);
-    
-    setAutoSaveTimeout(timeoutId);
-  }, [selectedNode, setNodes, setEdges, workflowId, autoSaveTimeout, saveWorkflow]);
-
-  // Handle node duplication
-  const duplicateSelectedNode = useCallback(() => {
-    if (!selectedNode) return;
-    
-    // Create duplicate with new ID
-    const newId = `${selectedNode.id}_copy_${Date.now()}`;
+    const nodeId = `node-${uuidv4()}`;
     const duplicatedNode = {
       ...selectedNode,
-      id: newId,
+      id: nodeId,
       position: {
-        x: (selectedNode.position?.x || 0) + 50,
-        y: (selectedNode.position?.y || 0) + 50
+        x: selectedNode.position.x + 50,
+        y: selectedNode.position.y + 50,
+      },
+      selected: false,
+    };
+    
+    const newNodes = [...nodes, duplicatedNode];
+    setNodes(newNodes);
+    recordHistory(newNodes, edges);
+  };
+
+  // Add node to the canvas
+  const handleAddNode = (nodeType: string, nodeCategory: string, nodeName: string) => {
+    // Find the category and node definition
+    const category = nodeCategories.find(c => c.id === nodeCategory);
+    const nodeDefinition = category?.nodes.find(n => n.type === nodeType);
+    
+    if (!nodeDefinition) {
+      console.error(`Node type ${nodeType} not found in category ${nodeCategory}`);
+      return;
+    }
+    
+    // Map node category to component type
+    const getNodeComponentType = (category: string) => {
+      switch (category) {
+        case 'input': return 'dataInput';
+        case 'processing': return 'dataProcessing';
+        case 'ai': return 'aiNode';
+        case 'output': return 'outputNode';
+        case 'integration': return 'integrationNode';
+        case 'control': return 'controlNode';
+        case 'spreadsheet': return 'spreadsheetGenerator';
+        default: return 'dataInput';
       }
     };
     
-    setNodes(nodes => [...nodes, duplicatedNode as Node]);
-    
-    // Trigger autosave when duplicating node
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-    
-    const timeoutId = setTimeout(() => {
-      if (workflowId) saveWorkflow();
-    }, 2000);
-    
-    setAutoSaveTimeout(timeoutId);
-  }, [selectedNode, setNodes, workflowId, autoSaveTimeout, saveWorkflow]);
-
-  // Cleanup autosave on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimeout) {
-        clearTimeout(autoSaveTimeout);
+    // Create default config for the node
+    const getDefaultConfig = (type: string) => {
+      switch (type) {
+        case 'excelInput':
+        case 'csvInput':
+          return { fileId: null, hasHeaders: true };
+        case 'spreadsheetGenerator':
+          return { filename: 'generated.xlsx', sheets: [] };
+        default:
+          return {};
       }
     };
-  }, [autoSaveTimeout]);
-
-  // Node categories for library
-  const nodeCategories: NodeCategory[] = [
-    { 
-      name: 'Data Input', 
-      id: 'dataInput',
-      nodes: [
-        { name: 'Excel Input', type: 'excelInput', description: 'Import data from Excel file' },
-        { name: 'CSV Input', type: 'csvInput', description: 'Import data from CSV file' },
-        { name: 'API Source', type: 'apiSource', description: 'Fetch data from API' },
-        { name: 'User Input', type: 'userInput', description: 'Accept user defined input' }
-      ]
-    },
-    { 
-      name: 'Data Processing', 
-      id: 'dataProcessing',
-      nodes: [
-        { name: 'Transform', type: 'dataTransform', description: 'Transform data structure' },
-        { name: 'Clean Data', type: 'dataCleaning', description: 'Clean and format data' },
-        { name: 'Formula', type: 'formulaNode', description: 'Apply formula to data' },
-        { name: 'Filter', type: 'filterNode', description: 'Filter data based on conditions' }
-      ]
-    },
-    { 
-      name: 'AI', 
-      id: 'aiNode',
-      nodes: [
-        { name: 'Analyze', type: 'aiAnalyze', description: 'Analyze data with AI' },
-        { name: 'Classify', type: 'aiClassify', description: 'Classify data with AI' },
-        { name: 'Summarize', type: 'aiSummarize', description: 'Summarize data with AI' }
-      ]
-    },
-    { 
-      name: 'Output', 
-      id: 'output',
-      nodes: [
-        { name: 'Excel Output', type: 'excelOutput', description: 'Export data to Excel' },
-        { name: 'Dashboard', type: 'dashboardOutput', description: 'Create visualization dashboard' },
-        { name: 'Email Notify', type: 'emailNotify', description: 'Send email notification' }
-      ]
-    },
-    { 
-      name: 'Integrations', 
-      id: 'integration',
-      nodes: [
-        { name: 'Xero', type: 'xeroConnect', description: 'Connect to Xero accounting' },
-        { name: 'Salesforce', type: 'salesforceConnect', description: 'Connect to Salesforce CRM' },
-        { name: 'Google Sheets', type: 'googleSheetsConnect', description: 'Connect to Google Sheets' }
-      ]
-    },
-    { 
-      name: 'Control', 
-      id: 'control',
-      nodes: [
-        { name: 'Conditional', type: 'conditionalBranch', description: 'Create conditional branch' },
-        { name: 'Loop', type: 'loopNode', description: 'Loop through data' },
-        { name: 'Merge', type: 'mergeNode', description: 'Merge multiple data sources' }
-      ]
-    },
-    { 
-      name: 'Generators', 
-      id: 'spreadsheetGenerator',
-      nodes: [
-        { name: 'Spreadsheet', type: 'spreadsheetGenerator', description: 'Generate complete spreadsheet' }
-      ]
-    }
-  ];
+    
+    // Create the new node
+    const nodeId = `node-${uuidv4()}`;
+    const newNode = {
+      id: nodeId,
+      type: getNodeComponentType(nodeCategory),
+      position: { x: 100, y: 100 }, // Default position, can be adjusted later
+      data: {
+        type: nodeType,
+        label: nodeName,
+        config: getDefaultConfig(nodeType),
+      },
+    } as WorkflowNode;
+    
+    // Add node to canvas
+    const newNodes = [...nodes, newNode];
+    setNodes(newNodes);
+    recordHistory(newNodes, edges);
+    
+    // Close node library
+    setNodeLibraryOpen(false);
+  };
 
   return (
-    <SidebarProvider>
-      <div className="flex flex-col h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => navigate('/workflows')}
+    <div className="h-screen flex flex-col">
+      {/* Top toolbar */}
+      <div className="bg-white border-b p-2 flex justify-between items-center">
+        <div className="flex items-center">
+          <h1 className="font-bold text-lg mr-4">{workflowName}</h1>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
             >
-              <ArrowLeft className="h-5 w-5" />
+              <Undo className="h-4 w-4" />
             </Button>
-            <div>
-              <h1 className="text-xl font-semibold">
-                {workflowName || 'Untitled Workflow'}
-              </h1>
-              <p className="text-sm text-gray-500">
-                {workflowDesc || 'No description'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {!workflowId ? (
-              <Button 
-                onClick={createNewWorkflow} 
-                disabled={isProcessing}
-              >
-                {isProcessing ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Plus className="h-4 w-4 mr-2" />
-                )}
-                Create Workflow
-              </Button>
-            ) : (
-              <>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowSaveDialog(true)} 
-                  disabled={isProcessing}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save
-                </Button>
-                <Button 
-                  variant="default" 
-                  onClick={runWorkflow} 
-                  disabled={isProcessing || nodes.length === 0}
-                >
-                  {isProcessing ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Play className="h-4 w-4 mr-2" />
-                  )}
-                  Run
-                </Button>
-              </>
-            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRedo}
+              disabled={historyIndex >= history.length - 1}
+            >
+              <Redo className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-      
-        {/* Main content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Workflow canvas */}
-          <div className="flex-1 h-full" ref={reactFlowWrapper}>
-            {workflowLoading ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-2">Loading workflow...</span>
-              </div>
-            ) : (
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                nodeTypes={nodeTypes}
-                fitView
-                minZoom={0.1}
-                maxZoom={1.5}
-                proOptions={{ hideAttribution: true }}
-              >
-                <Panel position="top-right">
-                  <Tabs defaultValue="nodes" className="w-[300px]">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="nodes">Nodes</TabsTrigger>
-                      <TabsTrigger value="settings">Settings</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="nodes" className="bg-white border rounded-md mt-2">
-                      <Button 
-                        className="w-full"
-                        onClick={() => setIsLibraryOpen(true)}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Node
-                      </Button>
-                    </TabsContent>
-                    <TabsContent value="settings" className="bg-white border rounded-md mt-2 p-4">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Workflow Name</label>
-                          <Input 
-                            value={workflowName} 
-                            onChange={(e) => setWorkflowName(e.target.value)}
-                            placeholder="Enter workflow name"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Description</label>
-                          <Input 
-                            value={workflowDesc} 
-                            onChange={(e) => setWorkflowDesc(e.target.value)}
-                            placeholder="Enter description"
-                          />
-                        </div>
-                        <Button 
-                          className="w-full"
-                          onClick={() => saveWorkflow(workflowName, workflowDesc)}
-                          disabled={isProcessing}
-                        >
-                          {isProcessing ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          ) : (
-                            <Save className="h-4 w-4 mr-2" />
-                          )}
-                          Save Changes
-                        </Button>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </Panel>
-                <Controls />
-                <MiniMap 
-                  nodeStrokeColor={(n) => {
-                    if (n.id === selectedNode?.id) return '#ff0072';
-                    return '#ddd';
-                  }}
-                  nodeColor={(n) => {
-                    switch (n.type) {
-                      case 'dataInput': return '#d0eaff';
-                      case 'dataProcessing': return '#e6f9e6';
-                      case 'aiNode': return '#f8e3ff';
-                      case 'output': return '#ffe6e6';
-                      case 'integration': return '#fff4cc';
-                      case 'control': return '#e6e6ff';
-                      case 'spreadsheetGenerator': return '#ccf2e8';
-                      default: return '#eee';
-                    }
-                  }}
-                />
-                <Background gap={16} size={1} />
-              </ReactFlow>
-            )}
-          </div>
-          
-          {/* Config panel */}
-          {isConfigOpen && selectedNode && (
-            <div className="w-96 border-l border-gray-200 bg-white overflow-auto">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="font-semibold">Node Configuration</h2>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => setIsConfigOpen(false)}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </div>
-              <ScrollArea className="h-[calc(100vh-10rem)]">
-                <NodeConfigPanel 
-                  node={selectedNode}
-                  onUpdateConfig={updateNodeConfig}
-                  onDelete={deleteSelectedNode}
-                  onDuplicate={duplicateSelectedNode}
-                  onClose={() => setIsConfigOpen(false)}
-                  readOnly={false}
-                />
-              </ScrollArea>
-            </div>
-          )}
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={saveWorkflow}
+          >
+            <Save className="h-4 w-4 mr-1" />
+            Save
+          </Button>
+          <Button 
+            size="sm" 
+            variant="default"
+            onClick={runWorkflow}
+            disabled={loadingExecution || nodes.length === 0}
+          >
+            <Play className="h-4 w-4 mr-1" />
+            Run
+          </Button>
         </div>
-        
-        {/* Node library dialog */}
-        <NodeLibrary 
-          isOpen={isLibraryOpen}
-          onClose={() => setIsLibraryOpen(false)}
-          onAddNode={onAddNode}
-          nodeCategories={nodeCategories}
-        />
-        
-        {/* Save workflow dialog */}
-        <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Save Workflow</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Workflow Name</label>
-                <Input 
-                  value={workflowName} 
-                  onChange={(e) => setWorkflowName(e.target.value)}
-                  placeholder="Enter workflow name"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
-                <Input 
-                  value={workflowDesc} 
-                  onChange={(e) => setWorkflowDesc(e.target.value)}
-                  placeholder="Enter workflow description (optional)"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={() => saveWorkflow(workflowName, workflowDesc)}
-                disabled={isProcessing}
-              >
-                {isProcessing ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                Save
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
-    </SidebarProvider>
+      
+      {/* Workflow canvas */}
+      <div className="flex-grow relative">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          fitView
+          attributionPosition="bottom-right"
+        >
+          <Background />
+          <Controls />
+          <MiniMap />
+          
+          <Panel position="top-left" className="m-2">
+            <Button 
+              onClick={() => setNodeLibraryOpen(true)}
+              size="sm"
+            >
+              Add Node
+            </Button>
+          </Panel>
+        </ReactFlow>
+        
+        {/* Node library */}
+        <Sheet open={nodeLibraryOpen} onOpenChange={setNodeLibraryOpen}>
+          <SheetContent side={isMobile ? "bottom" : "left"} className={isMobile ? "h-[80vh]" : ""}>
+            <div className="h-full overflow-auto">
+              <h2 className="font-bold text-xl mb-4">Node Library</h2>
+              
+              <div className="space-y-6">
+                {nodeCategories.map((category) => (
+                  <div key={category.id} className="space-y-2">
+                    <h3 className="font-semibold text-md">{category.name}</h3>
+                    <p className="text-sm text-gray-500">{category.description}</p>
+                    
+                    <div className="grid grid-cols-1 gap-2">
+                      {category.nodes.map((node) => (
+                        <div 
+                          key={node.type}
+                          className="p-3 bg-gray-50 rounded-md cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleAddNode(node.type, category.id, node.name)}
+                        >
+                          <div className="font-medium">{node.name}</div>
+                          <div className="text-xs text-gray-500">{node.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+        
+        {/* Node configuration panel */}
+        {selectedNode && (
+          <Sheet open={configPanelOpen} onOpenChange={setConfigPanelOpen}>
+            <SheetContent side="right" className="w-[400px]">
+              <div className="h-full overflow-auto">
+                <h2 className="font-bold text-xl mb-4">Node Configuration</h2>
+                
+                {/* Node config form will go here */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-semibold">{selectedNode.data.label}</h3>
+                    <p className="text-sm text-gray-500">{selectedNode.data.type}</p>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={handleNodeDuplicate}
+                    >
+                      Duplicate
+                    </Button>
+                    <Button 
+                      variant="destructive"
+                      onClick={handleNodeDelete}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                  
+                  {/* Todo: Add specific config UI based on node type */}
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
+      </div>
+    </div>
   );
 };
 
