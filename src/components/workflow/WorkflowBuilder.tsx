@@ -26,6 +26,7 @@ import AINode from './nodes/AINode';
 import DataInputNode from './nodes/DataInputNode';
 import DataProcessingNode from './nodes/DataProcessingNode';
 import OutputNode from './nodes/OutputNode';
+import FileUploadNode from './nodes/FileUploadNode'
 import IntegrationNode from './nodes/IntegrationNode';
 import ControlNode from './nodes/ControlNode';
 import SpreadsheetGeneratorNode from './nodes/SpreadsheetGeneratorNode';
@@ -50,6 +51,7 @@ import {
 const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
   dataProcessing: DataProcessingNode,
+  fileUpload: FileUploadNode,
   aiNode: AINode,
   outputNode: OutputNode,
   integrationNode: IntegrationNode,
