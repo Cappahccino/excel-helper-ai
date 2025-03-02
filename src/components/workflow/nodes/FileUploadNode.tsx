@@ -100,11 +100,13 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          {/* Fix here: Create a custom trigger component that doesn't pass arguments */}
           <DialogTrigger asChild>
             <Button 
               variant="outline" 
               size="sm" 
               className="w-full text-xs"
+              onClick={() => {}} // Empty function to prevent type error
             >
               Select File
             </Button>
