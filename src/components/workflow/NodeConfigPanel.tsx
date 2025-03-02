@@ -1,229 +1,462 @@
 import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Copy, Save, Trash } from "lucide-react";
+import { X, Trash2, Copy } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WorkflowNode, NodeConfigPanelProps } from '@/types/workflow';
+import { ExcelPreview } from '@/components/ExcelPreview';
 
-const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
-  node,
-  onUpdateConfig,
-  onDelete,
+export function NodeConfigPanel({ 
+  node, 
+  onUpdateConfig, 
+  onDelete, 
   onDuplicate,
   onClose,
-  readOnly = false
-}) => {
-  const nodeData = node.data;
-
-  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdateConfig({ 
-      ...nodeData,
-      label: e.target.value 
-    });
-  };
-
+  readOnly = false 
+}: NodeConfigPanelProps) {
+  
+  // Handle updates to the node configuration
   const handleConfigChange = (key: string, value: any) => {
-    onUpdateConfig({
-      ...nodeData,
-      config: {
-        ...nodeData.config,
-        [key]: value,
-      },
-    });
-  };
-
-  const renderNodeSpecificConfig = () => {
-    if (!nodeData) return null;
+    if (readOnly) return;
     
-    switch (nodeData.type) {
-      case 'excelInput':
-      case 'csvInput':
-      case 'apiSource':
-        return (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="fileId">File ID</Label>
-              <Input
-                id="fileId"
-                value={nodeData.config?.fileId || ''}
-                onChange={(e) => handleConfigChange('fileId', e.target.value)}
-                readOnly={readOnly}
-              />
-            </div>
-            
-            <div className="space-y-2 mt-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="hasHeaders">Has Headers</Label>
-                <Switch
-                  id="hasHeaders"
-                  checked={!!nodeData.config?.hasHeaders}
-                  onCheckedChange={(checked) => handleConfigChange('hasHeaders', checked)}
-                  disabled={readOnly}
-                />
-              </div>
-            </div>
-          </>
-        );
-      
-      case 'formulaNode':
-        return (
+    const updatedConfig = {
+      ...node.data?.config,
+      [key]: value
+    };
+    
+    onUpdateConfig(updatedConfig);
+  };
+  
+  const renderConfigFields = () => {
+    const nodeType = node.data?.type;
+    
+    if (!nodeType) {
+      return <p className="text-sm text-muted-foreground">No configuration available</p>;
+    }
+    
+    // File Upload Node Config
+    if (nodeType === 'fileUpload') {
+      return (
+        <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="formula">Formula</Label>
-            <Textarea
-              id="formula"
-              value={nodeData.config?.formula || ''}
-              onChange={(e) => handleConfigChange('formula', e.target.value)}
-              readOnly={readOnly}
-              rows={5}
-              placeholder="Enter formula e.g. = A1 + B2 * C3"
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
             />
           </div>
-        );
-      
-      case 'aiAnalyze':
-        return (
-          <div className="space-y-4">
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="has-headers">File Has Headers</Label>
+              <Switch
+                id="has-headers"
+                checked={node.data?.config?.hasHeaders || false}
+                onCheckedChange={(checked) => handleConfigChange('hasHeaders', checked)}
+                disabled={readOnly}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Enable if your spreadsheet's first row contains column names
+            </p>
+          </div>
+          
+          {node.data?.config?.fileId && (
             <div className="space-y-2">
-              <Label htmlFor="analysisType">Analysis Type</Label>
+              <Label>File Preview</Label>
+              <div className="border rounded-md overflow-hidden">
+                <ExcelPreview sessionFileId={node.data.config.fileId} />
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    // Data Input Node Config
+    if (nodeType === 'excelInput' || nodeType === 'csvInput') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="file-id">File Source</Label>
+            <Select
+              value={node.data?.config?.fileId || ''}
+              onValueChange={(value) => handleConfigChange('fileId', value)}
+              disabled={readOnly}
+            >
+              <SelectTrigger id="file-id">
+                <SelectValue placeholder="Select a file" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="file1">Sample Excel File</SelectItem>
+                <SelectItem value="file2">Customer Data</SelectItem>
+                <SelectItem value="file3">Sales Report</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="has-headers">Has Headers</Label>
+              <Switch
+                id="has-headers"
+                checked={node.data?.config?.hasHeaders || false}
+                onCheckedChange={(checked) => handleConfigChange('hasHeaders', checked)}
+                disabled={readOnly}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Enable if your data has a header row
+            </p>
+          </div>
+          
+          {nodeType === 'csvInput' && (
+            <div className="space-y-2">
+              <Label htmlFor="delimiter">Delimiter</Label>
               <Select
-                value={nodeData.config?.analysisType || 'general'}
-                onValueChange={(value) => handleConfigChange('analysisType', value)}
+                value={node.data?.config?.delimiter || ','}
+                onValueChange={(value) => handleConfigChange('delimiter', value)}
                 disabled={readOnly}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select analysis type" />
+                <SelectTrigger id="delimiter">
+                  <SelectValue placeholder="Select delimiter" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="general">General Analysis</SelectItem>
-                  <SelectItem value="trends">Trend Analysis</SelectItem>
-                  <SelectItem value="outliers">Outlier Detection</SelectItem>
-                  <SelectItem value="forecast">Forecasting</SelectItem>
+                  <SelectItem value=",">Comma (,)</SelectItem>
+                  <SelectItem value=";">Semicolon (;)</SelectItem>
+                  <SelectItem value="\t">Tab</SelectItem>
+                  <SelectItem value="|">Pipe (|)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            
+          )}
+        </div>
+      );
+    }
+    
+    // Data Processing Node Config
+    if (nodeType === 'dataTransform' || nodeType === 'dataCleaning' || nodeType === 'formulaNode' || nodeType === 'filterNode') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
+          </div>
+          
+          {nodeType === 'formulaNode' && (
+            <div className="space-y-2">
+              <Label htmlFor="formula">Formula</Label>
+              <Input
+                id="formula"
+                value={node.data?.config?.formula || ''}
+                onChange={(e) => handleConfigChange('formula', e.target.value)}
+                placeholder="e.g. column1 * 2 + column2"
+                disabled={readOnly}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter a formula using column names as variables
+              </p>
+            </div>
+          )}
+          
+          {nodeType === 'filterNode' && (
+            <div className="space-y-2">
+              <Label htmlFor="filter-condition">Filter Condition</Label>
+              <Input
+                id="filter-condition"
+                value={node.data?.config?.filterCondition || ''}
+                onChange={(e) => handleConfigChange('filterCondition', e.target.value)}
+                placeholder="e.g. column1 > 100"
+                disabled={readOnly}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter a condition to filter rows
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    // AI Node Config
+    if (nodeType === 'aiAnalyze' || nodeType === 'aiClassify' || nodeType === 'aiSummarize') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="prompt">AI Prompt</Label>
+            <Input
+              id="prompt"
+              value={node.data?.config?.prompt || ''}
+              onChange={(e) => handleConfigChange('prompt', e.target.value)}
+              placeholder="Enter instructions for the AI"
+              disabled={readOnly}
+            />
+          </div>
+          
+          {nodeType === 'aiAnalyze' && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="detectOutliers">Detect Outliers</Label>
+                <Label htmlFor="detect-outliers">Detect Outliers</Label>
                 <Switch
-                  id="detectOutliers"
-                  checked={!!(nodeData.config?.analysisOptions?.detectOutliers)}
-                  onCheckedChange={(checked) => 
-                    handleConfigChange('analysisOptions', {
-                      ...nodeData.config?.analysisOptions,
+                  id="detect-outliers"
+                  checked={node.data?.config?.analysisOptions?.detectOutliers || false}
+                  onCheckedChange={(checked) => {
+                    const analysisOptions = {
+                      ...(node.data?.config?.analysisOptions || {}),
                       detectOutliers: checked
-                    })
-                  }
+                    };
+                    handleConfigChange('analysisOptions', analysisOptions);
+                  }}
                   disabled={readOnly}
                 />
               </div>
             </div>
-          </div>
-        );
-      
-      default:
-        return (
-          <CardDescription>
-            This node type ({nodeData.type || 'unknown'}) doesn't have specific configuration options.
-          </CardDescription>
-        );
+          )}
+        </div>
+      );
     }
-  };
-
-  if (!node || !nodeData) {
-    return (
-      <Card className="w-[400px] h-full overflow-y-auto">
-        <CardHeader className="sticky top-0 bg-white z-10 border-b">
-          <div className="flex justify-between items-center">
-            <CardTitle>No Node Selected</CardTitle>
-            <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
+    
+    // Output Node Config
+    if (nodeType === 'excelOutput' || nodeType === 'dashboardOutput' || nodeType === 'emailNotify') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
           </div>
-          <CardDescription>Select a node to configure</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="w-[400px] h-full overflow-y-auto">
-      <CardHeader className="sticky top-0 bg-white z-10 border-b">
-        <div className="flex justify-between items-center">
-          <CardTitle>Node Configuration</CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
-        </div>
-        <CardDescription>Configure the node properties</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6 pt-4">
-        <div className="space-y-2">
-          <Label htmlFor="node-label">Label</Label>
-          <Input
-            id="node-label"
-            value={nodeData.label || ''}
-            onChange={handleLabelChange}
-            readOnly={readOnly}
-          />
-        </div>
-
-        <Tabs defaultValue="config">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="config">Configuration</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          </TabsList>
-          <TabsContent value="config" className="space-y-4 mt-4">
-            {renderNodeSpecificConfig()}
-          </TabsContent>
-          <TabsContent value="appearance" className="space-y-4 mt-4">
+          
+          {nodeType === 'excelOutput' && (
             <div className="space-y-2">
-              <Label htmlFor="node-color">Node Color</Label>
-              <Select 
-                value={nodeData.config?.color || "default"} 
-                onValueChange={(color) => handleConfigChange('color', color)}
+              <Label htmlFor="filename">Output Filename</Label>
+              <Input
+                id="filename"
+                value={node.data?.config?.filename || ''}
+                onChange={(e) => handleConfigChange('filename', e.target.value)}
+                placeholder="e.g. processed_data.xlsx"
+                disabled={readOnly}
+              />
+            </div>
+          )}
+          
+          {nodeType === 'emailNotify' && (
+            <div className="space-y-2">
+              <Label htmlFor="recipients">Email Recipients</Label>
+              <Input
+                id="recipients"
+                value={node.data?.config?.recipients?.join(', ') || ''}
+                onChange={(e) => {
+                  const recipients = e.target.value.split(',').map(email => email.trim());
+                  handleConfigChange('recipients', recipients);
+                }}
+                placeholder="e.g. user@example.com, another@example.com"
+                disabled={readOnly}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    // Integration Node Config
+    if (nodeType === 'xeroConnect' || nodeType === 'salesforceConnect' || nodeType === 'googleSheetsConnect') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="operation">Operation</Label>
+            <Select
+              value={node.data?.config?.operation || ''}
+              onValueChange={(value) => handleConfigChange('operation', value)}
+              disabled={readOnly}
+            >
+              <SelectTrigger id="operation">
+                <SelectValue placeholder="Select operation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="read">Read Data</SelectItem>
+                <SelectItem value="write">Write Data</SelectItem>
+                <SelectItem value="update">Update Data</SelectItem>
+                <SelectItem value="delete">Delete Data</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      );
+    }
+    
+    // Control Node Config
+    if (nodeType === 'conditionalBranch' || nodeType === 'loopNode' || nodeType === 'mergeNode') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
+          </div>
+          
+          {nodeType === 'conditionalBranch' && (
+            <div className="space-y-2">
+              <Label htmlFor="condition">Condition</Label>
+              <Input
+                id="condition"
+                value={node.data?.config?.condition || ''}
+                onChange={(e) => handleConfigChange('condition', e.target.value)}
+                placeholder="e.g. value > 100"
+                disabled={readOnly}
+              />
+            </div>
+          )}
+          
+          {nodeType === 'loopNode' && (
+            <div className="space-y-2">
+              <Label htmlFor="loop-type">Loop Type</Label>
+              <Select
+                value={node.data?.config?.loopType || ''}
+                onValueChange={(value) => handleConfigChange('loopType', value)}
                 disabled={readOnly}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a color" />
+                <SelectTrigger id="loop-type">
+                  <SelectValue placeholder="Select loop type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="blue">Blue</SelectItem>
-                  <SelectItem value="green">Green</SelectItem>
-                  <SelectItem value="red">Red</SelectItem>
-                  <SelectItem value="purple">Purple</SelectItem>
-                  <SelectItem value="orange">Orange</SelectItem>
-                  <SelectItem value="default">Default</SelectItem>
+                  <SelectItem value="forEach">For Each</SelectItem>
+                  <SelectItem value="while">While</SelectItem>
+                  <SelectItem value="count">Count</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </TabsContent>
-        </Tabs>
-
-        {!readOnly && (
-          <div className="flex gap-2 pt-4 border-t">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="flex-1" 
-              onClick={onDuplicate}
-            >
-              <Copy className="h-4 w-4 mr-2" /> Duplicate
-            </Button>
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              className="flex-1" 
-              onClick={onDelete}
-            >
-              <Trash className="h-4 w-4 mr-2" /> Delete
-            </Button>
+          )}
+        </div>
+      );
+    }
+    
+    // Spreadsheet Generator Node Config
+    if (nodeType === 'spreadsheetGenerator') {
+      return (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="node-name">Node Name</Label>
+            <Input
+              id="node-name"
+              value={node.data?.label || ''}
+              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+              disabled={readOnly}
+            />
           </div>
-        )}
-      </CardContent>
-    </Card>
+          
+          <div className="space-y-2">
+            <Label htmlFor="filename">Output Filename</Label>
+            <Input
+              id="filename"
+              value={node.data?.config?.filename || ''}
+              onChange={(e) => handleConfigChange('filename', e.target.value)}
+              placeholder="e.g. generated_report.xlsx"
+              disabled={readOnly}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="include-headers">Include Headers</Label>
+              <Switch
+                id="include-headers"
+                checked={node.data?.config?.includeHeaders || true}
+                onCheckedChange={(checked) => handleConfigChange('includeHeaders', checked)}
+                disabled={readOnly}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    return <p className="text-sm text-muted-foreground">No configuration available for this node type</p>;
+  };
+  
+  return (
+    <div className="w-full max-w-sm mx-auto bg-background border rounded-lg shadow-lg overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b">
+        <h3 className="font-medium">Node Configuration</h3>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      <div className="p-4 overflow-y-auto max-h-[calc(100vh-12rem)]">
+        {renderConfigFields()}
+      </div>
+      
+      {!readOnly && (
+        <div className="flex justify-between items-center p-4 border-t">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDuplicate}
+          >
+            <Copy className="h-4 w-4 mr-1" />
+            Duplicate
+          </Button>
+        </div>
+      )}
+    </div>
   );
-};
+}
 
 export default NodeConfigPanel;

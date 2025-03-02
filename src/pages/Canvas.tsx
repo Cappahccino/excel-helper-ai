@@ -305,7 +305,11 @@ const Canvas = () => {
     
     const nodeComponentType = (() => {
       switch (nodeCategory) {
-        case 'input': return 'dataInput';
+        case 'input': 
+          if (nodeType === 'fileUpload') {
+            return 'fileUpload';
+          }
+          return 'dataInput';
         case 'processing': return 'dataProcessing';
         case 'ai': return 'aiNode';
         case 'output': return 'outputNode';
