@@ -1,5 +1,15 @@
-import { WorkflowDefinition, WorkflowNode, Edge, WorkflowExecution, NodeExecutionContext } from '@/types/workflow';
+
+import { WorkflowDefinition, WorkflowNode, Edge, WorkflowExecution, NodeExecutionContext, NodeType } from '@/types/workflow';
 import { supabase } from '@/integrations/supabase/client';
+
+// Node color constants
+const INPUT_NODE_COLOR = '#26A69A';
+const PROCESSING_NODE_COLOR = '#42A5F5';
+const AI_NODE_COLOR = '#AB47BC';
+const OUTPUT_NODE_COLOR = '#EF5350';
+const INTEGRATION_NODE_COLOR = '#7E57C2';
+const CONTROL_NODE_COLOR = '#FFA726';
+const DEFAULT_NODE_COLOR = '#78909C';
 
 export class WorkflowEngine {
   nodes: WorkflowNode[];
@@ -87,31 +97,60 @@ export class WorkflowEngine {
       // Execute node based on type
       let outputs = {};
       
-      switch (node.data?.type) {
+      const nodeType = node.data?.type as NodeType;
+      
+      switch (nodeType) {
         case 'fileUpload':
           outputs = await this.executeFileUploadNode(node, nodeInputs);
           break;
-        // Handle other node types
+        // Handle other node types by category
         case 'dataInput':
+        case 'excelInput':
+        case 'csvInput':
+        case 'apiSource':
+        case 'userInput':
+        case 'spreadsheetGenerator':
           outputs = await this.executeDataInputNode(node, nodeInputs);
           break;
         case 'dataProcessing':
+        case 'dataTransform':
+        case 'dataCleaning':
+        case 'formulaNode':
+        case 'filterNode':
           outputs = await this.executeDataProcessingNode(node, nodeInputs);
           break;
         case 'aiNode':
+        case 'aiAnalyze':
+        case 'aiClassify':
+        case 'aiSummarize':
           outputs = await this.executeAINode(node, nodeInputs);
           break;
         case 'outputNode':
+        case 'excelOutput':
+        case 'dashboardOutput':
+        case 'emailNotify':
           outputs = await this.executeOutputNode(node, nodeInputs);
           break;
         case 'integrationNode':
+        case 'xeroConnect':
+        case 'salesforceConnect':
+        case 'googleSheetsConnect':
           outputs = await this.executeIntegrationNode(node, nodeInputs);
           break;
         case 'controlNode':
+        case 'conditionalBranch':
+        case 'loopNode':
+        case 'mergeNode':
           outputs = await this.executeControlNode(node, nodeInputs);
           break;
-        case 'spreadsheetGenerator':
-          outputs = await this.executeSpreadsheetGeneratorNode(node, nodeInputs);
+        case 'logToConsole':
+        case 'executionTimestamp':
+        case 'sessionManagement':
+        case 'variableStorage':
+        case 'aiStepRecommendation':
+        case 'workflowVersionControl':
+        case 'performanceMetrics':
+          outputs = await this.executeUtilityNode(node, nodeInputs);
           break;
         default:
           outputs = { data: null, message: 'Node type not implemented' };
@@ -296,6 +335,12 @@ export class WorkflowEngine {
     return { data: `Control Node ${node.id} executed`, inputs };
   }
 
+  private async executeUtilityNode(node: WorkflowNode, inputs: Record<string, any>): Promise<any> {
+    // Implementation for Utility Node
+    console.log(`Executing Utility Node ${node.id} with inputs:`, inputs);
+    return { data: `Utility Node ${node.id} executed`, inputs };
+  }
+
   private async executeSpreadsheetGeneratorNode(node: WorkflowNode, inputs: Record<string, any>): Promise<any> {
     // Implementation for Spreadsheet Generator Node
     console.log(`Executing Spreadsheet Generator Node ${node.id} with inputs:`, inputs);
@@ -304,56 +349,38 @@ export class WorkflowEngine {
 }
 
 // Function to get color by node type
-export function getNodeColorByType(type: string) {
-  if (type === 'fileUpload' || 
-      type === 'excelInput' || 
-      type === 'csvInput' || 
-      type === 'apiSource' || 
-      type === 'userInput') {
+export function getNodeColorByType(type: string): string {
+  const nodeType = type as NodeType;
+  
+  if (['fileUpload', 'excelInput', 'csvInput', 'apiSource', 'userInput'].includes(nodeType as any)) {
     return INPUT_NODE_COLOR;
   }
   
-  if (type === 'dataInput') {
+  if (nodeType === 'dataInput') {
     return INPUT_NODE_COLOR;
   }
   
-  if (type === 'dataProcessing' || 
-      type === 'dataTransform' || 
-      type === 'formulaNode' || 
-      type === 'dataCleaning' || 
-      type === 'filterNode') {
+  if (['dataProcessing', 'dataTransform', 'formulaNode', 'dataCleaning', 'filterNode'].includes(nodeType as any)) {
     return PROCESSING_NODE_COLOR;
   }
   
-  if (type === 'aiNode' || 
-      type === 'aiAnalyze' || 
-      type === 'aiClassify' || 
-      type === 'aiSummarize') {
+  if (['aiNode', 'aiAnalyze', 'aiClassify', 'aiSummarize'].includes(nodeType as any)) {
     return AI_NODE_COLOR;
   }
   
-  if (type === 'outputNode' || 
-      type === 'excelOutput' || 
-      type === 'dashboardOutput' || 
-      type === 'emailNotify') {
+  if (['outputNode', 'excelOutput', 'dashboardOutput', 'emailNotify'].includes(nodeType as any)) {
     return OUTPUT_NODE_COLOR;
   }
   
-  if (type === 'integrationNode' || 
-      type === 'salesforceConnect' || 
-      type === 'xeroConnect' || 
-      type === 'googleSheetsConnect') {
+  if (['integrationNode', 'salesforceConnect', 'xeroConnect', 'googleSheetsConnect'].includes(nodeType as any)) {
     return INTEGRATION_NODE_COLOR;
   }
   
-  if (type === 'controlNode' || 
-      type === 'conditionalBranch' || 
-      type === 'loopNode' || 
-      type === 'mergeNode') {
+  if (['controlNode', 'conditionalBranch', 'loopNode', 'mergeNode'].includes(nodeType as any)) {
     return CONTROL_NODE_COLOR;
   }
   
-  if (type === 'spreadsheetGenerator') {
+  if (nodeType === 'spreadsheetGenerator') {
     return INPUT_NODE_COLOR;
   }
   

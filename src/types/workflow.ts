@@ -1,4 +1,3 @@
-
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -9,35 +8,41 @@ export type InputNodeType =
   | 'dataInput' | 'fileUpload' | 'databaseQuery' | 'manualEntry'
   | 'apiFetch' | 'webhookListener' | 'ftpImport' | 'emailAttachment'
   | 'formSubmission' | 'scheduledFetch' | 'spreadsheetImport' | 'crmDataPull'
-  | 'erpDataFetch' | 'spreadsheetGenerator';
+  | 'erpDataFetch' | 'spreadsheetGenerator'
+  | 'excelInput' | 'csvInput' | 'apiSource' | 'userInput';
 
 export type ProcessingNodeType = 
   | 'dataProcessing' | 'columnMapping' | 'filtering' | 'sorting'
   | 'aggregation' | 'formulaCalculation' | 'currencyConversion' | 'textTransformation'
   | 'dataTypeConversion' | 'deduplication' | 'joinMerge' | 'pivotTable'
-  | 'conditionalLogic' | 'dateFormatting' | 'dataMasking' | 'normalization';
+  | 'conditionalLogic' | 'dateFormatting' | 'dataMasking' | 'normalization'
+  | 'dataTransform' | 'dataCleaning' | 'formulaNode' | 'filterNode';
 
 export type AINodeType = 
   | 'aiNode' | 'aiSummarization' | 'sentimentAnalysis' | 'namedEntityRecognition'
   | 'anomalyDetection' | 'forecasting' | 'documentParsing' | 'clustering'
-  | 'mlModelExecution' | 'featureEngineering' | 'aiDataCleaning';
+  | 'mlModelExecution' | 'featureEngineering' | 'aiDataCleaning'
+  | 'aiAnalyze' | 'aiClassify' | 'aiSummarize';
 
 export type OutputNodeType = 
   | 'outputNode' | 'downloadFile' | 'sendEmail' | 'exportToDatabase'
   | 'webhookTrigger' | 'pushNotification' | 'excelExport' | 'pdfGeneration'
   | 'googleSheetsUpdate' | 'ftpUpload' | 'crmUpdate' | 'erpDataSync'
-  | 'slackNotification' | 'webhookResponse' | 'apiResponse' | 'smsAlert';
+  | 'slackNotification' | 'webhookResponse' | 'apiResponse' | 'smsAlert'
+  | 'excelOutput' | 'dashboardOutput' | 'emailNotify';
 
 export type IntegrationNodeType = 
   | 'integrationNode' | 'salesforceConnector' | 'xeroConnector' | 'hubspotConnector'
   | 'googleSheetsConnector' | 'stripeConnector' | 'quickbooksConnector' | 'zendeskConnector'
   | 'shopifyConnector' | 's3Connector' | 'zapierConnector' | 'googleDriveConnector'
-  | 'customApiConnector' | 'erpConnector' | 'twilioConnector' | 'powerBiConnector';
+  | 'customApiConnector' | 'erpConnector' | 'twilioConnector' | 'powerBiConnector'
+  | 'xeroConnect' | 'salesforceConnect' | 'googleSheetsConnect';
 
 export type ControlNodeType = 
   | 'controlNode' | 'ifElseCondition' | 'loopForEach' | 'parallelProcessing'
   | 'errorHandling' | 'waitPause' | 'webhookWait' | 'retryMechanism'
-  | 'switchCase';
+  | 'switchCase'
+  | 'conditionalBranch' | 'loopNode' | 'mergeNode';
 
 export type UtilityNodeType = 
   | 'logToConsole' | 'executionTimestamp' | 'sessionManagement' | 'variableStorage'
@@ -63,7 +68,7 @@ export interface BaseNodeData {
 
 // Node data types
 export interface DataInputNodeData extends BaseNodeData {
-  type: 'excelInput' | 'csvInput' | 'apiSource' | 'userInput' | 'fileUpload';
+  type: InputNodeType;
   config: {
     fileId?: string | null;
     hasHeaders?: boolean;
@@ -154,6 +159,16 @@ export interface UtilityNodeData extends BaseNodeData {
   };
 }
 
+export interface FileUploadNodeData extends BaseNodeData {
+  type: 'fileUpload';
+  config: {
+    fileId?: string | null;
+    hasHeaders?: boolean;
+    delimiter?: string;
+    [key: string]: any;
+  };
+}
+
 export type WorkflowNodeData = 
   | DataInputNodeData 
   | DataProcessingNodeData 
@@ -162,7 +177,8 @@ export type WorkflowNodeData =
   | IntegrationNodeData 
   | ControlNodeData 
   | SpreadsheetGeneratorNodeData
-  | UtilityNodeData;
+  | UtilityNodeData
+  | FileUploadNodeData;
 
 // Use a simplified NodeProps type that works with our component structure
 export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
