@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -37,7 +36,7 @@ export function ChatInput({
   const {
     handleFileUpload,
     isUploading,
-    fileIds: uploadedFileIds,
+    fileIds,
     error: uploadError
   } = useFileUpload();
 
@@ -59,9 +58,7 @@ export function ChatInput({
       setLocalFiles(prev => [...prev, ...files]);
 
       try {
-        for (const file of files) {
-          await handleFileUpload(file, sessionId);
-        }
+        await handleFileUpload(files);
       } catch (error) {
         console.error("File upload error:", error);
         toast({
@@ -119,7 +116,7 @@ export function ChatInput({
   };
 
   const handleSubmit = () => {
-    if ((!message.trim() && !uploadedFileIds.length) || isAnalyzing || isUploading) return;
+    if ((!message.trim() && !fileIds.length) || isAnalyzing || isUploading) return;
     
     // Collect all tags from all files
     const allTags = Object.values(fileTags).flat();
@@ -127,7 +124,7 @@ export function ChatInput({
 
     onSendMessage(
       message,
-      uploadedFileIds.length > 0 ? uploadedFileIds : null,
+      fileIds.length > 0 ? fileIds : null,
       tagNames.length > 0 ? tagNames : null
     );
     
@@ -205,7 +202,7 @@ export function ChatInput({
     }));
   };
 
-  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !uploadedFileIds.length);
+  const isDisabled = isAnalyzing || isUploading || (!message.trim() && !fileIds.length);
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">

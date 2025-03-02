@@ -302,3 +302,60 @@ export class WorkflowEngine {
     return { data: `Spreadsheet Generator Node ${node.id} executed`, inputs };
   }
 }
+
+// Function to get color by node type
+export function getNodeColorByType(type: string) {
+  if (type === 'fileUpload' || 
+      type === 'excelInput' || 
+      type === 'csvInput' || 
+      type === 'apiSource' || 
+      type === 'userInput') {
+    return INPUT_NODE_COLOR;
+  }
+  
+  if (type === 'dataInput') {
+    return INPUT_NODE_COLOR;
+  }
+  
+  if (type === 'dataProcessing' || 
+      type === 'dataTransform' || 
+      type === 'formulaNode' || 
+      type === 'dataCleaning' || 
+      type === 'filterNode') {
+    return PROCESSING_NODE_COLOR;
+  }
+  
+  if (type === 'aiNode' || 
+      type === 'aiAnalyze' || 
+      type === 'aiClassify' || 
+      type === 'aiSummarize') {
+    return AI_NODE_COLOR;
+  }
+  
+  if (type === 'outputNode' || 
+      type === 'excelOutput' || 
+      type === 'dashboardOutput' || 
+      type === 'emailNotify') {
+    return OUTPUT_NODE_COLOR;
+  }
+  
+  if (type === 'integrationNode' || 
+      type === 'salesforceConnect' || 
+      type === 'xeroConnect' || 
+      type === 'googleSheetsConnect') {
+    return INTEGRATION_NODE_COLOR;
+  }
+  
+  if (type === 'controlNode' || 
+      type === 'conditionalBranch' || 
+      type === 'loopNode' || 
+      type === 'mergeNode') {
+    return CONTROL_NODE_COLOR;
+  }
+  
+  if (type === 'spreadsheetGenerator') {
+    return INPUT_NODE_COLOR;
+  }
+  
+  return DEFAULT_NODE_COLOR;
+}

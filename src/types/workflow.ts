@@ -63,7 +63,7 @@ export interface BaseNodeData {
 
 // Node data types
 export interface DataInputNodeData extends BaseNodeData {
-  type: 'excelInput' | 'csvInput' | 'apiSource' | 'userInput';
+  type: 'excelInput' | 'csvInput' | 'apiSource' | 'userInput' | 'fileUpload';
   config: {
     fileId?: string | null;
     hasHeaders?: boolean;

@@ -9,12 +9,16 @@ export function useFileUpload() {
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [fileIds, setFileIds] = useState<string[]>([]);
   const { toast } = useToast();
 
   const resetUpload = useCallback(() => {
     setFiles([]);
     setIsUploading(false);
     setUploadProgress({});
+    setError(null);
+    setFileIds([]);
   }, []);
 
   const handleFileUpload = useCallback(async (newFiles: File[]) => {
@@ -23,6 +27,8 @@ export function useFileUpload() {
       
       setFiles(newFiles);
       setIsUploading(true);
+      setError(null);
+      const uploadedFileIds: string[] = [];
       
       // Validate all files first
       for (let i = 0; i < newFiles.length; i++) {
@@ -65,7 +71,7 @@ export function useFileUpload() {
         setUploadProgress(prev => ({ ...prev, [i]: 50 }));
         
         // Create database record
-        const { error: dbError } = await supabase
+        const { data: fileData, error: dbError } = await supabase
           .from('excel_files')
           .insert({
             filename: sanitizedName,
@@ -75,14 +81,21 @@ export function useFileUpload() {
             processing_status: "completed",
             mime_type: file.type,
             storage_verified: true,
-          });
+          })
+          .select('id')
+          .single();
         
         if (dbError) throw dbError;
+        
+        if (fileData) {
+          uploadedFileIds.push(fileData.id);
+        }
         
         // Update progress to 100%
         setUploadProgress(prev => ({ ...prev, [i]: 100 }));
       }
       
+      setFileIds(uploadedFileIds);
       toast({
         title: "Upload Successful",
         description: `${newFiles.length} ${newFiles.length === 1 ? 'file' : 'files'} uploaded successfully.`,
@@ -90,6 +103,7 @@ export function useFileUpload() {
       
     } catch (error) {
       console.error('Upload error:', error);
+      setError(error instanceof Error ? error.message : "Failed to upload files");
       toast({
         title: "Upload Failed",
         description: error instanceof Error ? error.message : "Failed to upload files",
@@ -106,5 +120,7 @@ export function useFileUpload() {
     uploadProgress,
     handleFileUpload,
     resetUpload,
+    error,
+    fileIds
   };
 }

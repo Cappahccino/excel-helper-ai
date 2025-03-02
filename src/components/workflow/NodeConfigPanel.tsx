@@ -17,7 +17,6 @@ export function NodeConfigPanel({
   readOnly = false 
 }: NodeConfigPanelProps) {
   
-  // Handle updates to the node configuration
   const handleConfigChange = (key: string, value: any) => {
     if (readOnly) return;
     
@@ -30,54 +29,54 @@ export function NodeConfigPanel({
   };
   
   const renderConfigFields = () => {
+    if (!node) return null;
+    
     const nodeType = node.data?.type;
     
     if (!nodeType) {
       return <p className="text-sm text-muted-foreground">No configuration available</p>;
     }
     
-    // File Upload Node Config
     if (nodeType === 'fileUpload') {
+      const fileId = node.data?.config?.fileId;
+      const selectedFile = fileId ? node.data?.config?.selectedFile : null;
+      
       return (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="node-name">Node Name</Label>
-            <Input
-              id="node-name"
-              value={node.data?.label || ''}
-              onChange={(e) => onUpdateConfig({ ...node.data, label: e.target.value })}
+            <Label>Selected File</Label>
+            {selectedFile ? (
+              <div className="text-sm">{selectedFile.filename}</div>
+            ) : (
+              <div className="text-sm text-muted-foreground">No file selected</div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label>Sheet Name</Label>
+            <Input 
+              value={node.data?.config?.sheetName || ""}
+              onChange={(e) => onUpdateConfig({ ...node.data?.config, sheetName: e.target.value })}
+              placeholder="Sheet1"
               disabled={readOnly}
             />
           </div>
-          
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="has-headers">File Has Headers</Label>
-              <Switch
-                id="has-headers"
-                checked={node.data?.config?.hasHeaders || false}
-                onCheckedChange={(checked) => handleConfigChange('hasHeaders', checked)}
+            <Label>Has Headers</Label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="hasHeaders"
+                checked={node.data?.config?.hasHeaders ?? true}
+                onChange={(e) => onUpdateConfig({ ...node.data?.config, hasHeaders: e.target.checked })}
                 disabled={readOnly}
               />
+              <label htmlFor="hasHeaders" className="text-sm">First row contains headers</label>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Enable if your spreadsheet's first row contains column names
-            </p>
           </div>
-          
-          {node.data?.config?.fileId && (
-            <div className="space-y-2">
-              <Label>File Preview</Label>
-              <div className="border rounded-md overflow-hidden">
-                <ExcelPreview sessionFileId={node.data.config.fileId} />
-              </div>
-            </div>
-          )}
         </div>
       );
     }
     
-    // Data Input Node Config
     if (nodeType === 'excelInput' || nodeType === 'csvInput') {
       return (
         <div className="space-y-4">
@@ -148,7 +147,6 @@ export function NodeConfigPanel({
       );
     }
     
-    // Data Processing Node Config
     if (nodeType === 'dataTransform' || nodeType === 'dataCleaning' || nodeType === 'formulaNode' || nodeType === 'filterNode') {
       return (
         <div className="space-y-4">
@@ -197,7 +195,6 @@ export function NodeConfigPanel({
       );
     }
     
-    // AI Node Config
     if (nodeType === 'aiAnalyze' || nodeType === 'aiClassify' || nodeType === 'aiSummarize') {
       return (
         <div className="space-y-4">
@@ -245,7 +242,6 @@ export function NodeConfigPanel({
       );
     }
     
-    // Output Node Config
     if (nodeType === 'excelOutput' || nodeType === 'dashboardOutput' || nodeType === 'emailNotify') {
       return (
         <div className="space-y-4">
@@ -291,7 +287,6 @@ export function NodeConfigPanel({
       );
     }
     
-    // Integration Node Config
     if (nodeType === 'xeroConnect' || nodeType === 'salesforceConnect' || nodeType === 'googleSheetsConnect') {
       return (
         <div className="space-y-4">
@@ -327,7 +322,6 @@ export function NodeConfigPanel({
       );
     }
     
-    // Control Node Config
     if (nodeType === 'conditionalBranch' || nodeType === 'loopNode' || nodeType === 'mergeNode') {
       return (
         <div className="space-y-4">
@@ -377,7 +371,6 @@ export function NodeConfigPanel({
       );
     }
     
-    // Spreadsheet Generator Node Config
     if (nodeType === 'spreadsheetGenerator') {
       return (
         <div className="space-y-4">
