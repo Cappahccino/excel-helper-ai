@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -119,7 +118,7 @@ const Canvas = () => {
           edges,
         }),
         user_id: userId,
-        created_by: userId, // Add this to satisfy the TypeScript constraint
+        created_by: userId, // Required field for the workflows table
       };
       
       let response;
@@ -162,7 +161,11 @@ const Canvas = () => {
       if (error) throw error;
       
       toast.success('Workflow execution started');
-      console.log('Execution ID:', data.execution_id);
+      
+      // Handle execution_id safely from data (which is a JSON object)
+      if (data && typeof data === 'object' && 'execution_id' in data) {
+        console.log('Execution ID:', data.execution_id);
+      }
     } catch (error) {
       console.error('Error running workflow:', error);
       toast.error('Failed to run workflow');

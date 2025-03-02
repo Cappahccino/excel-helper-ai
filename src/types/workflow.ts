@@ -1,5 +1,4 @@
-
-import { Node as ReactFlowNode, Edge as ReactFlowEdge } from '@xyflow/react';
+import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -109,6 +108,9 @@ export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
   id?: string;
 };
 
+// Define handlers for node drag events with proper types
+export type NodeDragHandler = ReactFlowNodeProps['onDragStart'];
+
 // Export Edge type from ReactFlow for use in our application
 export type Edge = ReactFlowEdge;
 
@@ -119,6 +121,15 @@ export type WorkflowNode = ReactFlowNode<WorkflowNodeData>;
 export interface WorkflowDefinition {
   nodes: WorkflowNode[];
   edges: Edge[];
+}
+
+// Node handler interfaces
+export interface NodeInputs {
+  [key: string]: any;
+}
+
+export interface NodeOutputs {
+  [key: string]: any;
 }
 
 // Node definition types
@@ -151,42 +162,6 @@ export type NodeType =
   | 'spreadsheetGenerator';
 
 // Node execution types
-export interface NodeInputs {
-  [key: string]: any;
-}
-
-export interface NodeOutputs {
-  [key: string]: any;
-}
-
-export interface NodeHandler {
-  execute: (inputs: NodeInputs, config: Record<string, any>) => Promise<NodeOutputs>;
-}
-
-// Define the registry of node types
-export const NODE_TYPES: Partial<Record<NodeType, NodeTypeDefinition>> = {
-  excelInput: {
-    type: 'excelInput',
-    name: 'Excel Input',
-    category: 'input',
-    description: 'Reads data from an Excel file',
-    icon: 'file-spreadsheet',
-    defaultConfig: {
-      fileId: null
-    },
-    inputs: [],
-    outputs: [
-      {
-        name: 'data',
-        type: 'data',
-        dataType: 'object'
-      }
-    ]
-  }
-  // Add more node type definitions as needed
-};
-
-// Additional types for workflow execution
 export interface NodeExecutionContext {
   nodeId: string;
   inputs: NodeInputs;
@@ -206,6 +181,7 @@ export interface Workflow {
   tags?: string[];
 }
 
+// WorkflowExecution interface update to allow string status for database compatibility
 export interface WorkflowExecution {
   id?: string;
   workflow_id: string;
@@ -218,6 +194,33 @@ export interface WorkflowExecution {
   error?: string;
   initiated_by?: string;
   logs?: any[];
+}
+
+// Define NodeLibraryProps interface for NodeLibrary component
+export interface NodeLibraryProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAddNode?: (nodeType: string, nodeCategory: string, nodeLabel: string) => void;
+  nodeCategories?: Array<{
+    id: string;
+    name: string;
+    items: Array<{
+      type: string;
+      label: string;
+      description?: string;
+      icon?: string;
+    }>;
+  }>;
+}
+
+// Define NodeConfigPanelProps interface for NodeConfigPanel component
+export interface NodeConfigPanelProps {
+  nodeData: WorkflowNodeData;
+  onUpdateConfig: (updatedNodeData: Partial<WorkflowNodeData>) => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onClose: () => void;
+  readOnly: boolean;
 }
 
 // Helper functions for database mappings
