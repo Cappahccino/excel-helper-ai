@@ -1,3 +1,4 @@
+
 // src/services/workflow/handlers/excelInput.ts
 
 import { NodeDefinition } from '@/types/workflow';
@@ -341,4 +342,50 @@ function applyJoinOperation(leftData: any[], rightData: any[], config: any): any
     if (!rightMap.has(key)) {
       rightMap.set(key, []);
     }
-    rightMap.get(key).push(right
+    rightMap.get(key).push(rightRow);
+  }
+  
+  // Perform the join operation
+  let result: any[] = [];
+  
+  if (type === 'inner' || type === 'left') {
+    // Process left side (both for inner and left join)
+    for (const leftRow of leftData) {
+      const key = String(leftRow[leftField]);
+      const matches = rightMap.get(key) || [];
+      
+      if (matches.length > 0) {
+        // We have matches, create joined rows
+        for (const rightRow of matches) {
+          result.push({
+            ...leftRow,
+            ...rightRow,
+          });
+        }
+      } else if (type === 'left') {
+        // Left join: include left row even without matches
+        result.push(leftRow);
+      }
+    }
+  }
+  
+  if (type === 'right' || type === 'full') {
+    // Process right side for right and full joins
+    // (We already processed matched rows for left side)
+    const processedKeys = new Set();
+    
+    for (const leftRow of leftData) {
+      processedKeys.add(String(leftRow[leftField]));
+    }
+    
+    for (const rightRow of rightData) {
+      const key = String(rightRow[rightField]);
+      
+      if (!processedKeys.has(key)) {
+        result.push(rightRow);
+      }
+    }
+  }
+  
+  return result;
+}
