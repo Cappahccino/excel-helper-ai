@@ -86,6 +86,7 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
       conditionalBranch: 'Condition',
       loopNode: 'Loop',
       mergeNode: 'Merge',
+      spreadsheetGenerator: 'Spreadsheet Generator',
     };
     
     return labels[nodeType] || nodeType;
