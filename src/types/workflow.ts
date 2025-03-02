@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -42,6 +43,7 @@ export type UtilityNodeType =
   | 'logToConsole' | 'executionTimestamp' | 'sessionManagement' | 'variableStorage'
   | 'aiStepRecommendation' | 'workflowVersionControl' | 'performanceMetrics';
 
+// Combined NodeType that includes all possible node types
 export type NodeType = 
   | InputNodeType
   | ProcessingNodeType
@@ -212,15 +214,6 @@ export interface NodeTypeDefinition {
     dataType?: string;
   }>;
 }
-
-export type NodeType = 
-  | 'excelInput' | 'csvInput' | 'apiSource' | 'userInput'
-  | 'dataTransform' | 'dataCleaning' | 'formulaNode' | 'filterNode'
-  | 'aiAnalyze' | 'aiClassify' | 'aiSummarize'
-  | 'excelOutput' | 'dashboardOutput' | 'emailNotify'
-  | 'xeroConnect' | 'salesforceConnect' | 'googleSheetsConnect'
-  | 'conditionalBranch' | 'loopNode' | 'mergeNode'
-  | 'spreadsheetGenerator';
 
 // Node execution types
 export interface NodeExecutionContext {
