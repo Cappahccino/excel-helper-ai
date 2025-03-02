@@ -17,7 +17,6 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-// Import custom node types
 import AINode from '@/components/workflow/nodes/AINode';
 import DataInputNode from '@/components/workflow/nodes/DataInputNode';
 import DataProcessingNode from '@/components/workflow/nodes/DataProcessingNode';
@@ -26,15 +25,16 @@ import IntegrationNode from '@/components/workflow/nodes/IntegrationNode';
 import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 
-// UI components
+import NodeLibrary from '@/components/workflow/NodeLibrary';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Play } from 'lucide-react';
+import { Save, Play, Plus } from 'lucide-react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
-// Set custom node types
 const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
   dataProcessing: DataProcessingNode,
@@ -45,6 +45,58 @@ const nodeTypes: NodeTypes = {
   spreadsheetGenerator: SpreadsheetGeneratorNode,
 };
 
+const nodeCategories = [
+  {
+    id: 'input',
+    name: 'Data Input',
+    items: [
+      { type: 'dataInput', label: 'Data Input', description: 'Import data from external sources' },
+    ]
+  },
+  {
+    id: 'processing',
+    name: 'Data Processing',
+    items: [
+      { type: 'dataProcessing', label: 'Data Processing', description: 'Transform and process data' },
+    ]
+  },
+  {
+    id: 'ai',
+    name: 'AI & Analysis',
+    items: [
+      { type: 'aiNode', label: 'AI Node', description: 'Apply AI and ML algorithms to data' },
+    ]
+  },
+  {
+    id: 'output',
+    name: 'Output',
+    items: [
+      { type: 'outputNode', label: 'Output Node', description: 'Export or visualize processed data' },
+    ]
+  },
+  {
+    id: 'integration',
+    name: 'Integrations',
+    items: [
+      { type: 'integrationNode', label: 'Integration Node', description: 'Connect with external services' },
+    ]
+  },
+  {
+    id: 'control',
+    name: 'Control Flow',
+    items: [
+      { type: 'controlNode', label: 'Control Node', description: 'Control the workflow execution path' },
+    ]
+  },
+  {
+    id: 'spreadsheet',
+    name: 'Spreadsheets',
+    items: [
+      { type: 'spreadsheetGenerator', label: 'Spreadsheet Generator', description: 'Generate Excel or CSV files' },
+    ]
+  },
+];
+
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const [nodes, setNodes] = useNodesState([]);
@@ -53,20 +105,18 @@ const Canvas = () => {
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
 
-  // Handle connecting nodes
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds));
   }, [setEdges]);
 
-  // Load workflow if ID provided
   useEffect(() => {
     if (workflowId && workflowId !== 'new') {
       loadWorkflow();
     }
   }, [workflowId]);
 
-  // Load workflow data from Supabase
   const loadWorkflow = async () => {
     if (!workflowId || workflowId === 'new') return;
     
@@ -99,7 +149,6 @@ const Canvas = () => {
     }
   };
 
-  // Save workflow to Supabase
   const saveWorkflow = async () => {
     try {
       setIsSaving(true);
@@ -118,19 +167,17 @@ const Canvas = () => {
           edges,
         }),
         user_id: userId,
-        created_by: userId, // Required field for the workflows table
+        created_by: userId,
       };
       
       let response;
       
       if (workflowId && workflowId !== 'new') {
-        // Update existing workflow
         response = await supabase
           .from('workflows')
           .update(workflow)
           .eq('id', workflowId);
       } else {
-        // Create new workflow
         response = await supabase
           .from('workflows')
           .insert(workflow);
@@ -147,7 +194,6 @@ const Canvas = () => {
     }
   };
 
-  // Run workflow
   const runWorkflow = async () => {
     if (!workflowId || workflowId === 'new') {
       toast.error('Please save the workflow before running it');
@@ -162,7 +208,6 @@ const Canvas = () => {
       
       toast.success('Workflow execution started');
       
-      // Handle execution_id safely from data (which is a JSON object)
       if (data && typeof data === 'object' && 'execution_id' in data) {
         console.log('Execution ID:', data.execution_id);
       }
@@ -170,6 +215,37 @@ const Canvas = () => {
       console.error('Error running workflow:', error);
       toast.error('Failed to run workflow');
     }
+  };
+
+  const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
+    const nodeId = `node-${uuidv4()}`;
+    
+    const nodeComponentType = (() => {
+      switch (nodeCategory) {
+        case 'input': return 'dataInput';
+        case 'processing': return 'dataProcessing';
+        case 'ai': return 'aiNode';
+        case 'output': return 'outputNode';
+        case 'integration': return 'integrationNode';
+        case 'control': return 'controlNode';
+        case 'spreadsheet': return 'spreadsheetGenerator';
+        default: return 'dataInput';
+      }
+    })();
+
+    const newNode = {
+      id: nodeId,
+      type: nodeComponentType,
+      position: { x: 100, y: 100 },
+      data: {
+        label: nodeLabel || 'New Node',
+        type: nodeType,
+        config: {}
+      }
+    };
+
+    setNodes((prevNodes) => [...prevNodes, newNode]);
+    toast.success(`Added ${nodeLabel} node to canvas`);
   };
 
   return (
@@ -232,7 +308,10 @@ const Canvas = () => {
                 <MiniMap />
                 <Background />
                 <Panel position="top-right">
-                  <Button onClick={() => {}}>Add Node</Button>
+                  <Button onClick={() => setIsAddingNode(true)} className="flex items-center">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Node
+                  </Button>
                 </Panel>
               </ReactFlow>
             </div>
@@ -250,6 +329,13 @@ const Canvas = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <NodeLibrary
+        isOpen={isAddingNode}
+        onClose={() => setIsAddingNode(false)}
+        onAddNode={handleAddNode}
+        nodeCategories={nodeCategories}
+      />
     </div>
   );
 };
