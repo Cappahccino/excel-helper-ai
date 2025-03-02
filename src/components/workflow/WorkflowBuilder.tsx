@@ -118,6 +118,7 @@ const NODE_TYPE_CATEGORY_MAP: Record<string, string> = {
   dataCleaning: 'processing',
   formulaNode: 'processing',
   filterNode: 'processing',
+  spreadsheetGenerator: 'processing',
   
   aiAnalyze: 'ai',
   aiClassify: 'ai',
@@ -148,6 +149,16 @@ const DEFAULT_NODE_CONFIGS: Record<string, any> = {
       detectOutliers: true,
       findPatterns: true
     }
+  },
+  spreadsheetGenerator: {
+    filename: 'generated-spreadsheet.xlsx',
+    sheets: [
+      {
+        name: 'Sheet1',
+        includeHeaders: true
+      }
+    ],
+    format: 'xlsx'
   },
   // Add defaults for other node types
 };
