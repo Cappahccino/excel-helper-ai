@@ -25,6 +25,7 @@ import IntegrationNode from '@/components/workflow/nodes/IntegrationNode';
 import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 import UtilityNode from '@/components/workflow/nodes/UtilityNode';
+import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 
@@ -45,6 +46,7 @@ const nodeTypes: NodeTypes = {
   controlNode: ControlNode,
   spreadsheetGenerator: SpreadsheetGeneratorNode,
   utilityNode: UtilityNode,
+  fileUpload: FileUploadNode,
 };
 
 const nodeCategories = [
