@@ -58,7 +58,7 @@ export async function handleApiIntegration(
     }
     
     // Get authentication credentials
-    const credentials = await getCredentials(config.authentication, context.userId);
+    const credentials = await fetchCredentials(config.service, context.userId);
     
     // Prepare input data for the API call
     const apiData = prepareApiData(inputs.data || [], config.mapping.request);
@@ -124,35 +124,40 @@ export async function handleApiIntegration(
 }
 
 // Helper function to get credentials from the database
-async function getCredentials(
-  authConfig: ApiIntegrationConfig['authentication'],
-  userId: string
-) {
-  if (!authConfig || !authConfig.credentialId) {
-    return null;
-  }
-  
-  // Get credentials from the database
-  const { data, error } = await supabase
+async function fetchCredentials(service: string, userId: string): Promise<any> {
+  const { data: credentials, error } = await supabase
     .from('api_credentials')
     .select('*')
-    .eq('id', authConfig.credentialId)
+    .eq('service', service)
     .eq('user_id', userId)
+    .eq('is_valid', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .single();
-    
-  if (error || !data) {
-    throw new Error(`Failed to retrieve API credentials: ${error?.message || 'Credentials not found'}`);
+  
+  if (error) {
+    throw new Error(`Failed to fetch credentials for ${service}: ${error.message}`);
   }
   
-  // Decrypt sensitive data if needed (implementation depends on your security approach)
-  // This is a simplified example
-  const decryptedCredentials = {
-    ...data,
-    secret: data.secret, // In a real app, decrypt this
-    access_token: data.access_token, // In a real app, decrypt this
-  };
+  if (!credentials) {
+    throw new Error(`No valid credentials found for ${service}`);
+  }
   
-  return decryptedCredentials;
+  // Access credentials as JSON object instead of directly
+  const parsedCredentials = typeof credentials.credentials === 'string' 
+    ? JSON.parse(credentials.credentials) 
+    : credentials.credentials;
+  
+  return {
+    // Return the parsed credential fields
+    secret: parsedCredentials.secret,
+    access_token: parsedCredentials.access_token,
+    // Include other fields as needed
+    id: credentials.id,
+    service: credentials.service,
+    name: credentials.name,
+    credentials_type: credentials.credentials_type
+  };
 }
 
 // Helper function to prepare data for API call

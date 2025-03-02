@@ -1,4 +1,3 @@
-
 // src/services/workflow/handlers/excelInput.ts
 
 import { NodeDefinition } from '@/types/workflow';
@@ -80,6 +79,25 @@ export async function handleExcelInput(
     columnNames: config.hasHeaders ? Object.keys(data[0] || {}) : []
   };
 }
+
+// Define the first NodeDefinition interface with a different name
+interface ExcelInputNodeDefinition {
+  data: {
+    config: ExcelInputConfig;
+  };
+}
+
+// For the second NodeDefinition, use a different name or approach
+const excelInputNodeDefinition = {
+  data: {
+    config: {
+      fileId: '',
+      sheet: '',
+      range: '',
+      hasHeaders: false
+    }
+  }
+};
 
 // src/services/workflow/handlers/dataTransform.ts
 

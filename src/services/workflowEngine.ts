@@ -1,365 +1,303 @@
-// src/services/workflowEngine.ts
 
-import { 
-  WorkflowDefinition, 
-  WorkflowExecution, 
-  NodeDefinition,
-  EdgeDefinition 
-} from '@/types/workflow';
 import { supabase } from "@/integrations/supabase/client";
+import {
+  WorkflowDefinition,
+  Workflow,
+  WorkflowExecution,
+  NodeBase,
+  NodeHandler,
+  NodeInputs,
+  NodeOutputs,
+  NodeExecutionContext,
+  mapDatabaseWorkflowToWorkflow,
+  mapWorkflowToDatabaseWorkflow,
+  mapDatabaseExecutionToWorkflowExecution,
+  mapWorkflowExecutionToDatabaseExecution
+} from "@/types/workflow";
+import { Json } from "@/types/supabase";
 
-// NodeHandlers will be imported from individual handler files
-import { handleExcelInput } from '@/services/workflow/handlers/excelInput';
-import { handleDataTransform } from '@/services/workflow/handlers/dataTransform';
-// ... other handlers
+// Handler registry
+const nodeHandlers: Record<string, NodeHandler> = {};
 
-// Registry of node handlers
-const NODE_HANDLERS: Record<string, (
-  node: NodeDefinition, 
-  inputs: Record<string, any>, 
-  context: ExecutionContext
-) => Promise<Record<string, any>>> = {
-  excelInput: handleExcelInput,
-  dataTransform: handleDataTransform,
-  // ... other handlers
-};
-
-// Context passed to each node during execution
-interface ExecutionContext {
-  workflowId: string;
-  executionId: string;
-  userId: string;
-  updateNodeState: (
-    nodeId: string, 
-    update: Partial<WorkflowExecution['nodeStates'][string]>
-  ) => Promise<void>;
-  logMessage: (
-    message: string,
-    level: 'info' | 'warning' | 'error',
-    nodeId?: string
-  ) => Promise<void>;
-  getNodeOutputs: (nodeId: string) => Promise<any>;
+// Register a node handler
+export function registerNodeHandler(type: string, handler: NodeHandler) {
+  nodeHandlers[type] = handler;
 }
 
-export class WorkflowEngine {
-  /**
-   * Starts a new workflow execution
-   */
-  async startExecution(
-    workflowId: string,
-    inputs: Record<string, any> = {},
-    userId: string
-  ): Promise<string> {
-    // Retrieve the workflow definition
-    const { data: workflow, error } = await supabase
-      .from('workflows')
-      .select('*')
-      .eq('id', workflowId)
-      .single();
-      
-    if (error || !workflow) {
-      throw new Error(`Workflow not found: ${error?.message || 'Unknown error'}`);
-    }
-    
-    // Create a new execution record
-    const executionId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    
-    const workflowDef: WorkflowDefinition = workflow.definition;
-    
-    // Initialize all nodes as pending
-    const nodeStates: WorkflowExecution['nodeStates'] = {};
-    workflowDef.nodes.forEach(node => {
-      nodeStates[node.id] = {
-        status: 'pending',
-      };
-    });
-    
-    // Create execution record
-    const execution: WorkflowExecution = {
-      id: executionId,
-      workflowId,
+// Get a workflow by ID
+export async function getWorkflow(id: string): Promise<Workflow | null> {
+  const { data, error } = await supabase
+    .from('workflows')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) {
+    console.error('Error getting workflow:', error);
+    return null;
+  }
+
+  return mapDatabaseWorkflowToWorkflow(data);
+}
+
+// Create a new workflow
+export async function createWorkflow(workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workflow | null> {
+  const dbWorkflow = mapWorkflowToDatabaseWorkflow(workflow as Workflow);
+  
+  const { data, error } = await supabase
+    .from('workflows')
+    .insert(dbWorkflow)
+    .select()
+    .single();
+
+  if (error || !data) {
+    console.error('Error creating workflow:', error);
+    return null;
+  }
+
+  return mapDatabaseWorkflowToWorkflow(data);
+}
+
+// Update a workflow
+export async function updateWorkflow(id: string, workflow: Partial<Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Workflow | null> {
+  const { data, error } = await supabase
+    .from('workflows')
+    .update({
+      name: workflow.name,
+      description: workflow.description || null,
+      definition: workflow.definition as unknown as Json || undefined,
+      status: workflow.status,
+      trigger_type: workflow.triggerType,
+      trigger_config: workflow.triggerConfig as Json || null,
+      last_run_at: workflow.lastRunAt || null,
+      last_run_status: workflow.lastRunStatus || null,
+      version: workflow.version,
+      is_template: workflow.isTemplate,
+      folder_id: workflow.folderId || null
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    console.error('Error updating workflow:', error);
+    return null;
+  }
+
+  return mapDatabaseWorkflowToWorkflow(data);
+}
+
+// Execute a workflow
+export async function executeWorkflow(workflowId: string, inputs?: Record<string, any>): Promise<WorkflowExecution | null> {
+  // Get the workflow
+  const workflow = await getWorkflow(workflowId);
+  if (!workflow) return null;
+
+  // Create execution record
+  const { data: executionData, error: executionError } = await supabase
+    .from('workflow_executions')
+    .insert({
+      workflow_id: workflowId,
       status: 'running',
-      startedAt: now,
-      nodeStates,
-      inputs,
-      outputs: {},
-      logs: [
-        {
-          timestamp: now,
-          level: 'info',
-          message: `Started workflow execution: ${workflowDef.name}`,
-        }
-      ]
-    };
-    
-    // Save the initial execution state
-    await supabase
-      .from('workflow_executions')
-      .insert(execution);
-      
-    // Start the execution process in the background
-    this.executeWorkflow(workflowDef, execution, userId)
-      .catch(error => this.handleExecutionError(executionId, error));
-      
-    return executionId;
+      inputs: inputs as Json || null,
+      node_states: {} as Json,
+      initiated_by: (await supabase.auth.getUser()).data.user?.id || null
+    })
+    .select()
+    .single();
+
+  if (executionError || !executionData) {
+    console.error('Error creating execution record:', executionError);
+    return null;
   }
-  
-  /**
-   * Execute a workflow by traversing the graph and running each node
-   */
-  private async executeWorkflow(
-    workflow: WorkflowDefinition,
-    execution: WorkflowExecution,
-    userId: string
-  ): Promise<void> {
-    try {
-      // Build dependency graph
-      const graph = this.buildDependencyGraph(workflow.nodes, workflow.edges);
-      
-      // Get starting nodes (with no inputs or only receiving from workflow inputs)
-      const startNodes = this.getStartNodes(workflow.nodes, graph);
-      
-      // Create execution context
-      const context: ExecutionContext = {
-        workflowId: workflow.id,
-        executionId: execution.id,
-        userId,
-        updateNodeState: async (nodeId, update) => {
-          await supabase
-            .from('workflow_executions')
-            .update({
-              nodeStates: {
-                ...execution.nodeStates,
-                [nodeId]: {
-                  ...execution.nodeStates[nodeId],
-                  ...update
-                }
-              }
-            })
-            .eq('id', execution.id);
-            
-          // Update our local copy as well
-          execution.nodeStates[nodeId] = {
-            ...execution.nodeStates[nodeId],
-            ...update
-          };
-        },
-        logMessage: async (message, level, nodeId) => {
-          const log = {
-            timestamp: new Date().toISOString(),
-            level,
-            message,
-            nodeId
-          };
-          
-          execution.logs.push(log);
-          
-          await supabase
-            .from('workflow_executions')
-            .update({
-              logs: execution.logs
-            })
-            .eq('id', execution.id);
-        },
-        getNodeOutputs: async (nodeId) => {
-          const nodeState = execution.nodeStates[nodeId];
-          return nodeState?.output;
-        }
-      };
-      
-      // Execute the graph starting with the start nodes
-      await this.executeNodes(startNodes, graph, workflow.nodes, execution.inputs, context);
-      
-      // Update execution status to completed
-      await supabase
-        .from('workflow_executions')
-        .update({
-          status: 'completed',
-          completedAt: new Date().toISOString()
-        })
-        .eq('id', execution.id);
-        
-      await context.logMessage('Workflow execution completed successfully', 'info');
-      
-    } catch (error) {
-      await this.handleExecutionError(execution.id, error);
-    }
+
+  const execution = mapDatabaseExecutionToWorkflowExecution(executionData);
+
+  // Update workflow status
+  await supabase
+    .from('workflows')
+    .update({
+      last_run_at: new Date().toISOString(),
+      last_run_status: 'pending'
+    })
+    .eq('id', workflowId);
+
+  // Execute in background
+  executeWorkflowGraph(workflow, execution).catch(console.error);
+
+  return execution;
+}
+
+// Get execution by ID
+export async function getExecution(id: string): Promise<WorkflowExecution | null> {
+  const { data, error } = await supabase
+    .from('workflow_executions')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) {
+    console.error('Error getting execution:', error);
+    return null;
   }
+
+  return mapDatabaseExecutionToWorkflowExecution(data);
+}
+
+// Update execution status
+export async function updateExecution(execution: WorkflowExecution): Promise<void> {
+  const dbExecution = mapWorkflowExecutionToDatabaseExecution(execution);
   
-  /**
-   * Handle any errors during workflow execution
-   */
-  private async handleExecutionError(executionId: string, error: any): Promise<void> {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
-    await supabase
-      .from('workflow_executions')
-      .update({
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        logs: supabase.sql`array_append(logs, jsonb_build_object(
-          'timestamp', ${new Date().toISOString()},
-          'level', 'error',
-          'message', ${errorMessage}
-        ))`
-      })
-      .eq('id', executionId);
-  }
-  
-  /**
-   * Build a dependency graph from nodes and edges
-   */
-  private buildDependencyGraph(
-    nodes: NodeDefinition[], 
-    edges: EdgeDefinition[]
-  ): Record<string, string[]> {
-    const graph: Record<string, string[]> = {};
-    
-    // Initialize each node with empty dependencies
-    nodes.forEach(node => {
-      graph[node.id] = [];
-    });
-    
-    // Add dependencies based on edges
-    edges.forEach(edge => {
-      const { source, target } = edge;
-      graph[target].push(source);
-    });
-    
-    return graph;
-  }
-  
-  /**
-   * Get nodes that have no dependencies and can be started immediately
-   */
-  private getStartNodes(
-    nodes: NodeDefinition[],
-    graph: Record<string, string[]>
-  ): NodeDefinition[] {
-    return nodes.filter(node => graph[node.id].length === 0);
-  }
-  
-  /**
-   * Execute nodes in topological order
-   */
-  private async executeNodes(
-    nodes: NodeDefinition[],
-    graph: Record<string, string[]>,
-    allNodes: NodeDefinition[],
-    workflowInputs: Record<string, any>,
-    context: ExecutionContext
-  ): Promise<void> {
-    // Process each node
-    for (const node of nodes) {
-      await this.executeNode(node, graph, allNodes, workflowInputs, context);
-    }
-  }
-  
-  /**
-   * Execute a single node and its dependents
-   */
-  private async executeNode(
-    node: NodeDefinition,
-    graph: Record<string, string[]>,
-    allNodes: NodeDefinition[],
-    workflowInputs: Record<string, any>,
-    context: ExecutionContext
-  ): Promise<void> {
-    try {
-      // Update node state to running
-      await context.updateNodeState(node.id, {
-        status: 'running',
-        startedAt: new Date().toISOString()
-      });
-      
-      await context.logMessage(`Starting node: ${node.data.label}`, 'info', node.id);
-      
-      // Get handler for this node type
-      const handler = NODE_HANDLERS[node.type];
-      if (!handler) {
-        throw new Error(`No handler found for node type: ${node.type}`);
-      }
-      
-      // Get inputs from dependencies
-      const nodeInputs: Record<string, any> = { ...workflowInputs };
-      
-      // Find incoming edges and get outputs from source nodes
-      const incomingEdges = node.data.inputs.map(input => input.id);
-      
-      const dependencies = graph[node.id];
-      for (const depNodeId of dependencies) {
-        const depNode = allNodes.find(n => n.id === depNodeId);
-        if (!depNode) continue;
-        
-        // Make sure dependency has been executed
-        const depNodeState = await context.getNodeOutputs(depNodeId);
-        if (!depNodeState) {
-          throw new Error(`Dependency node ${depNodeId} has not been executed yet`);
-        }
-        
-        // Add outputs to this node's inputs
-        Object.assign(nodeInputs, depNodeState);
-      }
-      
-      // Execute the node
-      const outputs = await handler(node, nodeInputs, context);
-      
-      // Update node state to completed with outputs
-      await context.updateNodeState(node.id, {
-        status: 'completed',
-        completedAt: new Date().toISOString(),
-        output: outputs
-      });
-      
-      await context.logMessage(`Completed node: ${node.data.label}`, 'info', node.id);
-      
-      // Find nodes that depend on this one and can now be executed
-      const dependentNodeIds = Object.entries(graph)
-        .filter(([, deps]) => deps.includes(node.id))
-        .map(([nodeId]) => nodeId);
-        
-      // Check which dependents have all their dependencies satisfied
-      const readyNodes: NodeDefinition[] = [];
-      
-      for (const depId of dependentNodeIds) {
-        const dependencies = graph[depId];
-        const allDependenciesCompleted = dependencies.every(depNodeId => {
-          const depNodeState = context.getNodeOutputs(depNodeId);
-          return depNodeState !== undefined;
-        });
-        
-        if (allDependenciesCompleted) {
-          const depNode = allNodes.find(n => n.id === depId);
-          if (depNode) {
-            readyNodes.push(depNode);
-          }
-        }
-      }
-      
-      // Execute dependent nodes
-      if (readyNodes.length > 0) {
-        await this.executeNodes(readyNodes, graph, allNodes, workflowInputs, context);
-      }
-      
-    } catch (error) {
-      // Update node state to failed
-      await context.updateNodeState(node.id, {
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      
-      await context.logMessage(
-        `Failed to execute node: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error',
-        node.id
-      );
-      
-      // Re-throw to stop workflow execution
-      throw error;
-    }
+  const { error } = await supabase
+    .from('workflow_executions')
+    .update(dbExecution)
+    .eq('id', execution.id);
+
+  if (error) {
+    console.error('Error updating execution:', error);
   }
 }
 
-export const workflowEngine = new WorkflowEngine();
+// Execute the workflow graph
+async function executeWorkflowGraph(workflow: Workflow, execution: WorkflowExecution): Promise<void> {
+  try {
+    const { nodes, edges } = workflow.definition;
+    const nodeOutputs: Record<string, NodeOutputs> = {};
+    const executionContext: NodeExecutionContext = {
+      workflowId: workflow.id,
+      executionId: execution.id,
+      userId: execution.initiatedBy,
+      log: (level, message, details) => {
+        if (!execution.logs) execution.logs = [];
+        execution.logs.push({
+          timestamp: new Date().toISOString(),
+          level,
+          message,
+          details
+        });
+      }
+    };
+
+    // Find starting nodes (no incoming edges)
+    const startingNodeIds = nodes.filter(node => 
+      !edges.some(edge => edge.target === node.id)
+    ).map(node => node.id);
+
+    // Execute the graph
+    const executionPromises = startingNodeIds.map(nodeId => 
+      executeNode(nodeId, nodes, edges, nodeOutputs, executionContext)
+    );
+
+    await Promise.all(executionPromises);
+
+    // Update execution status to completed
+    execution.status = 'completed';
+    execution.completedAt = new Date().toISOString();
+    execution.outputs = Object.entries(nodeOutputs).reduce((acc, [nodeId, outputs]) => {
+      // Only include outputs from terminal nodes (no outgoing edges)
+      if (!edges.some(edge => edge.source === nodeId)) {
+        acc[nodeId] = outputs;
+      }
+      return acc;
+    }, {} as Record<string, any>);
+
+    await updateExecution(execution);
+
+    // Update workflow status
+    await supabase
+      .from('workflows')
+      .update({ last_run_status: 'success' })
+      .eq('id', workflow.id);
+
+  } catch (error) {
+    console.error('Workflow execution error:', error);
+    execution.status = 'failed';
+    execution.completedAt = new Date().toISOString();
+    execution.error = error instanceof Error ? error.message : String(error);
+    
+    await updateExecution(execution);
+
+    // Update workflow status
+    await supabase
+      .from('workflows')
+      .update({ last_run_status: 'failed' })
+      .eq('id', workflow.id);
+  }
+}
+
+// Execute a single node
+async function executeNode(
+  nodeId: string,
+  nodes: NodeBase[],
+  edges: any[],
+  nodeOutputs: Record<string, NodeOutputs>,
+  context: NodeExecutionContext
+): Promise<NodeOutputs> {
+  // Check if already executed
+  if (nodeOutputs[nodeId]) {
+    return nodeOutputs[nodeId];
+  }
+
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) {
+    throw new Error(`Node ${nodeId} not found`);
+  }
+
+  // Get incoming edges
+  const incomingEdges = edges.filter(edge => edge.target === nodeId);
+
+  // If no incoming edges, execute with empty inputs
+  if (incomingEdges.length === 0) {
+    const handler = nodeHandlers[node.type];
+    if (!handler) {
+      throw new Error(`No handler registered for node type: ${node.type}`);
+    }
+
+    const outputs = await handler(node, {}, context);
+    nodeOutputs[nodeId] = outputs;
+    return outputs;
+  }
+
+  // Execute all predecessor nodes and collect inputs
+  const inputs: NodeInputs = {};
+  await Promise.all(incomingEdges.map(async edge => {
+    const sourceNodeId = edge.source;
+    const sourceOutputs = await executeNode(
+      sourceNodeId,
+      nodes,
+      edges,
+      nodeOutputs,
+      context
+    );
+
+    // Map outputs to inputs based on connection
+    if (edge.sourceHandle && edge.targetHandle) {
+      inputs[edge.targetHandle] = sourceOutputs[edge.sourceHandle];
+    } else {
+      // Default behavior: pass all outputs as inputs
+      Object.assign(inputs, sourceOutputs);
+    }
+  }));
+
+  // Execute the node
+  const handler = nodeHandlers[node.type];
+  if (!handler) {
+    throw new Error(`No handler registered for node type: ${node.type}`);
+  }
+
+  try {
+    const outputs = await handler(node, inputs, context);
+    nodeOutputs[nodeId] = outputs;
+
+    // Propagate execution to downstream nodes
+    const outgoingEdges = edges.filter(edge => edge.source === nodeId);
+    await Promise.all(outgoingEdges.map(edge => 
+      executeNode(edge.target, nodes, edges, nodeOutputs, context)
+    ));
+
+    return outputs;
+  } catch (error) {
+    context.log('error', `Error executing node ${nodeId} (${node.type}): ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
+  }
+}
