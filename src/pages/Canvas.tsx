@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, MouseEvent } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
@@ -99,8 +99,9 @@ const nodeCategories = [
 
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
-  const [nodes, setNodes] = useNodesState([]);
-  const [edges, setEdges] = useEdgesState([]);
+  const navigate = useNavigate();
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -298,8 +299,8 @@ const Canvas = () => {
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={setNodes}
-                onEdgesChange={setEdges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
                 fitView
@@ -308,7 +309,13 @@ const Canvas = () => {
                 <MiniMap />
                 <Background />
                 <Panel position="top-right">
-                  <Button onClick={() => setIsAddingNode(true)} className="flex items-center">
+                  <Button 
+                    onClick={(e: MouseEvent) => {
+                      e.preventDefault();
+                      setIsAddingNode(true);
+                    }} 
+                    className="flex items-center"
+                  >
                     <Plus className="mr-2 h-4 w-4" />
                     Add Node
                   </Button>
@@ -333,7 +340,9 @@ const Canvas = () => {
       <NodeLibrary
         isOpen={isAddingNode}
         onClose={() => setIsAddingNode(false)}
-        onAddNode={handleAddNode}
+        onAddNode={(nodeType, nodeCategory, nodeLabel) => {
+          handleAddNode(nodeType, nodeCategory, nodeLabel);
+        }}
         nodeCategories={nodeCategories}
       />
     </div>

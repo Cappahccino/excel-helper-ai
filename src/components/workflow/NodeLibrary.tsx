@@ -1,6 +1,4 @@
 
-// src/components/workflow/NodeLibrary.tsx
-
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -85,10 +83,12 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
                       key={item.type}
                       variant="outline"
                       className="justify-start h-auto py-3 px-4"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
                         onAddNode?.(item.type, category.id, item.label);
                         onClose();
                       }}
+                      type="button"
                     >
                       <div className="text-left">
                         <div className="font-medium">{item.label}</div>
