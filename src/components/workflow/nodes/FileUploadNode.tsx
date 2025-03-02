@@ -1,7 +1,7 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileUp, GripVertical, Search, Plus } from 'lucide-react';
+import { FileUp, GripVertical, Search, Plus, Upload, FileSpreadsheet, X } from 'lucide-react';
 import { NodeProps, FileUploadNodeData } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { Card, CardContent } from '@/components/ui/card';
 import { ExcelFile } from '@/types/files';
+import { supabase } from '@/integrations/supabase/client';
+import { Spinner } from '@/components/ui/spinner';
 
 // Default data if none is provided
 const defaultData: FileUploadNodeData = {
@@ -26,6 +28,8 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Use provided data or fallback to default data
   const nodeData = data ? {
@@ -37,15 +41,30 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
     }
   } : defaultData;
 
-  // Function to fetch files
+  // Function to fetch files from Supabase
   const fetchFiles = async () => {
     try {
-      // Mock fetching files - in a real implementation, you would fetch from your API
-      // This should be replaced with your actual file fetching logic
-      console.log('Fetching files...');
-      // Placeholder for actual file fetching
+      setIsLoading(true);
+      setError(null);
+      
+      const { data: fetchedFiles, error: fetchError } = await supabase
+        .from('excel_files')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (fetchError) {
+        console.error('Error fetching files:', fetchError);
+        setError('Failed to load files');
+        return;
+      }
+
+      setFiles(fetchedFiles || []);
     } catch (error) {
-      console.error('Error fetching files:', error);
+      console.error('Error in fetchFiles:', error);
+      setError('Failed to load files');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -68,9 +87,17 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
 
   // Handle file upload - matching the required function signature
   const handleFileUpload = async (files: File[]): Promise<void> => {
-    // Implement your file upload logic here
-    console.log('Uploading files:', files);
-    return Promise.resolve();
+    try {
+      setIsUploading(true);
+      console.log('Uploading files:', files);
+      // In a real implementation, this would connect to your file upload service
+      // For now we resolve immediately to demonstrate the UI flow
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
   };
 
   // Handle file upload completion
@@ -85,8 +112,18 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
     fetchFiles(); // Refresh file list
   };
 
+  // Format file size for display
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   // Get selected file name
-  const selectedFileName = files.find(file => file.id === nodeData.config?.fileId)?.filename || 'No file selected';
+  const selectedFile = files.find(file => file.id === nodeData.config?.fileId);
+  const selectedFileName = selectedFile?.filename || 'No file selected';
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-blue-500 shadow-md' : 'border-blue-200'}`}>
@@ -115,8 +152,7 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
               size="sm" 
               className="w-full text-xs"
               onClick={() => {
-                // This empty onClick handler satisfies the type requirements
-                // The actual file selection will happen through the Dialog's state
+                // Empty onClick handler to satisfy TypeScript
               }}
             >
               Select File
@@ -141,18 +177,31 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
               
               {/* File list */}
               <div className="max-h-60 overflow-y-auto space-y-2">
-                {filteredFiles.length > 0 ? (
+                {isLoading ? (
+                  <div className="flex justify-center p-4">
+                    <Spinner className="h-6 w-6 text-blue-500" />
+                  </div>
+                ) : error ? (
+                  <div className="text-sm text-red-500 text-center py-4">
+                    {error}
+                  </div>
+                ) : filteredFiles.length > 0 ? (
                   filteredFiles.map(file => (
                     <Card 
                       key={file.id} 
-                      className={`cursor-pointer hover:bg-gray-50 transition-colors ${nodeData.config?.fileId === file.id ? 'border-blue-500' : ''}`}
+                      className={`cursor-pointer hover:bg-gray-50 transition-colors ${nodeData.config?.fileId === file.id ? 'border-blue-500 bg-blue-50/50' : ''}`}
                       onClick={() => handleFileSelect(file.id)}
                     >
                       <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="truncate max-w-[200px]">{file.filename}</div>
-                          <div className="text-xs text-gray-500">
-                            {(file.file_size / 1024).toFixed(1)} KB
+                        <div className="flex items-center gap-3">
+                          <FileSpreadsheet className="h-5 w-5 text-green-600 flex-shrink-0" />
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">
+                              {file.filename}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {formatFileSize(file.file_size)}
+                            </div>
                           </div>
                         </div>
                       </CardContent>
@@ -175,10 +224,10 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
                   <div className="bg-gray-50 rounded-md p-4">
                     <FileUploadZone 
                       onFileUpload={handleFileUpload}
-                      isUploading={false}
-                      uploadProgress={{}}
+                      isUploading={true}
+                      uploadProgress={{0: 50}}
                       currentFiles={null}
-                      onReset={() => {}}
+                      onReset={() => setIsUploading(false)}
                       onUploadComplete={handleUploadComplete}
                     />
                   </div>
@@ -188,7 +237,7 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
                     className="w-full" 
                     onClick={() => setIsUploading(true)}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Upload className="h-4 w-4 mr-2" />
                     Upload New File
                   </Button>
                 )}
