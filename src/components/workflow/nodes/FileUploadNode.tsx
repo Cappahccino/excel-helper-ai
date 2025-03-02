@@ -13,16 +13,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Spinner } from '@/components/ui/spinner';
 
 // Default data if none is provided
-const defaultData: FileUploadNodeData = {
-  label: 'File Upload',
-  type: 'fileUpload',
-  config: {
-    fileId: null,
-    hasHeaders: true,
-    delimiter: ','
-  }
-};
-
 const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
   const [files, setFiles] = useState<ExcelFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
