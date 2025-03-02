@@ -1,60 +1,53 @@
-import { supabase } from "@/integrations/supabase/client";
-import { 
-  NodeBase, 
-  NodeInputs, 
-  NodeOutputs, 
-  NodeExecutionContext, 
-  NodeHandler 
-} from "@/types/workflow";
 
-// Handler for Spreadsheet Generator node
-export const spreadsheetGeneratorHandler: NodeHandler = async (
-  node: NodeBase,
+import { NodeInputs, NodeOutputs } from '@/types/workflow';
+import * as XLSX from 'xlsx';
+
+// Generate an Excel file from input data
+export const generateSpreadsheet = async (
   inputs: NodeInputs,
-  context: NodeExecutionContext
+  config: Record<string, any>
 ): Promise<NodeOutputs> => {
   try {
-    context.log('info', 'Starting Spreadsheet Generator');
-
-    // Get node configuration
-    const config = node.data.config || {};
+    const data = inputs.data || [];
     const filename = config.filename || 'generated.xlsx';
-    const sheets = config.sheets || [];
-
-    context.log('info', `Generating spreadsheet with filename: ${filename}`);
-
-    // Simulate spreadsheet generation
-    const spreadsheetData = await generateSpreadsheet(sheets);
-
-    context.log('info', 'Spreadsheet generated successfully');
-
+    const sheets = config.sheets || [{ name: 'Sheet1', data: null }];
+    
+    // Create a new workbook
+    const workbook = XLSX.utils.book_new();
+    
+    // For each sheet in the configuration
+    for (const sheet of sheets) {
+      const sheetName = sheet.name || 'Sheet';
+      const sheetData = sheet.data || data;
+      
+      if (!Array.isArray(sheetData) || sheetData.length === 0) {
+        // Create an empty worksheet if no data
+        const ws = XLSX.utils.aoa_to_sheet([['No data']]);
+        XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+        continue;
+      }
+      
+      // Convert the data to a worksheet
+      const ws = XLSX.utils.json_to_sheet(sheetData);
+      
+      // Add the worksheet to the workbook
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+    }
+    
+    // Write the workbook to a binary string
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    
+    // In a real implementation, you would save this buffer to a file or return it
+    // For now, we'll just return some metadata
     return {
       filename,
-      spreadsheetData,
-      timestamp: new Date().toISOString()
+      sheetCount: sheets.length,
+      size: excelBuffer.length,
+      generatedAt: new Date().toISOString(),
+      // buffer: excelBuffer  // We could include the buffer if needed
     };
   } catch (error) {
-    context.log('error', `Spreadsheet generation failed: ${error instanceof Error ? error.message : String(error)}`);
-    throw error;
+    console.error('Error generating spreadsheet:', error);
+    throw new Error(`Spreadsheet generation error: ${error}`);
   }
-};
-
-// Helper function to simulate spreadsheet generation
-async function generateSpreadsheet(sheets: any[]) {
-  // In a real implementation, this would use a library like xlsx or exceljs
-  // to generate a spreadsheet file from the provided data.
-  // For this example, we'll just return a placeholder object.
-  return {
-    message: "Spreadsheet data generated successfully",
-    sheets: sheets.map((sheet, index) => ({
-      name: sheet.name || `Sheet${index + 1}`,
-      data: sheet.data || []
-    }))
-  };
-}
-
-// Register the handler
-export const spreadsheetGeneratorNodeDefinition = {
-  type: 'spreadsheetGenerator',
-  handler: spreadsheetGeneratorHandler
 };

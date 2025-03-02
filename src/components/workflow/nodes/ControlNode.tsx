@@ -1,57 +1,52 @@
 
-// src/components/workflow/nodes/ControlNode.tsx
-
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import { Edit2, GripVertical } from 'lucide-react';
-
-interface ControlNodeData {
-  label: string;
-  type: string;
-  config: {
-    conditions?: any[];
-    loopType?: string;
-    mergeStrategy?: string;
-    [key: string]: any;
-  };
-}
+import { NodeProps, ControlNodeData } from '@/types/workflow';
 
 const ControlNode = ({ data, selected }: NodeProps<ControlNodeData>) => {
+  // Create default data if none is provided
+  const nodeData: ControlNodeData = data || {
+    label: 'Control',
+    type: 'conditionalBranch',
+    config: {}
+  };
+
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-gray-500 shadow-md' : 'border-gray-200'}`}>
       {/* Header */}
       <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-gray-500 opacity-50" />
         <Edit2 className="h-4 w-4 text-gray-500" />
-        <div className="text-sm font-medium text-gray-800">{data.label}</div>
+        <div className="text-sm font-medium text-gray-800">{nodeData.label}</div>
       </div>
       
       {/* Body */}
       <div className="p-3 pt-2 bg-white rounded-b-md">
         {/* Control type specific display */}
-        {data.type === 'conditionalBranch' && (
+        {nodeData.type === 'conditionalBranch' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Conditions:</span>
-              <span className="font-medium">{data.config?.conditions?.length || 0}</span>
+              <span className="font-medium">{nodeData.config?.conditions?.length || 0}</span>
             </div>
           </div>
         )}
         
-        {data.type === 'loopNode' && (
+        {nodeData.type === 'loopNode' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Loop type:</span>
-              <span className="font-medium">{data.config?.loopType || 'For each'}</span>
+              <span className="font-medium">{nodeData.config?.loopType || 'For each'}</span>
             </div>
           </div>
         )}
         
-        {data.type === 'mergeNode' && (
+        {nodeData.type === 'mergeNode' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Merge strategy:</span>
-              <span className="font-medium">{data.config?.mergeStrategy || 'Concatenate'}</span>
+              <span className="font-medium">{nodeData.config?.mergeStrategy || 'Concatenate'}</span>
             </div>
           </div>
         )}
@@ -71,7 +66,7 @@ const ControlNode = ({ data, selected }: NodeProps<ControlNodeData>) => {
       />
       
       {/* Multiple output handles for control nodes */}
-      {data.type === 'conditionalBranch' && (
+      {nodeData.type === 'conditionalBranch' && (
         <>
           <Handle
             type="source"
@@ -104,7 +99,7 @@ const ControlNode = ({ data, selected }: NodeProps<ControlNodeData>) => {
         </>
       )}
       
-      {data.type !== 'conditionalBranch' && (
+      {nodeData.type !== 'conditionalBranch' && (
         <Handle
           type="source"
           position={Position.Bottom}

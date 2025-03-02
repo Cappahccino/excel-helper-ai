@@ -1,5 +1,5 @@
 
-import { Json } from '@/types/supabase';
+import { Json } from './common';
 
 // Define workflow database types
 export interface WorkflowDatabaseTypes {
@@ -120,4 +120,46 @@ export interface WorkflowDatabaseTypes {
     average_duration_ms: number | null;
     last_updated_at: string;
   };
+}
+
+// Type for workflow execution
+export interface WorkflowExecution {
+  id?: string;
+  workflow_id: string;
+  status: string;
+  started_at: string;
+  completed_at?: string | null;
+  initiated_by?: string | null;
+  node_states: Json;
+  inputs?: Json | null;
+  outputs?: Json | null;
+  error?: string | null;
+  logs?: Json[] | null;
+}
+
+// Helper to extract credentials from API credentials object
+export function extractCredentials(credentials: any): { secret: string; access_token: string } {
+  // Handle different possible structures of credentials
+  if (typeof credentials.credentials === 'object') {
+    return {
+      secret: credentials.credentials.secret || '',
+      access_token: credentials.credentials.access_token || ''
+    };
+  }
+  
+  // Try to parse if it's a string
+  if (typeof credentials.credentials === 'string') {
+    try {
+      const parsed = JSON.parse(credentials.credentials);
+      return {
+        secret: parsed.secret || '',
+        access_token: parsed.access_token || ''
+      };
+    } catch (e) {
+      // If parsing fails, return empty values
+      return { secret: '', access_token: '' };
+    }
+  }
+  
+  return { secret: '', access_token: '' };
 }

@@ -1,201 +1,180 @@
 
-// src/components/workflow/NodeConfigPanel.tsx
-
 import React from 'react';
-import { Node } from '@xyflow/react';
-import { X, Trash2, Copy } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { WorkflowNodeData, BaseNodeData } from '@/types/workflow';
 
 interface NodeConfigPanelProps {
-  node: Node;
-  onUpdateConfig: (config: any) => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  onClose: () => void;
-  readOnly?: boolean;
+  selectedNode: WorkflowNodeData | null;
+  onConfigChange: (config: Partial<WorkflowNodeData>) => void;
 }
 
-const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
-  node,
-  onUpdateConfig,
-  onDelete,
-  onDuplicate,
-  onClose,
-  readOnly = false
-}) => {
-  const [config, setConfig] = React.useState(node.data?.config || {});
-  
-  const handleChange = (key: string, value: any) => {
-    const newConfig = { ...config, [key]: value };
-    setConfig(newConfig);
-    onUpdateConfig(newConfig);
+const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ selectedNode, onConfigChange }) => {
+  if (!selectedNode) {
+    return (
+      <div className="p-4 text-center text-gray-500">
+        <p>Select a node to configure</p>
+      </div>
+    );
+  }
+
+  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onConfigChange({ ...selectedNode, label: e.target.value });
   };
-  
-  const renderConfigFields = () => {
-    const nodeType = node.data?.type;
-    
-    switch (nodeType) {
+
+  const handleConfigChange = <K extends keyof BaseNodeData['config']>(
+    key: K,
+    value: BaseNodeData['config'][K]
+  ) => {
+    onConfigChange({
+      ...selectedNode,
+      config: {
+        ...selectedNode.config,
+        [key]: value
+      }
+    });
+  };
+
+  // Render specific config options based on node type
+  const renderNodeSpecificConfig = () => {
+    if (!selectedNode) return null;
+
+    switch (selectedNode.type) {
       case 'excelInput':
+      case 'csvInput':
         return (
-          <div className="space-y-4">
-            <div>
-              <Label>Excel File</Label>
-              <Select
-                disabled={readOnly}
-                value={config.fileId || ''}
-                onValueChange={(value) => handleChange('fileId', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an Excel file" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="placeholder">Sample Excel File</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Switch
-                disabled={readOnly}
-                id="has-headers"
-                checked={!!config.hasHeaders}
-                onCheckedChange={(checked) => handleChange('hasHeaders', checked)}
+          <>
+            <div className="grid gap-2 mb-4">
+              <Label htmlFor="fileId">File</Label>
+              <Input
+                id="fileId"
+                value={selectedNode.config.fileId as string || ''}
+                onChange={(e) => handleConfigChange('fileId', e.target.value)}
+                placeholder="Select a file"
               />
-              <Label htmlFor="has-headers">First row contains headers</Label>
             </div>
-          </div>
+            <div className="flex items-center justify-between mb-4">
+              <Label htmlFor="hasHeaders">Has Headers</Label>
+              <Switch
+                id="hasHeaders"
+                checked={!!selectedNode.config.hasHeaders}
+                onCheckedChange={(checked) => handleConfigChange('hasHeaders', checked)}
+              />
+            </div>
+          </>
         );
-        
+
       case 'formulaNode':
         return (
-          <div className="space-y-4">
-            <div>
-              <Label>Formula</Label>
-              <Textarea
-                disabled={readOnly}
-                placeholder="Enter formula expression"
-                value={config.formula || ''}
-                onChange={(e) => handleChange('formula', e.target.value)}
-                rows={3}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Example: column('A') * 2 + column('B')
-              </p>
-            </div>
+          <div className="grid gap-2 mb-4">
+            <Label htmlFor="formula">Formula</Label>
+            <Textarea
+              id="formula"
+              value={selectedNode.config.formula as string || ''}
+              onChange={(e) => handleConfigChange('formula', e.target.value)}
+              placeholder="Enter your formula"
+              className="min-h-[100px]"
+            />
           </div>
         );
-        
+
       case 'aiAnalyze':
         return (
-          <div className="space-y-4">
-            <div>
-              <Label>Analysis Type</Label>
-              <Select 
-                disabled={readOnly}
-                value={config.analysisType || 'general'}
-                onValueChange={(value) => handleChange('analysisType', value)}
+          <>
+            <div className="grid gap-2 mb-4">
+              <Label htmlFor="analysisType">Analysis Type</Label>
+              <Select
+                value={selectedNode.config.analysisType as string || 'standard'}
+                onValueChange={(value) => handleConfigChange('analysisType', value)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="analysisType">
                   <SelectValue placeholder="Select analysis type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="general">General Analysis</SelectItem>
+                  <SelectItem value="standard">Standard Analysis</SelectItem>
                   <SelectItem value="outliers">Outlier Detection</SelectItem>
                   <SelectItem value="patterns">Pattern Recognition</SelectItem>
+                  <SelectItem value="trends">Trend Analysis</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center justify-between mb-4">
+              <Label htmlFor="detectOutliers">Detect Outliers</Label>
               <Switch
-                disabled={readOnly}
-                id="detect-outliers"
-                checked={config.analysisOptions?.detectOutliers}
-                onCheckedChange={(checked) => {
-                  const analysisOptions = { ...config.analysisOptions, detectOutliers: checked };
-                  handleChange('analysisOptions', analysisOptions);
-                }}
+                id="detectOutliers"
+                checked={!!selectedNode.config.analysisOptions?.detectOutliers}
+                onCheckedChange={(checked) => 
+                  handleConfigChange('analysisOptions', {
+                    ...((selectedNode.config.analysisOptions || {}) as object),
+                    detectOutliers: checked
+                  })
+                }
               />
-              <Label htmlFor="detect-outliers">Detect outliers</Label>
             </div>
+          </>
+        );
+
+      case 'conditionalBranch':
+        return (
+          <div className="grid gap-2 mb-4">
+            <Label htmlFor="condition">Condition</Label>
+            <Textarea
+              id="condition"
+              value={String(selectedNode.config.condition || '')}
+              onChange={(e) => handleConfigChange('condition', e.target.value)}
+              placeholder="Enter condition expression"
+              className="min-h-[100px]"
+            />
           </div>
         );
-        
+
+      case 'spreadsheetGenerator':
+        return (
+          <div className="grid gap-2 mb-4">
+            <Label htmlFor="filename">Filename</Label>
+            <Input
+              id="filename"
+              value={selectedNode.config.filename as string || 'output.xlsx'}
+              onChange={(e) => handleConfigChange('filename', e.target.value)}
+              placeholder="Enter filename"
+            />
+          </div>
+        );
+
       default:
         return (
-          <div className="py-4 text-center text-muted-foreground">
-            No configuration options available for this node type.
+          <div className="p-4 text-center text-gray-500">
+            <p>Configuration options for {selectedNode.type}</p>
           </div>
         );
     }
   };
-  
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h3 className="font-medium">{node.data?.label || 'Node Config'}</h3>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+    <div className="p-4 border-l border-gray-200 w-full max-w-sm overflow-y-auto">
+      <h3 className="text-lg font-semibold mb-4">Node Configuration</h3>
+      
+      <div className="grid gap-2 mb-4">
+        <Label htmlFor="nodeLabel">Label</Label>
+        <Input
+          id="nodeLabel"
+          value={selectedNode.label}
+          onChange={handleLabelChange}
+          placeholder="Node label"
+        />
       </div>
-      
-      <Tabs defaultValue="config" className="flex-1 overflow-hidden">
-        <TabsList className="w-full justify-start px-4 pt-2">
-          <TabsTrigger value="config">Configuration</TabsTrigger>
-          <TabsTrigger value="advanced">Advanced</TabsTrigger>
-        </TabsList>
-        
-        <div className="px-4 pt-4 pb-24 overflow-y-auto h-full">
-          <TabsContent value="config" className="mt-0">
-            {renderConfigFields()}
-          </TabsContent>
-          
-          <TabsContent value="advanced" className="mt-0 space-y-4">
-            <div>
-              <Label>Node ID</Label>
-              <Input value={node.id} disabled readOnly />
-            </div>
-            
-            <div>
-              <Label>Node Type</Label>
-              <Input value={node.data?.type || ''} disabled readOnly />
-            </div>
-          </TabsContent>
-        </div>
-      </Tabs>
-      
-      <div className="p-4 border-t mt-auto">
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onDuplicate}
-            disabled={readOnly}
-            className="flex-1"
-          >
-            <Copy className="h-4 w-4 mr-2" />
-            Duplicate
-          </Button>
-          
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={onDelete}
-            disabled={readOnly}
-            className="flex-1"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
+
+      <div className="grid gap-2 mb-4">
+        <Label>Type</Label>
+        <div className="text-sm font-medium py-2 px-3 bg-gray-100 rounded-md">
+          {selectedNode.type}
         </div>
       </div>
+
+      {renderNodeSpecificConfig()}
     </div>
   );
 };

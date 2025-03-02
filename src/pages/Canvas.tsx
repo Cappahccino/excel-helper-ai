@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { WorkflowDefinition } from "@/types/workflow";
 
 const Chat = () => {
   // State and refs
@@ -42,6 +43,11 @@ const Chat = () => {
     fileIds?: string[] | null;
     tagNames?: string[] | null;
   } | null>(null);
+  const [nodes, setNodes] = useState<any[]>([]);
+  const [edges, setEdges] = useState<any[]>([]);
+  const [workflowName, setWorkflowName] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
@@ -309,7 +315,7 @@ const Chat = () => {
 
   // Update loadWorkflow function to handle definition properly
   const loadWorkflow = async (id: string) => {
-    setIsLoading(true);
+    setIsProcessing(true);
     try {
       const { data, error } = await supabase
         .from('workflows')
@@ -323,7 +329,7 @@ const Chat = () => {
         setWorkflowName(data.name);
         
         // Parse the definition if it's a string, or use it directly if it's already an object
-        let parsedDefinition;
+        let parsedDefinition: WorkflowDefinition;
         if (typeof data.definition === 'string') {
           try {
             parsedDefinition = JSON.parse(data.definition);
@@ -331,19 +337,19 @@ const Chat = () => {
             console.error('Error parsing workflow definition:', e);
             parsedDefinition = { nodes: [], edges: [] };
           }
+        } else if (data.definition && typeof data.definition === 'object') {
+          // Ensure the definition has nodes and edges properties
+          const definitionObj = data.definition as any;
+          parsedDefinition = {
+            nodes: Array.isArray(definitionObj.nodes) ? definitionObj.nodes : [],
+            edges: Array.isArray(definitionObj.edges) ? definitionObj.edges : []
+          };
         } else {
-          // If it's already an object, use it directly
-          parsedDefinition = data.definition;
+          parsedDefinition = { nodes: [], edges: [] };
         }
         
-        // Ensure the definition has nodes and edges properties
-        if (parsedDefinition && typeof parsedDefinition === 'object') {
-          const nodes = Array.isArray(parsedDefinition.nodes) ? parsedDefinition.nodes : [];
-          const edges = Array.isArray(parsedDefinition.edges) ? parsedDefinition.edges : [];
-          
-          setNodes(nodes);
-          setEdges(edges);
-        }
+        setNodes(parsedDefinition.nodes);
+        setEdges(parsedDefinition.edges);
       }
     } catch (err) {
       console.error('Error loading workflow:', err);
@@ -353,14 +359,9 @@ const Chat = () => {
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsProcessing(false);
     }
   };
-
-  const [nodes, setNodes] = useState([]);
-  const [edges, setEdges] = useState([]);
-  const [workflowName, setWorkflowName] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <SidebarProvider>

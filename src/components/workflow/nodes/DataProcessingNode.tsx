@@ -1,67 +1,61 @@
 
-// src/components/workflow/nodes/DataProcessingNode.tsx
-
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import { Table, GripVertical } from 'lucide-react';
-
-interface DataProcessingNodeData {
-  label: string;
-  type: string;
-  config: {
-    operations?: any[];
-    rules?: any[];
-    formula?: string;
-    conditions?: any[];
-    [key: string]: any;
-  };
-}
+import { NodeProps, DataProcessingNodeData } from '@/types/workflow';
 
 const DataProcessingNode = ({ data, selected }: NodeProps<DataProcessingNodeData>) => {
+  // Create default data if none is provided
+  const nodeData: DataProcessingNodeData = data || {
+    label: 'Data Processing',
+    type: 'dataTransform',
+    config: {}
+  };
+
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>
       {/* Header */}
       <div className="flex items-center gap-2 bg-green-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-green-500 opacity-50" />
         <Table className="h-4 w-4 text-green-500" />
-        <div className="text-sm font-medium text-green-800">{data.label}</div>
+        <div className="text-sm font-medium text-green-800">{nodeData.label}</div>
       </div>
       
       {/* Body */}
       <div className="p-3 pt-2 bg-white rounded-b-md">
         {/* Process type specific display */}
-        {data.type === 'dataTransform' && (
+        {nodeData.type === 'dataTransform' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Operations:</span>
-              <span className="font-medium">{data.config?.operations?.length || 0}</span>
+              <span className="font-medium">{nodeData.config?.operations?.length || 0}</span>
             </div>
           </div>
         )}
         
-        {data.type === 'dataCleaning' && (
+        {nodeData.type === 'dataCleaning' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Cleaning rules:</span>
-              <span className="font-medium">{data.config?.rules?.length || 0}</span>
+              <span className="font-medium">{nodeData.config?.rules?.length || 0}</span>
             </div>
           </div>
         )}
         
-        {data.type === 'formulaNode' && (
+        {nodeData.type === 'formulaNode' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Formula:</span>
-              <span className="font-medium">{data.config?.formula ? 'Set' : 'Not set'}</span>
+              <span className="font-medium">{nodeData.config?.formula ? 'Set' : 'Not set'}</span>
             </div>
           </div>
         )}
         
-        {data.type === 'filterNode' && (
+        {nodeData.type === 'filterNode' && (
           <div className="text-xs text-gray-500">
             <div className="flex items-center justify-between mb-1">
               <span>Conditions:</span>
-              <span className="font-medium">{data.config?.conditions?.length || 0}</span>
+              <span className="font-medium">{nodeData.config?.conditions?.length || 0}</span>
             </div>
           </div>
         )}

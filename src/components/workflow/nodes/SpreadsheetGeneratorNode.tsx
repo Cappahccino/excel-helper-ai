@@ -1,13 +1,14 @@
 
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import { FileSpreadsheet, GripVertical } from 'lucide-react';
-import { SpreadsheetGeneratorNodeData } from '@/types/workflow';
+import { NodeProps, SpreadsheetGeneratorNodeData } from '@/types/workflow';
 
-const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps<{ data: SpreadsheetGeneratorNodeData }>) => {
-  const nodeData = data || {
+const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps<SpreadsheetGeneratorNodeData>) => {
+  // Create default data if none is provided
+  const nodeData: SpreadsheetGeneratorNodeData = data || {
     label: 'Spreadsheet Generator',
-    type: 'spreadsheetGenerator' as const,
+    type: 'spreadsheetGenerator',
     config: {
       filename: 'generated.xlsx',
       sheets: []

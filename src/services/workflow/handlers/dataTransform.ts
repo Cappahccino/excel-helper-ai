@@ -401,3 +401,57 @@ function evaluateFormula(formula: string, row: any): any {
     return null;
   }
 }
+
+// Function to apply a formula to a data set
+export const applyFormula = async (
+  inputs: NodeInputs,
+  config: Record<string, any>
+): Promise<NodeOutputs> => {
+  const inputData = inputs.data || [];
+  
+  if (!Array.isArray(inputData) || inputData.length === 0) {
+    return { data: [] };
+  }
+  
+  try {
+    // Get the formula from the config
+    const formula = config.formula as string;
+    
+    if (!formula) {
+      return { data: inputData }; // Return original data if no formula
+    }
+    
+    // Apply the formula to each row
+    const newData = inputData.map(row => {
+      const newRow: Record<string, any> = {};
+      
+      for (const [targetField, mapping] of Object.entries(config.mappings)) {
+        if (typeof mapping === 'string') {
+          // Simple field mapping
+          newRow[targetField] = row[mapping];
+        } else if (typeof mapping === 'object' && mapping.formula) {
+          // Formula evaluation (simplified example)
+          try {
+            // Use a formula evaluator in production instead of eval
+            const formula = mapping.formula.replace(/\${([^}]+)}/g, (match, field) => {
+              return JSON.stringify(row[field]);
+            });
+            
+            // This is a placeholder for actual formula evaluation
+            // In production, use a proper formula parser
+            newRow[targetField] = evaluateFormula(formula, row);
+          } catch (error) {
+            newRow[targetField] = null;
+          }
+        }
+      }
+      
+      return newRow;
+    });
+    
+    return { data: newData };
+  } catch (error) {
+    console.error('Error applying formula:', error);
+    throw new Error(`Formula execution error: ${error}`);
+  }
+};

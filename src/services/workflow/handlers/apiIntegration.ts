@@ -1,7 +1,8 @@
 // src/services/workflow/handlers/apiIntegration.ts
 
 import { NodeDefinition } from '@/types/workflow';
-import { supabase } from "@/integrations/supabase/client";
+import { extractCredentials } from '@/types/workflowDatabase';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ApiIntegrationConfig {
   service: 'xero' | 'salesforce' | 'google_sheets' | 'custom';

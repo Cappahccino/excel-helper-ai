@@ -1,5 +1,5 @@
-
-import { supabase } from "@/integrations/supabase/client";
+import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '@/integrations/supabase/client';
 import {
   WorkflowDefinition,
   Workflow,
@@ -14,7 +14,8 @@ import {
   mapDatabaseExecutionToWorkflowExecution,
   mapWorkflowExecutionToDatabaseExecution
 } from "@/types/workflow";
-import { Json } from "@/types/supabase";
+import { Json } from "@/types/common";
+import { WorkflowExecution } from '@/types/workflowDatabase';
 
 // Handler registry
 const nodeHandlers: Record<string, NodeHandler> = {};
@@ -88,27 +89,37 @@ export async function updateWorkflow(id: string, workflow: Partial<Omit<Workflow
 }
 
 // Execute a workflow
-export async function executeWorkflow(workflowId: string, inputs?: Record<string, any>): Promise<WorkflowExecution | null> {
+export async function executeWorkflow(workflowId: string, initiatedBy?: string | null, initialInputs?: Record<string, any>): Promise<{ success: boolean; executionId: string; outputs?: Record<string, any>; error?: string }> {
   // Get the workflow
   const workflow = await getWorkflow(workflowId);
-  if (!workflow) return null;
+  if (!workflow) return { success: false, executionId: '', error: 'Workflow not found' };
 
   // Create execution record
+  const executionId = uuidv4();
+  const now = new Date().toISOString();
+  
+  const executionRecord: WorkflowExecution = {
+    id: executionId,
+    workflow_id: workflowId,
+    status: 'running',
+    started_at: now,
+    initiated_by: initiatedBy || null,
+    node_states: {},
+    inputs: initialInputs || null,
+    outputs: null,
+    error: null,
+    logs: []
+  };
+  
   const { data: executionData, error: executionError } = await supabase
     .from('workflow_executions')
-    .insert({
-      workflow_id: workflowId,
-      status: 'running',
-      inputs: inputs as Json || null,
-      node_states: {} as Json,
-      initiated_by: (await supabase.auth.getUser()).data.user?.id || null
-    })
+    .insert(executionRecord)
     .select()
     .single();
 
   if (executionError || !executionData) {
     console.error('Error creating execution record:', executionError);
-    return null;
+    return { success: false, executionId: '', error: 'Error creating execution record' };
   }
 
   const execution = mapDatabaseExecutionToWorkflowExecution(executionData);
@@ -125,7 +136,11 @@ export async function executeWorkflow(workflowId: string, inputs?: Record<string
   // Execute in background
   executeWorkflowGraph(workflow, execution).catch(console.error);
 
-  return execution;
+  return {
+    success: true,
+    executionId,
+    outputs: execution.outputs
+  };
 }
 
 // Get execution by ID
