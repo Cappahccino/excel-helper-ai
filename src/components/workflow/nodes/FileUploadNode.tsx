@@ -21,15 +21,6 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Use provided data or fallback to default data
-  const nodeData = data ? {
-    ...defaultData,
-    ...data,
-    config: {
-      ...defaultData.config,
-      ...(data.config || {})
-    }
-  } : defaultData;
 
   // Function to fetch files from Supabase
   const fetchFiles = async () => {
