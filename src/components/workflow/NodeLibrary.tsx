@@ -7,27 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search } from 'lucide-react';
-
-interface NodeCategory {
-  label: string;
-  icon: React.ReactNode;
-  description: string;
-  color: string;
-  nodes: string[];
-}
-
-interface NodeLibraryProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onAddNode: (nodeType: string) => void;
-  nodeCategories: Record<string, NodeCategory>;
-}
+import { NodeLibraryProps } from '@/types/workflow';
 
 const NodeLibrary: React.FC<NodeLibraryProps> = ({
   isOpen,
   onClose,
   onAddNode,
-  nodeCategories
+  nodeCategories = []
 }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
   
@@ -38,60 +24,23 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
     }
     
     const lowerSearchTerm = searchTerm.toLowerCase();
-    const result: Record<string, NodeCategory> = {};
     
-    for (const [key, category] of Object.entries(nodeCategories)) {
-      if (category.label.toLowerCase().includes(lowerSearchTerm) || 
-          category.description.toLowerCase().includes(lowerSearchTerm)) {
-        // If the category matches, include all nodes
-        result[key] = category;
-      } else {
-        // Filter nodes within the category
-        const filteredNodes = category.nodes.filter(nodeType => {
-          const nodeName = getNodeLabel(nodeType);
-          return nodeName.toLowerCase().includes(lowerSearchTerm);
-        });
-        
-        if (filteredNodes.length > 0) {
-          result[key] = {
-            ...category,
-            nodes: filteredNodes
-          };
-        }
+    return nodeCategories.filter(category => {
+      // If the category matches, include it
+      if (category.name.toLowerCase().includes(lowerSearchTerm)) {
+        return true;
       }
-    }
-    
-    return result;
+      
+      // Filter items within the category
+      const filteredItems = category.items.filter(item => 
+        item.label.toLowerCase().includes(lowerSearchTerm) || 
+        (item.description && item.description.toLowerCase().includes(lowerSearchTerm))
+      );
+      
+      // Include the category if it has matching items
+      return filteredItems.length > 0;
+    });
   }, [searchTerm, nodeCategories]);
-  
-  // Helper function to get a readable label for a node type
-  function getNodeLabel(nodeType: string): string {
-    const labels: Record<string, string> = {
-      excelInput: 'Excel Input',
-      csvInput: 'CSV Input',
-      apiSource: 'API Source',
-      userInput: 'User Input',
-      dataTransform: 'Transform Data',
-      dataCleaning: 'Clean Data',
-      formulaNode: 'Apply Formula',
-      filterNode: 'Filter Data',
-      aiAnalyze: 'AI Analysis',
-      aiClassify: 'AI Classification',
-      aiSummarize: 'AI Summary',
-      xeroConnect: 'Xero Integration',
-      salesforceConnect: 'Salesforce',
-      googleSheetsConnect: 'Google Sheets',
-      excelOutput: 'Excel Output',
-      dashboardOutput: 'Dashboard',
-      emailNotify: 'Email Notification',
-      conditionalBranch: 'Condition',
-      loopNode: 'Loop',
-      mergeNode: 'Merge',
-      spreadsheetGenerator: 'Spreadsheet Generator',
-    };
-    
-    return labels[nodeType] || nodeType;
-  }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -120,31 +69,32 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
             <TabsTrigger value="outputs">Outputs</TabsTrigger>
           </TabsList>
           
-          {Object.entries(filteredCategories).length === 0 ? (
+          {filteredCategories.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No nodes match your search
             </div>
           ) : (
-            Object.entries(filteredCategories).map(([categoryKey, category]) => (
-              <div key={categoryKey} className="mb-6">
+            filteredCategories.map((category) => (
+              <div key={category.id} className="mb-6">
                 <h3 className="text-sm font-medium mb-2 flex items-center">
-                  {category.icon && <span className="mr-2">{category.icon}</span>}
-                  {category.label}
+                  {category.name}
                 </h3>
-                <p className="text-sm text-muted-foreground mb-3">{category.description}</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {category.nodes.map((nodeType) => (
+                  {category.items.map((item) => (
                     <Button
-                      key={nodeType}
+                      key={item.type}
                       variant="outline"
                       className="justify-start h-auto py-3 px-4"
                       onClick={() => {
-                        onAddNode(nodeType);
+                        onAddNode?.(item.type, category.id, item.label);
                         onClose();
                       }}
                     >
                       <div className="text-left">
-                        <div className="font-medium">{getNodeLabel(nodeType)}</div>
+                        <div className="font-medium">{item.label}</div>
+                        {item.description && (
+                          <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                        )}
                       </div>
                     </Button>
                   ))}

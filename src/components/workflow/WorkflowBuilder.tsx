@@ -47,7 +47,6 @@ import {
   NodeLibraryProps
 } from '@/types/workflow';
 
-// Set custom node types
 const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
   dataProcessing: DataProcessingNode,
@@ -82,14 +81,12 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
   onSave,
   onRun
 }) => {
-  // Use reactive refs
   const reactFlowInstance = useReactFlow();
   const store = useStoreApi();
   const { toast } = useToast();
   const isMobile = useMediaQuery('(max-width: 768px)');
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  // State
   const [nodes, setNodes] = useState<WorkflowNode[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
@@ -101,15 +98,12 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [saveInProgress, setSaveInProgress] = useState(false);
 
-  // Record history
   const recordHistory = useCallback((nodes: WorkflowNode[], edges: Edge[]) => {
-    // Limit history to 50 states
     const newHistory = [...history.slice(0, historyIndex + 1), { nodes, edges }].slice(-50);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   }, [history, historyIndex]);
 
-  // Handlers for undoing and redoing
   const undo = useCallback(() => {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
@@ -130,13 +124,11 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     }
   }, [history, historyIndex]);
 
-  // Handle node changes
   const onNodesChange: OnNodesChange = useCallback(
     (changes: NodeChange[]) => {
       const nextNodes = applyNodeChanges(changes, nodes) as WorkflowNode[];
       setNodes(nextNodes);
       
-      // Don't record selection changes in history
       if (!changes.every(change => change.type === 'select')) {
         recordHistory(nextNodes, edges);
       }
@@ -144,13 +136,11 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     [nodes, edges, recordHistory]
   );
 
-  // Handle edge changes
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       const nextEdges = applyEdgeChanges(changes, edges);
       setEdges(nextEdges);
       
-      // Don't record selection changes in history
       if (!changes.every(change => change.type === 'select')) {
         recordHistory(nodes, nextEdges);
       }
@@ -158,10 +148,8 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     [nodes, edges, recordHistory]
   );
 
-  // Handle connecting nodes
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
-      // Make sure connection has source and target
       if (!connection.source || !connection.target) return;
 
       const newEdge: Edge = {
@@ -181,26 +169,21 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     [nodes, edges, recordHistory]
   );
 
-  // Handle drag start
   const onNodeDragStart: NodeDragHandler = useCallback(() => {
     setIsDragging(true);
   }, []);
 
-  // Handle drag stop
   const onNodeDragStop: NodeDragHandler = useCallback(() => {
     setIsDragging(false);
     recordHistory(nodes, edges);
   }, [nodes, edges, recordHistory]);
 
-  // Handle node selection
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
     if (readOnly) return;
-    // Cast to WorkflowNode since we know our nodes are of that type
     setSelectedNode(node as WorkflowNode);
     setConfigPanelOpen(true);
   }, [readOnly]);
 
-  // Handle node deletion
   const handleNodeDelete = useCallback(() => {
     if (!selectedNode) return;
 
@@ -215,7 +198,6 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     recordHistory(newNodes, newEdges);
   }, [selectedNode, nodes, edges, recordHistory]);
 
-  // Handle node duplication
   const handleNodeDuplicate = useCallback(() => {
     if (!selectedNode) return;
 
@@ -236,11 +218,9 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     setNodes(newNodes);
     recordHistory(newNodes, edges);
     
-    // Select the new node
     setSelectedNode(newNode);
   }, [selectedNode, nodes, edges, recordHistory]);
 
-  // Handle config updates
   const handleConfigUpdate = useCallback((updatedNodeData: Partial<WorkflowNodeData>) => {
     if (!selectedNode) return;
     
@@ -260,14 +240,12 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     setNodes(updatedNodes);
     recordHistory(updatedNodes, edges);
     
-    // Update selectedNode reference
     const updatedSelectedNode = updatedNodes.find(n => n.id === selectedNode.id);
     if (updatedSelectedNode) {
       setSelectedNode(updatedSelectedNode);
     }
   }, [selectedNode, nodes, edges, recordHistory]);
 
-  // Save the workflow
   const saveWorkflow = useCallback(async () => {
     if (!workflowId || !onSave) return;
     
@@ -290,7 +268,6 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     }
   }, [workflowId, nodes, edges, onSave, toast]);
 
-  // Run the workflow
   const runWorkflow = useCallback(async () => {
     if (!onRun) return;
     
@@ -310,13 +287,11 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     }
   }, [onRun, toast]);
 
-  // Handle drag over (for dropping nodes)
   const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // Handle drop (for dropping nodes)
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -330,19 +305,15 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
       const nodeCategory = event.dataTransfer.getData('application/reactflow/category');
       const nodeLabel = event.dataTransfer.getData('application/reactflow/label');
 
-      // Check if node type was passed
       if (!nodeType) return;
 
-      // Get the position where the node should be placed
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top
       });
 
-      // Create a unique ID
       const newNodeId = `node-${uuidv4()}`;
 
-      // Map node type to node data
       let nodeData: WorkflowNodeData;
       
       switch (nodeCategory) {
@@ -406,7 +377,6 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
           };
       }
 
-      // Create the new node
       const newNode: WorkflowNode = {
         id: newNodeId,
         position,
@@ -414,7 +384,6 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
         data: nodeData
       };
 
-      // Add the node to the graph
       const newNodes = [...nodes, newNode];
       setNodes(newNodes);
       recordHistory(newNodes, edges);
@@ -422,7 +391,6 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     [reactFlowInstance, nodes, edges, readOnly, recordHistory]
   );
 
-  // Map node category to node type
   const getCategoryNodeType = (category: string): string => {
     switch (category) {
       case 'input': return 'dataInput';
@@ -436,7 +404,6 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     }
   };
 
-  // Create a new empty workflow
   const createNewWorkflow = useCallback(() => {
     setNodes([]);
     setEdges([]);
@@ -444,13 +411,33 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
     setHistoryIndex(0);
   }, []);
 
-  // Fix the NodeLibrary component props
   const libraryProps: NodeLibraryProps = {
     isOpen: libraryOpen,
     onClose: () => setLibraryOpen(false),
     onAddNode: (nodeType, nodeCategory, nodeLabel) => {
-      // Implementation for adding nodes
-      // This would be called from the NodeLibrary component
+      if (nodeCategory === 'spreadsheet') {
+        const nodeData = {
+          type: 'spreadsheetGenerator',
+          label: nodeLabel || 'Spreadsheet',
+          config: {
+            filename: 'output.xlsx',
+            sheets: []
+          }
+        } as SpreadsheetGeneratorNodeData;
+        const newNodeId = `node-${uuidv4()}`;
+        const newNode: WorkflowNode = {
+          id: newNodeId,
+          position: { 
+            x: 0, 
+            y: 0 
+          },
+          type: 'spreadsheetGenerator',
+          data: nodeData
+        };
+        const newNodes = [...nodes, newNode];
+        setNodes(newNodes);
+        recordHistory(newNodes, edges);
+      }
     },
     nodeCategories: [
       {
@@ -624,7 +611,7 @@ const Flow: React.FC<WorkflowBuilderProps> = ({
       {selectedNode && (
         <div className={`absolute right-0 top-0 h-full transition-transform duration-300 transform ${configPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <NodeConfigPanel
-            nodeData={selectedNode.data}
+            node={selectedNode}
             onUpdateConfig={handleConfigUpdate}
             onDelete={handleNodeDelete}
             onDuplicate={handleNodeDuplicate}
