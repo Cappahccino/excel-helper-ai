@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Edit2, GripVertical, GitBranch, RefreshCw, Git, GitMerge } from 'lucide-react';
+import { Edit2, GripVertical, GitBranch, RefreshCw, GitMerge } from 'lucide-react';
 import { NodeProps, ControlNodeData } from '@/types/workflow';
 
 // Default data if none is provided
