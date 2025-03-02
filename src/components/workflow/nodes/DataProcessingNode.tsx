@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Table, GripVertical } from 'lucide-react';
+import { Table, GripVertical, Filter, Calculator, Wand2 } from 'lucide-react';
 import { NodeProps, DataProcessingNodeData } from '@/types/workflow';
 
 // Default data if none is provided
@@ -15,12 +15,28 @@ const DataProcessingNode: React.FC<NodeProps<DataProcessingNodeData>> = ({ data,
   // Use provided data or fallback to default data
   const nodeData = data ? data as DataProcessingNodeData : defaultData;
 
+  // Node icon based on type
+  const getNodeIcon = () => {
+    switch (nodeData.type) {
+      case 'dataTransform':
+        return <Table className="h-4 w-4 text-green-500" />;
+      case 'dataCleaning':
+        return <Wand2 className="h-4 w-4 text-green-500" />;
+      case 'formulaNode':
+        return <Calculator className="h-4 w-4 text-green-500" />;
+      case 'filterNode':
+        return <Filter className="h-4 w-4 text-green-500" />;
+      default:
+        return <Table className="h-4 w-4 text-green-500" />;
+    }
+  };
+
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>
       {/* Header */}
       <div className="flex items-center gap-2 bg-green-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-green-500 opacity-50" />
-        <Table className="h-4 w-4 text-green-500" />
+        {getNodeIcon()}
         <div className="text-sm font-medium text-green-800">{nodeData.label}</div>
       </div>
       
@@ -83,7 +99,7 @@ const DataProcessingNode: React.FC<NodeProps<DataProcessingNodeData>> = ({ data,
         position={Position.Bottom}
         id="output"
         style={{
-          background: '#27B67A',
+          background: '#22c55e',
           width: 10,
           height: 10,
           bottom: -5,

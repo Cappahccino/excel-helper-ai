@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Database, GripVertical } from 'lucide-react';
+import { Database, GripVertical, FileText, Globe, User } from 'lucide-react';
 import { NodeProps, DataInputNodeData } from '@/types/workflow';
 
 // Default data if none is provided
@@ -15,12 +15,28 @@ const DataInputNode: React.FC<NodeProps<DataInputNodeData>> = ({ data, selected 
   // Use provided data or fallback to default data
   const nodeData = data ? data as DataInputNodeData : defaultData;
 
+  // Node icon based on type
+  const getNodeIcon = () => {
+    switch (nodeData.type) {
+      case 'excelInput':
+        return <FileText className="h-4 w-4 text-blue-500" />;
+      case 'csvInput':
+        return <FileText className="h-4 w-4 text-blue-500" />;
+      case 'apiSource':
+        return <Globe className="h-4 w-4 text-blue-500" />;
+      case 'userInput':
+        return <User className="h-4 w-4 text-blue-500" />;
+      default:
+        return <Database className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-blue-500 shadow-md' : 'border-blue-200'}`}>
       {/* Header */}
       <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-blue-500 opacity-50" />
-        <Database className="h-4 w-4 text-blue-500" />
+        {getNodeIcon()}
         <div className="text-sm font-medium text-blue-800">{nodeData.label}</div>
       </div>
       
@@ -78,7 +94,7 @@ const DataInputNode: React.FC<NodeProps<DataInputNodeData>> = ({ data, selected 
         position={Position.Bottom}
         id="output"
         style={{
-          background: '#27B67A',
+          background: '#3b82f6',
           width: 10,
           height: 10,
           bottom: -5,

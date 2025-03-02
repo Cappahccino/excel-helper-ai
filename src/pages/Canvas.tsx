@@ -24,6 +24,7 @@ import OutputNode from '@/components/workflow/nodes/OutputNode';
 import IntegrationNode from '@/components/workflow/nodes/IntegrationNode';
 import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
+import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 
@@ -43,6 +44,7 @@ const nodeTypes: NodeTypes = {
   integrationNode: IntegrationNode,
   controlNode: ControlNode,
   spreadsheetGenerator: SpreadsheetGeneratorNode,
+  utilityNode: UtilityNode,
 };
 
 const nodeCategories = [
@@ -309,13 +311,16 @@ const Canvas = () => {
           if (nodeType === 'fileUpload') {
             return 'fileUpload';
           }
+          if (nodeType === 'spreadsheetGenerator') {
+            return 'spreadsheetGenerator';
+          }
           return 'dataInput';
         case 'processing': return 'dataProcessing';
         case 'ai': return 'aiNode';
         case 'output': return 'outputNode';
         case 'integration': return 'integrationNode';
         case 'control': return 'controlNode';
-        case 'utility': return nodeType;
+        case 'utility': return 'utilityNode';
         default: return 'dataInput';
       }
     })();

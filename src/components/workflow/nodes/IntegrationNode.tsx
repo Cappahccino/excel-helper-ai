@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileSearch, GripVertical } from 'lucide-react';
+import { FileSearch, GripVertical, CreditCard, Cloud } from 'lucide-react';
 import { NodeProps, IntegrationNodeData } from '@/types/workflow';
 
 // Default data if none is provided
@@ -15,13 +15,27 @@ const IntegrationNode: React.FC<NodeProps<IntegrationNodeData>> = ({ data, selec
   // Use provided data or fallback to default data
   const nodeData = data ? data as IntegrationNodeData : defaultData;
 
+  // Node icon based on type
+  const getNodeIcon = () => {
+    switch (nodeData.type) {
+      case 'xeroConnect':
+        return <CreditCard className="h-4 w-4 text-amber-500" />;
+      case 'salesforceConnect':
+        return <Cloud className="h-4 w-4 text-amber-500" />;
+      case 'googleSheetsConnect':
+        return <FileSearch className="h-4 w-4 text-amber-500" />;
+      default:
+        return <FileSearch className="h-4 w-4 text-amber-500" />;
+    }
+  };
+
   return (
-    <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-orange-500 shadow-md' : 'border-orange-200'}`}>
+    <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-amber-500 shadow-md' : 'border-amber-200'}`}>
       {/* Header */}
-      <div className="flex items-center gap-2 bg-orange-50 p-2 rounded-t-md drag-handle cursor-move">
-        <GripVertical className="h-4 w-4 text-orange-500 opacity-50" />
-        <FileSearch className="h-4 w-4 text-orange-500" />
-        <div className="text-sm font-medium text-orange-800">{nodeData.label}</div>
+      <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-t-md drag-handle cursor-move">
+        <GripVertical className="h-4 w-4 text-amber-500 opacity-50" />
+        {getNodeIcon()}
+        <div className="text-sm font-medium text-amber-800">{nodeData.label}</div>
       </div>
       
       {/* Body */}
@@ -86,7 +100,7 @@ const IntegrationNode: React.FC<NodeProps<IntegrationNodeData>> = ({ data, selec
         position={Position.Bottom}
         id="output"
         style={{
-          background: '#27B67A',
+          background: '#f59e0b',
           width: 10,
           height: 10,
           bottom: -5,

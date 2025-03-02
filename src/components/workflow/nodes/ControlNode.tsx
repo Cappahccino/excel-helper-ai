@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Edit2, GripVertical } from 'lucide-react';
+import { Edit2, GripVertical, GitBranch, RefreshCw, MergeTool } from 'lucide-react';
 import { NodeProps, ControlNodeData } from '@/types/workflow';
 
 // Default data if none is provided
@@ -15,12 +15,26 @@ const ControlNode: React.FC<NodeProps<ControlNodeData>> = ({ data, selected }) =
   // Use provided data or fallback to default data
   const nodeData = data ? data as ControlNodeData : defaultData;
 
+  // Node icon based on type
+  const getNodeIcon = () => {
+    switch (nodeData.type) {
+      case 'conditionalBranch':
+        return <GitBranch className="h-4 w-4 text-gray-500" />;
+      case 'loopNode':
+        return <RefreshCw className="h-4 w-4 text-gray-500" />;
+      case 'mergeNode':
+        return <MergeTool className="h-4 w-4 text-gray-500" />;
+      default:
+        return <Edit2 className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-gray-500 shadow-md' : 'border-gray-200'}`}>
       {/* Header */}
       <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-gray-500 opacity-50" />
-        <Edit2 className="h-4 w-4 text-gray-500" />
+        {getNodeIcon()}
         <div className="text-sm font-medium text-gray-800">{nodeData.label}</div>
       </div>
       
@@ -68,7 +82,7 @@ const ControlNode: React.FC<NodeProps<ControlNodeData>> = ({ data, selected }) =
         }}
       />
       
-      {/* Multiple output handles for control nodes */}
+      {/* Multiple output handles for conditional branches */}
       {nodeData.type === 'conditionalBranch' && (
         <>
           <Handle
@@ -76,7 +90,7 @@ const ControlNode: React.FC<NodeProps<ControlNodeData>> = ({ data, selected }) =
             position={Position.Bottom}
             id="true"
             style={{
-              background: '#27B67A',
+              background: '#22c55e',
               width: 10,
               height: 10,
               bottom: -5,
@@ -108,7 +122,7 @@ const ControlNode: React.FC<NodeProps<ControlNodeData>> = ({ data, selected }) =
           position={Position.Bottom}
           id="output"
           style={{
-            background: '#27B67A',
+            background: '#64748b',
             width: 10,
             height: 10,
             bottom: -5,

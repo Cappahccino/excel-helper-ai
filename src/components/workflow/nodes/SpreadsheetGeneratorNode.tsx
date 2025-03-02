@@ -26,12 +26,12 @@ const SpreadsheetGeneratorNode = ({ data, selected }: { data?: SpreadsheetGenera
   } : defaultData;
 
   return (
-    <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>
+    <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-blue-500 shadow-md' : 'border-blue-200'}`}>
       {/* Header */}
-      <div className="flex items-center gap-2 bg-green-50 p-2 rounded-t-md drag-handle cursor-move">
-        <GripVertical className="h-4 w-4 text-green-500 opacity-50" />
-        <FileSpreadsheet className="h-4 w-4 text-green-500" />
-        <div className="text-sm font-medium text-green-800">{nodeData.label}</div>
+      <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-t-md drag-handle cursor-move">
+        <GripVertical className="h-4 w-4 text-blue-500 opacity-50" />
+        <FileSpreadsheet className="h-4 w-4 text-blue-500" />
+        <div className="text-sm font-medium text-blue-800">{nodeData.label}</div>
       </div>
       
       {/* Body */}
@@ -67,7 +67,7 @@ const SpreadsheetGeneratorNode = ({ data, selected }: { data?: SpreadsheetGenera
         position={Position.Bottom}
         id="output"
         style={{
-          background: '#27B67A',
+          background: '#3b82f6',
           width: 10,
           height: 10,
           bottom: -5,
