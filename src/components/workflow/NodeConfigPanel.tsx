@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,16 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Copy, Save, Trash } from "lucide-react";
-import { WorkflowNode, WorkflowNodeData } from '@/types/workflow';
-
-export interface NodeConfigPanelProps {
-  node: WorkflowNode;
-  onUpdateConfig: (updatedConfig: any) => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  onClose: () => void;
-  readOnly?: boolean;
-}
+import { WorkflowNode, NodeConfigPanelProps } from '@/types/workflow';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   node,
@@ -47,7 +37,6 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     });
   };
 
-  // Render different config options based on node type
   const renderNodeSpecificConfig = () => {
     if (!nodeData) return null;
     

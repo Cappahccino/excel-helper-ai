@@ -1,5 +1,4 @@
-
-import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps, MouseEvent, NodeMouseHandler } from '@xyflow/react';
+import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -216,12 +215,12 @@ export interface NodeLibraryProps {
 
 // Define NodeConfigPanelProps interface for NodeConfigPanel component
 export interface NodeConfigPanelProps {
-  nodeData: WorkflowNodeData;
-  onUpdateConfig: (updatedNodeData: Partial<WorkflowNodeData>) => void;
+  node: WorkflowNode;
+  onUpdateConfig: (updatedConfig: any) => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onClose: () => void;
-  readOnly: boolean;
+  readOnly?: boolean;
 }
 
 // Helper functions for database mappings
