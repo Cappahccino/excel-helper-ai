@@ -23,6 +23,7 @@ export type NodeType =
   | 'excelOutput'
   | 'dashboardOutput'
   | 'emailNotify'
+  | 'spreadsheetGenerator'
   // Control
   | 'conditionalBranch'
   | 'loopNode'
