@@ -1,318 +1,391 @@
-import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '@/integrations/supabase/client';
-import {
+import { 
+  WorkflowNodeData,
   WorkflowDefinition,
-  Workflow,
-  WorkflowExecution,
-  NodeBase,
-  NodeHandler,
   NodeInputs,
   NodeOutputs,
-  NodeExecutionContext,
+  NodeHandler,
+  Workflow,
+  WorkflowExecution,
   mapDatabaseWorkflowToWorkflow,
   mapWorkflowToDatabaseWorkflow,
   mapDatabaseExecutionToWorkflowExecution,
-  mapWorkflowExecutionToDatabaseExecution
-} from "@/types/workflow";
-import { Json } from "@/types/common";
-import { WorkflowExecution } from '@/types/workflowDatabase';
+  mapWorkflowExecutionToDatabaseExecution,
+  WorkflowNode,
+  NodeExecutionContext
+} from '@/types/workflow';
+import { Json } from '@/types/common';
+import { handleFormulaNode } from './workflow/handlers/dataTransform';
+import { handleExcelInput } from './workflow/handlers/excelInput';
+import { handleApiRequest } from './workflow/handlers/apiIntegration';
+import { handleAiAnalysis } from './workflow/handlers/aiAnalysis';
+import { handleSpreadsheetGeneration } from './workflow/handlers/spreadsheetGenerator';
 
-// Handler registry
-const nodeHandlers: Record<string, NodeHandler> = {};
-
-// Register a node handler
-export function registerNodeHandler(type: string, handler: NodeHandler) {
-  nodeHandlers[type] = handler;
-}
-
-// Get a workflow by ID
-export async function getWorkflow(id: string): Promise<Workflow | null> {
-  const { data, error } = await supabase
-    .from('workflows')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error || !data) {
-    console.error('Error getting workflow:', error);
-    return null;
+export class WorkflowEngine {
+  async getWorkflows(): Promise<Workflow[]> {
+    try {
+      const { data, error } = await supabase
+        .from('workflows')
+        .select('*')
+        .order('updated_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      return data.map(mapDatabaseWorkflowToWorkflow);
+    } catch (error) {
+      console.error('Error fetching workflows:', error);
+      throw error;
+    }
   }
-
-  return mapDatabaseWorkflowToWorkflow(data);
-}
-
-// Create a new workflow
-export async function createWorkflow(workflow: Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workflow | null> {
-  const dbWorkflow = mapWorkflowToDatabaseWorkflow(workflow as Workflow);
   
-  const { data, error } = await supabase
-    .from('workflows')
-    .insert(dbWorkflow)
-    .select()
-    .single();
-
-  if (error || !data) {
-    console.error('Error creating workflow:', error);
-    return null;
+  async getWorkflow(id: string): Promise<Workflow> {
+    try {
+      const { data, error } = await supabase
+        .from('workflows')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      
+      return mapDatabaseWorkflowToWorkflow(data);
+    } catch (error) {
+      console.error(`Error fetching workflow ${id}:`, error);
+      throw error;
+    }
   }
-
-  return mapDatabaseWorkflowToWorkflow(data);
-}
-
-// Update a workflow
-export async function updateWorkflow(id: string, workflow: Partial<Omit<Workflow, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Workflow | null> {
-  const { data, error } = await supabase
-    .from('workflows')
-    .update({
-      name: workflow.name,
-      description: workflow.description || null,
-      definition: workflow.definition as unknown as Json || undefined,
-      status: workflow.status,
-      trigger_type: workflow.triggerType,
-      trigger_config: workflow.triggerConfig as Json || null,
-      last_run_at: workflow.lastRunAt || null,
-      last_run_status: workflow.lastRunStatus || null,
-      version: workflow.version,
-      is_template: workflow.isTemplate,
-      folder_id: workflow.folderId || null
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error || !data) {
-    console.error('Error updating workflow:', error);
-    return null;
-  }
-
-  return mapDatabaseWorkflowToWorkflow(data);
-}
-
-// Execute a workflow
-export async function executeWorkflow(workflowId: string, initiatedBy?: string | null, initialInputs?: Record<string, any>): Promise<{ success: boolean; executionId: string; outputs?: Record<string, any>; error?: string }> {
-  // Get the workflow
-  const workflow = await getWorkflow(workflowId);
-  if (!workflow) return { success: false, executionId: '', error: 'Workflow not found' };
-
-  // Create execution record
-  const executionId = uuidv4();
-  const now = new Date().toISOString();
   
-  const executionRecord: WorkflowExecution = {
-    id: executionId,
-    workflow_id: workflowId,
-    status: 'running',
-    started_at: now,
-    initiated_by: initiatedBy || null,
-    node_states: {},
-    inputs: initialInputs || null,
-    outputs: null,
-    error: null,
-    logs: []
-  };
+  async createWorkflow(workflow: Partial<Workflow>): Promise<Workflow> {
+    try {
+      const newWorkflow = {
+        name: workflow.name || 'Untitled Workflow',
+        description: workflow.description || '',
+        definition: JSON.stringify(workflow.definition || { nodes: [], edges: [] }),
+        is_template: workflow.is_template || false,
+        tags: workflow.tags || []
+      };
+      
+      const { data, error } = await supabase
+        .from('workflows')
+        .insert(newWorkflow)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      return mapDatabaseWorkflowToWorkflow(data);
+    } catch (error) {
+      console.error('Error creating workflow:', error);
+      throw error;
+    }
+  }
   
-  const { data: executionData, error: executionError } = await supabase
-    .from('workflow_executions')
-    .insert(executionRecord)
-    .select()
-    .single();
-
-  if (executionError || !executionData) {
-    console.error('Error creating execution record:', executionError);
-    return { success: false, executionId: '', error: 'Error creating execution record' };
+  async updateWorkflow(id: string, updates: Partial<Workflow>): Promise<Workflow> {
+    try {
+      const updateObject: any = {};
+      
+      if (updates.name !== undefined) updateObject.name = updates.name;
+      if (updates.description !== undefined) updateObject.description = updates.description;
+      if (updates.definition !== undefined) updateObject.definition = JSON.stringify(updates.definition);
+      if (updates.is_template !== undefined) updateObject.is_template = updates.is_template;
+      if (updates.tags !== undefined) updateObject.tags = updates.tags;
+      
+      const { data, error } = await supabase
+        .from('workflows')
+        .update(updateObject)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      return mapDatabaseWorkflowToWorkflow(data);
+    } catch (error) {
+      console.error(`Error updating workflow ${id}:`, error);
+      throw error;
+    }
   }
-
-  const execution = mapDatabaseExecutionToWorkflowExecution(executionData);
-
-  // Update workflow status
-  await supabase
-    .from('workflows')
-    .update({
-      last_run_at: new Date().toISOString(),
-      last_run_status: 'pending'
-    })
-    .eq('id', workflowId);
-
-  // Execute in background
-  executeWorkflowGraph(workflow, execution).catch(console.error);
-
-  return {
-    success: true,
-    executionId,
-    outputs: execution.outputs
-  };
-}
-
-// Get execution by ID
-export async function getExecution(id: string): Promise<WorkflowExecution | null> {
-  const { data, error } = await supabase
-    .from('workflow_executions')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error || !data) {
-    console.error('Error getting execution:', error);
-    return null;
-  }
-
-  return mapDatabaseExecutionToWorkflowExecution(data);
-}
-
-// Update execution status
-export async function updateExecution(execution: WorkflowExecution): Promise<void> {
-  const dbExecution = mapWorkflowExecutionToDatabaseExecution(execution);
   
-  const { error } = await supabase
-    .from('workflow_executions')
-    .update(dbExecution)
-    .eq('id', execution.id);
-
-  if (error) {
-    console.error('Error updating execution:', error);
+  async deleteWorkflow(id: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('workflows')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error(`Error deleting workflow ${id}:`, error);
+      throw error;
+    }
   }
-}
-
-// Execute the workflow graph
-async function executeWorkflowGraph(workflow: Workflow, execution: WorkflowExecution): Promise<void> {
-  try {
-    const { nodes, edges } = workflow.definition;
-    const nodeOutputs: Record<string, NodeOutputs> = {};
-    const executionContext: NodeExecutionContext = {
-      workflowId: workflow.id,
-      executionId: execution.id,
-      userId: execution.initiatedBy,
-      log: (level, message, details) => {
-        if (!execution.logs) execution.logs = [];
-        execution.logs.push({
-          timestamp: new Date().toISOString(),
-          level,
-          message,
-          details
+  
+  async executeWorkflow(workflowId: string, inputs: Record<string, any> = {}): Promise<WorkflowExecution> {
+    try {
+      const execution: WorkflowExecution = {
+        workflow_id: workflowId,
+        status: 'running',
+        inputs,
+        started_at: new Date().toISOString(),
+        node_states: {}
+      };
+      
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .insert(mapWorkflowExecutionToDatabaseExecution(execution))
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      const executionRecord = mapDatabaseExecutionToWorkflowExecution(data);
+      
+      this.runWorkflow(executionRecord).catch(err => {
+        console.error(`Error executing workflow ${workflowId}:`, err);
+        this.updateExecutionStatus(executionRecord.id!, 'failed', { error: err.message });
+      });
+      
+      return executionRecord;
+    } catch (error) {
+      console.error(`Error creating execution for workflow ${workflowId}:`, error);
+      throw error;
+    }
+  }
+  
+  async getExecution(id: string): Promise<WorkflowExecution> {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      
+      return mapDatabaseExecutionToWorkflowExecution(data);
+    } catch (error) {
+      console.error(`Error fetching execution ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  async getExecutions(workflowId: string): Promise<WorkflowExecution[]> {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .select('*')
+        .eq('workflow_id', workflowId)
+        .order('started_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      return data.map(mapDatabaseExecutionToWorkflowExecution);
+    } catch (error) {
+      console.error(`Error fetching executions for workflow ${workflowId}:`, error);
+      throw error;
+    }
+  }
+  
+  private async updateExecutionStatus(
+    executionId: string, 
+    status: WorkflowExecution['status'], 
+    updates: Partial<WorkflowExecution> = {}
+  ): Promise<void> {
+    try {
+      const updateData: any = {
+        status,
+        ...updates
+      };
+      
+      if (status === 'completed' || status === 'failed') {
+        updateData.completed_at = new Date().toISOString();
+      }
+      
+      const { error } = await supabase
+        .from('workflow_executions')
+        .update(updateData)
+        .eq('id', executionId);
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error(`Error updating execution ${executionId} status:`, error);
+      throw error;
+    }
+  }
+  
+  private async runWorkflow(execution: WorkflowExecution): Promise<void> {
+    if (!execution.id) throw new Error('Execution ID is required');
+    
+    try {
+      const workflow = await this.getWorkflow(execution.workflow_id);
+      const { nodes, edges } = workflow.definition;
+      
+      const startNodeIds = this.findStartNodes(nodes, edges);
+      
+      if (startNodeIds.length === 0) {
+        throw new Error('No start nodes found in workflow');
+      }
+      
+      const nodeStates: Record<string, any> = {};
+      nodes.forEach(node => {
+        nodeStates[node.id] = {
+          status: 'pending',
+          inputs: {},
+          outputs: {}
+        };
+      });
+      
+      await this.updateExecutionStatus(execution.id, 'running', { 
+        node_states: nodeStates 
+      });
+      
+      const promises = startNodeIds.map(nodeId => 
+        this.executeNode(nodeId, execution.inputs || {}, nodes, edges, execution)
+      );
+      
+      await Promise.all(promises);
+      
+      const updatedExecution = await this.getExecution(execution.id);
+      const allCompleted = Object.values(updatedExecution.node_states || {})
+        .every(state => state.status === 'completed' || state.status === 'skipped');
+      
+      if (allCompleted) {
+        const terminalNodeIds = this.findTerminalNodes(nodes, edges);
+        const outputs: Record<string, any> = {};
+        
+        terminalNodeIds.forEach(nodeId => {
+          const nodeState = updatedExecution.node_states?.[nodeId];
+          if (nodeState && nodeState.outputs) {
+            outputs[nodeId] = nodeState.outputs;
+          }
         });
+        
+        await this.updateExecutionStatus(execution.id, 'completed', { outputs });
+      }
+    } catch (error) {
+      console.error(`Error executing workflow ${execution.workflow_id}:`, error);
+      await this.updateExecutionStatus(execution.id, 'failed', { error: String(error) });
+    }
+  }
+  
+  private async executeNode(
+    nodeId: string, 
+    inputs: Record<string, any>,
+    nodes: WorkflowNode[],
+    edges: any[],
+    execution: WorkflowExecution
+  ): Promise<void> {
+    if (!execution.id) return;
+    
+    try {
+      const node = nodes.find(n => n.id === nodeId);
+      if (!node) throw new Error(`Node ${nodeId} not found`);
+      
+      const nodeStates = { 
+        ...(execution.node_states || {}),
+        [nodeId]: {
+          ...(execution.node_states?.[nodeId] || {}),
+          status: 'running',
+          inputs
+        }
+      };
+      
+      await this.updateExecutionStatus(execution.id, 'running', { node_states: nodeStates });
+      
+      const handler = this.getNodeHandler(node.data);
+      const outputs = await handler.execute(inputs, node.data.config);
+      
+      const updatedNodeStates = {
+        ...(execution.node_states || {}),
+        [nodeId]: {
+          ...(execution.node_states?.[nodeId] || {}),
+          status: 'completed',
+          inputs,
+          outputs
+        }
+      };
+      
+      await this.updateExecutionStatus(execution.id, 'running', { node_states: updatedNodeStates });
+      
+      const nextNodes = this.findNextNodes(nodeId, edges);
+      
+      const promises = nextNodes.map(nextNodeId => {
+        const incomingEdges = edges.filter(edge => edge.target === nextNodeId);
+        
+        const nextInputs: Record<string, any> = {};
+        
+        incomingEdges.forEach(edge => {
+          const sourceNodeState = updatedNodeStates[edge.source];
+          if (sourceNodeState && sourceNodeState.outputs) {
+            if (edge.sourceHandle && edge.targetHandle) {
+              nextInputs[edge.targetHandle] = sourceNodeState.outputs[edge.sourceHandle];
+            } else {
+              Object.assign(nextInputs, sourceNodeState.outputs);
+            }
+          }
+        });
+        
+        return this.executeNode(nextNodeId, nextInputs, nodes, edges, execution);
+      });
+      
+      await Promise.all(promises);
+    } catch (error) {
+      console.error(`Error executing node ${nodeId}:`, error);
+      
+      const nodeStates = {
+        ...(execution.node_states || {}),
+        [nodeId]: {
+          ...(execution.node_states?.[nodeId] || {}),
+          status: 'failed',
+          error: String(error)
+        }
+      };
+      
+      await this.updateExecutionStatus(execution.id, 'running', { node_states: nodeStates });
+    }
+  }
+  
+  private getNodeHandler(nodeData: WorkflowNodeData): NodeHandler {
+    const type = nodeData.type;
+    
+    if (type === 'excelInput' || type === 'csvInput') {
+      return { execute: handleExcelInput };
+    } else if (type === 'formulaNode') {
+      return { execute: handleFormulaNode };
+    } else if (type === 'apiSource') {
+      return { execute: handleApiRequest };
+    } else if (type === 'aiAnalyze' || type === 'aiClassify' || type === 'aiSummarize') {
+      return { execute: handleAiAnalysis };
+    } else if (type === 'spreadsheetGenerator') {
+      return { execute: handleSpreadsheetGeneration };
+    }
+    
+    return {
+      execute: async () => {
+        throw new Error(`Node type '${type}' is not supported`);
       }
     };
-
-    // Find starting nodes (no incoming edges)
-    const startingNodeIds = nodes.filter(node => 
-      !edges.some(edge => edge.target === node.id)
-    ).map(node => node.id);
-
-    // Execute the graph
-    const executionPromises = startingNodeIds.map(nodeId => 
-      executeNode(nodeId, nodes, edges, nodeOutputs, executionContext)
-    );
-
-    await Promise.all(executionPromises);
-
-    // Update execution status to completed
-    execution.status = 'completed';
-    execution.completedAt = new Date().toISOString();
-    execution.outputs = Object.entries(nodeOutputs).reduce((acc, [nodeId, outputs]) => {
-      // Only include outputs from terminal nodes (no outgoing edges)
-      if (!edges.some(edge => edge.source === nodeId)) {
-        acc[nodeId] = outputs;
-      }
-      return acc;
-    }, {} as Record<string, any>);
-
-    await updateExecution(execution);
-
-    // Update workflow status
-    await supabase
-      .from('workflows')
-      .update({ last_run_status: 'success' })
-      .eq('id', workflow.id);
-
-  } catch (error) {
-    console.error('Workflow execution error:', error);
-    execution.status = 'failed';
-    execution.completedAt = new Date().toISOString();
-    execution.error = error instanceof Error ? error.message : String(error);
-    
-    await updateExecution(execution);
-
-    // Update workflow status
-    await supabase
-      .from('workflows')
-      .update({ last_run_status: 'failed' })
-      .eq('id', workflow.id);
+  }
+  
+  private findStartNodes(nodes: WorkflowNode[], edges: any[]): string[] {
+    const nodesWithIncomingEdges = new Set(edges.map(edge => edge.target));
+    return nodes
+      .filter(node => !nodesWithIncomingEdges.has(node.id))
+      .map(node => node.id);
+  }
+  
+  private findTerminalNodes(nodes: WorkflowNode[], edges: any[]): string[] {
+    const nodesWithOutgoingEdges = new Set(edges.map(edge => edge.source));
+    return nodes
+      .filter(node => !nodesWithOutgoingEdges.has(node.id))
+      .map(node => node.id);
+  }
+  
+  private findNextNodes(nodeId: string, edges: any[]): string[] {
+    return edges
+      .filter(edge => edge.source === nodeId)
+      .map(edge => edge.target);
   }
 }
 
-// Execute a single node
-async function executeNode(
-  nodeId: string,
-  nodes: NodeBase[],
-  edges: any[],
-  nodeOutputs: Record<string, NodeOutputs>,
-  context: NodeExecutionContext
-): Promise<NodeOutputs> {
-  // Check if already executed
-  if (nodeOutputs[nodeId]) {
-    return nodeOutputs[nodeId];
-  }
-
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) {
-    throw new Error(`Node ${nodeId} not found`);
-  }
-
-  // Get incoming edges
-  const incomingEdges = edges.filter(edge => edge.target === nodeId);
-
-  // If no incoming edges, execute with empty inputs
-  if (incomingEdges.length === 0) {
-    const handler = nodeHandlers[node.type];
-    if (!handler) {
-      throw new Error(`No handler registered for node type: ${node.type}`);
-    }
-
-    const outputs = await handler(node, {}, context);
-    nodeOutputs[nodeId] = outputs;
-    return outputs;
-  }
-
-  // Execute all predecessor nodes and collect inputs
-  const inputs: NodeInputs = {};
-  await Promise.all(incomingEdges.map(async edge => {
-    const sourceNodeId = edge.source;
-    const sourceOutputs = await executeNode(
-      sourceNodeId,
-      nodes,
-      edges,
-      nodeOutputs,
-      context
-    );
-
-    // Map outputs to inputs based on connection
-    if (edge.sourceHandle && edge.targetHandle) {
-      inputs[edge.targetHandle] = sourceOutputs[edge.sourceHandle];
-    } else {
-      // Default behavior: pass all outputs as inputs
-      Object.assign(inputs, sourceOutputs);
-    }
-  }));
-
-  // Execute the node
-  const handler = nodeHandlers[node.type];
-  if (!handler) {
-    throw new Error(`No handler registered for node type: ${node.type}`);
-  }
-
-  try {
-    const outputs = await handler(node, inputs, context);
-    nodeOutputs[nodeId] = outputs;
-
-    // Propagate execution to downstream nodes
-    const outgoingEdges = edges.filter(edge => edge.source === nodeId);
-    await Promise.all(outgoingEdges.map(edge => 
-      executeNode(edge.target, nodes, edges, nodeOutputs, context)
-    ));
-
-    return outputs;
-  } catch (error) {
-    context.log('error', `Error executing node ${nodeId} (${node.type}): ${error instanceof Error ? error.message : String(error)}`);
-    throw error;
-  }
-}
+export default new WorkflowEngine();

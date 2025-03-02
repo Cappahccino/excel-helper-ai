@@ -29,9 +29,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { WorkflowDefinition } from "@/types/workflow";
+import { WorkflowDefinition, mapDatabaseWorkflowToWorkflow } from "@/types/workflow";
 
-const Chat = () => {
+const Canvas = () => {
   // State and refs
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [sessionName, setSessionName] = useState("");
@@ -73,7 +73,10 @@ const Chat = () => {
   } = useChatFileUpload();
 
   // Selected file query
-  const { data: selectedFile, isLoading: fileLoading } = useQuery({
+  const { 
+    data: selectedFile, 
+    isLoading: fileLoading 
+  } = useQuery({
     queryKey: ['excel-file', fileIdFromUrl],
     queryFn: async () => {
       if (!fileIdFromUrl) return null;
@@ -328,28 +331,10 @@ const Chat = () => {
       if (data) {
         setWorkflowName(data.name);
         
-        // Parse the definition if it's a string, or use it directly if it's already an object
-        let parsedDefinition: WorkflowDefinition;
-        if (typeof data.definition === 'string') {
-          try {
-            parsedDefinition = JSON.parse(data.definition);
-          } catch (e) {
-            console.error('Error parsing workflow definition:', e);
-            parsedDefinition = { nodes: [], edges: [] };
-          }
-        } else if (data.definition && typeof data.definition === 'object') {
-          // Ensure the definition has nodes and edges properties
-          const definitionObj = data.definition as any;
-          parsedDefinition = {
-            nodes: Array.isArray(definitionObj.nodes) ? definitionObj.nodes : [],
-            edges: Array.isArray(definitionObj.edges) ? definitionObj.edges : []
-          };
-        } else {
-          parsedDefinition = { nodes: [], edges: [] };
-        }
-        
-        setNodes(parsedDefinition.nodes);
-        setEdges(parsedDefinition.edges);
+        // Use the helper function to parse the workflow definition
+        const workflow = mapDatabaseWorkflowToWorkflow(data);
+        setNodes(workflow.definition.nodes);
+        setEdges(workflow.definition.edges);
       }
     } catch (err) {
       console.error('Error loading workflow:', err);
@@ -631,4 +616,4 @@ const Chat = () => {
   );
 };
 
-export default Chat;
+export default Canvas;

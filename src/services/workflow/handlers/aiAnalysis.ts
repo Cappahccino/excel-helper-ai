@@ -1,314 +1,216 @@
+
+import { supabase } from '@/integrations/supabase/client';
 import { NodeInputs, NodeOutputs } from '@/types/workflow';
 
-// AI Analysis functions
-export const detectOutliers = async (
-  inputs: NodeInputs,
-  config: Record<string, any>
-): Promise<NodeOutputs> => {
-  try {
-    const data = inputs.data || [];
-    
-    if (!Array.isArray(data) || data.length === 0) {
-      return { data: [], outliers: [] };
-    }
-    
-    // Simple outlier detection (z-score method)
-    // In a real implementation, this would be more sophisticated
-    const outliers = [];
-    
-    // Calculate mean and standard deviation for numeric fields
-    const numericFields = Object.keys(data[0]).filter(key => 
-      typeof data[0][key] === 'number'
-    );
-    
-    const stats = numericFields.reduce((acc, field) => {
-      const values = data.map(item => item[field]).filter(val => 
-        typeof val === 'number' && !isNaN(val)
-      );
-      
-      const sum = values.reduce((a, b) => a + b, 0);
-      const mean = sum / values.length;
-      
-      const squareDiffs = values.map(value => Math.pow(value - mean, 2));
-      const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / squareDiffs.length;
-      const stdDev = Math.sqrt(avgSquareDiff);
-      
-      acc[field] = { mean, stdDev };
-      return acc;
-    }, {} as Record<string, { mean: number; stdDev: number }>);
-    
-    // Detect outliers using z-score
-    // A z-score > 3 or < -3 is typically considered an outlier
-    const threshold = config.threshold || 3;
-    
-    data.forEach((item, index) => {
-      const itemOutliers: string[] = [];
-      
-      numericFields.forEach(field => {
-        if (typeof item[field] === 'number' && !isNaN(item[field])) {
-          const { mean, stdDev } = stats[field];
-          
-          // Avoid division by zero
-          if (stdDev === 0) return;
-          
-          const zScore = Math.abs((item[field] - mean) / stdDev);
-          
-          if (zScore > threshold) {
-            itemOutliers.push(field);
-          }
-        }
-      });
-      
-      if (itemOutliers.length > 0) {
-        outliers.push({
-          index,
-          item,
-          outlierFields: itemOutliers,
-        });
-      }
-    });
-    
-    return {
-      data,
-      outliers,
-      analysis: {
-        type: 'outlier_detection',
-        count: outliers.length,
-        timestamp: new Date().toISOString()
-      }
-    };
-  } catch (error) {
-    console.error('Error in outlier detection:', error);
-    throw new Error(`AI analysis error: ${error}`);
-  }
+// Helper functions for AI analysis
+const calculateMean = (data: number[]): number => {
+  if (!data.length) return 0;
+  return data.reduce((sum, value) => sum + value, 0) / data.length;
 };
 
-// Pattern recognition in data
-export const findPatterns = async (
-  inputs: NodeInputs,
-  config: Record<string, any>
-): Promise<NodeOutputs> => {
-  try {
-    const data = inputs.data || [];
-    
-    if (!Array.isArray(data) || data.length === 0) {
-      return { data: [], patterns: [] };
-    }
-    
-    // Simple pattern recognition
-    // In a real implementation, this would use actual ML techniques
-    const patterns = [];
-    
-    // Find frequency patterns in categorical data
-    const categoricalFields = Object.keys(data[0]).filter(key => 
-      typeof data[0][key] === 'string'
-    );
-    
-    categoricalFields.forEach(field => {
-      // Count occurrences of each value
-      const valueCounts = data.reduce((counts, item) => {
-        const value = item[field];
-        if (typeof value === 'string') {
-          counts[value] = (counts[value] || 0) + 1;
-        }
-        return counts;
-      }, {} as Record<string, number>);
-      
-      // Find the most common values (top 3)
-      const sortedValues = Object.entries(valueCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
-      
-      if (sortedValues.length > 0) {
-        patterns.push({
-          type: 'frequency',
-          field,
-          values: sortedValues.map(([value, count]) => ({
-            value,
-            count,
-            percentage: (count / data.length * 100).toFixed(1) + '%'
-          }))
-        });
-      }
-    });
-    
-    // Find trends in numeric data (simple linear trend)
-    const numericFields = Object.keys(data[0]).filter(key => 
-      typeof data[0][key] === 'number'
-    );
-    
-    // Check if there's a time/sequence field to use for trend analysis
-    const timeField = config.timeField || 
-      Object.keys(data[0]).find(key => 
-        key.toLowerCase().includes('date') || 
-        key.toLowerCase().includes('time')
-      );
-    
-    if (timeField) {
-      // Sort data by the time field if possible
-      const sortedData = [...data].sort((a, b) => {
-        const aVal = a[timeField];
-        const bVal = b[timeField];
-        
-        if (aVal instanceof Date && bVal instanceof Date) {
-          return aVal.getTime() - bVal.getTime();
-        }
-        
-        return String(aVal).localeCompare(String(bVal));
-      });
-      
-      numericFields.forEach(field => {
-        // Simple trend detection - compare first third to last third
-        const third = Math.floor(sortedData.length / 3);
-        if (third < 2) return; // Not enough data
-        
-        const firstThird = sortedData.slice(0, third);
-        const lastThird = sortedData.slice(-third);
-        
-        const firstAvg = firstThird.reduce((sum, item) => sum + (item[field] || 0), 0) / third;
-        const lastAvg = lastThird.reduce((sum, item) => sum + (item[field] || 0), 0) / third;
-        
-        const percentChange = ((lastAvg - firstAvg) / firstAvg) * 100;
-        
-        if (Math.abs(percentChange) > 10) { // 10% change threshold
-          patterns.push({
-            type: 'trend',
-            field,
-            direction: percentChange > 0 ? 'increasing' : 'decreasing',
-            percentChange: Math.abs(percentChange).toFixed(1) + '%',
-            startValue: firstAvg.toFixed(2),
-            endValue: lastAvg.toFixed(2)
-          });
-        }
-      });
-    }
-    
-    return {
-      data,
-      patterns,
-      analysis: {
-        type: 'pattern_recognition',
-        count: patterns.length,
-        timestamp: new Date().toISOString()
-      }
-    };
-  } catch (error) {
-    console.error('Error in pattern recognition:', error);
-    throw new Error(`AI analysis error: ${error}`);
-  }
+const calculateStandardDeviation = (data: number[], mean: number): number => {
+  if (!data.length) return 0;
+  const squareDiffs = data.map(value => {
+    const diff = value - mean;
+    return diff * diff;
+  });
+  const avgSquareDiff = calculateMean(squareDiffs);
+  return Math.sqrt(avgSquareDiff);
 };
 
-// Data summarization
-export const summarizeData = async (
+const findOutliers = (data: number[], mean: number, stdDev: number): number[] => {
+  const threshold = 2; // Values more than 2 standard deviations from the mean
+  return data.filter(value => Math.abs(value - mean) > threshold * stdDev);
+};
+
+const findPatterns = (data: number[]): any => {
+  // Simple pattern detection - look for consistent increases or decreases
+  const trends: any = {
+    increasing: true,
+    decreasing: true,
+    stable: true
+  };
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i] <= data[i-1]) trends.increasing = false;
+    if (data[i] >= data[i-1]) trends.decreasing = false;
+    if (Math.abs(data[i] - data[i-1]) > 0.1 * data[i-1]) trends.stable = false;
+  }
+  
+  // Return detected pattern
+  if (trends.increasing) return { pattern: 'increasing', confidence: 0.9 };
+  if (trends.decreasing) return { pattern: 'decreasing', confidence: 0.9 };
+  if (trends.stable) return { pattern: 'stable', confidence: 0.9 };
+  
+  return { pattern: 'mixed', confidence: 0.5 };
+};
+
+const prepareNumericData = (data: any[]): { numericColumns: string[], processedData: Record<string, number[]> } => {
+  if (!data || !data.length) return { numericColumns: [], processedData: {} };
+  
+  // Find numeric columns
+  const numericColumns: string[] = [];
+  const firstRow = data[0];
+  
+  Object.keys(firstRow).forEach(key => {
+    // Check if at least 70% of values are numeric
+    const numericCount = data.filter(row => 
+      row[key] !== undefined && 
+      row[key] !== null && 
+      !isNaN(Number(row[key]))
+    ).length;
+    
+    if (numericCount > data.length * 0.7) {
+      numericColumns.push(key);
+    }
+  });
+  
+  // Extract numeric values
+  const processedData: Record<string, number[]> = {};
+  
+  numericColumns.forEach(column => {
+    processedData[column] = data
+      .map(row => Number(row[column]))
+      .filter(val => !isNaN(val));
+  });
+  
+  return { numericColumns, processedData };
+};
+
+// Main handler for AI analysis nodes
+export const handleAiAnalysis = async (
   inputs: NodeInputs,
   config: Record<string, any>
 ): Promise<NodeOutputs> => {
   try {
+    // Extract configuration
+    const analysisType = config.analysisType || 'general';
+    const shouldDetectOutliers = config.analysisOptions?.detectOutliers || false;
+    const shouldFindPatterns = config.analysisOptions?.findPatterns || false;
+    
+    // Get input data
     const data = inputs.data || [];
     
-    if (!Array.isArray(data) || data.length === 0) {
-      return { data: [], summary: {} };
+    if (!data.length) {
+      return {
+        data: [],
+        analysis: {
+          message: 'No data to analyze',
+          status: 'warning'
+        }
+      };
     }
     
-    // Generate a summary of the data
-    const summary: Record<string, any> = {
-      rowCount: data.length,
-      fields: {}
-    };
+    // Process data
+    const { numericColumns, processedData } = prepareNumericData(data);
     
-    // Get all field names
-    const fields = Object.keys(data[0] || {});
+    if (numericColumns.length === 0) {
+      return {
+        data,
+        analysis: {
+          message: 'No numeric columns found for analysis',
+          status: 'warning'
+        }
+      };
+    }
     
-    fields.forEach(field => {
-      const values = data.map(item => item[field]).filter(v => v !== null && v !== undefined);
+    // Calculate statistics for each numeric column
+    const statistics: Record<string, any> = {};
+    
+    numericColumns.forEach(column => {
+      const columnData = processedData[column];
+      const mean = calculateMean(columnData);
+      const stdDev = calculateStandardDeviation(columnData, mean);
+      const min = Math.min(...columnData);
+      const max = Math.max(...columnData);
       
-      // Basic field info
-      const fieldSummary: Record<string, any> = {
-        type: typeof values[0],
-        count: values.length,
-        nullCount: data.length - values.length,
-        nullPercentage: ((data.length - values.length) / data.length * 100).toFixed(1) + '%'
+      statistics[column] = {
+        mean,
+        stdDev,
+        min,
+        max,
+        count: columnData.length
       };
       
-      // Type-specific summaries
-      if (typeof values[0] === 'number') {
-        // Numeric field
-        const numValues = values.filter(v => typeof v === 'number' && !isNaN(v)) as number[];
-        
-        if (numValues.length > 0) {
-          const sorted = [...numValues].sort((a, b) => a - b);
-          const sum = numValues.reduce((a, b) => a + b, 0);
-          
-          fieldSummary.min = sorted[0];
-          fieldSummary.max = sorted[sorted.length - 1];
-          fieldSummary.mean = sum / numValues.length;
-          fieldSummary.median = sorted[Math.floor(sorted.length / 2)];
-          
-          // Calculate standard deviation
-          const mean = fieldSummary.mean;
-          const squareDiffs = numValues.map(value => Math.pow(value - mean, 2));
-          const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / squareDiffs.length;
-          fieldSummary.stdDev = Math.sqrt(avgSquareDiff);
-        }
-      } else if (typeof values[0] === 'string') {
-        // String field
-        const stringValues = values.filter(v => typeof v === 'string') as string[];
-        
-        if (stringValues.length > 0) {
-          // Count unique values
-          const uniqueValues = new Set(stringValues);
-          fieldSummary.uniqueCount = uniqueValues.size;
-          
-          // Get most common values (top 5)
-          const valueCounts = stringValues.reduce((counts, value) => {
-            counts[value] = (counts[value] || 0) + 1;
-            return counts;
-          }, {} as Record<string, number>);
-          
-          fieldSummary.topValues = Object.entries(valueCounts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-            .map(([value, count]) => ({
-              value,
-              count,
-              percentage: (count / stringValues.length * 100).toFixed(1) + '%'
-            }));
-          
-          // Check if it might be a date field
-          const datePattern = /^\d{4}-\d{2}-\d{2}|^\d{2}\/\d{2}\/\d{4}|^\d{2}-\d{2}-\d{4}/;
-          const possibleDateCount = stringValues.filter(v => datePattern.test(v)).length;
-          
-          if (possibleDateCount > stringValues.length * 0.8) { // 80% match threshold
-            fieldSummary.possibleDateField = true;
-          }
-        }
-      } else if (values[0] instanceof Date) {
-        // Date field
-        const dateValues = values.filter(v => v instanceof Date) as Date[];
-        
-        if (dateValues.length > 0) {
-          const timestamps = dateValues.map(d => d.getTime());
-          const sorted = [...timestamps].sort((a, b) => a - b);
-          
-          fieldSummary.earliest = new Date(sorted[0]).toISOString();
-          fieldSummary.latest = new Date(sorted[sorted.length - 1]).toISOString();
-          fieldSummary.timeSpanDays = Math.round((sorted[sorted.length - 1] - sorted[0]) / (1000 * 60 * 60 * 24));
-        }
+      // Optional analysis
+      if (shouldDetectOutliers) {
+        statistics[column].outliers = findOutliers(columnData, mean, stdDev);
       }
       
-      summary.fields[field] = fieldSummary;
+      if (shouldFindPatterns) {
+        statistics[column].pattern = findPatterns(columnData);
+      }
     });
     
+    // Generate insights based on analysis type
+    let insights: any[] = [];
+    
+    switch (analysisType) {
+      case 'trends':
+        insights = numericColumns.map(column => {
+          const stats = statistics[column];
+          const pattern = findPatterns(processedData[column]);
+          return {
+            column,
+            insight: `Column ${column} shows a ${pattern.pattern} trend with ${pattern.confidence * 100}% confidence.`
+          };
+        });
+        break;
+        
+      case 'outliers':
+        insights = numericColumns
+          .filter(column => statistics[column].outliers?.length > 0)
+          .map(column => {
+            const outliers = statistics[column].outliers;
+            return {
+              column,
+              insight: `Found ${outliers.length} outliers in column ${column}.`,
+              outliers
+            };
+          });
+        break;
+        
+      case 'forecast':
+        insights = numericColumns.map(column => {
+          const data = processedData[column];
+          const pattern = findPatterns(data);
+          // Simple naive forecast based on pattern
+          let forecast = 'stable';
+          if (pattern.pattern === 'increasing') forecast = 'likely to continue increasing';
+          if (pattern.pattern === 'decreasing') forecast = 'likely to continue decreasing';
+          
+          return {
+            column,
+            insight: `Column ${column} is ${forecast} based on historical trend.`
+          };
+        });
+        break;
+        
+      default: // general analysis
+        insights = numericColumns.map(column => {
+          const stats = statistics[column];
+          return {
+            column,
+            insight: `Column ${column} has mean ${stats.mean.toFixed(2)} with standard deviation ${stats.stdDev.toFixed(2)}.`
+          };
+        });
+    }
+    
+    // Return processed data and analysis
     return {
       data,
-      summary,
       analysis: {
-        type: 'summarization',
-        timestamp: new Date().toISOString()
+        statistics,
+        insights,
+        summary: `Analyzed ${numericColumns.length} numeric columns across ${data.length} records.`,
+        status: 'success'
       }
     };
   } catch (error) {
-    console.error('Error in data summarization:', error);
-    throw new Error(`AI analysis error: ${error}`);
+    console.error('Error in AI analysis:', error);
+    return {
+      error: String(error),
+      status: 'error'
+    };
   }
 };
