@@ -1,5 +1,4 @@
-
-import { Node, Edge } from '@xyflow/react';
+import { Node as ReactFlowNode, Edge as ReactFlowEdge } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -9,6 +8,7 @@ export interface BaseNodeData {
   label: string;
   type: string;
   config: Record<string, any>;
+  [key: string]: any; // Add index signature to satisfy Record<string, unknown>
 }
 
 export interface DataInputNodeData extends BaseNodeData {
@@ -103,12 +103,15 @@ export type WorkflowNodeData =
 
 // Use a simplified NodeProps type that works with our component structure
 export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
-  data?: any;
+  data?: T;
   selected?: boolean;
 };
 
+// Export Edge type from ReactFlow for use in our application
+export type Edge = ReactFlowEdge;
+
 // Add Workflow Node type that extends XyFlow's Node type with our specific data
-export type WorkflowNode = Node<WorkflowNodeData>;
+export type WorkflowNode = ReactFlowNode<WorkflowNodeData>;
 
 // Workflow definition types
 export interface WorkflowDefinition {

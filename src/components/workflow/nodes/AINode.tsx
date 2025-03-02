@@ -11,20 +11,26 @@ const defaultData: AINodeData = {
   config: {}
 };
 
-const AINode: React.FC<NodeProps<AINodeData>> = ({ data, selected }) => {
+const AINode = ({ data = defaultData, selected }: { data?: any, selected?: boolean }) => {
   // Use provided data or fallback to default data
-  const nodeData = data ? data as AINodeData : defaultData;
-  const { type, label, config } = nodeData;
+  const nodeData = {
+    ...defaultData,
+    ...(data || {}),
+    config: {
+      ...defaultData.config,
+      ...(data?.config || {})
+    }
+  };
 
   // Node color based on type or configuration
   const getNodeColor = () => {
-    if (config?.color) return config.color;
+    if (nodeData.config?.color) return nodeData.config.color;
     return 'bg-indigo-100 border-indigo-300 text-indigo-800';
   };
 
   // Node icon based on type
   const getNodeIcon = () => {
-    switch (type) {
+    switch (nodeData.type) {
       case 'aiAnalyze':
         return <Brain className="h-5 w-5 text-indigo-600" />;
       case 'aiClassify':
@@ -45,7 +51,7 @@ const AINode: React.FC<NodeProps<AINodeData>> = ({ data, selected }) => {
       />
       <div className="flex items-center">
         <div className="mr-2">{getNodeIcon()}</div>
-        <div className="font-medium truncate text-sm">{label}</div>
+        <div className="font-medium truncate text-sm">{nodeData.label}</div>
       </div>
       <Handle
         type="source"

@@ -14,9 +14,16 @@ const defaultData: SpreadsheetGeneratorNodeData = {
   }
 };
 
-const SpreadsheetGeneratorNode: React.FC<NodeProps<SpreadsheetGeneratorNodeData>> = ({ data, selected }) => {
+const SpreadsheetGeneratorNode = ({ data = defaultData, selected }: { data?: any, selected?: boolean }) => {
   // Use provided data or fallback to default data
-  const nodeData = data ? data as SpreadsheetGeneratorNodeData : defaultData;
+  const nodeData = {
+    ...defaultData,
+    ...(data || {}),
+    config: {
+      ...defaultData.config,
+      ...(data?.config || {})
+    }
+  };
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>
@@ -24,7 +31,7 @@ const SpreadsheetGeneratorNode: React.FC<NodeProps<SpreadsheetGeneratorNodeData>
       <div className="flex items-center gap-2 bg-green-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-green-500 opacity-50" />
         <FileSpreadsheet className="h-4 w-4 text-green-500" />
-        <div className="text-sm font-medium text-green-800">{nodeData.label || 'Spreadsheet Generator'}</div>
+        <div className="text-sm font-medium text-green-800">{nodeData.label}</div>
       </div>
       
       {/* Body */}
@@ -36,7 +43,7 @@ const SpreadsheetGeneratorNode: React.FC<NodeProps<SpreadsheetGeneratorNodeData>
           </div>
           <div className="flex items-center justify-between">
             <span>Sheets:</span>
-            <span className="font-medium">{nodeData.config?.sheets?.length || 1}</span>
+            <span className="font-medium">{nodeData.config?.sheets?.length || 0}</span>
           </div>
         </div>
       </div>

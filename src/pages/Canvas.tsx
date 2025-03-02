@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { 
@@ -248,42 +247,50 @@ const Canvas = () => {
     setConfigPanelOpen(true);
   }, []);
 
-  // Save workflow
-  const saveWorkflow = async () => {
-    try {
-      const workflow = {
-        name: workflowName,
-        description: workflowDescription,
-        definition: {
-          nodes,
-          edges,
-        },
-        user_id: (await supabase.auth.getUser()).data.user?.id,
-      };
-      
-      let response;
-      
-      if (workflowId && workflowId !== 'new') {
-        // Update existing workflow
-        response = await supabase
-          .from('workflows')
-          .update(workflow)
-          .eq('id', workflowId);
-      } else {
-        // Create new workflow
-        response = await supabase
-          .from('workflows')
-          .insert(workflow);
-      }
-      
-      if (response.error) throw response.error;
-      
-      toast.success('Workflow saved successfully');
-    } catch (error) {
-      console.error('Error saving workflow:', error);
-      toast.error('Failed to save workflow');
+// Save workflow
+const saveWorkflow = async () => {
+  try {
+    const userId = (await supabase.auth.getUser()).data.user?.id;
+    
+    if (!userId) {
+      toast.error('User not authenticated');
+      return;
     }
-  };
+    
+    const workflow = {
+      name: workflowName,
+      description: workflowDescription,
+      definition: JSON.stringify({
+        nodes,
+        edges,
+      }),
+      user_id: userId,
+      created_by: userId, // Add this to satisfy the TypeScript constraint
+    };
+    
+    let response;
+    
+    if (workflowId && workflowId !== 'new') {
+      // Update existing workflow
+      response = await supabase
+        .from('workflows')
+        .update(workflow)
+        .eq('id', workflowId);
+    } else {
+      // Create new workflow
+      response = await supabase
+        .from('workflows')
+        .insert(workflow);
+    }
+    
+    if (response.error) throw response.error;
+    
+    toast.success('Workflow saved successfully');
+  } catch (error) {
+    console.error('Error saving workflow:', error);
+    toast.error('Failed to save workflow');
+  }
+};
 
   // Run workflow
   const runWorkflow = async () => {
