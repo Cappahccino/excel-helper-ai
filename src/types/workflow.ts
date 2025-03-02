@@ -3,7 +3,55 @@ import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNod
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
-// Node data types
+// Expanded Node Types
+export type InputNodeType = 
+  | 'dataInput' | 'fileUpload' | 'databaseQuery' | 'manualEntry'
+  | 'apiFetch' | 'webhookListener' | 'ftpImport' | 'emailAttachment'
+  | 'formSubmission' | 'scheduledFetch' | 'spreadsheetImport' | 'crmDataPull'
+  | 'erpDataFetch' | 'spreadsheetGenerator';
+
+export type ProcessingNodeType = 
+  | 'dataProcessing' | 'columnMapping' | 'filtering' | 'sorting'
+  | 'aggregation' | 'formulaCalculation' | 'currencyConversion' | 'textTransformation'
+  | 'dataTypeConversion' | 'deduplication' | 'joinMerge' | 'pivotTable'
+  | 'conditionalLogic' | 'dateFormatting' | 'dataMasking' | 'normalization';
+
+export type AINodeType = 
+  | 'aiNode' | 'aiSummarization' | 'sentimentAnalysis' | 'namedEntityRecognition'
+  | 'anomalyDetection' | 'forecasting' | 'documentParsing' | 'clustering'
+  | 'mlModelExecution' | 'featureEngineering' | 'aiDataCleaning';
+
+export type OutputNodeType = 
+  | 'outputNode' | 'downloadFile' | 'sendEmail' | 'exportToDatabase'
+  | 'webhookTrigger' | 'pushNotification' | 'excelExport' | 'pdfGeneration'
+  | 'googleSheetsUpdate' | 'ftpUpload' | 'crmUpdate' | 'erpDataSync'
+  | 'slackNotification' | 'webhookResponse' | 'apiResponse' | 'smsAlert';
+
+export type IntegrationNodeType = 
+  | 'integrationNode' | 'salesforceConnector' | 'xeroConnector' | 'hubspotConnector'
+  | 'googleSheetsConnector' | 'stripeConnector' | 'quickbooksConnector' | 'zendeskConnector'
+  | 'shopifyConnector' | 's3Connector' | 'zapierConnector' | 'googleDriveConnector'
+  | 'customApiConnector' | 'erpConnector' | 'twilioConnector' | 'powerBiConnector';
+
+export type ControlNodeType = 
+  | 'controlNode' | 'ifElseCondition' | 'loopForEach' | 'parallelProcessing'
+  | 'errorHandling' | 'waitPause' | 'webhookWait' | 'retryMechanism'
+  | 'switchCase';
+
+export type UtilityNodeType = 
+  | 'logToConsole' | 'executionTimestamp' | 'sessionManagement' | 'variableStorage'
+  | 'aiStepRecommendation' | 'workflowVersionControl' | 'performanceMetrics';
+
+export type NodeType = 
+  | InputNodeType
+  | ProcessingNodeType
+  | AINodeType
+  | OutputNodeType
+  | IntegrationNodeType
+  | ControlNodeType
+  | UtilityNodeType;
+
+// Base node data types
 export interface BaseNodeData {
   label: string;
   type: string;
@@ -11,6 +59,7 @@ export interface BaseNodeData {
   [key: string]: any; // Add index signature to satisfy Record<string, unknown>
 }
 
+// Node data types
 export interface DataInputNodeData extends BaseNodeData {
   type: 'excelInput' | 'csvInput' | 'apiSource' | 'userInput';
   config: {
@@ -92,6 +141,17 @@ export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
   };
 }
 
+export interface UtilityNodeData extends BaseNodeData {
+  type: UtilityNodeType;
+  config: {
+    logLevel?: string;
+    variableKey?: string;
+    variableValue?: any;
+    performanceThreshold?: number;
+    [key: string]: any;
+  };
+}
+
 export type WorkflowNodeData = 
   | DataInputNodeData 
   | DataProcessingNodeData 
@@ -99,7 +159,8 @@ export type WorkflowNodeData =
   | OutputNodeData 
   | IntegrationNodeData 
   | ControlNodeData 
-  | SpreadsheetGeneratorNodeData;
+  | SpreadsheetGeneratorNodeData
+  | UtilityNodeData;
 
 // Use a simplified NodeProps type that works with our component structure
 export type NodeProps<T extends BaseNodeData = BaseNodeData> = {

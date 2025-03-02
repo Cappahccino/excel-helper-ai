@@ -14,16 +14,27 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
   nodeCategories = []
 }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState('all');
   
-  // Filter nodes based on search term
+  // Filter nodes based on search term and active tab
   const filteredCategories = React.useMemo(() => {
+    let filteredByTab = nodeCategories;
+    
+    // Filter by tab first if not 'all'
+    if (activeTab !== 'all') {
+      filteredByTab = nodeCategories.filter(category => {
+        return category.id === activeTab;
+      });
+    }
+    
+    // Then filter by search term
     if (!searchTerm.trim()) {
-      return nodeCategories;
+      return filteredByTab;
     }
     
     const lowerSearchTerm = searchTerm.toLowerCase();
     
-    return nodeCategories.filter(category => {
+    return filteredByTab.filter(category => {
       // If the category matches, include it
       if (category.name.toLowerCase().includes(lowerSearchTerm)) {
         return true;
@@ -37,12 +48,21 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
       
       // Include the category if it has matching items
       return filteredItems.length > 0;
+    }).map(category => {
+      // Only include matching items within each category
+      return {
+        ...category,
+        items: category.items.filter(item => 
+          item.label.toLowerCase().includes(lowerSearchTerm) || 
+          (item.description && item.description.toLowerCase().includes(lowerSearchTerm))
+        )
+      };
     });
-  }, [searchTerm, nodeCategories]);
+  }, [searchTerm, activeTab, nodeCategories]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Node</DialogTitle>
         </DialogHeader>
@@ -57,51 +77,62 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
           />
         </div>
         
-        <Tabs defaultValue="all" className="w-full">
-          <TabsList className="w-full justify-start mb-4 overflow-x-auto">
+        <Tabs 
+          defaultValue="all" 
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="w-full"
+        >
+          <TabsList className="w-full justify-start mb-4 overflow-x-auto flex-wrap">
             <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="inputs">Inputs</TabsTrigger>
+            <TabsTrigger value="input">Inputs</TabsTrigger>
             <TabsTrigger value="processing">Processing</TabsTrigger>
             <TabsTrigger value="ai">AI & ML</TabsTrigger>
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
-            <TabsTrigger value="outputs">Outputs</TabsTrigger>
+            <TabsTrigger value="integration">Integrations</TabsTrigger>
+            <TabsTrigger value="output">Outputs</TabsTrigger>
+            <TabsTrigger value="control">Control Flow</TabsTrigger>
+            <TabsTrigger value="utility">Utilities</TabsTrigger>
           </TabsList>
           
-          {filteredCategories.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No nodes match your search
-            </div>
-          ) : (
-            filteredCategories.map((category) => (
-              <div key={category.id} className="mb-6">
-                <h3 className="text-sm font-medium mb-2 flex items-center">
-                  {category.name}
-                </h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {category.items.map((item) => (
-                    <Button
-                      key={item.type}
-                      variant="outline"
-                      className="justify-start h-auto py-3 px-4"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        onAddNode?.(item.type, category.id, item.label);
-                        onClose();
-                      }}
-                      type="button"
-                    >
-                      <div className="text-left">
-                        <div className="font-medium">{item.label}</div>
-                        {item.description && (
-                          <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
-                        )}
-                      </div>
-                    </Button>
-                  ))}
-                </div>
+          <TabsContent value={activeTab} className="mt-0">
+            {filteredCategories.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No nodes match your search
               </div>
-            ))
-          )}
+            ) : (
+              <div className="space-y-6">
+                {filteredCategories.map((category) => (
+                  <div key={category.id} className="mb-6">
+                    <h3 className="text-sm font-medium mb-2 flex items-center">
+                      {category.name}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {category.items.map((item) => (
+                        <Button
+                          key={item.type}
+                          variant="outline"
+                          className="justify-start h-auto py-3 px-4"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onAddNode?.(item.type, category.id, item.label);
+                            onClose();
+                          }}
+                          type="button"
+                        >
+                          <div className="text-left">
+                            <div className="font-medium">{item.label}</div>
+                            {item.description && (
+                              <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                            )}
+                          </div>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
