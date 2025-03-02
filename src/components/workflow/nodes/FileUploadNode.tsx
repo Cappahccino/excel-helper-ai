@@ -1,27 +1,31 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileUp, GripVertical, Search, Plus, Upload, FileSpreadsheet, X } from 'lucide-react';
+import { FileUp, GripVertical, FileText, Search } from 'lucide-react';
 import { NodeProps, FileUploadNodeData } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { FileUploadZone } from '@/components/FileUploadZone';
-import { Card, CardContent } from '@/components/ui/card';
-import { ExcelFile } from '@/types/files';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
-import { Spinner } from '@/components/ui/spinner';
+import { toast } from 'sonner';
 
 // Default data if none is provided
+const defaultData: FileUploadNodeData = {
+  label: 'File Upload',
+  type: 'fileUpload',
+  config: {}
+};
+
 const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
-  const [files, setFiles] = useState<ExcelFile[]>([]);
+  // Use provided data or fallback to default data
+  const nodeData = data || defaultData;
+  
+  const [files, setFiles] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-
   // Function to fetch files from Supabase
   const fetchFiles = async () => {
     try {
@@ -59,40 +63,17 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
   );
 
   // Handle file selection
-  const handleFileSelect = (fileId: string) => {
-    if (data && data.config) {
-      data.config.fileId = fileId;
+  const handleFileSelect = (fileId: string, fileName: string) => {
+    if (nodeData && nodeData.config) {
+      nodeData.config.fileId = fileId;
+      nodeData.config.fileName = fileName;
     }
     setIsDialogOpen(false);
   };
 
-  // Handle file upload - matching the required function signature
-  const handleFileUpload = async (files: File[]): Promise<void> => {
-    try {
-      setIsUploading(true);
-      console.log('Uploading files:', files);
-      // In a real implementation, this would connect to your file upload service
-      // For now we resolve immediately to demonstrate the UI flow
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return Promise.resolve();
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
-    }
-  };
-
-  // Handle file upload completion
-  const handleUploadComplete = () => {
-    if (data && data.config) {
-      // Set the fileId if a file was uploaded successfully
-      // This would normally come from your file upload response
-      data.config.fileId = "new-file-id";
-    }
-    setIsUploading(false);
-    setIsDialogOpen(false);
-    fetchFiles(); // Refresh file list
-  };
-
+  // Get selected file name
+  const selectedFileName = nodeData.config?.fileName || 'Not selected';
+  
   // Format file size for display
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -102,9 +83,11 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Get selected file name
-  const selectedFile = files.find(file => file.id === nodeData.config?.fileId);
-  const selectedFileName = selectedFile?.filename || 'No file selected';
+  const handleUploadNewFile = () => {
+    toast.info("File upload functionality would be triggered here");
+    // This would typically open a file upload dialog or redirect to the file upload page
+    // For simplicity, we're just showing a toast notification
+  };
 
   return (
     <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-blue-500 shadow-md' : 'border-blue-200'}`}>
@@ -117,129 +100,106 @@ const FileUploadNode = ({ data, selected }: NodeProps<FileUploadNodeData>) => {
       
       {/* Body */}
       <div className="p-3 pt-2 bg-white rounded-b-md">
-        <div className="text-xs text-gray-500 mb-2">
+        <div className="text-xs text-gray-500">
           <div className="flex items-center justify-between mb-1">
             <span>File:</span>
-            <span className="font-medium truncate max-w-[120px]" title={selectedFileName}>
-              {selectedFileName}
-            </span>
+            <span className="font-medium">{nodeData.config?.fileId ? 'Selected' : 'Not selected'}</span>
           </div>
-        </div>
-
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="w-full text-xs"
-              onClick={() => {
-                // Empty onClick handler to satisfy TypeScript
-              }}
-            >
-              Select File
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Select a File</DialogTitle>
-            </DialogHeader>
-            
-            <div className="space-y-4 py-2">
-              {/* Search input */}
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                <Input
-                  placeholder="Search files..."
-                  className="pl-9 text-sm"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              
-              {/* File list */}
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {isLoading ? (
-                  <div className="flex justify-center p-4">
-                    <Spinner className="h-6 w-6 text-blue-500" />
-                  </div>
-                ) : error ? (
-                  <div className="text-sm text-red-500 text-center py-4">
-                    {error}
-                  </div>
-                ) : filteredFiles.length > 0 ? (
-                  filteredFiles.map(file => (
-                    <Card 
-                      key={file.id} 
-                      className={`cursor-pointer hover:bg-gray-50 transition-colors ${nodeData.config?.fileId === file.id ? 'border-blue-500 bg-blue-50/50' : ''}`}
-                      onClick={() => handleFileSelect(file.id)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-center gap-3">
-                          <FileSpreadsheet className="h-5 w-5 text-green-600 flex-shrink-0" />
-                          <div className="flex flex-col flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">
-                              {file.filename}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {formatFileSize(file.file_size)}
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                ) : searchQuery ? (
-                  <div className="text-sm text-gray-500 text-center py-4">
-                    No files match your search
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-500 text-center py-4">
-                    No files available
-                  </div>
-                )}
-              </div>
-              
-              {/* Upload new file button */}
-              <div className="pt-2">
-                {isUploading ? (
-                  <div className="bg-gray-50 rounded-md p-4">
-                    <FileUploadZone 
-                      onFileUpload={handleFileUpload}
-                      isUploading={true}
-                      uploadProgress={{0: 50}}
-                      currentFiles={null}
-                      onReset={() => setIsUploading(false)}
-                      onUploadComplete={handleUploadComplete}
-                    />
-                  </div>
-                ) : (
-                  <Button 
-                    variant="outline" 
-                    className="w-full" 
-                    onClick={() => setIsUploading(true)}
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload New File
-                  </Button>
-                )}
-              </div>
+          {nodeData.config?.fileId && (
+            <div className="flex items-center justify-between">
+              <span>Name:</span>
+              <span className="font-medium truncate max-w-[120px]" title={selectedFileName}>
+                {selectedFileName}
+              </span>
             </div>
-          </DialogContent>
-        </Dialog>
+          )}
+        </div>
+        
+        <div className="mt-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full text-xs"
+            onClick={() => setIsDialogOpen(true)}
+          >
+            Select File
+          </Button>
+        </div>
       </div>
       
-      {/* Input handle - top center */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="input"
-        style={{
-          background: '#94a3b8',
-          width: 10,
-          height: 10,
-          top: -5,
-        }}
-      />
+      {/* Dialog for file selection */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select a File</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            {/* Search input */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder="Search files..."
+                className="pl-9 text-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            {/* File list */}
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {isLoading ? (
+                <div className="flex justify-center p-4">
+                  <div className="h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : error ? (
+                <div className="text-sm text-red-500 text-center py-4">
+                  {error}
+                </div>
+              ) : filteredFiles.length > 0 ? (
+                filteredFiles.map(file => (
+                  <div 
+                    key={file.id} 
+                    className={`p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors ${nodeData.config?.fileId === file.id ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200'}`}
+                    onClick={() => handleFileSelect(file.id, file.filename)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {file.filename}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {formatFileSize(file.file_size)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : searchQuery ? (
+                <div className="text-sm text-gray-500 text-center py-4">
+                  No files match your search
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500 text-center py-4">
+                  No files available
+                </div>
+              )}
+            </div>
+            
+            {/* Upload new file button */}
+            <div className="pt-2">
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={handleUploadNewFile}
+              >
+                Upload New File
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       
       {/* Output handle - bottom center */}
       <Handle
