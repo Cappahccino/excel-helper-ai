@@ -1,3 +1,4 @@
+
 // src/pages/Canvas.tsx
 import React from 'react';
 import { ChatSidebar } from '@/components/ChatSidebar';
@@ -5,6 +6,18 @@ import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from '@/hooks/use-toast';
 import { useParams } from 'react-router-dom';
+import { ExtendedDatabase } from '@/types/supabase';
+
+// Type assertion to use extended Supabase client
+const extendedSupabase = supabase as unknown as typeof supabase & {
+  from<T extends keyof ExtendedDatabase['Tables']>(
+    table: T
+  ): ReturnType<typeof supabase.from>;
+  rpc<T extends keyof ExtendedDatabase['Functions']>(
+    fn: T,
+    params?: ExtendedDatabase['Functions'][T]['Args']
+  ): ReturnType<typeof supabase.rpc>;
+};
 
 const Canvas = () => {
   const { toast } = useToast();
@@ -18,7 +31,7 @@ const Canvas = () => {
     if (workflowId) {
       const loadWorkflow = async () => {
         try {
-          const { data, error } = await supabase
+          const { data, error } = await extendedSupabase
             .from('workflows')
             .select('*')
             .eq('id', workflowId)
@@ -55,7 +68,7 @@ const Canvas = () => {
 
       if (workflowId) {
         // Update existing workflow
-        await supabase
+        await extendedSupabase
           .from('workflows')
           .update({
             definition: workflowDefinition,
@@ -64,7 +77,7 @@ const Canvas = () => {
           .eq('id', workflowId);
       } else {
         // Create new workflow
-        const { data, error } = await supabase
+        const { data, error } = await extendedSupabase
           .from('workflows')
           .insert({
             name: 'Untitled Workflow',
@@ -98,7 +111,7 @@ const Canvas = () => {
   const handleRunWorkflow = async (workflowId) => {
     try {
       // Call your workflow execution service
-      const { data, error } = await supabase
+      const { data, error } = await extendedSupabase
         .rpc('start_workflow_execution', {
           workflow_id: workflowId
         });

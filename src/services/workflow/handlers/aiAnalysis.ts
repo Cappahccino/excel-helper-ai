@@ -1,330 +1,234 @@
+
 // src/services/workflow/handlers/aiAnalysis.ts
 
-import { NodeDefinition } from '@/types/workflow';
-import { supabase } from "@/integrations/supabase/client";
-import { triggerAIResponse } from "@/services/aiService";
+import { NodeData, NodeInputs, NodeOutputs, NodeHandler } from '@/types/workflow';
+import { supabase } from '@/integrations/supabase/client';
 
-
-interface AIAnalysisConfig {
-  operation: 'analyze' | 'summarize' | 'extract' | 'classify' | 'generate_formula' | 'custom';
-  prompt?: string;
-  targetFields?: string[];
-  analysisOptions?: {
-    detectOutliers?: boolean;
-    findPatterns?: boolean;
-    identifyTrends?: boolean;
-    suggestImprovements?: boolean;
-    confidenceThreshold?: number;
-  };
-  extractionOptions?: {
-    format?: 'json' | 'csv' | 'text';
-    structure?: Record<string, string>;
-  };
-  classificationOptions?: {
-    categories: string[];
-    multiLabel?: boolean;
-  };
-  customOptions?: Record<string, any>;
-}
-
-export async function handleAIAnalysis(
-  node: NodeDefinition,
-  inputs: Record<string, any>,
-  context: any
-) {
-  const config = node.data.config as AIAnalysisConfig;
+// Helper function to build analysis prompt based on data and options
+function buildAnalysisPrompt(data: any[], options: any = {}): string {
+  const sampleSize = Math.min(5, data.length);
+  const samples = data.slice(0, sampleSize);
   
-  // Validate that we have data to analyze
-  if (!inputs.data) {
-    throw new Error('No data provided for AI analysis');
+  let prompt = `Analyze the following data:\n\n`;
+  
+  // Include sample data
+  if (samples.length > 0 && Array.isArray(samples)) {
+    // Get headers if the data is an array of objects
+    const headers = Object.keys(samples[0] || {});
+    
+    // Add headers
+    prompt += headers.join('\t') + '\n';
+    
+    // Add sample rows
+    for (const row of samples) {
+      prompt += headers.map(h => row[h]).join('\t') + '\n';
+    }
   }
   
-  await context.logMessage(`Starting AI ${config.operation}`, 'info', node.id);
+  prompt += `\nThis is a sample of ${data.length} total records.\n\n`;
   
-  try {
-    let result;
+  // Add specific analysis instructions based on options
+  if (options.detectOutliers) {
+    prompt += `Please identify any outliers or anomalies in the data.\n`;
+  }
+  
+  if (options.findPatterns) {
+    prompt += `Please identify any patterns, trends, or correlations in the data.\n`;
+  }
+  
+  prompt += `\nProvide a comprehensive analysis including summary statistics, insights, and recommendations.`;
+  
+  return prompt;
+}
+
+// Helper function to format classification results
+function formatClassificationResults(results: any[], categories: string[] = [], multiLabel: boolean = false): any[] {
+  return results.map(item => {
+    const classifications = Array.isArray(item.classifications) 
+      ? item.classifications 
+      : [];
     
-    switch (config.operation) {
-      case 'analyze':
-        result = await performDataAnalysis(inputs.data, config, context);
-        break;
-        
-      case 'summarize':
-        result = await performDataSummarization(inputs.data, config, context);
-        break;
-        
-      case 'extract':
-        result = await performDataExtraction(inputs.data, config, context);
-        break;
-        
-      case 'classify':
-        result = await performDataClassification(inputs.data, config, context);
-        break;
-        
-      case 'generate_formula':
-        result = await generateFormula(inputs.data, config, context);
-        break;
-        
-      case 'custom':
-        result = await performCustomAIOperation(inputs.data, config, context);
-        break;
-        
-      default:
-        throw new Error(`Unknown AI operation: ${config.operation}`);
+    if (multiLabel) {
+      // For multi-label, return all matching categories
+      return {
+        ...item,
+        classifications: classifications
+          .filter(c => c.confidence > 0.5)
+          .map(c => c.category)
+      };
+    } else {
+      // For single-label, return only the top category
+      const topClassification = classifications.length > 0
+        ? classifications.reduce((prev, current) => 
+            (current.confidence > prev.confidence) ? current : prev
+          )
+        : { category: null, confidence: 0 };
+      
+      return {
+        ...item,
+        category: topClassification.category,
+        confidence: topClassification.confidence
+      };
+    }
+  });
+}
+
+// Helper function to calculate category distribution
+function calculateCategoryDistribution(results: any[], categories: string[] = []): Record<string, number> {
+  const distribution: Record<string, number> = {};
+  
+  // Initialize categories with zero counts
+  for (const category of categories) {
+    distribution[category] = 0;
+  }
+  
+  // Count occurrences of each category
+  for (const result of results) {
+    if (Array.isArray(result.classifications)) {
+      // Multi-label case
+      for (const classification of result.classifications) {
+        const category = classification.category;
+        distribution[category] = (distribution[category] || 0) + 1;
+      }
+    } else if (result.category) {
+      // Single-label case
+      const category = result.category;
+      distribution[category] = (distribution[category] || 0) + 1;
+    }
+  }
+  
+  return distribution;
+}
+
+export const aiAnalysis: NodeHandler = {
+  type: 'aiAnalyze',
+  
+  async execute(nodeData: NodeData, inputs: NodeInputs): Promise<NodeOutputs> {
+    console.log('Executing AI Analysis node', nodeData);
+    
+    const inputData = inputs.input;
+    if (!inputData || !Array.isArray(inputData)) {
+      throw new Error('AI Analysis node requires array input data');
     }
     
-    await context.logMessage(`Completed AI ${config.operation}`, 'info', node.id);
+    const config = nodeData.config || {};
+    const analysisOptions = config.analysisOptions || {};
     
-    return {
-      result,
-      operation: config.operation,
-      timestamp: new Date().toISOString()
-    };
-  } catch (error) {
-    await context.logMessage(
-      `AI operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      'error',
-      node.id
-    );
-    throw error;
-  }
-}
-
-async function performDataAnalysis(data: any[], config: AIAnalysisConfig, context: any) {
-  const { analysisOptions = {} } = config;
-  
-  // Prepare the data for analysis
-  const dataPreview = JSON.stringify(data.slice(0, 10));
-  const dataSchema = inferSchema(data);
-  
-  // Build a prompt for the AI
-  const prompt = config.prompt || buildAnalysisPrompt(data, analysisOptions);
-  
-  await context.logMessage(`Sending data for analysis (${data.length} rows)`, 'info', context.nodeId);
-  
-  // Use your existing AI service
-  const response = await callAIService({
-    query: prompt,
-    data: {
-      type: 'analysis',
-      data: data,
-      dataPreview,
-      dataSchema,
-      options: analysisOptions
-    },
-    userId: context.userId
-  });
-  
-  // Process the AI response
-  return {
-    insights: response.insights || [],
-    statistics: response.statistics || {},
-    recommendations: response.recommendations || [],
-    visualizations: response.visualizations || [],
-    rawResponse: response.content
-  };
-}
-
-async function performDataSummarization(data: any[], config: AIAnalysisConfig, context: any) {
-  // Build a prompt for the AI
-  const prompt = config.prompt || `Summarize the following data:\n${JSON.stringify(data.slice(0, 50))}`;
-  
-  await context.logMessage(`Sending data for summarization (${data.length} rows)`, 'info', context.nodeId);
-  
-  // Use your existing AI service
-  const response = await callAIService({
-    query: prompt,
-    data: {
-      type: 'summarization',
-      data: data
-    },
-    userId: context.userId
-  });
-  
-  return {
-    summary: response.content,
-    keyPoints: response.keyPoints || [],
-    metadata: response.metadata || {}
-  };
-}
-
-async function performDataExtraction(data: any, config: AIAnalysisConfig, context: any) {
-  const { extractionOptions = {} } = config;
-  
-  // Handle both array data and text/unstructured data
-  const inputData = Array.isArray(data) ? JSON.stringify(data) : data;
-  
-  // Build a prompt for the AI
-  const prompt = config.prompt || `Extract the following information from the data: ${config.targetFields?.join(', ') || 'all relevant fields'}`;
-  
-  await context.logMessage(`Sending data for extraction`, 'info', context.nodeId);
-  
-  // Use your existing AI service
-  const response = await callAIService({
-    query: prompt,
-    data: {
-      type: 'extraction',
-      data: inputData,
-      format: extractionOptions.format || 'json',
-      structure: extractionOptions.structure
-    },
-    userId: context.userId
-  });
-  
-  return {
-    extractedData: response.extractedData || response.content,
-    format: extractionOptions.format || 'json',
-    confidence: response.confidence,
-    metadata: response.metadata || {}
-  };
-}
-
-async function performDataClassification(data: any[], config: AIAnalysisConfig, context: any) {
-  const { classificationOptions = {} } = config;
-  
-  if (!classificationOptions.categories || classificationOptions.categories.length === 0) {
-    throw new Error('Classification categories are required');
-  }
-  
-  // Build a prompt for the AI
-  const categoriesStr = classificationOptions.categories.join(', ');
-  const prompt = config.prompt || 
-    `Classify the following data into these categories: ${categoriesStr}. ${
-      classificationOptions.multiLabel ? 'Items can belong to multiple categories.' : 'Each item should be assigned to exactly one category.'
-    }`;
-  
-  await context.logMessage(`Sending data for classification (${data.length} rows)`, 'info', context.nodeId);
-  
-  // Use your existing AI service
-  const response = await callAIService({
-    query: prompt,
-    data: {
-      type: 'classification',
-      data: data,
-      categories: classificationOptions.categories,
-      multiLabel: classificationOptions.multiLabel || false
-    },
-    userId: context.userId
-  });
-  
-  // Process and format classification results
-  const classifications = Array.isArray(response.classifications) 
-    ? response.classifications 
-    : formatClassificationResults(data, response.content, classificationOptions.categories);
-  
-  return {
-    classifications,
-    categoryDistribution: calculateCategoryDistribution(classifications, classificationOptions.categories),
-    confidence: response.confidence,
-    rawResponse: response.content
-  };
-}
-
-async function generateFormula(data: any[], config: AIAnalysisConfig, context: any) {
-  // Build a prompt for the AI
-  const prompt = config.prompt || 'Generate an Excel formula to process the following data and achieve the desired result.';
-  
-  await context.logMessage('Generating formula based on data patterns', 'info', context.nodeId);
-  
-  // Use your existing AI service
-  const response = await callAIService({
-    query: prompt,
-    data: {
-      type: 'formula_generation',
-      data: data.slice(0, 50), // Limited sample for formula generation
-      targetFields: config.targetFields || []
-    },
-    userId: context.userId
-  });
-  
-  return {
-    formula: response.formula || response.content,
-    explanation: response.explanation || '',
-    examples: response.examples || [],
-    alternativeFormulas: response.alternativeFormulas || []
-  };
-}
-
-async function performCustomAIOperation(data: any, config: AIAnalysisConfig, context: any) {
-  const { customOptions = {} } = config;
-  
-  if (!config.prompt) {
-    throw new Error('A prompt is required for custom AI operations');
-  }
-  
-  await context.logMessage(`Performing custom AI operation`, 'info', context.nodeId);
-  
-  // Use your existing AI service
-  const response = await callAIService({
-    query: config.prompt,
-    data: {
-      type: 'custom',
-      data: data,
-      options: customOptions
-    },
-    userId: context.userId
-  });
-  
-  // Return the raw response for custom handling
-  return {
-    result: response.content,
-    metadata: response.metadata || {},
-    format: customOptions.format || 'text'
-  };
-}
-
-// Helper function to call the AI service
-async function callAIService(params: {
-  query: string;
-  data: any;
-  userId: string;
-}) {
-  try {
-    // Call your Supabase Edge Function
-    const { data: responseData, error } = await supabase.functions.invoke('ai-service', {
-      body: {
-        operation: params.data.type,
-        query: params.query,
-        data: params.data.data,
-        options: params.data.options || {},
-        userId: params.userId
+    try {
+      switch (nodeData.subtype || 'analyze') {
+        case 'analyze': {
+          // Generate prompt based on data and options
+          const prompt = buildAnalysisPrompt(inputData, analysisOptions);
+          
+          // Call AI service for analysis
+          const { data: aiResponse, error } = await supabase.functions.invoke('ai-service', {
+            body: {
+              prompt,
+              type: 'analysis',
+              options: analysisOptions
+            }
+          });
+          
+          if (error) throw error;
+          
+          return {
+            output: {
+              originalData: inputData,
+              analysis: aiResponse.analysis,
+              summary: aiResponse.summary,
+              insights: aiResponse.insights || [],
+              statistics: aiResponse.statistics || {}
+            }
+          };
+        }
+        
+        case 'classify': {
+          const classificationOptions = config.classificationOptions || {};
+          const categories = classificationOptions.categories || [];
+          
+          if (!categories || categories.length === 0) {
+            throw new Error('Classification requires categories to be defined');
+          }
+          
+          const multiLabel = classificationOptions.multiLabel || false;
+          
+          // Call AI service for classification
+          const { data: aiResponse, error } = await supabase.functions.invoke('ai-service', {
+            body: {
+              data: inputData,
+              type: 'classification',
+              options: {
+                categories: categories,
+                multiLabel: multiLabel
+              }
+            }
+          });
+          
+          if (error) throw error;
+          
+          // Format classification results
+          const classifiedData = formatClassificationResults(aiResponse.results, categories);
+          
+          // Calculate distribution of categories
+          const distribution = calculateCategoryDistribution(aiResponse.results, categories);
+          
+          return {
+            output: {
+              classifiedData,
+              distribution,
+              originalData: inputData
+            }
+          };
+        }
+        
+        case 'summarize': {
+          const summaryOptions = config.summaryOptions || {};
+          
+          // Call AI service for summarization
+          const { data: aiResponse, error } = await supabase.functions.invoke('ai-service', {
+            body: {
+              data: inputData,
+              type: 'summarization',
+              options: summaryOptions
+            }
+          });
+          
+          if (error) throw error;
+          
+          return {
+            output: {
+              summary: aiResponse.summary,
+              keyPoints: aiResponse.keyPoints || [],
+              originalData: inputData
+            }
+          };
+        }
+        
+        default:
+          throw new Error(`Unknown AI operation: ${nodeData.subtype}`);
       }
-    });
-
-    if (error) throw error;
-    
-    return responseData;
-  } catch (error) {
-    console.error('AI service error:', error);
-    throw new Error(`AI service error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-
-// Helper functions for data processing
-
-function inferSchema(data: any[]) {
-  if (!data || data.length === 0) return {};
-  
-  const sample = data[0];
-  const schema: Record<string, string> = {};
-  
-  for (const key of Object.keys(sample)) {
-    const value = sample[key];
-    let type = typeof value;
-    
-    if (type === 'object') {
-      if (value === null) {
-        type = 'null';
-      } else if (Array.isArray(value)) {
-        type = 'array';
-      } else if (value instanceof Date) {
-        type = 'date';
-      }
+    } catch (error) {
+      console.error('Error in AI Analysis node:', error);
+      throw error;
     }
-    
-    schema[key] = type;
+  }
+};
+
+// Helper function to detect the data type of a value
+export function detectDataType(value: any): string {
+  if (value === null || value === undefined) {
+    return "null";
   }
   
-  return schema;
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  
+  if (value instanceof Date) {
+    return "date";
+  }
+  
+  return typeof value;
 }
+
+export default aiAnalysis;

@@ -1,3 +1,4 @@
+
 // src/components/workflow/WorkflowBuilder.tsx
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -47,7 +48,6 @@ import OutputNode from '@/components/workflow/nodes/OutputNode';
 import IntegrationNode from '@/components/workflow/nodes/IntegrationNode';
 import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
-
 
 // Import node configuration panels
 import NodeConfigPanel from '@/components/workflow/NodeConfigPanel';

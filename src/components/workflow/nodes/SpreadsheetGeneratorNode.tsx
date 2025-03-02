@@ -1,17 +1,28 @@
+
 // src/components/workflow/nodes/SpreadsheetGeneratorNode.tsx
 
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { FileSpreadsheet, GripVertical } from 'lucide-react';
 
-const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps) => {
+interface SpreadsheetGeneratorNodeData {
+  label: string;
+  type: string;
+  config: {
+    filename?: string;
+    sheets?: any[];
+    [key: string]: any;
+  };
+}
+
+const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps<SpreadsheetGeneratorNodeData>) => {
   return (
-    <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-teal-500 shadow-md' : 'border-teal-200'}`}>
+    <div className={`relative p-0 rounded-lg border-2 w-60 transition-all ${selected ? 'border-green-500 shadow-md' : 'border-green-200'}`}>
       {/* Header */}
-      <div className="flex items-center gap-2 bg-teal-50 p-2 rounded-t-md drag-handle cursor-move">
-        <GripVertical className="h-4 w-4 text-teal-500 opacity-50" />
-        <FileSpreadsheet className="h-4 w-4 text-teal-500" />
-        <div className="text-sm font-medium text-teal-800">{data.label}</div>
+      <div className="flex items-center gap-2 bg-green-50 p-2 rounded-t-md drag-handle cursor-move">
+        <GripVertical className="h-4 w-4 text-green-500 opacity-50" />
+        <FileSpreadsheet className="h-4 w-4 text-green-500" />
+        <div className="text-sm font-medium text-green-800">{data.label}</div>
       </div>
       
       {/* Body */}
@@ -19,11 +30,11 @@ const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps) => {
         <div className="text-xs text-gray-500">
           <div className="flex items-center justify-between mb-1">
             <span>Filename:</span>
-            <span className="font-medium">{data.config?.filename || 'Auto-generated'}</span>
+            <span className="font-medium">{data.config?.filename || 'generated.xlsx'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>Sheets:</span>
-            <span className="font-medium">{data.config?.sheets?.length || 0}</span>
+            <span className="font-medium">{data.config?.sheets?.length || 1}</span>
           </div>
         </div>
       </div>
