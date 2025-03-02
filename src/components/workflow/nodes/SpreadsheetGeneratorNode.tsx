@@ -22,7 +22,7 @@ const SpreadsheetGeneratorNode = ({ data, selected }: NodeProps<SpreadsheetGener
       <div className="flex items-center gap-2 bg-green-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-green-500 opacity-50" />
         <FileSpreadsheet className="h-4 w-4 text-green-500" />
-        <div className="text-sm font-medium text-green-800">{data.label}</div>
+        <div className="text-sm font-medium text-green-800">{data.label || 'Spreadsheet Generator'}</div>
       </div>
       
       {/* Body */}

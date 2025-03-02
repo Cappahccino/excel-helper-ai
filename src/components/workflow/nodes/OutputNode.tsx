@@ -24,7 +24,7 @@ const OutputNode = ({ data, selected }: NodeProps<OutputNodeData>) => {
       <div className="flex items-center gap-2 bg-red-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-red-500 opacity-50" />
         <FileText className="h-4 w-4 text-red-500" />
-        <div className="text-sm font-medium text-red-800">{data.label}</div>
+        <div className="text-sm font-medium text-red-800">{data.label || 'Output'}</div>
       </div>
       
       {/* Body */}

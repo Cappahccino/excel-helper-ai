@@ -84,6 +84,7 @@ const Canvas = () => {
             description: '',
             definition: workflowDefinition,
             status: 'draft',
+            created_by: (await supabase.auth.getUser()).data.user?.id,
           })
           .select()
           .single();

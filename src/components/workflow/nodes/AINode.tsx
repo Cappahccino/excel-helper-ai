@@ -30,7 +30,7 @@ const AINode = ({ data, selected }: NodeProps<AINodeData>) => {
       <div className="flex items-center gap-2 bg-purple-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-purple-500 opacity-50" />
         <Zap className="h-4 w-4 text-purple-500" />
-        <div className="text-sm font-medium text-purple-800">{data.label}</div>
+        <div className="text-sm font-medium text-purple-800">{data.label || 'AI Operation'}</div>
       </div>
       
       {/* Body */}
