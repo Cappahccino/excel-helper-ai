@@ -1,0 +1,8 @@
+
+project_id = "saxnxtumstrsqowuwwbt"
+
+[postgres]
+db_url = "postgres://postgres.saxnxtumstrsqowuwwbt:lovable-demo-db-password@db.saxnxtumstrsqowuwwbt.supabase.co:5432/postgres"
+
+[functions.ask-ai]
+verify_jwt = true

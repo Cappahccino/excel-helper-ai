@@ -22,7 +22,7 @@ export type AINodeType =
   | 'aiNode' | 'aiSummarization' | 'sentimentAnalysis' | 'namedEntityRecognition'
   | 'anomalyDetection' | 'forecasting' | 'documentParsing' | 'clustering'
   | 'mlModelExecution' | 'featureEngineering' | 'aiDataCleaning'
-  | 'aiAnalyze' | 'aiClassify' | 'aiSummarize';
+  | 'aiAnalyze' | 'aiClassify' | 'aiSummarize' | 'askAI';
 
 export type OutputNodeType = 
   | 'outputNode' | 'downloadFile' | 'sendEmail' | 'exportToDatabase'
@@ -91,7 +91,7 @@ export interface DataProcessingNodeData extends BaseNodeData {
 }
 
 export interface AINodeData extends BaseNodeData {
-  type: 'aiAnalyze' | 'aiClassify' | 'aiSummarize';
+  type: AINodeType;
   config: {
     analysisOptions?: {
       detectOutliers?: boolean;
@@ -104,6 +104,11 @@ export interface AINodeData extends BaseNodeData {
       [key: string]: any;
     };
     prompt?: string;
+    systemMessage?: string;
+    aiProvider?: 'openai' | 'anthropic' | 'deepseek';
+    modelName?: string;
+    lastResponse?: string;
+    lastResponseTime?: string;
     [key: string]: any;
   };
 }
@@ -368,4 +373,22 @@ export function mapWorkflowExecutionToDatabaseExecution(execution: WorkflowExecu
     initiated_by: execution.initiated_by,
     logs: execution.logs
   };
+}
+
+// Add a new interface for AI request data
+export interface AIRequestData {
+  id: string;
+  workflow_id: string;
+  node_id: string;
+  execution_id: string;
+  ai_provider: 'openai' | 'anthropic' | 'deepseek';
+  user_query: string;
+  ai_response?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+  model_name?: string;
+  token_usage?: Record<string, number>;
+  metadata?: Record<string, any>;
 }

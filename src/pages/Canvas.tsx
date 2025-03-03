@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -19,6 +18,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import AINode from '@/components/workflow/nodes/AINode';
+import AskAINode from '@/components/workflow/nodes/AskAINode';
 import DataInputNode from '@/components/workflow/nodes/DataInputNode';
 import DataProcessingNode from '@/components/workflow/nodes/DataProcessingNode';
 import OutputNode from '@/components/workflow/nodes/OutputNode';
@@ -43,6 +43,7 @@ const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
   dataProcessing: DataProcessingNode,
   aiNode: AINode,
+  askAI: AskAINode,
   outputNode: OutputNode,
   integrationNode: IntegrationNode,
   controlNode: ControlNode,
@@ -99,6 +100,7 @@ const nodeCategories = [
     name: 'AI & Analysis',
     items: [
       { type: 'aiNode', label: 'AI Node', description: 'Apply AI and ML algorithms to data' },
+      { type: 'askAI', label: 'Ask AI', description: 'Ask questions to AI models like OpenAI, Claude, or Deepseek' },
       { type: 'aiSummarization', label: 'AI Summarization', description: 'Uses OpenAI to summarize text or numerical data' },
       { type: 'sentimentAnalysis', label: 'Sentiment Analysis', description: 'Classifies text as positive, negative, or neutral' },
       { type: 'namedEntityRecognition', label: 'Named Entity Recognition', description: 'Extracts names, dates, locations from text' },
@@ -407,7 +409,11 @@ const Canvas = () => {
           }
           return 'dataInput';
         case 'processing': return 'dataProcessing';
-        case 'ai': return 'aiNode';
+        case 'ai': 
+          if (nodeType === 'askAI') {
+            return 'askAI';
+          }
+          return 'aiNode';
         case 'output': return 'outputNode';
         case 'integration': return 'integrationNode';
         case 'control': return 'controlNode';
@@ -416,6 +422,17 @@ const Canvas = () => {
       }
     })();
 
+    let defaultConfig = {};
+    
+    if (nodeType === 'askAI') {
+      defaultConfig = {
+        aiProvider: 'openai',
+        modelName: 'gpt-4o-mini',
+        prompt: '',
+        systemMessage: 'You are a helpful assistant that answers questions clearly and concisely.'
+      };
+    }
+
     const newNode = {
       id: nodeId,
       type: nodeComponentType,
@@ -423,7 +440,7 @@ const Canvas = () => {
       data: {
         label: nodeLabel || 'New Node',
         type: nodeType,
-        config: {}
+        config: defaultConfig
       }
     };
 
