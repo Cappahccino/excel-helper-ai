@@ -248,7 +248,8 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
-            setExecutionStatus(data.last_run_status?.toString() || 'unknown');
+            const status = data.last_run_status;
+            setExecutionStatus(status !== null && status !== undefined ? String(status) : 'unknown');
           }
         }
       }
@@ -373,7 +374,8 @@ const Canvas = () => {
       }
       
       if (data) {
-        setExecutionStatus(data.status?.toString() || null);
+        const status = data.status;
+        setExecutionStatus(status !== null && status !== undefined ? String(status) : null);
         
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           if (statusPollingInterval) {
@@ -396,7 +398,8 @@ const Canvas = () => {
             .single();
           
           if (workflow) {
-            setExecutionStatus(workflow.last_run_status?.toString() || null);
+            const wfStatus = workflow.last_run_status;
+            setExecutionStatus(wfStatus !== null && wfStatus !== undefined ? String(wfStatus) : null);
           }
         }
       }
