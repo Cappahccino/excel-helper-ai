@@ -197,7 +197,7 @@ const Canvas = () => {
   const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
   const [executionStatus, setExecutionStatus] = useState<string | null>(null);
   const [executionId, setExecutionId] = useState<string | null>(null);
-  const [statusPollingInterval, setStatusPollingInterval] = useState<number | null>(null);
+  const [statusPollingInterval, setStatusPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds));
@@ -231,7 +231,7 @@ const Canvas = () => {
       if (error) throw error;
       
       if (data) {
-        setWorkflowName(data.name);
+        setWorkflowName(data.name || 'New Workflow');
         setWorkflowDescription(data.description || '');
         setSavingWorkflowId(data.id);
         
@@ -248,7 +248,7 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
-            setExecutionStatus(data.last_run_status || 'unknown');
+            setExecutionStatus(data.last_run_status?.toString() || 'unknown');
           }
         }
       }
@@ -373,7 +373,7 @@ const Canvas = () => {
       }
       
       if (data) {
-        setExecutionStatus(data.status);
+        setExecutionStatus(data.status?.toString() || null);
         
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           if (statusPollingInterval) {
@@ -396,7 +396,7 @@ const Canvas = () => {
             .single();
           
           if (workflow) {
-            setExecutionStatus(workflow.last_run_status);
+            setExecutionStatus(workflow.last_run_status?.toString() || null);
           }
         }
       }
@@ -437,7 +437,7 @@ const Canvas = () => {
         
         const interval = setInterval(() => {
           pollExecutionStatus(newExecutionId, workflowIdToRun);
-        }, 2000);
+        }, 2000) as NodeJS.Timeout;
         
         setStatusPollingInterval(interval);
       }
