@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -195,6 +196,7 @@ const Canvas = () => {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
+  // Updated type definition to fix the TypeScript error
   const [executionStatus, setExecutionStatus] = useState<string | null>(null);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [statusPollingInterval, setStatusPollingInterval] = useState<NodeJS.Timeout | null>(null);
@@ -248,6 +250,7 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
+            // Convert last_run_status to string before setting it
             setExecutionStatus(data.last_run_status != null ? String(data.last_run_status) : 'unknown');
           }
         }
@@ -373,6 +376,7 @@ const Canvas = () => {
       }
       
       if (data) {
+        // Convert status to string before setting it
         setExecutionStatus(data.status != null ? String(data.status) : null);
         
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
@@ -396,6 +400,7 @@ const Canvas = () => {
             .single();
           
           if (workflow) {
+            // Convert last_run_status to string before setting it
             setExecutionStatus(workflow.last_run_status != null ? String(workflow.last_run_status) : null);
           }
         }
@@ -407,6 +412,7 @@ const Canvas = () => {
 
   const runWorkflow = async () => {
     setIsRunning(true);
+    // Ensure we're setting a string
     setExecutionStatus('pending');
     
     try {
