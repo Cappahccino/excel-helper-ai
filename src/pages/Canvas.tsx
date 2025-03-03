@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -436,11 +437,72 @@ const Canvas = () => {
       }
     })();
 
-    const data: WorkflowNodeData = {
-      label: nodeLabel || 'New Node',
-      type: nodeType as NodeType,
-      config: {}
-    };
+    // Create node data with correct type casting based on the nodeComponentType
+    const data: WorkflowNodeData = (() => {
+      switch (nodeComponentType) {
+        case 'fileUpload':
+          return {
+            label: nodeLabel || 'New Node',
+            type: 'fileUpload' as const,
+            config: {}
+          };
+        case 'spreadsheetGenerator':
+          return {
+            label: nodeLabel || 'New Node',
+            type: 'spreadsheetGenerator' as const,
+            config: {}
+          };
+        case 'dataInput':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        case 'dataProcessing':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        case 'aiNode':
+        case 'askAI':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        case 'outputNode':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        case 'integrationNode':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        case 'controlNode':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        case 'utilityNode':
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+        default:
+          return {
+            label: nodeLabel || 'New Node',
+            type: nodeType as any,
+            config: {}
+          };
+      }
+    })();
 
     const newNode: WorkflowNode = {
       id: nodeId,

@@ -200,6 +200,12 @@ export type WorkflowNodeData =
   | UtilityNodeData
   | FileUploadNodeData;
 
+// Define our WorkflowNode type that extends ReactFlow's Node type
+export interface WorkflowNode extends Omit<ReactFlowNode, 'data' | 'type'> {
+  data: WorkflowNodeData;
+  type: NodeComponentType;
+}
+
 // Use a simplified NodeProps type that works with our component structure
 export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
   data?: T;
@@ -212,12 +218,6 @@ export type NodeDragHandler = (event: React.MouseEvent, node: ReactFlowNode, nod
 
 // Export Edge type from ReactFlow for use in our application
 export type Edge = ReactFlowEdge;
-
-// Add Workflow Node type that extends XyFlow's Node type with our specific data
-export interface WorkflowNode extends ReactFlowNode {
-  data: WorkflowNodeData;
-  type: NodeComponentType;
-}
 
 // Workflow definition types
 export interface WorkflowDefinition {
