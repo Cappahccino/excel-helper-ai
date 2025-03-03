@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -14,8 +15,6 @@ import {
   Panel,
   Connection,
   NodeTypes,
-  Node,
-  Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -38,6 +37,7 @@ import {
   WorkflowDefinition,
   NodeComponentType,
   WorkflowNodeData,
+  Edge,
 } from '@/types/workflow';
 
 import { Button } from '@/components/ui/button';
@@ -172,7 +172,9 @@ const nodeCategories = [
     items: [
       { type: 'controlNode', label: 'Control Node', description: 'Control the workflow execution path' },
       { type: 'ifElseCondition', label: 'If-Else Condition', description: 'Executes different branches based on logic' },
-      { type: 'loopForEach', label: 'Loop / For Each', description: 'Iterates over data items' },
+      { type: 'lo
+
+opForEach', label: 'Loop / For Each', description: 'Iterates over data items' },
       { type: 'parallelProcessing', label: 'Parallel Processing', description: 'Runs multiple steps simultaneously' },
       { type: 'errorHandling', label: 'Error Handling', description: 'Catches and handles errors in execution' },
       { type: 'waitPause', label: 'Wait/Pause Step', description: 'Introduces a delay before proceeding' },
@@ -437,28 +439,17 @@ const Canvas = () => {
       }
     })();
 
-    let defaultConfig = {};
-    
-    if (nodeType === 'askAI') {
-      defaultConfig = {
-        aiProvider: 'openai',
-        modelName: 'gpt-4o-mini',
-        prompt: '',
-        systemMessage: 'You are a helpful assistant that answers questions clearly and concisely.'
-      };
-    }
-
-    const nodeData: WorkflowNodeData = {
+    const data: WorkflowNodeData = {
       label: nodeLabel || 'New Node',
       type: nodeType as NodeType,
-      config: defaultConfig
+      config: {}
     };
 
     const newNode: WorkflowNode = {
       id: nodeId,
       type: nodeComponentType,
       position: { x: 100, y: 100 },
-      data: nodeData
+      data
     };
 
     setNodes((prevNodes) => [...prevNodes, newNode]);
@@ -540,9 +531,11 @@ const Canvas = () => {
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
                 fitView
+                attributionPosition="top-right"
+                style={{ backgroundColor: "#F7F9FB" }}
               >
                 <Controls />
-                <MiniMap />
+                <MiniMap nodeClassName={node => node.type} />
                 <Background />
                 <Panel position="top-right">
                   <Button 
