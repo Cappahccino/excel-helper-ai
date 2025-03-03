@@ -881,6 +881,71 @@ export type Database = {
           },
         ]
       }
+      workflow_steps: {
+        Row: {
+          completed_at: string | null
+          configuration: Json | null
+          created_at: string | null
+          created_by: string | null
+          dependencies: Json | null
+          error_message: string | null
+          execution_data: Json | null
+          id: string
+          node_category: Database["public"]["Enums"]["node_category"]
+          node_id: string
+          node_type: string
+          started_at: string | null
+          status: string | null
+          step_order: number
+          updated_at: string | null
+          workflow_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          configuration?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          dependencies?: Json | null
+          error_message?: string | null
+          execution_data?: Json | null
+          id?: string
+          node_category: Database["public"]["Enums"]["node_category"]
+          node_id: string
+          node_type: string
+          started_at?: string | null
+          status?: string | null
+          step_order: number
+          updated_at?: string | null
+          workflow_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          configuration?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          dependencies?: Json | null
+          error_message?: string | null
+          execution_data?: Json | null
+          id?: string
+          node_category?: Database["public"]["Enums"]["node_category"]
+          node_id?: string
+          node_type?: string
+          started_at?: string | null
+          status?: string | null
+          step_order?: number
+          updated_at?: string | null
+          workflow_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_steps_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflow_templates: {
         Row: {
           category: string
@@ -1065,6 +1130,14 @@ export type Database = {
         | "cancelled"
         | "expired"
         | "processing"
+      node_category:
+        | "input"
+        | "processing"
+        | "ai"
+        | "output"
+        | "integration"
+        | "control"
+        | "utility"
       tag_type: "system" | "custom"
     }
     CompositeTypes: {
