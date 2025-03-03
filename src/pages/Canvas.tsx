@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -248,6 +249,7 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
+            // Converting any possible value type to string
             const status = data.last_run_status;
             setExecutionStatus(status !== null && status !== undefined ? String(status) : 'unknown');
           }
@@ -374,6 +376,7 @@ const Canvas = () => {
       }
       
       if (data) {
+        // Explicitly convert status to string before setting state
         const status = data.status;
         setExecutionStatus(status !== null && status !== undefined ? String(status) : null);
         
@@ -398,6 +401,7 @@ const Canvas = () => {
             .single();
           
           if (workflow) {
+            // Explicitly convert last_run_status to string
             const wfStatus = workflow.last_run_status;
             setExecutionStatus(wfStatus !== null && wfStatus !== undefined ? String(wfStatus) : null);
           }
