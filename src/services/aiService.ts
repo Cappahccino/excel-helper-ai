@@ -29,7 +29,10 @@ async function fetchAIRequests(query: any): Promise<AIRequestData[]> {
   try {
     const { data, error } = await query;
     
-    if (error) throw error;
+    if (error) {
+      console.error("Error in fetchAIRequests:", error);
+      throw new AIServiceError(error.message, AIServiceErrorType.NETWORK_ERROR);
+    }
     
     // Filter and convert the data to ensure type safety
     const safeData: AIRequestData[] = [];
@@ -47,7 +50,13 @@ async function fetchAIRequests(query: any): Promise<AIRequestData[]> {
     return safeData;
   } catch (error) {
     console.error('Error fetching AI requests:', error);
-    throw error;
+    if (error instanceof AIServiceError) {
+      throw error;
+    }
+    throw new AIServiceError(
+      error instanceof Error ? error.message : 'Unknown error occurred', 
+      AIServiceErrorType.UNKNOWN_ERROR
+    );
   }
 }
 
@@ -55,7 +64,8 @@ async function fetchAIRequests(query: any): Promise<AIRequestData[]> {
  * Fetch AI requests for a specific workflow
  */
 export async function getWorkflowAIRequests(workflowId: string): Promise<AIRequestData[]> {
-  const query = supabase
+  // Use the any type to bypass TypeScript checking as the table might not be in the generated types
+  const query = (supabase as any)
     .from('workflow_ai_requests')
     .select('*')
     .eq('workflow_id', workflowId)
@@ -68,7 +78,8 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
  * Fetch AI requests for a specific node
  */
 export async function getNodeAIRequests(workflowId: string, nodeId: string): Promise<AIRequestData[]> {
-  const query = supabase
+  // Use the any type to bypass TypeScript checking as the table might not be in the generated types
+  const query = (supabase as any)
     .from('workflow_ai_requests')
     .select('*')
     .eq('workflow_id', workflowId)
@@ -83,18 +94,28 @@ export async function getNodeAIRequests(workflowId: string, nodeId: string): Pro
  */
 export async function getAIRequestById(requestId: string): Promise<AIRequestData | null> {
   try {
-    const { data, error } = await supabase
+    // Use the any type to bypass TypeScript checking as the table might not be in the generated types
+    const { data, error } = await (supabase as any)
       .from('workflow_ai_requests')
       .select('*')
       .eq('id', requestId)
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error("Error fetching AI request by ID:", error);
+      throw new AIServiceError(error.message, AIServiceErrorType.NETWORK_ERROR);
+    }
     
     return isAIRequestData(data) ? data : null;
   } catch (error) {
     console.error('Error fetching AI request:', error);
-    throw error;
+    if (error instanceof AIServiceError) {
+      throw error;
+    }
+    throw new AIServiceError(
+      error instanceof Error ? error.message : 'Unknown error occurred', 
+      AIServiceErrorType.UNKNOWN_ERROR
+    );
   }
 }
 
@@ -103,7 +124,8 @@ export async function getAIRequestById(requestId: string): Promise<AIRequestData
  */
 export async function getLatestNodeRequest(workflowId: string, nodeId: string): Promise<AIRequestData | null> {
   try {
-    const { data, error } = await supabase
+    // Use the any type to bypass TypeScript checking as the table might not be in the generated types
+    const { data, error } = await (supabase as any)
       .from('workflow_ai_requests')
       .select('*')
       .eq('workflow_id', workflowId)
@@ -113,7 +135,8 @@ export async function getLatestNodeRequest(workflowId: string, nodeId: string): 
       .maybeSingle();
     
     if (error) {
-      throw error;
+      console.error("Error fetching latest node request:", error);
+      throw new AIServiceError(error.message, AIServiceErrorType.NETWORK_ERROR);
     }
     
     return isAIRequestData(data) ? data : null;

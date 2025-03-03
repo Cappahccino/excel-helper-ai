@@ -32,7 +32,12 @@ import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
-import { WorkflowNode } from '@/types/workflow'; // Add this import
+import { 
+  WorkflowNode, 
+  NodeType, 
+  WorkflowDefinition,
+  NodeComponentType
+} from '@/types/workflow';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -193,9 +198,11 @@ const nodeCategories = [
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
-  // Fix type definition for nodes
+  
+  // Fix the type definition for nodes and edges
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -246,7 +253,7 @@ const Canvas = () => {
           : data.definition;
         
         if (definition.nodes) {
-          // Ensure correct node typing
+          // Ensure correct node typing by explicitly casting
           setNodes(definition.nodes as WorkflowNode[]);
         }
         
@@ -392,7 +399,7 @@ const Canvas = () => {
       toast.success('Workflow execution started');
       
       if (data && typeof data === 'object' && 'execution_id' in data) {
-        const newExecutionId = data.execution_id;
+        const newExecutionId = data.execution_id as string;
         setExecutionId(newExecutionId);
         console.log('Execution ID:', newExecutionId);
       }
@@ -407,27 +414,31 @@ const Canvas = () => {
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
     const nodeId = `node-${uuidv4()}`;
     
+    // Cast to NodeType to ensure type safety
+    const nodeTrueType = nodeType as NodeType;
+    
+    // Determine the node component type based on category
     const nodeComponentType = (() => {
       switch (nodeCategory) {
         case 'input': 
           if (nodeType === 'fileUpload') {
-            return 'fileUpload';
+            return 'fileUpload' as NodeComponentType;
           }
           if (nodeType === 'spreadsheetGenerator') {
-            return 'spreadsheetGenerator';
+            return 'spreadsheetGenerator' as NodeComponentType;
           }
-          return 'dataInput';
-        case 'processing': return 'dataProcessing';
+          return 'dataInput' as NodeComponentType;
+        case 'processing': return 'dataProcessing' as NodeComponentType;
         case 'ai': 
           if (nodeType === 'askAI') {
-            return 'askAI';
+            return 'askAI' as NodeComponentType;
           }
-          return 'aiNode';
-        case 'output': return 'outputNode';
-        case 'integration': return 'integrationNode';
-        case 'control': return 'controlNode';
-        case 'utility': return 'utilityNode';
-        default: return 'dataInput';
+          return 'aiNode' as NodeComponentType;
+        case 'output': return 'outputNode' as NodeComponentType;
+        case 'integration': return 'integrationNode' as NodeComponentType;
+        case 'control': return 'controlNode' as NodeComponentType;
+        case 'utility': return 'utilityNode' as NodeComponentType;
+        default: return 'dataInput' as NodeComponentType;
       }
     })();
 
@@ -448,7 +459,7 @@ const Canvas = () => {
       position: { x: 100, y: 100 },
       data: {
         label: nodeLabel || 'New Node',
-        type: nodeType,
+        type: nodeTrueType,
         config: defaultConfig
       }
     };
