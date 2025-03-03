@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -247,6 +248,7 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
+            // Fix for TS2345 error - explicitly convert last_run_status to string
             const lastStatus = data.last_run_status != null ? String(data.last_run_status) : 'unknown';
             console.log(`Retrieved workflow with status: ${lastStatus}`);
           }
