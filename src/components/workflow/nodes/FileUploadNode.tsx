@@ -67,7 +67,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             if (intervalId) window.clearInterval(intervalId);
           } else if (workflowFile.status === 'failed') {
             setProcessingProgress(100);
-            const errorMessage = workflowFile.metadata?.error || 'Processing failed';
+            const metadata = workflowFile.metadata;
+            const errorMessage = typeof metadata === 'object' && metadata !== null && 'error' in metadata
+              ? String(metadata.error)
+              : 'Processing failed';
             setFileProcessingError(errorMessage);
             if (intervalId) window.clearInterval(intervalId);
           } else if (workflowFile.status === 'processing') {
