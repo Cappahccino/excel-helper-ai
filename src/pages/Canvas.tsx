@@ -196,6 +196,8 @@ const Canvas = () => {
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
   const [executionStatus, setExecutionStatus] = useState<string | null>(null);
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [statusPollingInterval, setStatusPollingInterval] = useState<number | null>(null);
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds));
@@ -206,6 +208,14 @@ const Canvas = () => {
       loadWorkflow();
     }
   }, [workflowId]);
+
+  useEffect(() => {
+    return () => {
+      if (statusPollingInterval) {
+        clearInterval(statusPollingInterval);
+      }
+    };
+  }, [statusPollingInterval]);
 
   const loadWorkflow = async () => {
     if (!workflowId || workflowId === 'new') return;
@@ -349,6 +359,52 @@ const Canvas = () => {
     }
   };
 
+  const pollExecutionStatus = async (executionId: string, workflowId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .select('status, error')
+        .eq('id', executionId)
+        .single();
+      
+      if (error) {
+        console.error('Error polling execution status:', error);
+        return;
+      }
+      
+      if (data) {
+        setExecutionStatus(data.status);
+        
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+          if (statusPollingInterval) {
+            clearInterval(statusPollingInterval);
+            setStatusPollingInterval(null);
+          }
+          
+          if (data.status === 'completed') {
+            toast.success('Workflow execution completed successfully');
+          } else if (data.status === 'failed') {
+            toast.error(`Workflow execution failed: ${data.error || 'Unknown error'}`);
+          } else if (data.status === 'cancelled') {
+            toast.info('Workflow execution was cancelled');
+          }
+          
+          const { data: workflow } = await supabase
+            .from('workflows')
+            .select('last_run_status')
+            .eq('id', workflowId)
+            .single();
+          
+          if (workflow) {
+            setExecutionStatus(workflow.last_run_status);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in execution polling:', error);
+    }
+  };
+
   const runWorkflow = async () => {
     setIsRunning(true);
     setExecutionStatus('pending');
@@ -371,37 +427,19 @@ const Canvas = () => {
       toast.success('Workflow execution started');
       
       if (data && typeof data === 'object' && 'execution_id' in data) {
-        console.log('Execution ID:', data.execution_id);
+        const newExecutionId = data.execution_id;
+        setExecutionId(newExecutionId);
+        console.log('Execution ID:', newExecutionId);
         
-        const poll = async () => {
-          try {
-            const { data, error } = await supabase
-              .from('workflows')
-              .select('last_run_status')
-              .eq('id', workflowIdToRun)
-              .single();
-            
-            if (error) {
-              console.error('Error polling workflow status:', error);
-              return;
-            }
-            
-            if (data) {
-              const status = data.last_run_status;
-              setExecutionStatus(status);
-              
-              if (status === 'completed' || status === 'failed') {
-                return;
-              }
-            }
-            
-            setTimeout(poll, 2000);
-          } catch (error) {
-            console.error('Error in status check:', error);
-          }
-        };
+        if (statusPollingInterval) {
+          clearInterval(statusPollingInterval);
+        }
         
-        poll();
+        const interval = setInterval(() => {
+          pollExecutionStatus(newExecutionId, workflowIdToRun);
+        }, 2000);
+        
+        setStatusPollingInterval(interval);
       }
     } catch (error) {
       console.error('Error running workflow:', error);
@@ -477,7 +515,9 @@ const Canvas = () => {
             }`}>
               {executionStatus === 'completed' ? 'Completed' :
                executionStatus === 'failed' ? 'Failed' :
-               'Running...'}
+               executionStatus === 'pending' ? 'Pending' :
+               executionStatus === 'running' ? 'Running...' :
+               executionStatus}
             </div>
           )}
           
@@ -554,7 +594,9 @@ const Canvas = () => {
                     }`}>
                       {executionStatus === 'completed' ? 'Workflow completed successfully' :
                        executionStatus === 'failed' ? 'Workflow execution failed' :
-                       'Workflow is currently running...'}
+                       executionStatus === 'pending' ? 'Workflow is queued and waiting to be processed' :
+                       executionStatus === 'running' ? 'Workflow is currently running...' :
+                       `Workflow status: ${executionStatus}`}
                     </div>
                   </div>
                 )}
@@ -565,6 +607,15 @@ const Canvas = () => {
                     {savingWorkflowId || 'Not saved yet'}
                   </div>
                 </div>
+                
+                {executionId && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2">Current Execution ID</h3>
+                    <div className="text-sm bg-gray-100 p-2 rounded">
+                      {executionId}
+                    </div>
+                  </div>
+                )}
                 
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold mb-2">Node Count</h3>
