@@ -214,8 +214,7 @@ export type NodeDragHandler = (event: React.MouseEvent, node: ReactFlowNode, nod
 export type Edge = ReactFlowEdge;
 
 // Add Workflow Node type that extends XyFlow's Node type with our specific data
-export interface WorkflowNode extends Omit<ReactFlowNode, 'data' | 'type'> {
-  type: NodeComponentType;
+export interface WorkflowNode extends Omit<ReactFlowNode, 'data'> {
   data: WorkflowNodeData;
 }
 

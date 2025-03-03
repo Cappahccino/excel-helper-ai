@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -201,8 +200,6 @@ const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
   
-  // Fix the type definition for nodes and edges
-  // Properly cast nodes as WorkflowNode[] to avoid type errors
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   
@@ -256,7 +253,6 @@ const Canvas = () => {
           : data.definition;
         
         if (definition.nodes) {
-          // Ensure the nodes are correctly typed when loaded
           setNodes(definition.nodes as WorkflowNode[]);
         }
         
@@ -417,7 +413,6 @@ const Canvas = () => {
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
     const nodeId = `node-${uuidv4()}`;
     
-    // Determine the node component type based on category
     const nodeComponentType: NodeComponentType = (() => {
       switch (nodeCategory) {
         case 'input': 
@@ -453,14 +448,12 @@ const Canvas = () => {
       };
     }
 
-    // Create node data with the correct type structure
     const nodeData: WorkflowNodeData = {
       label: nodeLabel || 'New Node',
       type: nodeType as NodeType,
       config: defaultConfig
     };
 
-    // Create the properly typed workflow node
     const newNode: WorkflowNode = {
       id: nodeId,
       type: nodeComponentType,
@@ -540,10 +533,10 @@ const Canvas = () => {
           <TabsContent value="canvas" className="flex-1 h-full">
             <div className="h-full">
               <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
+                nodes={nodes as any}
+                edges={edges as any}
+                onNodesChange={onNodesChange as any}
+                onEdgesChange={onEdgesChange as any}
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
                 fitView
