@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
@@ -36,12 +35,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const { toast } = useToast();
   const label = data?.label || 'File Upload';
   
-  // Fetch files on component mount
   useEffect(() => {
     fetchRecentFiles();
   }, []);
   
-  // Poll for file processing status if a file is selected
   useEffect(() => {
     let intervalId: number | null = null;
     
@@ -62,21 +59,18 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         }
         
         if (workflowFile) {
-          setProcessingStatus(workflowFile.processing_status || workflowFile.status);
+          setProcessingStatus(workflowFile.status);
           
-          // Set progress based on status
           if (workflowFile.status === 'completed') {
             setProcessingProgress(100);
             setFileProcessingError(null);
-            // Clear interval once complete
             if (intervalId) window.clearInterval(intervalId);
           } else if (workflowFile.status === 'failed') {
             setProcessingProgress(100);
-            setFileProcessingError(workflowFile.processing_error || 'Processing failed');
-            // Clear interval on failure
+            const errorMessage = workflowFile.metadata?.error || 'Processing failed';
+            setFileProcessingError(errorMessage);
             if (intervalId) window.clearInterval(intervalId);
           } else if (workflowFile.status === 'processing') {
-            // Simulate progress for processing state
             setProcessingProgress(prev => Math.min(prev + 5, 90));
           } else if (workflowFile.status === 'queued') {
             setProcessingProgress(10);
@@ -87,22 +81,17 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       }
     };
     
-    // Start polling if file is selected
     if (selectedFile?.id && data?.workflowId) {
-      // Check immediately
       checkProcessingStatus();
       
-      // Then start polling every 3 seconds
       intervalId = window.setInterval(checkProcessingStatus, 3000);
     }
     
-    // Cleanup
     return () => {
       if (intervalId) window.clearInterval(intervalId);
     };
   }, [selectedFile?.id, data?.workflowId]);
   
-  // Filter files when search term changes
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredFiles(files);
@@ -160,7 +149,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     try {
       setIsUploading(true);
       
-      // Validate file
       const validation = validateFile(file);
       if (!validation.isValid) {
         toast({
@@ -171,7 +159,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         return;
       }
       
-      // Get user ID
       const { data: userData } = await supabase.auth.getUser();
       if (!userData?.user) {
         toast({
@@ -182,17 +169,14 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         return;
       }
       
-      // Generate unique file path
       const filePath = `${crypto.randomUUID()}-${file.name}`;
       
-      // Upload to storage
       const { error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, file);
         
       if (uploadError) throw uploadError;
       
-      // Add to database
       const { data: fileRecord, error: dbError } = await supabase
         .from('excel_files')
         .insert({
@@ -214,16 +198,13 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         description: "File has been uploaded successfully",
       });
       
-      // Update files list and select the new file
       await fetchRecentFiles();
       setSelectedFile(fileRecord);
       
-      // Reset processing status for new file
       setProcessingStatus('pending');
       setProcessingProgress(0);
       setFileProcessingError(null);
       
-      // Update node data with the selected file
       if (data) {
         if (!data.config) {
           data.config = {};
@@ -231,12 +212,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         data.config.fileId = fileRecord.id;
         data.config.filename = fileRecord.filename;
         
-        // Queue file for processing
         if (data.workflowId) {
           await queueFileForProcessing(fileRecord.id, data.workflowId, id);
         }
       }
-      
     } catch (error) {
       console.error('Upload error:', error);
       toast({
@@ -257,7 +236,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setProcessingStatus('queuing');
       setProcessingProgress(5);
       
-      // Check if workflow file record already exists
       const { data: existingRecord, error: checkError } = await supabase
         .from('workflow_files')
         .select('*')
@@ -270,9 +248,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         throw checkError;
       }
       
-      // Create or update workflow file record
       if (existingRecord) {
-        // Update existing record
         const { error: updateError } = await supabase
           .from('workflow_files')
           .update({
@@ -285,7 +261,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           
         if (updateError) throw updateError;
       } else {
-        // Create new record
         const { error: insertError } = await supabase
           .from('workflow_files')
           .insert({
@@ -299,7 +274,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         if (insertError) throw insertError;
       }
       
-      // Call processFile edge function
       const { error: fnError } = await supabase.functions.invoke('processFile', {
         body: {
           fileId,
@@ -357,12 +331,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setSelectedFile(file);
     setSearchTerm('');
     
-    // Reset processing status
     setProcessingStatus(null);
     setProcessingProgress(0);
     setFileProcessingError(null);
     
-    // Update node data with the selected file
     if (data) {
       if (!data.config) {
         data.config = {};
@@ -370,7 +342,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       data.config.fileId = file.id;
       data.config.filename = file.filename;
       
-      // Queue file for processing if in a workflow
       if (data.workflowId) {
         await queueFileForProcessing(file.id, data.workflowId, id);
       }
@@ -383,14 +354,12 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setProcessingProgress(0);
     setFileProcessingError(null);
     
-    // Clear file from node data
     if (data && data.config) {
       data.config.fileId = undefined;
       data.config.filename = undefined;
     }
   };
   
-  // Helper function to render status badge
   const renderStatusBadge = () => {
     if (!processingStatus) return null;
     
@@ -440,7 +409,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       </CardHeader>
       <CardContent className="p-4">
         <div className="flex flex-col gap-3">
-          {/* Search and File Dropdown */}
           <div className="relative">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -479,7 +447,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             </DropdownMenu>
           </div>
           
-          {/* Selected File Display */}
           {selectedFile ? (
             <div className="border rounded p-2 bg-blue-50 relative">
               <Button 
@@ -498,7 +465,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
                   </span>
                 </div>
                 
-                {/* Processing Status and Progress */}
                 {processingStatus && (
                   <div className="mt-2 flex flex-col space-y-1">
                     <div className="flex justify-between items-center">
@@ -514,7 +480,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
               </div>
             </div>
           ) : (
-            /* File Drop Zone */
             <div 
               className={`border rounded p-2 min-h-[80px] flex flex-col items-center justify-center ${
                 isDragging ? 'bg-blue-100 border-blue-300' : 'bg-gray-50'
@@ -542,7 +507,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             </div>
           )}
           
-          {/* Browse Files Button */}
           <div className="flex justify-center">
             <Button 
               size="sm" 
@@ -573,7 +537,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         </div>
       </CardContent>
       
-      {/* Input handle at the top */}
       <Handle
         type="target"
         position={Position.Top}
@@ -581,7 +544,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         className="w-2 h-2 !bg-blue-500"
       />
       
-      {/* Output handle at the bottom */}
       <Handle
         type="source"
         position={Position.Bottom}
