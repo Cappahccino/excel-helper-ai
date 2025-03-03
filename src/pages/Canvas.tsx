@@ -521,10 +521,10 @@ const Canvas = () => {
           <TabsContent value="canvas" className="flex-1 h-full">
             <div className="h-full">
               <ReactFlow
-                nodes={nodes as any}
-                edges={edges as any}
-                onNodesChange={onNodesChange as any}
-                onEdgesChange={onEdgesChange as any}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
                 fitView
