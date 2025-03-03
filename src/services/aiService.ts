@@ -35,10 +35,16 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
     
     if (error) throw error;
     
-    // Type assertion with filtering to ensure type safety
-    const safeData = Array.isArray(data) 
-      ? data.filter(item => isAIRequestData(item)) as AIRequestData[]
-      : [];
+    // Filter and convert the data to ensure type safety
+    const safeData: AIRequestData[] = [];
+    
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (isAIRequestData(item)) {
+          safeData.push(item);
+        }
+      }
+    }
     
     return safeData;
   } catch (error) {
@@ -61,10 +67,16 @@ export async function getNodeAIRequests(workflowId: string, nodeId: string): Pro
     
     if (error) throw error;
     
-    // Type assertion with filtering to ensure type safety
-    const safeData = Array.isArray(data) 
-      ? data.filter(item => isAIRequestData(item)) as AIRequestData[]
-      : [];
+    // Filter and convert the data to ensure type safety
+    const safeData: AIRequestData[] = [];
+    
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (isAIRequestData(item)) {
+          safeData.push(item);
+        }
+      }
+    }
     
     return safeData;
   } catch (error) {

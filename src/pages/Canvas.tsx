@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -30,6 +31,7 @@ import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
+import { WorkflowNode } from '@/types/workflow'; // Add this import
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -190,7 +192,7 @@ const nodeCategories = [
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
@@ -241,8 +243,13 @@ const Canvas = () => {
           ? JSON.parse(data.definition) 
           : data.definition;
         
-        setNodes(definition.nodes || []);
-        setEdges(definition.edges || []);
+        if (definition.nodes) {
+          setNodes(definition.nodes as WorkflowNode[]);
+        }
+        
+        if (definition.edges) {
+          setEdges(definition.edges);
+        }
 
         if (data.last_run_at) {
           const lastRunDate = new Date(data.last_run_at);
