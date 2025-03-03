@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -29,6 +28,7 @@ import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
+import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -196,10 +196,15 @@ const Canvas = () => {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
-  // Updated type definition to fix the TypeScript error
-  const [executionStatus, setExecutionStatus] = useState<string | null>(null);
   const [executionId, setExecutionId] = useState<string | null>(null);
-  const [statusPollingInterval, setStatusPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
+    executionId,
+    workflowId: savingWorkflowId,
+    onStatusChange: (status) => {
+      console.log(`Workflow status changed to: ${status}`);
+    }
+  });
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds));
@@ -210,14 +215,6 @@ const Canvas = () => {
       loadWorkflow();
     }
   }, [workflowId]);
-
-  useEffect(() => {
-    return () => {
-      if (statusPollingInterval) {
-        clearInterval(statusPollingInterval);
-      }
-    };
-  }, [statusPollingInterval]);
 
   const loadWorkflow = async () => {
     if (!workflowId || workflowId === 'new') return;
@@ -250,8 +247,8 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
-            // Convert last_run_status to string before setting it
-            setExecutionStatus(data.last_run_status != null ? String(data.last_run_status) : 'unknown');
+            const lastStatus = data.last_run_status != null ? String(data.last_run_status) : 'unknown';
+            console.log(`Retrieved workflow with status: ${lastStatus}`);
           }
         }
       }
@@ -362,58 +359,8 @@ const Canvas = () => {
     }
   };
 
-  const pollExecutionStatus = async (executionId: string, workflowId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('workflow_executions')
-        .select('status, error')
-        .eq('id', executionId)
-        .single();
-      
-      if (error) {
-        console.error('Error polling execution status:', error);
-        return;
-      }
-      
-      if (data) {
-        // Convert status to string before setting it
-        setExecutionStatus(data.status != null ? String(data.status) : null);
-        
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-          if (statusPollingInterval) {
-            clearInterval(statusPollingInterval);
-            setStatusPollingInterval(null);
-          }
-          
-          if (data.status === 'completed') {
-            toast.success('Workflow execution completed successfully');
-          } else if (data.status === 'failed') {
-            toast.error(`Workflow execution failed: ${data.error || 'Unknown error'}`);
-          } else if (data.status === 'cancelled') {
-            toast.info('Workflow execution was cancelled');
-          }
-          
-          const { data: workflow } = await supabase
-            .from('workflows')
-            .select('last_run_status')
-            .eq('id', workflowId)
-            .single();
-          
-          if (workflow) {
-            // Convert last_run_status to string before setting it
-            setExecutionStatus(workflow.last_run_status != null ? String(workflow.last_run_status) : null);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error in execution polling:', error);
-    }
-  };
-
   const runWorkflow = async () => {
     setIsRunning(true);
-    // Ensure we're setting a string
-    setExecutionStatus('pending');
     
     try {
       const workflowIdToRun = savingWorkflowId || await saveWorkflow();
@@ -421,7 +368,6 @@ const Canvas = () => {
       if (!workflowIdToRun) {
         toast.error('Please save the workflow before running it');
         setIsRunning(false);
-        setExecutionStatus(null);
         return;
       }
 
@@ -436,21 +382,10 @@ const Canvas = () => {
         const newExecutionId = data.execution_id;
         setExecutionId(newExecutionId);
         console.log('Execution ID:', newExecutionId);
-        
-        if (statusPollingInterval) {
-          clearInterval(statusPollingInterval);
-        }
-        
-        const interval = setInterval(() => {
-          pollExecutionStatus(newExecutionId, workflowIdToRun);
-        }, 2000) as NodeJS.Timeout;
-        
-        setStatusPollingInterval(interval);
       }
     } catch (error) {
       console.error('Error running workflow:', error);
       toast.error('Failed to run workflow');
-      setExecutionStatus('failed');
     } finally {
       setIsRunning(false);
     }
@@ -514,11 +449,16 @@ const Canvas = () => {
         </div>
         <div className="flex space-x-2 items-center">
           {executionStatus && (
-            <div className={`px-3 py-1 text-sm rounded-full ${
+            <div className={`px-3 py-1 text-sm rounded-full flex items-center ${
               executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
               executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
-              'bg-blue-100 text-blue-800'
+              executionStatus === 'running' ? 'bg-blue-100 text-blue-800' :
+              executionStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+              'bg-gray-100 text-gray-800'
             }`}>
+              {subscriptionStatus === 'subscribing' && (
+                <span className="mr-2 h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+              )}
               {executionStatus === 'completed' ? 'Completed' :
                executionStatus === 'failed' ? 'Failed' :
                executionStatus === 'pending' ? 'Pending' :
@@ -538,11 +478,11 @@ const Canvas = () => {
           <Button 
             onClick={runWorkflow} 
             variant="outline"
-            disabled={isRunning}
+            disabled={isRunning || executionStatus === 'running'}
             className="flex items-center"
           >
             <Play className="mr-2 h-4 w-4" />
-            {isRunning ? 'Running...' : 'Run'}
+            {isRunning ? 'Starting...' : executionStatus === 'running' ? 'Running...' : 'Run'}
           </Button>
         </div>
       </div>
