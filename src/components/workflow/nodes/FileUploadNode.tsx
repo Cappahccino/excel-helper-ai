@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileUp, FileText, Search, X, File } from 'lucide-react';
+import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,10 +16,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Loader2 } from 'lucide-react';
 import { ExcelFile } from '@/types/files';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 
-const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
+const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<ExcelFile[]>([]);
@@ -27,6 +28,9 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
   const [selectedFile, setSelectedFile] = useState<ExcelFile | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<number>(0);
+  const [fileProcessingError, setFileProcessingError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -36,6 +40,67 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
   useEffect(() => {
     fetchRecentFiles();
   }, []);
+  
+  // Poll for file processing status if a file is selected
+  useEffect(() => {
+    let intervalId: number | null = null;
+    
+    const checkProcessingStatus = async () => {
+      if (!selectedFile?.id || !data?.workflowId) return;
+      
+      try {
+        const { data: workflowFile, error } = await supabase
+          .from('workflow_files')
+          .select('*')
+          .eq('file_id', selectedFile.id)
+          .eq('workflow_id', data.workflowId)
+          .maybeSingle();
+          
+        if (error) {
+          console.error('Error fetching workflow file status:', error);
+          return;
+        }
+        
+        if (workflowFile) {
+          setProcessingStatus(workflowFile.processing_status || workflowFile.status);
+          
+          // Set progress based on status
+          if (workflowFile.status === 'completed') {
+            setProcessingProgress(100);
+            setFileProcessingError(null);
+            // Clear interval once complete
+            if (intervalId) window.clearInterval(intervalId);
+          } else if (workflowFile.status === 'failed') {
+            setProcessingProgress(100);
+            setFileProcessingError(workflowFile.processing_error || 'Processing failed');
+            // Clear interval on failure
+            if (intervalId) window.clearInterval(intervalId);
+          } else if (workflowFile.status === 'processing') {
+            // Simulate progress for processing state
+            setProcessingProgress(prev => Math.min(prev + 5, 90));
+          } else if (workflowFile.status === 'queued') {
+            setProcessingProgress(10);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking processing status:', error);
+      }
+    };
+    
+    // Start polling if file is selected
+    if (selectedFile?.id && data?.workflowId) {
+      // Check immediately
+      checkProcessingStatus();
+      
+      // Then start polling every 3 seconds
+      intervalId = window.setInterval(checkProcessingStatus, 3000);
+    }
+    
+    // Cleanup
+    return () => {
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [selectedFile?.id, data?.workflowId]);
   
   // Filter files when search term changes
   useEffect(() => {
@@ -135,7 +200,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
           file_path: filePath,
           file_size: file.size,
           user_id: userData.user.id,
-          processing_status: "completed",
+          processing_status: "pending",
           mime_type: file.type,
           storage_verified: true
         })
@@ -153,10 +218,23 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
       await fetchRecentFiles();
       setSelectedFile(fileRecord);
       
+      // Reset processing status for new file
+      setProcessingStatus('pending');
+      setProcessingProgress(0);
+      setFileProcessingError(null);
+      
       // Update node data with the selected file
-      if (data && data.config) {
+      if (data) {
+        if (!data.config) {
+          data.config = {};
+        }
         data.config.fileId = fileRecord.id;
         data.config.filename = fileRecord.filename;
+        
+        // Queue file for processing
+        if (data.workflowId) {
+          await queueFileForProcessing(fileRecord.id, data.workflowId, id);
+        }
       }
       
     } catch (error) {
@@ -171,6 +249,79 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+  
+  const queueFileForProcessing = async (fileId: string, workflowId: string, nodeId: string) => {
+    try {
+      setProcessingStatus('queuing');
+      setProcessingProgress(5);
+      
+      // Check if workflow file record already exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('workflow_files')
+        .select('*')
+        .eq('file_id', fileId)
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+      
+      // Create or update workflow file record
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('workflow_files')
+          .update({
+            status: 'queued',
+            processing_status: 'queued',
+            processing_error: null,
+            processing_result: null
+          })
+          .eq('id', existingRecord.id);
+          
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('workflow_files')
+          .insert({
+            workflow_id: workflowId,
+            file_id: fileId,
+            node_id: nodeId,
+            status: 'queued',
+            processing_status: 'queued'
+          });
+          
+        if (insertError) throw insertError;
+      }
+      
+      // Call processFile edge function
+      const { error: fnError } = await supabase.functions.invoke('processFile', {
+        body: {
+          fileId,
+          workflowId,
+          nodeId
+        }
+      });
+      
+      if (fnError) throw fnError;
+      
+      setProcessingStatus('queued');
+      setProcessingProgress(10);
+      
+    } catch (error) {
+      console.error('Error queueing file for processing:', error);
+      setProcessingStatus('error');
+      setFileProcessingError('Failed to queue file for processing');
+      toast({
+        title: "Processing Error",
+        description: "Failed to queue file for processing",
+        variant: "destructive",
+      });
     }
   };
   
@@ -202,25 +353,83 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
     }
   };
   
-  const handleFileSelection = (file: ExcelFile) => {
+  const handleFileSelection = async (file: ExcelFile) => {
     setSelectedFile(file);
     setSearchTerm('');
     
+    // Reset processing status
+    setProcessingStatus(null);
+    setProcessingProgress(0);
+    setFileProcessingError(null);
+    
     // Update node data with the selected file
-    if (data && data.config) {
+    if (data) {
+      if (!data.config) {
+        data.config = {};
+      }
       data.config.fileId = file.id;
       data.config.filename = file.filename;
+      
+      // Queue file for processing if in a workflow
+      if (data.workflowId) {
+        await queueFileForProcessing(file.id, data.workflowId, id);
+      }
     }
   };
   
   const clearSelectedFile = () => {
     setSelectedFile(null);
+    setProcessingStatus(null);
+    setProcessingProgress(0);
+    setFileProcessingError(null);
     
     // Clear file from node data
     if (data && data.config) {
       data.config.fileId = undefined;
       data.config.filename = undefined;
     }
+  };
+  
+  // Helper function to render status badge
+  const renderStatusBadge = () => {
+    if (!processingStatus) return null;
+    
+    let variant = 'default';
+    let icon = null;
+    let label = processingStatus;
+    
+    switch (processingStatus) {
+      case 'completed':
+        variant = 'success';
+        icon = <CheckCircle2 className="h-3 w-3 mr-1" />;
+        label = 'Processed';
+        break;
+      case 'failed':
+      case 'error':
+        variant = 'destructive';
+        icon = <AlertCircle className="h-3 w-3 mr-1" />;
+        label = 'Failed';
+        break;
+      case 'processing':
+      case 'analyzing':
+      case 'queued':
+      case 'queued_for_processing':
+      case 'downloading':
+        variant = 'secondary';
+        icon = <Loader2 className="h-3 w-3 mr-1 animate-spin" />;
+        label = 'Processing';
+        break;
+      default:
+        variant = 'outline';
+        label = processingStatus;
+    }
+    
+    return (
+      <Badge variant={variant as any} className="flex items-center text-xs">
+        {icon}
+        {label}
+      </Badge>
+    );
   };
   
   return (
@@ -281,11 +490,27 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data }) => {
               >
                 <X className="h-3 w-3" />
               </Button>
-              <div className="flex items-center">
-                <FileText className="h-5 w-5 text-blue-500 mr-2" />
-                <span className="text-xs font-medium truncate">
-                  {selectedFile.filename}
-                </span>
+              <div className="flex flex-col">
+                <div className="flex items-center">
+                  <FileText className="h-5 w-5 text-blue-500 mr-2" />
+                  <span className="text-xs font-medium truncate">
+                    {selectedFile.filename}
+                  </span>
+                </div>
+                
+                {/* Processing Status and Progress */}
+                {processingStatus && (
+                  <div className="mt-2 flex flex-col space-y-1">
+                    <div className="flex justify-between items-center">
+                      {renderStatusBadge()}
+                      <span className="text-xs text-gray-500">{processingProgress}%</span>
+                    </div>
+                    <Progress value={processingProgress} className="h-1 w-full" />
+                    {fileProcessingError && (
+                      <p className="text-xs text-red-500 mt-1">{fileProcessingError}</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
