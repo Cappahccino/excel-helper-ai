@@ -712,6 +712,60 @@ export type Database = {
           },
         ]
       }
+      workflow_files: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          file_id: string
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          node_id: string | null
+          status: string | null
+          updated_at: string | null
+          workflow_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          file_id: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          node_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          workflow_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          file_id?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          node_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_files_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_files_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflow_folders: {
         Row: {
           created_at: string
