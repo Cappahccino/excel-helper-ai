@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -172,9 +171,7 @@ const nodeCategories = [
     items: [
       { type: 'controlNode', label: 'Control Node', description: 'Control the workflow execution path' },
       { type: 'ifElseCondition', label: 'If-Else Condition', description: 'Executes different branches based on logic' },
-      { type: 'lo
-
-opForEach', label: 'Loop / For Each', description: 'Iterates over data items' },
+      { type: 'loopForEach', label: 'Loop / For Each', description: 'Iterates over data items' },
       { type: 'parallelProcessing', label: 'Parallel Processing', description: 'Runs multiple steps simultaneously' },
       { type: 'errorHandling', label: 'Error Handling', description: 'Catches and handles errors in execution' },
       { type: 'waitPause', label: 'Wait/Pause Step', description: 'Introduces a delay before proceeding' },
