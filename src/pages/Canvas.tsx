@@ -192,7 +192,10 @@ const Canvas = () => {
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
+  const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
+  const [executionStatus, setExecutionStatus] = useState<string | null>(null);
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds));
@@ -219,7 +222,8 @@ const Canvas = () => {
       
       if (data) {
         setWorkflowName(data.name);
-        setWorkflowDescription(data.description);
+        setWorkflowDescription(data.description || '');
+        setSavingWorkflowId(data.id);
         
         const definition = typeof data.definition === 'string' 
           ? JSON.parse(data.definition) 
@@ -227,6 +231,16 @@ const Canvas = () => {
         
         setNodes(definition.nodes || []);
         setEdges(definition.edges || []);
+
+        if (data.last_run_at) {
+          const lastRunDate = new Date(data.last_run_at);
+          const now = new Date();
+          const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
+          
+          if (diffMinutes < 60) {
+            setExecutionStatus(data.last_run_status || 'unknown');
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading workflow:', error);
@@ -236,6 +250,38 @@ const Canvas = () => {
     }
   };
 
+  const ensureUniqueWorkflowName = async (baseName: string): Promise<string> => {
+    if (savingWorkflowId) {
+      return baseName;
+    }
+
+    let newName = baseName;
+    let counter = 1;
+    let isUnique = false;
+
+    while (!isUnique) {
+      const { data, error } = await supabase
+        .from('workflows')
+        .select('id')
+        .eq('name', newName)
+        .limit(1);
+      
+      if (error) {
+        console.error('Error checking workflow name:', error);
+        return newName;
+      }
+      
+      if (data && data.length === 0) {
+        isUnique = true;
+      } else {
+        newName = `${baseName}${counter}`;
+        counter++;
+      }
+    }
+    
+    return newName;
+  };
+
   const saveWorkflow = async () => {
     try {
       setIsSaving(true);
@@ -243,11 +289,17 @@ const Canvas = () => {
       
       if (!userId) {
         toast.error('User not authenticated');
-        return;
+        return null;
+      }
+      
+      const uniqueName = await ensureUniqueWorkflowName(workflowName || 'New Workflow');
+      if (uniqueName !== workflowName) {
+        setWorkflowName(uniqueName);
+        toast.info(`Name updated to "${uniqueName}" to ensure uniqueness`);
       }
       
       const workflow = {
-        name: workflowName,
+        name: uniqueName,
         description: workflowDescription,
         definition: JSON.stringify({
           nodes,
@@ -258,38 +310,61 @@ const Canvas = () => {
       };
       
       let response;
+      let savedWorkflowId;
       
-      if (workflowId && workflowId !== 'new') {
+      if (savingWorkflowId) {
         response = await supabase
           .from('workflows')
           .update(workflow)
-          .eq('id', workflowId);
+          .eq('id', savingWorkflowId)
+          .select('id');
+        
+        savedWorkflowId = savingWorkflowId;
       } else {
         response = await supabase
           .from('workflows')
-          .insert(workflow);
+          .insert(workflow)
+          .select('id');
+        
+        if (response.data && response.data[0]) {
+          savedWorkflowId = response.data[0].id;
+          setSavingWorkflowId(savedWorkflowId);
+          
+          if (workflowId === 'new') {
+            navigate(`/canvas/${savedWorkflowId}`, { replace: true });
+          }
+        }
       }
       
       if (response.error) throw response.error;
       
       toast.success('Workflow saved successfully');
+      return savedWorkflowId;
     } catch (error) {
       console.error('Error saving workflow:', error);
       toast.error('Failed to save workflow');
+      return null;
     } finally {
       setIsSaving(false);
     }
   };
 
   const runWorkflow = async () => {
-    if (!workflowId || workflowId === 'new') {
-      toast.error('Please save the workflow before running it');
-      return;
-    }
-
+    setIsRunning(true);
+    setExecutionStatus('pending');
+    
     try {
+      const workflowIdToRun = savingWorkflowId || await saveWorkflow();
+      
+      if (!workflowIdToRun) {
+        toast.error('Please save the workflow before running it');
+        setIsRunning(false);
+        setExecutionStatus(null);
+        return;
+      }
+
       const { data, error } = await supabase
-        .rpc('start_workflow_execution', { workflow_id: workflowId });
+        .rpc('start_workflow_execution', { workflow_id: workflowIdToRun });
 
       if (error) throw error;
       
@@ -297,10 +372,43 @@ const Canvas = () => {
       
       if (data && typeof data === 'object' && 'execution_id' in data) {
         console.log('Execution ID:', data.execution_id);
+        
+        const poll = async () => {
+          try {
+            const { data, error } = await supabase
+              .from('workflows')
+              .select('last_run_status')
+              .eq('id', workflowIdToRun)
+              .single();
+            
+            if (error) {
+              console.error('Error polling workflow status:', error);
+              return;
+            }
+            
+            if (data) {
+              const status = data.last_run_status;
+              setExecutionStatus(status);
+              
+              if (status === 'completed' || status === 'failed') {
+                return;
+              }
+            }
+            
+            setTimeout(poll, 2000);
+          } catch (error) {
+            console.error('Error in status check:', error);
+          }
+        };
+        
+        poll();
       }
     } catch (error) {
       console.error('Error running workflow:', error);
       toast.error('Failed to run workflow');
+      setExecutionStatus('failed');
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -360,7 +468,19 @@ const Canvas = () => {
             rows={2}
           />
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 items-center">
+          {executionStatus && (
+            <div className={`px-3 py-1 text-sm rounded-full ${
+              executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
+              executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
+              'bg-blue-100 text-blue-800'
+            }`}>
+              {executionStatus === 'completed' ? 'Completed' :
+               executionStatus === 'failed' ? 'Failed' :
+               'Running...'}
+            </div>
+          )}
+          
           <Button 
             onClick={saveWorkflow} 
             disabled={isSaving}
@@ -372,10 +492,11 @@ const Canvas = () => {
           <Button 
             onClick={runWorkflow} 
             variant="outline"
+            disabled={isRunning}
             className="flex items-center"
           >
             <Play className="mr-2 h-4 w-4" />
-            Run
+            {isRunning ? 'Running...' : 'Run'}
           </Button>
         </div>
       </div>
@@ -423,7 +544,37 @@ const Canvas = () => {
                 <CardTitle>Workflow Settings</CardTitle>
               </CardHeader>
               <CardContent>
-                <p>Configure additional workflow settings here.</p>
+                {executionStatus && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2">Execution Status</h3>
+                    <div className={`px-3 py-2 rounded ${
+                      executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                      executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {executionStatus === 'completed' ? 'Workflow completed successfully' :
+                       executionStatus === 'failed' ? 'Workflow execution failed' :
+                       'Workflow is currently running...'}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold mb-2">Workflow ID</h3>
+                  <div className="text-sm bg-gray-100 p-2 rounded">
+                    {savingWorkflowId || 'Not saved yet'}
+                  </div>
+                </div>
+                
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold mb-2">Node Count</h3>
+                  <div className="text-sm">{nodes.length} nodes in this workflow</div>
+                </div>
+                
+                <div>
+                  <h3 className="text-sm font-semibold mb-2">Edge Count</h3>
+                  <div className="text-sm">{edges.length} connections between nodes</div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
