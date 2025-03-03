@@ -58,8 +58,13 @@ export function useWorkflowRealtime({
             console.log('Received execution update:', payload);
             const updatedExecution = payload.new;
             
-            // Convert status to string to avoid type errors
-            const newStatus = updatedExecution.status != null ? String(updatedExecution.status) : null;
+            // Ensure status is always converted to string
+            const newStatus = updatedExecution.status != null 
+              ? (typeof updatedExecution.status === 'string' 
+                ? updatedExecution.status 
+                : String(updatedExecution.status))
+              : null;
+            
             setStatus(newStatus);
             
             // Call the onStatusChange callback
@@ -122,9 +127,12 @@ export function useWorkflowRealtime({
             console.log('Received workflow update:', payload);
             const updatedWorkflow = payload.new;
             
-            if (updatedWorkflow.last_run_status) {
-              // Convert to string to avoid type errors
-              const newStatus = String(updatedWorkflow.last_run_status);
+            if (updatedWorkflow.last_run_status !== undefined && updatedWorkflow.last_run_status !== null) {
+              // Always convert to string to avoid type errors
+              const newStatus = typeof updatedWorkflow.last_run_status === 'string'
+                ? updatedWorkflow.last_run_status
+                : String(updatedWorkflow.last_run_status);
+              
               setStatus(newStatus);
               
               // Call the onStatusChange callback
