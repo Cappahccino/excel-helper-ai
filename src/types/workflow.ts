@@ -391,4 +391,5 @@ export interface AIRequestData {
   model_name?: string;
   token_usage?: Record<string, number>;
   metadata?: Record<string, any>;
+  system_message?: string;
 }

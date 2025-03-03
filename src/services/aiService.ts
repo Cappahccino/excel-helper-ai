@@ -35,7 +35,7 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
     
     if (error) throw error;
     
-    return data as AIRequestData[] || [];
+    return (data || []) as AIRequestData[];
   } catch (error) {
     console.error('Error fetching AI requests:', error);
     throw error;
@@ -56,7 +56,7 @@ export async function getNodeAIRequests(workflowId: string, nodeId: string): Pro
     
     if (error) throw error;
     
-    return data as AIRequestData[] || [];
+    return (data || []) as AIRequestData[];
   } catch (error) {
     console.error('Error fetching node AI requests:', error);
     throw error;
@@ -95,9 +95,9 @@ export async function getLatestNodeRequest(workflowId: string, nodeId: string): 
       .eq('node_id', nodeId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+    if (error) {
       throw error;
     }
     
@@ -199,7 +199,7 @@ export async function askAI({
   }
 }
 
-// Placeholder for other AI service functions until they're implemented
+// Function placeholder (will be properly implemented later)
 export function triggerAIResponse(params: any): Promise<any> {
   console.error('triggerAIResponse is referenced but not yet implemented');
   return Promise.reject(new AIServiceError('Not implemented', AIServiceErrorType.UNKNOWN_ERROR));
