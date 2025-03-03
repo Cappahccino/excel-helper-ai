@@ -23,15 +23,11 @@ export class AIServiceError extends Error {
 }
 
 /**
- * Fetch AI requests for a specific workflow
+ * Helper function to safely retrieve AI request data with proper type checking
  */
-export async function getWorkflowAIRequests(workflowId: string): Promise<AIRequestData[]> {
+async function fetchAIRequests(query: any): Promise<AIRequestData[]> {
   try {
-    const { data, error } = await supabase
-      .from('workflow_ai_requests')
-      .select('*')
-      .eq('workflow_id', workflowId)
-      .order('created_at', { ascending: false });
+    const { data, error } = await query;
     
     if (error) throw error;
     
@@ -42,6 +38,8 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
       for (const item of data) {
         if (isAIRequestData(item)) {
           safeData.push(item);
+        } else {
+          console.warn('Retrieved item does not match AIRequestData shape:', item);
         }
       }
     }
@@ -54,35 +52,30 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
 }
 
 /**
+ * Fetch AI requests for a specific workflow
+ */
+export async function getWorkflowAIRequests(workflowId: string): Promise<AIRequestData[]> {
+  const query = supabase
+    .from('workflow_ai_requests')
+    .select('*')
+    .eq('workflow_id', workflowId)
+    .order('created_at', { ascending: false });
+  
+  return fetchAIRequests(query);
+}
+
+/**
  * Fetch AI requests for a specific node
  */
 export async function getNodeAIRequests(workflowId: string, nodeId: string): Promise<AIRequestData[]> {
-  try {
-    const { data, error } = await supabase
-      .from('workflow_ai_requests')
-      .select('*')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', nodeId)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    
-    // Filter and convert the data to ensure type safety
-    const safeData: AIRequestData[] = [];
-    
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        if (isAIRequestData(item)) {
-          safeData.push(item);
-        }
-      }
-    }
-    
-    return safeData;
-  } catch (error) {
-    console.error('Error fetching node AI requests:', error);
-    throw error;
-  }
+  const query = supabase
+    .from('workflow_ai_requests')
+    .select('*')
+    .eq('workflow_id', workflowId)
+    .eq('node_id', nodeId)
+    .order('created_at', { ascending: false });
+  
+  return fetchAIRequests(query);
 }
 
 /**

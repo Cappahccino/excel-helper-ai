@@ -15,6 +15,7 @@ import {
   Panel,
   Connection,
   NodeTypes,
+  Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -192,6 +193,7 @@ const nodeCategories = [
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
+  // Fix type definition for nodes
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
@@ -244,6 +246,7 @@ const Canvas = () => {
           : data.definition;
         
         if (definition.nodes) {
+          // Ensure correct node typing
           setNodes(definition.nodes as WorkflowNode[]);
         }
         
@@ -439,7 +442,7 @@ const Canvas = () => {
       };
     }
 
-    const newNode = {
+    const newNode: WorkflowNode = {
       id: nodeId,
       type: nodeComponentType,
       position: { x: 100, y: 100 },
@@ -448,7 +451,7 @@ const Canvas = () => {
         type: nodeType,
         config: defaultConfig
       }
-    } as WorkflowNode;
+    };
 
     setNodes((prevNodes) => [...prevNodes, newNode]);
     toast.success(`Added ${nodeLabel} node to canvas`);

@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -45,7 +46,7 @@ export type ControlNodeType =
   | 'conditionalBranch' | 'loopNode' | 'mergeNode';
 
 export type UtilityNodeType = 
-  | 'logToConsole' | 'executionTimestamp' | 'sessionManagement' | 'variableStorage'
+  | 'utilityNode' | 'logToConsole' | 'executionTimestamp' | 'sessionManagement' | 'variableStorage'
   | 'aiStepRecommendation' | 'workflowVersionControl' | 'performanceMetrics';
 
 // Combined NodeType that includes all possible node types
@@ -57,6 +58,19 @@ export type NodeType =
   | IntegrationNodeType
   | ControlNodeType
   | UtilityNodeType;
+
+// NodeComponentType represents the visual node component to be used
+export type NodeComponentType =
+  | 'dataInput'
+  | 'dataProcessing'
+  | 'aiNode'
+  | 'askAI'
+  | 'outputNode'
+  | 'integrationNode'
+  | 'controlNode'
+  | 'spreadsheetGenerator'
+  | 'utilityNode'
+  | 'fileUpload';
 
 // Base node data types
 export interface BaseNodeData {
@@ -174,6 +188,7 @@ export interface FileUploadNodeData extends BaseNodeData {
   };
 }
 
+// A union of all possible node data types
 export type WorkflowNodeData = 
   | DataInputNodeData 
   | DataProcessingNodeData 
@@ -199,7 +214,9 @@ export type NodeDragHandler = (event: React.MouseEvent, node: ReactFlowNode, nod
 export type Edge = ReactFlowEdge;
 
 // Add Workflow Node type that extends XyFlow's Node type with our specific data
-export type WorkflowNode = ReactFlowNode<WorkflowNodeData>;
+export interface WorkflowNode extends ReactFlowNode<WorkflowNodeData> {
+  type: NodeComponentType;
+}
 
 // Workflow definition types
 export interface WorkflowDefinition {
