@@ -251,7 +251,12 @@ const Canvas = () => {
           if (diffMinutes < 60) {
             // Converting any possible value type to string
             const status = data.last_run_status;
-            setExecutionStatus(status !== null && status !== undefined ? String(status) : 'unknown');
+            if (status !== null && status !== undefined) {
+              // Explicitly convert to string to fix the TypeScript error
+              setExecutionStatus(String(status));
+            } else {
+              setExecutionStatus('unknown');
+            }
           }
         }
       }
@@ -377,8 +382,12 @@ const Canvas = () => {
       
       if (data) {
         // Explicitly convert status to string before setting state
-        const status = data.status;
-        setExecutionStatus(status !== null && status !== undefined ? String(status) : null);
+        if (data.status !== null && data.status !== undefined) {
+          // Explicitly convert to string to fix the TypeScript error
+          setExecutionStatus(String(data.status));
+        } else {
+          setExecutionStatus(null);
+        }
         
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           if (statusPollingInterval) {
@@ -402,8 +411,12 @@ const Canvas = () => {
           
           if (workflow) {
             // Explicitly convert last_run_status to string
-            const wfStatus = workflow.last_run_status;
-            setExecutionStatus(wfStatus !== null && wfStatus !== undefined ? String(wfStatus) : null);
+            if (workflow.last_run_status !== null && workflow.last_run_status !== undefined) {
+              // Explicitly convert to string to fix the TypeScript error
+              setExecutionStatus(String(workflow.last_run_status));
+            } else {
+              setExecutionStatus(null);
+            }
           }
         }
       }
@@ -652,3 +665,4 @@ const Canvas = () => {
 };
 
 export default Canvas;
+
