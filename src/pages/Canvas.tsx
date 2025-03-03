@@ -441,7 +441,7 @@ const Canvas = () => {
         type: nodeType,
         config: defaultConfig
       }
-    };
+    } as WorkflowNode;
 
     setNodes((prevNodes) => [...prevNodes, newNode]);
     toast.success(`Added ${nodeLabel} node to canvas`);

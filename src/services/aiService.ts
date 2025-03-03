@@ -1,6 +1,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { AIRequestData } from "@/types/workflow";
+import { AIRequestData, isAIRequestData } from "@/types/workflow";
 
 // Define error types that can be used throughout the application
 export enum AIServiceErrorType {
@@ -35,7 +35,12 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
     
     if (error) throw error;
     
-    return (data || []) as AIRequestData[];
+    // Type assertion with filtering to ensure type safety
+    const safeData = Array.isArray(data) 
+      ? data.filter(item => isAIRequestData(item)) as AIRequestData[]
+      : [];
+    
+    return safeData;
   } catch (error) {
     console.error('Error fetching AI requests:', error);
     throw error;
@@ -56,7 +61,12 @@ export async function getNodeAIRequests(workflowId: string, nodeId: string): Pro
     
     if (error) throw error;
     
-    return (data || []) as AIRequestData[];
+    // Type assertion with filtering to ensure type safety
+    const safeData = Array.isArray(data) 
+      ? data.filter(item => isAIRequestData(item)) as AIRequestData[]
+      : [];
+    
+    return safeData;
   } catch (error) {
     console.error('Error fetching node AI requests:', error);
     throw error;
@@ -76,7 +86,7 @@ export async function getAIRequestById(requestId: string): Promise<AIRequestData
     
     if (error) throw error;
     
-    return data as AIRequestData;
+    return isAIRequestData(data) ? data : null;
   } catch (error) {
     console.error('Error fetching AI request:', error);
     throw error;
@@ -101,7 +111,7 @@ export async function getLatestNodeRequest(workflowId: string, nodeId: string): 
       throw error;
     }
     
-    return data as AIRequestData || null;
+    return isAIRequestData(data) ? data : null;
   } catch (error) {
     console.error('Error fetching latest node request:', error);
     return null;
@@ -126,7 +136,12 @@ export function subscribeToAIRequest(
         filter: `id=eq.${requestId}`
       },
       (payload) => {
-        onUpdate(payload.new as AIRequestData);
+        // Only call the callback if the data matches our expected type
+        if (isAIRequestData(payload.new)) {
+          onUpdate(payload.new as AIRequestData);
+        } else {
+          console.error('Received invalid AI request data:', payload.new);
+        }
       }
     )
     .subscribe();
@@ -199,7 +214,7 @@ export async function askAI({
   }
 }
 
-// Function placeholder (will be properly implemented later)
+// Function implementation (will be properly implemented later)
 export function triggerAIResponse(params: any): Promise<any> {
   console.error('triggerAIResponse is referenced but not yet implemented');
   return Promise.reject(new AIServiceError('Not implemented', AIServiceErrorType.UNKNOWN_ERROR));

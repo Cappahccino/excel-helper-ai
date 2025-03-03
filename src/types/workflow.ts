@@ -61,9 +61,9 @@ export type NodeType =
 // Base node data types
 export interface BaseNodeData {
   label: string;
-  type: string;
+  type: NodeType;
   config: Record<string, any>;
-  [key: string]: any; // Add index signature to satisfy Record<string, unknown>
+  [key: string]: any;
 }
 
 // Node data types
@@ -80,7 +80,7 @@ export interface DataInputNodeData extends BaseNodeData {
 }
 
 export interface DataProcessingNodeData extends BaseNodeData {
-  type: 'dataTransform' | 'dataCleaning' | 'formulaNode' | 'filterNode';
+  type: ProcessingNodeType;
   config: {
     operations?: any[];
     rules?: any[];
@@ -114,7 +114,7 @@ export interface AINodeData extends BaseNodeData {
 }
 
 export interface OutputNodeData extends BaseNodeData {
-  type: 'excelOutput' | 'dashboardOutput' | 'emailNotify';
+  type: OutputNodeType;
   config: {
     filename?: string;
     format?: string;
@@ -125,7 +125,7 @@ export interface OutputNodeData extends BaseNodeData {
 }
 
 export interface IntegrationNodeData extends BaseNodeData {
-  type: 'xeroConnect' | 'salesforceConnect' | 'googleSheetsConnect';
+  type: IntegrationNodeType;
   config: {
     operation?: string;
     credentials?: any;
@@ -135,7 +135,7 @@ export interface IntegrationNodeData extends BaseNodeData {
 }
 
 export interface ControlNodeData extends BaseNodeData {
-  type: 'conditionalBranch' | 'loopNode' | 'mergeNode';
+  type: ControlNodeType;
   config: {
     conditions?: any[];
     loopType?: string;
@@ -260,7 +260,7 @@ export interface Workflow {
 export interface WorkflowExecution {
   id?: string;
   workflow_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | string; // Allow string for database compatibility
+  status: 'pending' | 'running' | 'completed' | 'failed' | string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
   node_states?: Record<string, any>;
@@ -392,4 +392,17 @@ export interface AIRequestData {
   token_usage?: Record<string, number>;
   metadata?: Record<string, any>;
   system_message?: string;
+}
+
+// Type guard function to validate if an object is an AIRequestData
+export function isAIRequestData(obj: any): obj is AIRequestData {
+  return (
+    obj &&
+    typeof obj.id === 'string' &&
+    typeof obj.workflow_id === 'string' &&
+    typeof obj.node_id === 'string' &&
+    typeof obj.execution_id === 'string' &&
+    (obj.ai_provider === 'openai' || obj.ai_provider === 'anthropic' || obj.ai_provider === 'deepseek') &&
+    typeof obj.user_query === 'string'
+  );
 }
