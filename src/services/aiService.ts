@@ -64,9 +64,9 @@ async function fetchAIRequests(query: any): Promise<AIRequestData[]> {
  * Fetch AI requests for a specific workflow
  */
 export async function getWorkflowAIRequests(workflowId: string): Promise<AIRequestData[]> {
-  // Use the any type to bypass TypeScript checking as the table might not be in the generated types
-  const query = (supabase as any)
-    .from('workflow_ai_requests')
+  // Use a type assertion for the table that isn't in the generated types
+  const query = supabase
+    .from('workflow_ai_requests' as any)
     .select('*')
     .eq('workflow_id', workflowId)
     .order('created_at', { ascending: false });
@@ -78,9 +78,9 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
  * Fetch AI requests for a specific node
  */
 export async function getNodeAIRequests(workflowId: string, nodeId: string): Promise<AIRequestData[]> {
-  // Use the any type to bypass TypeScript checking as the table might not be in the generated types
-  const query = (supabase as any)
-    .from('workflow_ai_requests')
+  // Use a type assertion for the table that isn't in the generated types
+  const query = supabase
+    .from('workflow_ai_requests' as any)
     .select('*')
     .eq('workflow_id', workflowId)
     .eq('node_id', nodeId)
@@ -94,9 +94,9 @@ export async function getNodeAIRequests(workflowId: string, nodeId: string): Pro
  */
 export async function getAIRequestById(requestId: string): Promise<AIRequestData | null> {
   try {
-    // Use the any type to bypass TypeScript checking as the table might not be in the generated types
-    const { data, error } = await (supabase as any)
-      .from('workflow_ai_requests')
+    // Use a type assertion for the table that isn't in the generated types
+    const { data, error } = await supabase
+      .from('workflow_ai_requests' as any)
       .select('*')
       .eq('id', requestId)
       .single();
@@ -124,9 +124,9 @@ export async function getAIRequestById(requestId: string): Promise<AIRequestData
  */
 export async function getLatestNodeRequest(workflowId: string, nodeId: string): Promise<AIRequestData | null> {
   try {
-    // Use the any type to bypass TypeScript checking as the table might not be in the generated types
-    const { data, error } = await (supabase as any)
-      .from('workflow_ai_requests')
+    // Use a type assertion for the table that isn't in the generated types
+    const { data, error } = await supabase
+      .from('workflow_ai_requests' as any)
       .select('*')
       .eq('workflow_id', workflowId)
       .eq('node_id', nodeId)

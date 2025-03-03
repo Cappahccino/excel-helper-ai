@@ -16,6 +16,7 @@ import {
   Connection,
   NodeTypes,
   Node,
+  Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -36,7 +37,8 @@ import {
   WorkflowNode, 
   NodeType, 
   WorkflowDefinition,
-  NodeComponentType
+  NodeComponentType,
+  WorkflowNodeData,
 } from '@/types/workflow';
 
 import { Button } from '@/components/ui/button';
@@ -200,8 +202,9 @@ const Canvas = () => {
   const navigate = useNavigate();
   
   // Fix the type definition for nodes and edges
+  // Properly cast nodes as WorkflowNode[] to avoid type errors
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
@@ -253,7 +256,7 @@ const Canvas = () => {
           : data.definition;
         
         if (definition.nodes) {
-          // Ensure correct node typing by explicitly casting
+          // Ensure the nodes are correctly typed when loaded
           setNodes(definition.nodes as WorkflowNode[]);
         }
         
@@ -414,31 +417,28 @@ const Canvas = () => {
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
     const nodeId = `node-${uuidv4()}`;
     
-    // Cast to NodeType to ensure type safety
-    const nodeTrueType = nodeType as NodeType;
-    
     // Determine the node component type based on category
-    const nodeComponentType = (() => {
+    const nodeComponentType: NodeComponentType = (() => {
       switch (nodeCategory) {
         case 'input': 
           if (nodeType === 'fileUpload') {
-            return 'fileUpload' as NodeComponentType;
+            return 'fileUpload';
           }
           if (nodeType === 'spreadsheetGenerator') {
-            return 'spreadsheetGenerator' as NodeComponentType;
+            return 'spreadsheetGenerator';
           }
-          return 'dataInput' as NodeComponentType;
-        case 'processing': return 'dataProcessing' as NodeComponentType;
+          return 'dataInput';
+        case 'processing': return 'dataProcessing';
         case 'ai': 
           if (nodeType === 'askAI') {
-            return 'askAI' as NodeComponentType;
+            return 'askAI';
           }
-          return 'aiNode' as NodeComponentType;
-        case 'output': return 'outputNode' as NodeComponentType;
-        case 'integration': return 'integrationNode' as NodeComponentType;
-        case 'control': return 'controlNode' as NodeComponentType;
-        case 'utility': return 'utilityNode' as NodeComponentType;
-        default: return 'dataInput' as NodeComponentType;
+          return 'aiNode';
+        case 'output': return 'outputNode';
+        case 'integration': return 'integrationNode';
+        case 'control': return 'controlNode';
+        case 'utility': return 'utilityNode';
+        default: return 'dataInput';
       }
     })();
 
@@ -453,15 +453,19 @@ const Canvas = () => {
       };
     }
 
+    // Create node data with the correct type structure
+    const nodeData: WorkflowNodeData = {
+      label: nodeLabel || 'New Node',
+      type: nodeType as NodeType,
+      config: defaultConfig
+    };
+
+    // Create the properly typed workflow node
     const newNode: WorkflowNode = {
       id: nodeId,
       type: nodeComponentType,
       position: { x: 100, y: 100 },
-      data: {
-        label: nodeLabel || 'New Node',
-        type: nodeTrueType,
-        config: defaultConfig
-      }
+      data: nodeData
     };
 
     setNodes((prevNodes) => [...prevNodes, newNode]);
