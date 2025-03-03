@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -249,14 +248,7 @@ const Canvas = () => {
           const diffMinutes = (now.getTime() - lastRunDate.getTime()) / (1000 * 60);
           
           if (diffMinutes < 60) {
-            // Converting any possible value type to string
-            const status = data.last_run_status;
-            if (status !== null && status !== undefined) {
-              // Explicitly convert to string to fix the TypeScript error
-              setExecutionStatus(String(status));
-            } else {
-              setExecutionStatus('unknown');
-            }
+            setExecutionStatus(data.last_run_status != null ? String(data.last_run_status) : 'unknown');
           }
         }
       }
@@ -381,13 +373,7 @@ const Canvas = () => {
       }
       
       if (data) {
-        // Explicitly convert status to string before setting state
-        if (data.status !== null && data.status !== undefined) {
-          // Explicitly convert to string to fix the TypeScript error
-          setExecutionStatus(String(data.status));
-        } else {
-          setExecutionStatus(null);
-        }
+        setExecutionStatus(data.status != null ? String(data.status) : null);
         
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           if (statusPollingInterval) {
@@ -410,13 +396,7 @@ const Canvas = () => {
             .single();
           
           if (workflow) {
-            // Explicitly convert last_run_status to string
-            if (workflow.last_run_status !== null && workflow.last_run_status !== undefined) {
-              // Explicitly convert to string to fix the TypeScript error
-              setExecutionStatus(String(workflow.last_run_status));
-            } else {
-              setExecutionStatus(null);
-            }
+            setExecutionStatus(workflow.last_run_status != null ? String(workflow.last_run_status) : null);
           }
         }
       }
@@ -665,4 +645,3 @@ const Canvas = () => {
 };
 
 export default Canvas;
-
