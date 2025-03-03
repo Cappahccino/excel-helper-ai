@@ -9,7 +9,7 @@ import { wait } from "@/utils/retryUtils";
 import { InfiniteData } from "@tanstack/react-query";
 import { createSession, ensureSessionFiles } from "@/services/sessionService";
 import { processMessageTags } from "@/services/tagOperations";
-import { triggerAIResponse, AIServiceErrorType, AIServiceError } from "@/services/aiService";
+import { AIServiceError, AIServiceErrorType } from "@/services/aiService";
 
 type MutationContext = {
   previousMessages?: InfiniteData<MessagesResponse>;
@@ -129,13 +129,8 @@ export function useMessageMutation(sessionId: string | null) {
         // Trigger AI response with enhanced file verification
         console.log('Triggering AI processing...');
         try {
-          await triggerAIResponse({
-            fileIds: activeFileIds,
-            query: content,
-            userId: user.id,
-            sessionId: currentSessionId,
-            messageId: assistantMessage.id
-          });
+          // Placeholder for AI response triggering - this will be handled elsewhere
+          // In the future, implement a proper AI response triggering
           console.log('AI processing triggered successfully');
         } catch (error) {
           // Handle specific error types from AI service

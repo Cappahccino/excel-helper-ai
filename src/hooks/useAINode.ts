@@ -1,130 +1,134 @@
 
-import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { useState, useCallback, useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
 import { AIRequestData } from '@/types/workflow';
+import { askAI, getNodeAIRequests, subscribeToAIRequest } from '@/services/aiService';
 
-interface UseAINodeParams {
-  workflowId: string | null;
-}
-
-interface AskAIParams {
-  nodeId: string;
-  executionId: string;
-  prompt: string;
-  aiProvider: 'openai' | 'anthropic' | 'deepseek';
-  systemMessage?: string;
-  modelName?: string;
-}
-
-interface AINodeResponse {
-  success: boolean;
-  aiResponse?: string;
-  error?: string;
-  requestId?: string;
-  tokenUsage?: Record<string, number>;
-}
-
-export const useAINode = ({ workflowId }: UseAINodeParams) => {
+export function useAINode(workflowId: string, nodeId: string, executionId?: string) {
   const [isLoading, setIsLoading] = useState(false);
+  const [aiRequests, setAiRequests] = useState<AIRequestData[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [aiRequests, setAIRequests] = useState<AIRequestData[]>([]);
+  const [latestRequest, setLatestRequest] = useState<AIRequestData | null>(null);
+  const { toast } = useToast();
 
-  const askAI = async ({
-    nodeId,
-    executionId,
-    prompt,
-    aiProvider,
-    systemMessage,
-    modelName
-  }: AskAIParams): Promise<AINodeResponse> => {
-    setIsLoading(true);
-    setError(null);
+  // Load AI requests for the node
+  const loadAIRequests = useCallback(async () => {
+    if (!workflowId || !nodeId) return;
 
     try {
-      if (!workflowId) {
-        throw new Error('Workflow ID is required');
-      }
-
-      const response = await supabase.functions.invoke('ask-ai', {
-        body: {
-          workflowId,
-          nodeId,
-          executionId,
-          aiProvider,
-          userQuery: prompt,
-          systemMessage,
-          modelName
-        }
-      });
-
-      if (response.error) {
-        throw new Error(response.error.message || 'Failed to invoke AI function');
-      }
-
-      // Extract data from the response
-      const { success, aiResponse, error: responseError, requestId, tokenUsage } = response.data;
-
-      if (!success || responseError) {
-        throw new Error(responseError || 'Failed to get response from AI');
-      }
-
-      // Load the latest AI requests after successful operation
-      loadAIRequests();
-
-      return { 
-        success: true, 
-        aiResponse, 
-        requestId,
-        tokenUsage
-      };
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(errorMessage);
-      toast.error(`AI request failed: ${errorMessage}`);
-      return { success: false, error: errorMessage };
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadAIRequests = async () => {
-    try {
-      if (!workflowId) return;
-
-      const { data, error } = await supabase
-        .from('workflow_ai_requests')
-        .select('*')
-        .eq('workflow_id', workflowId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const requests = await getNodeAIRequests(workflowId, nodeId);
+      setAiRequests(requests);
       
-      setAIRequests(data || []);
+      if (requests.length > 0) {
+        setLatestRequest(requests[0]);
+      }
     } catch (err) {
       console.error('Error loading AI requests:', err);
       setError(err instanceof Error ? err.message : 'Failed to load AI requests');
     }
-  };
+  }, [workflowId, nodeId]);
 
-  // Function to get AI request data for a specific node
-  const getNodeAIRequests = (nodeId: string) => {
-    return aiRequests.filter(request => request.node_id === nodeId);
-  };
+  // Submit a query to AI
+  const submitQuery = useCallback(async (
+    query: string, 
+    provider: 'openai' | 'anthropic' | 'deepseek',
+    systemMessage?: string,
+    modelName?: string
+  ) => {
+    if (!workflowId || !nodeId || !executionId) {
+      toast({
+        title: "Error",
+        description: "Missing workflow, node, or execution information",
+        variant: "destructive"
+      });
+      return null;
+    }
 
-  // Function to get the most recent AI request for a node
-  const getLatestNodeRequest = (nodeId: string) => {
-    const nodeRequests = getNodeAIRequests(nodeId);
-    return nodeRequests.length > 0 ? nodeRequests[0] : null;
-  };
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await askAI({
+        workflowId,
+        nodeId,
+        executionId,
+        aiProvider: provider,
+        userQuery: query,
+        systemMessage,
+        modelName
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to get AI response');
+      }
+
+      // Reload requests to get the latest one
+      await loadAIRequests();
+      
+      toast({
+        title: "Success",
+        description: "AI response generated successfully",
+      });
+      
+      return result.requestId;
+    } catch (err) {
+      console.error('Error submitting AI query:', err);
+      setError(err instanceof Error ? err.message : 'Failed to submit AI query');
+      
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to get AI response',
+        variant: "destructive"
+      });
+      
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workflowId, nodeId, executionId, toast, loadAIRequests]);
+
+  // Set up real-time subscription for the latest request
+  useEffect(() => {
+    if (!latestRequest) return undefined;
+    
+    const unsubscribe = subscribeToAIRequest(latestRequest.id, (updatedRequest) => {
+      setLatestRequest(updatedRequest);
+      
+      // Also update the request in the requests list
+      setAiRequests(prevRequests => 
+        prevRequests.map(req => 
+          req.id === updatedRequest.id ? updatedRequest : req
+        )
+      );
+      
+      if (updatedRequest.status === 'completed') {
+        toast({
+          title: "AI Response Updated",
+          description: "The AI has completed its response",
+        });
+      } else if (updatedRequest.status === 'failed') {
+        toast({
+          title: "AI Processing Failed",
+          description: updatedRequest.error_message || "The AI processing failed",
+          variant: "destructive"
+        });
+      }
+    });
+    
+    return unsubscribe;
+  }, [latestRequest, toast]);
+
+  // Load initial requests when the component mounts
+  useEffect(() => {
+    loadAIRequests();
+  }, [loadAIRequests]);
 
   return {
-    askAI,
-    loadAIRequests,
-    getNodeAIRequests,
-    getLatestNodeRequest,
-    aiRequests,
     isLoading,
-    error
+    aiRequests,
+    latestRequest,
+    error,
+    submitQuery,
+    refreshRequests: loadAIRequests
   };
-};
+}

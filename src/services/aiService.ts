@@ -2,6 +2,26 @@
 import { supabase } from "@/integrations/supabase/client";
 import { AIRequestData } from "@/types/workflow";
 
+// Define error types that can be used throughout the application
+export enum AIServiceErrorType {
+  NO_FILES = "no_files",
+  VERIFICATION_FAILED = "verification_failed",
+  NETWORK_ERROR = "network_error",
+  PROVIDER_ERROR = "provider_error",
+  UNKNOWN_ERROR = "unknown_error"
+}
+
+// Custom error class for AI service errors
+export class AIServiceError extends Error {
+  type: AIServiceErrorType;
+  
+  constructor(message: string, type: AIServiceErrorType) {
+    super(message);
+    this.type = type;
+    this.name = "AIServiceError";
+  }
+}
+
 /**
  * Fetch AI requests for a specific workflow
  */
@@ -15,7 +35,7 @@ export async function getWorkflowAIRequests(workflowId: string): Promise<AIReque
     
     if (error) throw error;
     
-    return data || [];
+    return data as AIRequestData[] || [];
   } catch (error) {
     console.error('Error fetching AI requests:', error);
     throw error;
@@ -36,7 +56,7 @@ export async function getNodeAIRequests(workflowId: string, nodeId: string): Pro
     
     if (error) throw error;
     
-    return data || [];
+    return data as AIRequestData[] || [];
   } catch (error) {
     console.error('Error fetching node AI requests:', error);
     throw error;
@@ -56,7 +76,7 @@ export async function getAIRequestById(requestId: string): Promise<AIRequestData
     
     if (error) throw error;
     
-    return data;
+    return data as AIRequestData;
   } catch (error) {
     console.error('Error fetching AI request:', error);
     throw error;
@@ -81,7 +101,7 @@ export async function getLatestNodeRequest(workflowId: string, nodeId: string): 
       throw error;
     }
     
-    return data || null;
+    return data as AIRequestData || null;
   } catch (error) {
     console.error('Error fetching latest node request:', error);
     return null;
@@ -177,4 +197,10 @@ export async function askAI({
       error: error instanceof Error ? error.message : 'Unknown error occurred' 
     };
   }
+}
+
+// Placeholder for other AI service functions until they're implemented
+export function triggerAIResponse(params: any): Promise<any> {
+  console.error('triggerAIResponse is referenced but not yet implemented');
+  return Promise.reject(new AIServiceError('Not implemented', AIServiceErrorType.UNKNOWN_ERROR));
 }
