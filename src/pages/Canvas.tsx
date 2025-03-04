@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -437,78 +436,87 @@ const Canvas = () => {
       }
     })();
 
-    // Create node data with correct type casting based on the nodeComponentType
-    const data: WorkflowNodeData = (() => {
+    const createNodeData = (): WorkflowNodeData => {
+      const baseData = {
+        label: nodeLabel || 'New Node',
+        config: {}
+      };
+
       switch (nodeComponentType) {
         case 'fileUpload':
           return {
-            label: nodeLabel || 'New Node',
+            ...baseData,
             type: 'fileUpload' as const,
             config: {}
           };
         case 'spreadsheetGenerator':
           return {
-            label: nodeLabel || 'New Node',
+            ...baseData,
             type: 'spreadsheetGenerator' as const,
             config: {}
           };
         case 'dataInput':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: nodeType as InputNodeType,
             config: {}
           };
         case 'dataProcessing':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: nodeType as ProcessingNodeType,
             config: {}
           };
         case 'aiNode':
+          return {
+            ...baseData,
+            type: nodeType as AINodeType,
+            config: {}
+          };
         case 'askAI':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: 'askAI' as AINodeType,
             config: {}
           };
         case 'outputNode':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: nodeType as OutputNodeType,
             config: {}
           };
         case 'integrationNode':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: nodeType as IntegrationNodeType,
             config: {}
           };
         case 'controlNode':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: nodeType as ControlNodeType,
             config: {}
           };
         case 'utilityNode':
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: nodeType as UtilityNodeType,
             config: {}
           };
         default:
           return {
-            label: nodeLabel || 'New Node',
-            type: nodeType as any,
+            ...baseData,
+            type: 'dataInput' as InputNodeType,
             config: {}
           };
       }
-    })();
+    };
 
     const newNode: WorkflowNode = {
       id: nodeId,
       type: nodeComponentType,
       position: { x: 100, y: 100 },
-      data
+      data: createNodeData()
     };
 
     setNodes((prevNodes) => [...prevNodes, newNode]);

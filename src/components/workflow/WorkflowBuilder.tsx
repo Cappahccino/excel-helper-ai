@@ -8,9 +8,6 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
-  Node,
-  NodeChange,
-  EdgeChange,
   Connection,
   NodeTypes,
   Panel,
@@ -24,6 +21,13 @@ import {
   NodeType,
   WorkflowNodeData,
   NodeComponentType,
+  InputNodeType,
+  ProcessingNodeType,
+  AINodeType,
+  OutputNodeType,
+  IntegrationNodeType,
+  ControlNodeType,
+  UtilityNodeType
 } from '@/types/workflow';
 
 import AINode from './nodes/AINode';
@@ -157,92 +161,82 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     const nodeId = `node-${uuidv4()}`;
     
     // Create node data with correct type based on the component type
-    let nodeData: WorkflowNodeData;
-    
-    switch (type) {
-      case 'fileUpload':
-        nodeData = {
-          label: 'File Upload',
-          type: 'fileUpload' as const,
-          config: {},
-        };
-        break;
-      case 'spreadsheetGenerator':
-        nodeData = {
-          label: 'Spreadsheet Generator',
-          type: 'spreadsheetGenerator' as const,
-          config: {},
-        };
-        break;
-      case 'dataInput':
-        nodeData = {
-          label: 'Data Input',
-          type: 'dataInput' as const,
-          config: {},
-        };
-        break;
-      case 'dataProcessing':
-        nodeData = {
-          label: 'Data Processing',
-          type: 'dataProcessing' as const,
-          config: {},
-        };
-        break;
-      case 'aiNode':
-        nodeData = {
-          label: 'AI Analysis',
-          type: 'aiNode' as const,
-          config: {},
-        };
-        break;
-      case 'askAI':
-        nodeData = {
-          label: 'Ask AI',
-          type: 'askAI' as const,
-          config: {},
-        };
-        break;
-      case 'outputNode':
-        nodeData = {
-          label: 'Output',
-          type: 'outputNode' as const,
-          config: {},
-        };
-        break;
-      case 'integrationNode':
-        nodeData = {
-          label: 'Integration',
-          type: 'integrationNode' as const,
-          config: {},
-        };
-        break;
-      case 'controlNode':
-        nodeData = {
-          label: 'Control Flow',
-          type: 'controlNode' as const,
-          config: {},
-        };
-        break;
-      case 'utilityNode':
-        nodeData = {
-          label: 'Utility',
-          type: 'utilityNode' as const,
-          config: {},
-        };
-        break;
-      default:
-        nodeData = {
-          label: 'Node',
-          type: 'dataInput' as const,
-          config: {},
-        };
-    }
+    const createNodeData = (): WorkflowNodeData => {
+      switch (type) {
+        case 'fileUpload':
+          return {
+            label: 'File Upload',
+            type: 'fileUpload' as const,
+            config: {},
+          };
+        case 'spreadsheetGenerator':
+          return {
+            label: 'Spreadsheet Generator',
+            type: 'spreadsheetGenerator' as const,
+            config: {},
+          };
+        case 'dataInput':
+          return {
+            label: 'Data Input',
+            type: 'dataInput' as InputNodeType,
+            config: {},
+          };
+        case 'dataProcessing':
+          return {
+            label: 'Data Processing',
+            type: 'dataProcessing' as ProcessingNodeType,
+            config: {},
+          };
+        case 'aiNode':
+          return {
+            label: 'AI Analysis',
+            type: 'aiNode' as AINodeType,
+            config: {},
+          };
+        case 'askAI':
+          return {
+            label: 'Ask AI',
+            type: 'askAI' as AINodeType,
+            config: {},
+          };
+        case 'outputNode':
+          return {
+            label: 'Output',
+            type: 'outputNode' as OutputNodeType,
+            config: {},
+          };
+        case 'integrationNode':
+          return {
+            label: 'Integration',
+            type: 'integrationNode' as IntegrationNodeType,
+            config: {},
+          };
+        case 'controlNode':
+          return {
+            label: 'Control Flow',
+            type: 'controlNode' as ControlNodeType,
+            config: {},
+          };
+        case 'utilityNode':
+          return {
+            label: 'Utility',
+            type: 'utilityNode' as UtilityNodeType,
+            config: {},
+          };
+        default:
+          return {
+            label: 'Node',
+            type: 'dataInput' as InputNodeType,
+            config: {},
+          };
+      }
+    };
     
     const newNode: WorkflowNode = {
       id: nodeId,
       type,
       position: { x: 100, y: 100 },
-      data: nodeData,
+      data: createNodeData(),
     };
     
     setNodes((nds) => [...nds, newNode]);
