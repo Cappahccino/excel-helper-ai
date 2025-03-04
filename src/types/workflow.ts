@@ -1,4 +1,3 @@
-
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -200,8 +199,7 @@ export type WorkflowNodeData =
   | UtilityNodeData
   | FileUploadNodeData;
 
-// Define our WorkflowNode type that extends ReactFlow's Node type with our custom data
-// THIS IS THE KEY CHANGE: Making WorkflowNode extend ReactFlowNode properly
+// Define our WorkflowNode type that extends ReactFlow's Node type
 export interface WorkflowNode extends ReactFlowNode<WorkflowNodeData> {
   type: NodeComponentType;
 }
@@ -213,11 +211,10 @@ export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
   id?: string;
 };
 
-// Define handlers for node drag events with proper types from ReactFlow
+// Define handlers for node drag events
 export type NodeDragHandler = (event: React.MouseEvent, node: ReactFlowNode, nodes: ReactFlowNode[]) => void;
 
-// Export Edge type directly using the ReactFlow Edge type to ensure compatibility
-// THIS IS THE KEY CHANGE: Making Edge explicitly extend ReactFlowEdge
+// Export Edge type directly using the ReactFlow Edge type
 export type Edge = ReactFlowEdge;
 
 // Workflow definition types

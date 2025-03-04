@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -14,6 +15,8 @@ import {
   Panel,
   Connection,
   NodeTypes,
+  Node,
+  Edge as ReactFlowEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -206,8 +209,8 @@ const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
   
-  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [workflowDescription, setWorkflowDescription] = useState<string>('');
@@ -484,7 +487,11 @@ const Canvas = () => {
           return {
             ...baseData,
             type: 'askAI' as AINodeType,
-            config: {}
+            config: {
+              aiProvider: 'openai', 
+              modelName: 'gpt-4o-mini',
+              prompt: ''
+            }
           };
         case 'outputNode':
           return {

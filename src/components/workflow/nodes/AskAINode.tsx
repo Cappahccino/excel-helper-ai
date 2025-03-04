@@ -36,7 +36,9 @@ const providerOptions = {
   ]
 };
 
-const AskAINode = ({ data, selected, id }: { data?: AINodeData, selected?: boolean, id?: string }) => {
+type AIProvider = 'openai' | 'anthropic' | 'deepseek';
+
+const AskAINode = ({ data, selected, id }: NodeProps<AINodeData>) => {
   // Use provided data or fallback to default data
   const nodeData: AINodeData = data ? {
     ...defaultData,
@@ -49,8 +51,8 @@ const AskAINode = ({ data, selected, id }: { data?: AINodeData, selected?: boole
 
   const [isEditing, setIsEditing] = useState(false);
   const [prompt, setPrompt] = useState(nodeData.config?.prompt || '');
-  const [provider, setProvider] = useState<'openai' | 'anthropic' | 'deepseek'>(
-    nodeData.config?.aiProvider || 'openai'
+  const [provider, setProvider] = useState<AIProvider>(
+    (nodeData.config?.aiProvider as AIProvider) || 'openai'
   );
   const [model, setModel] = useState(nodeData.config?.modelName || providerOptions[provider][0].id);
 
@@ -79,7 +81,7 @@ const AskAINode = ({ data, selected, id }: { data?: AINodeData, selected?: boole
 
   // Get the current provider's model name for display
   const getModelDisplayName = () => {
-    const provider = nodeData.config?.aiProvider || 'openai';
+    const provider = (nodeData.config?.aiProvider || 'openai') as AIProvider;
     const modelId = nodeData.config?.modelName;
     
     if (!modelId) return 'Not selected';
@@ -117,7 +119,7 @@ const AskAINode = ({ data, selected, id }: { data?: AINodeData, selected?: boole
               <label className="text-xs font-medium text-gray-700">Provider</label>
               <Select 
                 value={provider} 
-                onValueChange={(value: 'openai' | 'anthropic' | 'deepseek') => {
+                onValueChange={(value: AIProvider) => {
                   setProvider(value);
                   // Reset model to first available for the new provider
                   setModel(providerOptions[value][0].id);

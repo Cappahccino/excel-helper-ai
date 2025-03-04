@@ -255,18 +255,17 @@ export async function updateNodeWithAIResponse({
   executionId: string;
 }): Promise<boolean> {
   try {
+    // Create the node state object
+    const nodeState = {
+      lastResponse: aiResponse,
+      lastResponseTime: new Date().toISOString()
+    };
+
     // Update the node state in the workflow execution
     const { error } = await supabase
       .from('workflow_executions')
       .update({
-        node_states: supabase.rpc('jsonb_set_path', {
-          target: supabase.sql`node_states`, 
-          path: `{${nodeId}}`, 
-          value: JSON.stringify({
-            lastResponse: aiResponse, 
-            lastResponseTime: new Date().toISOString()
-          })
-        })
+        node_states: supabase.storage.from('node_states').getPublicUrl(`${nodeId}`)
       })
       .eq('id', executionId)
       .eq('workflow_id', workflowId);
@@ -330,13 +329,32 @@ export async function triggerAIResponse({
       };
     }
 
-    // Update the node with the AI response
-    await updateNodeWithAIResponse({
-      workflowId,
-      nodeId,
-      aiResponse: result.aiResponse || '',
-      executionId
-    });
+    // Update the node with the AI response using direct approach
+    const { error } = await supabase
+      .from('workflow_executions')
+      .update({
+        node_states: {
+          ...((await supabase
+            .from('workflow_executions')
+            .select('node_states')
+            .eq('id', executionId)
+            .single()).data?.node_states || {}),
+          [nodeId]: {
+            lastResponse: result.aiResponse || '',
+            lastResponseTime: new Date().toISOString()
+          }
+        }
+      })
+      .eq('id', executionId)
+      .eq('workflow_id', workflowId);
+
+    if (error) {
+      console.error('Error updating node with AI response:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
 
     return {
       success: true,
