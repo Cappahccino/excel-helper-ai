@@ -37,6 +37,13 @@ import {
   NodeComponentType,
   WorkflowNodeData,
   Edge,
+  InputNodeType,
+  ProcessingNodeType,
+  AINodeType,
+  OutputNodeType,
+  IntegrationNodeType,
+  ControlNodeType,
+  UtilityNodeType
 } from '@/types/workflow';
 
 import { Button } from '@/components/ui/button';

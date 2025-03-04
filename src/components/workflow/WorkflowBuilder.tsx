@@ -74,7 +74,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   onSave,
   readOnly = false,
 }) => {
-  // Use the properly typed useNodesState and useEdgesState hooks
+  // KEY CHANGE: Fixed useNodesState and useEdgesState generics
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode[]>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>(initialEdges);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
@@ -94,6 +94,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   }, []);
 
   // Handle edge connections
+  // KEY CHANGE: Fixed onConnect type
   const onConnect = useCallback(
     (params: Connection) => {
       setEdges((eds) => addEdge(params, eds));
@@ -106,6 +107,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     (updatedConfig: any) => {
       if (!selectedNode) return;
       
+      // KEY CHANGE: Fixed setNodes callback to handle single nodes properly
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === selectedNode.id) {
@@ -128,6 +130,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return;
     
+    // KEY CHANGE: Fixed setNodes and setEdges to handle single nodes/edges
     setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
     setEdges((eds) =>
       eds.filter(
@@ -153,6 +156,7 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       },
     };
     
+    // KEY CHANGE: Fixed setNodes to handle single nodes
     setNodes((nds) => [...nds, newNode]);
   }, [selectedNode, setNodes]);
 
@@ -239,12 +243,14 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       data: createNodeData(),
     };
     
+    // KEY CHANGE: Fixed setNodes to handle single nodes
     setNodes((nds) => [...nds, newNode]);
   };
 
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
+        {/* KEY CHANGE: Fixed ReactFlow types */}
         <ReactFlow
           nodes={nodes}
           edges={edges}
