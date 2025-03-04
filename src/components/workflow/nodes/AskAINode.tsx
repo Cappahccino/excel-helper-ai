@@ -8,6 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+// Define the AIProvider type
+type AIProvider = 'openai' | 'anthropic' | 'deepseek';
+
 // Default data if none is provided
 const defaultData: AINodeData = {
   type: 'askAI',
@@ -21,7 +24,7 @@ const defaultData: AINodeData = {
 };
 
 // Provider options with their respective models
-const providerOptions = {
+const providerOptions: Record<AIProvider, Array<{id: string, name: string}>> = {
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
     { id: 'gpt-4o', name: 'GPT-4o' }
@@ -35,8 +38,6 @@ const providerOptions = {
     { id: 'deepseek-coder', name: 'DeepSeek Coder' }
   ]
 };
-
-type AIProvider = 'openai' | 'anthropic' | 'deepseek';
 
 const AskAINode = ({ data, selected, id }: NodeProps<AINodeData>) => {
   // Use provided data or fallback to default data
@@ -81,7 +82,7 @@ const AskAINode = ({ data, selected, id }: NodeProps<AINodeData>) => {
 
   // Get the current provider's model name for display
   const getModelDisplayName = () => {
-    const provider = (nodeData.config?.aiProvider || 'openai') as AIProvider;
+    const provider = (nodeData.config?.aiProvider as AIProvider) || 'openai';
     const modelId = nodeData.config?.modelName;
     
     if (!modelId) return 'Not selected';

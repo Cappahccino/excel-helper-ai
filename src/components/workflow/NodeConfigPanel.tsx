@@ -1,16 +1,9 @@
 
 import React from 'react';
-import { X, Trash, Copy } from 'lucide-react';
+import { X, Trash, Copy, ChevronRight } from 'lucide-react';
+import { NodeConfigPanelProps, WorkflowNode, AINodeData } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetClose
-} from '@/components/ui/sheet';
-import { WorkflowNode, NodeConfigPanelProps } from '@/types/workflow';
+import { Separator } from '@/components/ui/separator';
 import AskAINodeConfig from './AskAINodeConfig';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
@@ -19,33 +12,46 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   onDelete,
   onDuplicate,
   onClose,
-  readOnly = false
+  readOnly = false,
 }) => {
-  // Function to update node config
+  // Check if node is an AskAI node
+  const isAskAINode = node.type === 'askAI';
+  
+  // Generic handler for updating the node
   const handleUpdate = (updatedData: any) => {
-    const updatedConfig = {
-      ...node,
-      ...updatedData,
-      config: {
+    if (!node) return;
+    
+    // Create updated config based on node type
+    if (isAskAINode) {
+      // Type-safe handling for askAI node
+      const aiNodeData = node.data as AINodeData;
+      
+      const updatedConfig = {
+        ...aiNodeData.config,
+        ...(updatedData || {})
+      };
+      
+      onUpdateConfig(updatedConfig);
+    } else {
+      // Generic handling for other node types
+      onUpdateConfig({
         ...node.data.config,
-        ...(updatedData.config || {})
-      }
-    };
-    onUpdateConfig(updatedConfig);
+        ...(updatedData || {})
+      });
+    }
   };
-
-  // Render the correct config panel based on node type
+  
   const renderConfigPanel = () => {
-    if (node.type === 'askAI') {
+    if (isAskAINode) {
       return (
         <AskAINodeConfig
-          data={node.data}
+          data={node.data as AINodeData}
           onUpdate={handleUpdate}
         />
       );
     }
-
-    // Default config panel for other node types
+    
+    // Default generic config panel
     return (
       <div className="p-4">
         <p className="text-center text-gray-500">
@@ -56,55 +62,50 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   };
 
   return (
-    <Sheet open={!!node} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{node?.data.label || node?.type}</SheetTitle>
-          <SheetDescription>
-            Configure this node's settings and parameters.
-          </SheetDescription>
-        </SheetHeader>
-        
-        {node && (
-          <div className="mt-4 space-y-4">
-            {renderConfigPanel()}
-            
-            {!readOnly && (
-              <div className="flex gap-2 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onDuplicate}
-                  className="flex items-center"
-                >
-                  <Copy className="h-4 w-4 mr-1" />
-                  Duplicate
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={onDelete}
-                  className="flex items-center"
-                >
-                  <Trash className="h-4 w-4 mr-1" />
-                  Delete
-                </Button>
-                <SheetClose asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Close
-                  </Button>
-                </SheetClose>
-              </div>
-            )}
+    <div className="w-80 min-w-80 border-l border-gray-200 bg-white flex flex-col h-full">
+      <div className="flex items-center justify-between border-b border-gray-200 p-4">
+        <div className="flex items-center">
+          <span className="font-medium">Node Configuration</span>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      <div className="p-4 border-b border-gray-200">
+        <div className="text-sm font-medium">{node.data?.label || 'Unnamed Node'}</div>
+        <div className="text-xs text-gray-500">Type: {node.type}</div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto">
+        {renderConfigPanel()}
+      </div>
+      
+      {!readOnly && (
+        <div className="border-t border-gray-200 p-4 space-y-2">
+          <div className="flex space-x-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="flex-1"
+              onClick={onDuplicate}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Duplicate
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              className="flex-1"
+              onClick={onDelete}
+            >
+              <Trash className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
           </div>
-        )}
-      </SheetContent>
-    </Sheet>
+        </div>
+      )}
+    </div>
   );
 };
 

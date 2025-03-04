@@ -1,18 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AINodeData } from '@/types/workflow';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
 
-interface AskAINodeConfigProps {
-  data: AINodeData;
-  onUpdate: (updatedData: Partial<AINodeData>) => void;
-}
+// Define the AIProvider type
+type AIProvider = 'openai' | 'anthropic' | 'deepseek';
 
 // Provider options with their respective models
-const providerOptions = {
+const providerOptions: Record<AIProvider, Array<{id: string, name: string}>> = {
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
     { id: 'gpt-4o', name: 'GPT-4o' }
@@ -27,119 +26,116 @@ const providerOptions = {
   ]
 };
 
-const AskAINodeConfig: React.FC<AskAINodeConfigProps> = ({ data, onUpdate }) => {
-  const [selectedProvider, setSelectedProvider] = useState<string>(data.config?.aiProvider || 'openai');
-  const [selectedModel, setSelectedModel] = useState<string>(data.config?.modelName || 'gpt-4o-mini');
-  const [prompt, setPrompt] = useState<string>(data.config?.prompt || '');
-  const [systemMessage, setSystemMessage] = useState<string>(data.config?.systemMessage || '');
+interface AskAINodeConfigProps {
+  data: AINodeData;
+  onUpdate: (updatedConfig: Partial<AINodeData['config']>) => void;
+}
 
-  // Update model when provider changes
+const AskAINodeConfig: React.FC<AskAINodeConfigProps> = ({ data, onUpdate }) => {
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>(
+    (data.config?.aiProvider as AIProvider) || 'openai'
+  );
+  
+  const [selectedModel, setSelectedModel] = useState(
+    data.config?.modelName || providerOptions[selectedProvider][0].id
+  );
+  
+  const [prompt, setPrompt] = useState(data.config?.prompt || '');
+  const [systemMessage, setSystemMessage] = useState(data.config?.systemMessage || '');
+  
+  // When provider changes, update model to first in new provider's list
   useEffect(() => {
-    if (providerOptions[selectedProvider]) {
-      // Set default model for this provider if current selection is invalid
-      if (!providerOptions[selectedProvider].some(model => model.id === selectedModel)) {
-        setSelectedModel(providerOptions[selectedProvider][0].id);
-      }
+    if (!providerOptions[selectedProvider].some(model => model.id === selectedModel)) {
+      setSelectedModel(providerOptions[selectedProvider][0].id);
     }
   }, [selectedProvider, selectedModel]);
-
-  // When any value changes, update the parent
-  useEffect(() => {
+  
+  const handleSave = () => {
     onUpdate({
-      config: {
-        ...data.config,
-        aiProvider: selectedProvider,
-        modelName: selectedModel,
-        prompt,
-        systemMessage
-      }
+      aiProvider: selectedProvider,
+      modelName: selectedModel,
+      prompt,
+      systemMessage
     });
-  }, [selectedProvider, selectedModel, prompt, systemMessage, onUpdate, data.config]);
-
+  };
+  
   return (
-    <div className="space-y-4">
-      <div>
-        <Label htmlFor="node-label">Node Label</Label>
-        <Input 
-          id="node-label" 
-          value={data.label} 
-          onChange={(e) => onUpdate({ label: e.target.value })}
-          placeholder="Ask AI" 
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="ai-provider">AI Provider</Label>
-        <Select 
-          value={selectedProvider} 
-          onValueChange={(value) => setSelectedProvider(value)}
-        >
-          <SelectTrigger id="ai-provider">
-            <SelectValue placeholder="Select provider" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="openai">OpenAI (ChatGPT)</SelectItem>
-            <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
-            <SelectItem value="deepseek">DeepSeek</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label htmlFor="model-name">Model</Label>
-        <Select 
-          value={selectedModel} 
-          onValueChange={(value) => setSelectedModel(value)}
-        >
-          <SelectTrigger id="model-name">
-            <SelectValue placeholder="Select model" />
-          </SelectTrigger>
-          <SelectContent>
-            {providerOptions[selectedProvider]?.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                {model.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label htmlFor="system-message">System Message (Optional)</Label>
-        <Textarea 
-          id="system-message" 
-          value={systemMessage} 
-          onChange={(e) => setSystemMessage(e.target.value)}
-          placeholder="You are an AI assistant specialized in data analysis."
-          rows={3}
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Instructions that define the AI's behavior and capabilities.
-        </p>
-      </div>
-
-      <div>
-        <Label htmlFor="prompt">Prompt</Label>
-        <Textarea 
-          id="prompt" 
-          value={prompt} 
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Ask a question..."
-          rows={4}
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Question or instructions to send to the AI model.
-        </p>
-      </div>
-
-      {data.config?.lastResponse && (
-        <div>
-          <Label>Last Response</Label>
-          <div className="p-3 bg-gray-50 rounded text-sm max-h-40 overflow-y-auto">
-            {data.config.lastResponse}
-          </div>
+    <div className="p-4 space-y-6">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">AI Provider</label>
+          <Select 
+            value={selectedProvider} 
+            onValueChange={(value: AIProvider) => setSelectedProvider(value)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select AI provider" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="openai">OpenAI</SelectItem>
+              <SelectItem value="anthropic">Anthropic</SelectItem>
+              <SelectItem value="deepseek">DeepSeek</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+        
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Model</label>
+          <Select 
+            value={selectedModel} 
+            onValueChange={setSelectedModel}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent>
+              {providerOptions[selectedProvider].map(model => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Prompt</label>
+          <Textarea
+            placeholder="Enter your prompt to the AI..."
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="min-h-[100px]"
+          />
+        </div>
+        
+        <div className="space-y-2">
+          <label className="text-sm font-medium">System Message (Optional)</label>
+          <Textarea
+            placeholder="Instructions for the AI..."
+            value={systemMessage}
+            onChange={(e) => setSystemMessage(e.target.value)}
+            className="min-h-[80px]"
+          />
+        </div>
+      </div>
+      
+      {data.config?.lastResponse && (
+        <Card className="mt-4">
+          <CardContent className="p-4">
+            <h4 className="text-sm font-medium mb-2">Last Response</h4>
+            <div className="text-xs bg-gray-50 p-3 rounded max-h-32 overflow-y-auto">
+              {data.config.lastResponse}
+            </div>
+          </CardContent>
+        </Card>
       )}
+      
+      <Button 
+        className="w-full" 
+        onClick={handleSave}
+      >
+        Save Configuration
+      </Button>
     </div>
   );
 };

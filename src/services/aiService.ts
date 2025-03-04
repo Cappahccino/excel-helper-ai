@@ -1,370 +1,186 @@
 
-import { supabase } from "@/integrations/supabase/client";
-import { AIRequestData, isAIRequestData } from "@/types/workflow";
+import { supabase } from '@/integrations/supabase/client';
+import { AIRequestData } from '@/types/workflow';
+import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'sonner';
 
-// Define error types that can be used throughout the application
-export enum AIServiceErrorType {
-  NO_FILES = "no_files",
-  VERIFICATION_FAILED = "verification_failed",
-  NETWORK_ERROR = "network_error",
-  PROVIDER_ERROR = "provider_error",
-  UNKNOWN_ERROR = "unknown_error"
-}
-
-// Custom error class for AI service errors
-export class AIServiceError extends Error {
-  type: AIServiceErrorType;
-  
-  constructor(message: string, type: AIServiceErrorType) {
-    super(message);
-    this.type = type;
-    this.name = "AIServiceError";
+// Function to update an AI node's state in a workflow
+export async function updateAINodeState(
+  workflowId: string, 
+  nodeId: string, 
+  changes: {
+    prompt?: string;
+    aiProvider?: string;
+    modelName?: string;
+    systemMessage?: string;
+    lastResponse?: string;
+    lastResponseTime?: string;
+    [key: string]: any;
   }
-}
-
-/**
- * Helper function to safely retrieve AI request data with proper type checking
- */
-async function fetchAIRequests(query: any): Promise<AIRequestData[]> {
+) {
   try {
-    const { data, error } = await query;
+    // Get the current workflow first
+    const { data: workflow, error: fetchError } = await supabase
+      .from('workflows')
+      .select('definition')
+      .eq('id', workflowId)
+      .single();
     
-    if (error) {
-      console.error("Error in fetchAIRequests:", error);
-      throw new AIServiceError(error.message, AIServiceErrorType.NETWORK_ERROR);
+    if (fetchError) {
+      console.error('Error fetching workflow:', fetchError);
+      return { success: false, error: fetchError };
     }
     
-    // Filter and convert the data to ensure type safety
-    const safeData: AIRequestData[] = [];
+    if (!workflow) {
+      return { success: false, error: 'Workflow not found' };
+    }
     
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        if (isAIRequestData(item)) {
-          safeData.push(item);
-        } else {
-          console.warn('Retrieved item does not match AIRequestData shape:', item);
+    // Parse the definition
+    let definition;
+    try {
+      definition = typeof workflow.definition === 'string' 
+        ? JSON.parse(workflow.definition) 
+        : workflow.definition;
+    } catch (parseError) {
+      console.error('Error parsing workflow definition:', parseError);
+      return { success: false, error: parseError };
+    }
+    
+    // Find the node and update it
+    let nodeUpdated = false;
+    
+    if (definition.nodes && Array.isArray(definition.nodes)) {
+      for (let i = 0; i < definition.nodes.length; i++) {
+        if (definition.nodes[i].id === nodeId) {
+          // Update the node configuration
+          definition.nodes[i].data = {
+            ...definition.nodes[i].data,
+            config: {
+              ...definition.nodes[i].data.config,
+              ...changes
+            }
+          };
+          nodeUpdated = true;
+          break;
         }
       }
     }
     
-    return safeData;
-  } catch (error) {
-    console.error('Error fetching AI requests:', error);
-    if (error instanceof AIServiceError) {
-      throw error;
+    if (!nodeUpdated) {
+      return { success: false, error: 'Node not found in workflow' };
     }
-    throw new AIServiceError(
-      error instanceof Error ? error.message : 'Unknown error occurred', 
-      AIServiceErrorType.UNKNOWN_ERROR
-    );
+    
+    // Update the workflow with the new definition
+    const { error: updateError } = await supabase
+      .from('workflows')
+      .update({
+        definition: JSON.stringify(definition)
+      })
+      .eq('id', workflowId);
+    
+    if (updateError) {
+      console.error('Error updating workflow:', updateError);
+      return { success: false, error: updateError };
+    }
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error('Error in updateAINodeState:', error);
+    return { success: false, error };
   }
 }
 
-/**
- * Fetch AI requests for a specific workflow
- */
-export async function getWorkflowAIRequests(workflowId: string): Promise<AIRequestData[]> {
-  // Use a type assertion for the table that isn't in the generated types
-  const query = supabase
-    .from('workflow_ai_requests' as any)
-    .select('*')
-    .eq('workflow_id', workflowId)
-    .order('created_at', { ascending: false });
-  
-  return fetchAIRequests(query);
-}
-
-/**
- * Fetch AI requests for a specific node
- */
-export async function getNodeAIRequests(workflowId: string, nodeId: string): Promise<AIRequestData[]> {
-  // Use a type assertion for the table that isn't in the generated types
-  const query = supabase
-    .from('workflow_ai_requests' as any)
-    .select('*')
-    .eq('workflow_id', workflowId)
-    .eq('node_id', nodeId)
-    .order('created_at', { ascending: false });
-  
-  return fetchAIRequests(query);
-}
-
-/**
- * Fetch a specific AI request by ID
- */
-export async function getAIRequestById(requestId: string): Promise<AIRequestData | null> {
+// Function to trigger an AI response from a workflow node
+export async function triggerAIResponse(
+  workflowId: string,
+  nodeId: string,
+  executionId: string,
+  query: string,
+  provider: 'openai' | 'anthropic' | 'deepseek',
+  modelName: string,
+  systemMessage?: string
+) {
   try {
-    // Use a type assertion for the table that isn't in the generated types
+    // Create a request ID
+    const requestId = uuidv4();
+    
+    // Prepare the request data
+    const requestData: AIRequestData = {
+      id: requestId,
+      workflow_id: workflowId,
+      node_id: nodeId,
+      execution_id: executionId,
+      ai_provider: provider,
+      user_query: query,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      model_name: modelName,
+      system_message: systemMessage
+    };
+    
+    // Save the request to the database
     const { data, error } = await supabase
-      .from('workflow_ai_requests' as any)
+      .from('workflow_ai_requests')
+      .insert(requestData)
+      .select('id')
+      .single();
+    
+    if (error) {
+      console.error('Error creating AI request:', error);
+      toast.error('Failed to create AI request');
+      return { success: false, error };
+    }
+    
+    // Update the node state to indicate it's processing
+    await updateAINodeState(workflowId, nodeId, {
+      lastResponseTime: new Date().toISOString(),
+      processingStatus: 'running'
+    });
+    
+    // Return the request ID so the client can poll for updates
+    return {
+      success: true,
+      requestId: data.id,
+      message: 'AI request created and is being processed'
+    };
+    
+  } catch (error) {
+    console.error('Error in triggerAIResponse:', error);
+    toast.error('Failed to trigger AI response');
+    return { success: false, error };
+  }
+}
+
+// Function to check the status of an AI request
+export async function checkAIRequestStatus(requestId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('workflow_ai_requests')
       .select('*')
       .eq('id', requestId)
       .single();
     
     if (error) {
-      console.error("Error fetching AI request by ID:", error);
-      throw new AIServiceError(error.message, AIServiceErrorType.NETWORK_ERROR);
+      console.error('Error checking AI request status:', error);
+      return { success: false, error };
     }
     
-    return isAIRequestData(data) ? data : null;
-  } catch (error) {
-    console.error('Error fetching AI request:', error);
-    if (error instanceof AIServiceError) {
-      throw error;
-    }
-    throw new AIServiceError(
-      error instanceof Error ? error.message : 'Unknown error occurred', 
-      AIServiceErrorType.UNKNOWN_ERROR
-    );
-  }
-}
-
-/**
- * Fetch the most recent AI request for a node
- */
-export async function getLatestNodeRequest(workflowId: string, nodeId: string): Promise<AIRequestData | null> {
-  try {
-    // Use a type assertion for the table that isn't in the generated types
-    const { data, error } = await supabase
-      .from('workflow_ai_requests' as any)
-      .select('*')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', nodeId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    
-    if (error) {
-      console.error("Error fetching latest node request:", error);
-      throw new AIServiceError(error.message, AIServiceErrorType.NETWORK_ERROR);
+    if (!data) {
+      return { success: false, error: 'AI request not found' };
     }
     
-    return isAIRequestData(data) ? data : null;
-  } catch (error) {
-    console.error('Error fetching latest node request:', error);
-    return null;
-  }
-}
-
-/**
- * Subscribe to realtime updates for an AI request
- */
-export function subscribeToAIRequest(
-  requestId: string, 
-  onUpdate: (request: AIRequestData) => void
-): () => void {
-  const channel = supabase
-    .channel(`ai-request-${requestId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'workflow_ai_requests',
-        filter: `id=eq.${requestId}`
-      },
-      (payload) => {
-        // Only call the callback if the data matches our expected type
-        if (isAIRequestData(payload.new)) {
-          onUpdate(payload.new as AIRequestData);
-        } else {
-          console.error('Received invalid AI request data:', payload.new);
-        }
-      }
-    )
-    .subscribe();
-
-  // Return unsubscribe function
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}
-
-/**
- * Ask the AI a question via the edge function
- */
-export async function askAI({
-  workflowId,
-  nodeId,
-  executionId,
-  aiProvider,
-  userQuery,
-  systemMessage,
-  modelName
-}: {
-  workflowId: string;
-  nodeId: string;
-  executionId: string;
-  aiProvider: 'openai' | 'anthropic' | 'deepseek';
-  userQuery: string;
-  systemMessage?: string;
-  modelName?: string;
-}): Promise<{
-  success: boolean;
-  requestId?: string;
-  aiResponse?: string;
-  error?: string;
-}> {
-  try {
-    const response = await supabase.functions.invoke('ask-ai', {
-      body: {
-        workflowId,
-        nodeId,
-        executionId,
-        aiProvider,
-        userQuery,
-        systemMessage,
-        modelName
-      }
-    });
-
-    if (response.error) {
-      throw new Error(response.error.message || 'Failed to invoke AI function');
-    }
-
-    const { success, aiResponse, error, requestId } = response.data;
-
-    if (!success || error) {
-      throw new Error(error || 'Failed to get response from AI');
-    }
-
-    return { 
-      success: true, 
-      aiResponse, 
-      requestId 
-    };
-  } catch (error) {
-    console.error('Error asking AI:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error occurred' 
-    };
-  }
-}
-
-// Create a function to update the node's config with the AI response
-export async function updateNodeWithAIResponse({
-  workflowId,
-  nodeId,
-  aiResponse,
-  executionId
-}: {
-  workflowId: string;
-  nodeId: string;
-  aiResponse: string;
-  executionId: string;
-}): Promise<boolean> {
-  try {
-    // Create the node state object
-    const nodeState = {
-      lastResponse: aiResponse,
-      lastResponseTime: new Date().toISOString()
-    };
-
-    // Update the node state in the workflow execution
-    const { error } = await supabase
-      .from('workflow_executions')
-      .update({
-        node_states: supabase.storage.from('node_states').getPublicUrl(`${nodeId}`)
-      })
-      .eq('id', executionId)
-      .eq('workflow_id', workflowId);
-
-    if (error) {
-      console.error('Error updating node with AI response:', error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Error updating node with AI response:', error);
-    return false;
-  }
-}
-
-// Function to trigger AI response in workflow execution
-export async function triggerAIResponse({
-  workflowId,
-  nodeId,
-  executionId,
-  nodeConfig
-}: {
-  workflowId: string;
-  nodeId: string;
-  executionId: string;
-  nodeConfig: any;
-}): Promise<{
-  success: boolean;
-  response?: string;
-  error?: string;
-}> {
-  try {
-    if (!nodeConfig.prompt) {
-      return { 
-        success: false, 
-        error: 'No prompt provided in node configuration' 
-      };
-    }
-
-    const aiProvider = nodeConfig.aiProvider || 'openai';
-    const modelName = nodeConfig.modelName || 
-      (aiProvider === 'openai' ? 'gpt-4o-mini' : 
-       aiProvider === 'anthropic' ? 'claude-3-haiku-20240307' : 
-       'deepseek-chat');
-    
-    const result = await askAI({
-      workflowId,
-      nodeId,
-      executionId,
-      aiProvider,
-      userQuery: nodeConfig.prompt,
-      systemMessage: nodeConfig.systemMessage,
-      modelName
-    });
-
-    if (!result.success) {
-      return { 
-        success: false, 
-        error: result.error || 'Failed to get AI response' 
-      };
-    }
-
-    // Update the node with the AI response using direct approach
-    const { error } = await supabase
-      .from('workflow_executions')
-      .update({
-        node_states: {
-          ...((await supabase
-            .from('workflow_executions')
-            .select('node_states')
-            .eq('id', executionId)
-            .single()).data?.node_states || {}),
-          [nodeId]: {
-            lastResponse: result.aiResponse || '',
-            lastResponseTime: new Date().toISOString()
-          }
-        }
-      })
-      .eq('id', executionId)
-      .eq('workflow_id', workflowId);
-
-    if (error) {
-      console.error('Error updating node with AI response:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-
     return {
       success: true,
-      response: result.aiResponse
+      status: data.status,
+      response: data.ai_response,
+      error: data.error_message,
+      tokenUsage: data.token_usage,
+      completedAt: data.completed_at
     };
+    
   } catch (error) {
-    console.error('Error triggering AI response:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
-    };
+    console.error('Error in checkAIRequestStatus:', error);
+    return { success: false, error };
   }
 }
