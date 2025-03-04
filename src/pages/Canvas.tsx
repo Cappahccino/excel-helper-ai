@@ -418,6 +418,28 @@ const Canvas = () => {
     }
   };
 
+  const handleNodeConfigUpdate = (nodeId: string, config: any) => {
+    setNodes((prevNodes) => {
+      return prevNodes.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              config: {
+                ...node.data.config,
+                ...config
+              }
+            }
+          };
+        }
+        return node;
+      });
+    });
+
+    setTimeout(() => saveWorkflow(), 500);
+  };
+
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
     const nodeId = `node-${uuidv4()}`;
     
