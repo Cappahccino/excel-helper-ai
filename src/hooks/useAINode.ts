@@ -1,134 +1,83 @@
 
-import { useState, useCallback, useEffect } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { AIRequestData } from '@/types/workflow';
+import { useState, useEffect, useCallback } from 'react';
 import { askAI, getNodeAIRequests, subscribeToAIRequest } from '@/services/aiService';
 
-export function useAINode(workflowId: string, nodeId: string, executionId?: string) {
+export function useAINode(workflowId: string, nodeId: string) {
   const [isLoading, setIsLoading] = useState(false);
-  const [aiRequests, setAiRequests] = useState<AIRequestData[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [latestRequest, setLatestRequest] = useState<AIRequestData | null>(null);
-  const { toast } = useToast();
-
-  // Load AI requests for the node
-  const loadAIRequests = useCallback(async () => {
-    if (!workflowId || !nodeId) return;
-
-    try {
-      const requests = await getNodeAIRequests(workflowId, nodeId);
-      setAiRequests(requests);
-      
-      if (requests.length > 0) {
-        setLatestRequest(requests[0]);
-      }
-    } catch (err) {
-      console.error('Error loading AI requests:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load AI requests');
-    }
-  }, [workflowId, nodeId]);
-
-  // Submit a query to AI
-  const submitQuery = useCallback(async (
+  const [response, setResponse] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  
+  const sendQuery = useCallback(async (
     query: string, 
-    provider: 'openai' | 'anthropic' | 'deepseek',
-    systemMessage?: string,
-    modelName?: string
+    provider: 'openai' | 'anthropic' | 'deepseek', 
+    model: string
   ) => {
-    if (!workflowId || !nodeId || !executionId) {
-      toast({
-        title: "Error",
-        description: "Missing workflow, node, or execution information",
-        variant: "destructive"
-      });
-      return null;
-    }
-
     setIsLoading(true);
     setError(null);
-
+    
     try {
-      const result = await askAI({
-        workflowId,
-        nodeId,
-        executionId,
-        aiProvider: provider,
-        userQuery: query,
-        systemMessage,
-        modelName
-      });
-
+      const result = await askAI(workflowId, nodeId, query, provider, model);
+      
       if (!result.success) {
-        throw new Error(result.error || 'Failed to get AI response');
+        throw new Error(result.error as string);
       }
-
-      // Reload requests to get the latest one
-      await loadAIRequests();
       
-      toast({
-        title: "Success",
-        description: "AI response generated successfully",
+      // Set up a subscription to receive updates
+      const requestId = result.requestId;
+      
+      const unsubscribe = subscribeToAIRequest(requestId, (data) => {
+        if (data.status === 'completed') {
+          setResponse(data.ai_response);
+          setIsLoading(false);
+          unsubscribe();
+        } else if (data.status === 'failed') {
+          setError(new Error(data.error_message || 'AI request failed'));
+          setIsLoading(false);
+          unsubscribe();
+        }
       });
       
-      return result.requestId;
+      // Poll for status in case subscription doesn't work
+      const checkStatus = async () => {
+        const statusResult = await fetch(`${process.env.SUPABASE_URL}/rest/v1/workflow_ai_requests?id=eq.${requestId}&select=*`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': process.env.SUPABASE_ANON_KEY || '',
+            'Authorization': `Bearer ${localStorage.getItem('supabase.auth.token')}`
+          }
+        }).then(r => r.json());
+        
+        if (statusResult && statusResult.length > 0) {
+          const status = statusResult[0];
+          
+          if (status.status === 'completed') {
+            setResponse(status.ai_response);
+            setIsLoading(false);
+          } else if (status.status === 'failed') {
+            setError(new Error(status.error_message || 'AI request failed'));
+            setIsLoading(false);
+          } else if (status.status === 'pending' || status.status === 'processing') {
+            // Continue polling
+            setTimeout(checkStatus, 2000);
+          }
+        }
+      };
+      
+      // Start polling after a short delay
+      setTimeout(checkStatus, 2000);
+      
+      return result;
     } catch (err) {
-      console.error('Error submitting AI query:', err);
-      setError(err instanceof Error ? err.message : 'Failed to submit AI query');
-      
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : 'Failed to get AI response',
-        variant: "destructive"
-      });
-      
-      return null;
-    } finally {
+      setError(err as Error);
       setIsLoading(false);
+      return { success: false, error: err };
     }
-  }, [workflowId, nodeId, executionId, toast, loadAIRequests]);
-
-  // Set up real-time subscription for the latest request
-  useEffect(() => {
-    if (!latestRequest) return undefined;
-    
-    const unsubscribe = subscribeToAIRequest(latestRequest.id, (updatedRequest) => {
-      setLatestRequest(updatedRequest);
-      
-      // Also update the request in the requests list
-      setAiRequests(prevRequests => 
-        prevRequests.map(req => 
-          req.id === updatedRequest.id ? updatedRequest : req
-        )
-      );
-      
-      if (updatedRequest.status === 'completed') {
-        toast({
-          title: "AI Response Updated",
-          description: "The AI has completed its response",
-        });
-      } else if (updatedRequest.status === 'failed') {
-        toast({
-          title: "AI Processing Failed",
-          description: updatedRequest.error_message || "The AI processing failed",
-          variant: "destructive"
-        });
-      }
-    });
-    
-    return unsubscribe;
-  }, [latestRequest, toast]);
-
-  // Load initial requests when the component mounts
-  useEffect(() => {
-    loadAIRequests();
-  }, [loadAIRequests]);
-
+  }, [workflowId, nodeId]);
+  
   return {
     isLoading,
-    aiRequests,
-    latestRequest,
+    response,
     error,
-    submitQuery,
-    refreshRequests: loadAIRequests
+    sendQuery
   };
 }

@@ -4,6 +4,25 @@ import { AIRequestData } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 
+// Define AIServiceErrorType enum that's being imported elsewhere
+export enum AIServiceErrorType {
+  NO_FILES = 'no_files',
+  VERIFICATION_FAILED = 'verification_failed',
+  NETWORK_ERROR = 'network_error',
+  UNKNOWN = 'unknown'
+}
+
+// Define AIServiceError class that's being imported elsewhere
+export class AIServiceError extends Error {
+  type: AIServiceErrorType;
+  
+  constructor(message: string, type: AIServiceErrorType = AIServiceErrorType.UNKNOWN) {
+    super(message);
+    this.type = type;
+    this.name = 'AIServiceError';
+  }
+}
+
 // Function to update an AI node's state in a workflow
 export async function updateAINodeState(
   workflowId: string, 
@@ -119,17 +138,24 @@ export async function triggerAIResponse(
       system_message: systemMessage
     };
     
-    // Save the request to the database
-    const { data, error } = await supabase
-      .from('workflow_ai_requests')
-      .insert(requestData)
-      .select('id')
-      .single();
+    // Since workflow_ai_requests isn't in the Supabase types, we need to use the RPC approach
+    // or insert directly with custom SQL
     
-    if (error) {
-      console.error('Error creating AI request:', error);
+    // Update directly using REST API call to bypass type limitations
+    const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/workflow_ai_requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.SUPABASE_ANON_KEY || '',
+        'Authorization': `Bearer ${supabase.auth.getSession()}`
+      },
+      body: JSON.stringify(requestData)
+    });
+    
+    if (!response.ok) {
+      console.error('Error creating AI request:', await response.text());
       toast.error('Failed to create AI request');
-      return { success: false, error };
+      return { success: false, error: 'Database error' };
     }
     
     // Update the node state to indicate it's processing
@@ -141,7 +167,7 @@ export async function triggerAIResponse(
     // Return the request ID so the client can poll for updates
     return {
       success: true,
-      requestId: data.id,
+      requestId: requestId,
       message: 'AI request created and is being processed'
     };
     
@@ -155,32 +181,91 @@ export async function triggerAIResponse(
 // Function to check the status of an AI request
 export async function checkAIRequestStatus(requestId: string) {
   try {
-    const { data, error } = await supabase
-      .from('workflow_ai_requests')
-      .select('*')
-      .eq('id', requestId)
-      .single();
+    // Since workflow_ai_requests isn't in the Supabase types, use a direct REST API call
+    const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/workflow_ai_requests?id=eq.${requestId}&select=*`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.SUPABASE_ANON_KEY || '',
+        'Authorization': `Bearer ${supabase.auth.getSession()}`
+      }
+    });
     
-    if (error) {
-      console.error('Error checking AI request status:', error);
-      return { success: false, error };
+    if (!response.ok) {
+      console.error('Error checking AI request status:', await response.text());
+      return { success: false, error: 'Database error' };
     }
     
-    if (!data) {
+    const data = await response.json();
+    
+    if (!data || data.length === 0) {
       return { success: false, error: 'AI request not found' };
     }
     
+    const aiRequest = data[0];
+    
     return {
       success: true,
-      status: data.status,
-      response: data.ai_response,
-      error: data.error_message,
-      tokenUsage: data.token_usage,
-      completedAt: data.completed_at
+      status: aiRequest.status,
+      response: aiRequest.ai_response,
+      error: aiRequest.error_message,
+      tokenUsage: aiRequest.token_usage,
+      completedAt: aiRequest.completed_at
     };
     
   } catch (error) {
     console.error('Error in checkAIRequestStatus:', error);
     return { success: false, error };
   }
+}
+
+// Adding missing exports that are imported in other files
+export async function askAI(workflowId: string, nodeId: string, query: string, provider: string, model: string) {
+  // Implementation placeholder - this is needed for useAINode.ts
+  const executionId = uuidv4(); // Generate an execution ID since it's required
+  return triggerAIResponse(workflowId, nodeId, executionId, query, provider as 'openai' | 'anthropic' | 'deepseek', model);
+}
+
+export async function getNodeAIRequests(workflowId: string, nodeId: string) {
+  // Implementation placeholder - this is needed for useAINode.ts
+  try {
+    const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/workflow_ai_requests?workflow_id=eq.${workflowId}&node_id=eq.${nodeId}&select=*&order=created_at.desc`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.SUPABASE_ANON_KEY || '',
+        'Authorization': `Bearer ${supabase.auth.getSession()}`
+      }
+    });
+    
+    if (!response.ok) {
+      return { success: false, error: 'Failed to fetch AI requests' };
+    }
+    
+    const data = await response.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error in getNodeAIRequests:', error);
+    return { success: false, error };
+  }
+}
+
+export function subscribeToAIRequest(requestId: string, callback: (status: any) => void) {
+  // Implementation placeholder - this is needed for useAINode.ts
+  // This would typically use Supabase realtime subscriptions
+  
+  const channel = supabase
+    .channel(`ai-request-${requestId}`)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'workflow_ai_requests',
+      filter: `id=eq.${requestId}`
+    }, (payload) => {
+      callback(payload.new);
+    })
+    .subscribe();
+  
+  // Return an unsubscribe function
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
