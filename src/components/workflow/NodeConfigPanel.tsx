@@ -1,10 +1,10 @@
-
 import React from 'react';
 import { X, Trash, Copy, ChevronRight } from 'lucide-react';
 import { NodeConfigPanelProps, WorkflowNode, AINodeData } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import AskAINodeConfig from './AskAINodeConfig';
+import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   node,
@@ -41,24 +41,33 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     }
   };
   
-  const renderConfigPanel = () => {
-    if (isAskAINode) {
-      return (
-        <AskAINodeConfig
-          data={node.data as AINodeData}
-          onUpdate={handleUpdate}
-        />
-      );
+  const renderConfig = () => {
+    switch (node.type) {
+      case 'askAI':
+        return (
+          <AskAINodeConfig
+            data={node.data as AINodeData}
+            onUpdate={handleUpdate}
+          />
+        );
+      
+      case 'spreadsheetGenerator':
+        return (
+          <SpreadsheetGeneratorNodeConfig
+            node={node}
+            onConfigChange={onUpdateConfig}
+          />
+        );
+      
+      default:
+        return (
+          <div className="p-4">
+            <p className="text-center text-gray-500">
+              Configuration options for {node.data.label || node.type} will appear here.
+            </p>
+          </div>
+        );
     }
-    
-    // Default generic config panel
-    return (
-      <div className="p-4">
-        <p className="text-center text-gray-500">
-          Configuration options for {node.data.label || node.type} will appear here.
-        </p>
-      </div>
-    );
   };
 
   return (
@@ -78,7 +87,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
       </div>
       
       <div className="flex-1 overflow-y-auto">
-        {renderConfigPanel()}
+        {renderConfig()}
       </div>
       
       {!readOnly && (

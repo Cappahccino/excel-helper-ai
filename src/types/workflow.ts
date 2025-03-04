@@ -161,7 +161,15 @@ export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
   type: 'spreadsheetGenerator';
   config: {
     filename?: string;
-    sheets?: any[];
+    fileExtension?: 'xlsx' | 'csv' | 'xls';
+    sheets?: Array<{
+      name: string;
+      columns?: Array<{
+        header: string;
+        field: string;
+        type?: 'string' | 'number' | 'date' | 'boolean';
+      }>;
+    }>;
     [key: string]: any;
   };
 }

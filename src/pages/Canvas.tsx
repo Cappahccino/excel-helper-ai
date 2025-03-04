@@ -484,7 +484,11 @@ const Canvas = () => {
           return {
             ...baseData,
             type: 'spreadsheetGenerator' as const,
-            config: {}
+            config: {
+              filename: 'generated',
+              fileExtension: 'xlsx',
+              sheets: [{ name: 'Sheet1', columns: [] }]
+            }
           };
         case 'dataInput':
           return {

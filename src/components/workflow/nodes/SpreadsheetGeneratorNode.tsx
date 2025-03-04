@@ -10,11 +10,17 @@ const defaultData: SpreadsheetGeneratorNodeData = {
   type: 'spreadsheetGenerator',
   config: {
     filename: 'generated.xlsx',
+    fileExtension: 'xlsx',
     sheets: []
   }
 };
 
-const SpreadsheetGeneratorNode = ({ data, selected }: { data?: SpreadsheetGeneratorNodeData, selected?: boolean }) => {
+const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: { 
+  data?: SpreadsheetGeneratorNodeData, 
+  selected?: boolean,
+  id?: string,
+  onConfigChange?: (nodeId: string, config: any) => void 
+}) => {
   // Use provided data or fallback to default data
   const nodeData: SpreadsheetGeneratorNodeData = data ? {
     ...defaultData,
@@ -40,6 +46,10 @@ const SpreadsheetGeneratorNode = ({ data, selected }: { data?: SpreadsheetGenera
           <div className="flex items-center justify-between mb-1">
             <span>Filename:</span>
             <span className="font-medium">{nodeData.config?.filename || 'generated.xlsx'}</span>
+          </div>
+          <div className="flex items-center justify-between mb-1">
+            <span>Format:</span>
+            <span className="font-medium">{nodeData.config?.fileExtension || 'xlsx'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>Sheets:</span>
