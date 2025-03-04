@@ -259,7 +259,14 @@ export async function updateNodeWithAIResponse({
     const { error } = await supabase
       .from('workflow_executions')
       .update({
-        node_states: supabase.sql`node_states || jsonb_build_object(${nodeId}, jsonb_build_object('lastResponse', ${aiResponse}, 'lastResponseTime', ${new Date().toISOString()}))`
+        node_states: supabase.rpc('jsonb_set_path', {
+          target: supabase.sql`node_states`, 
+          path: `{${nodeId}}`, 
+          value: JSON.stringify({
+            lastResponse: aiResponse, 
+            lastResponseTime: new Date().toISOString()
+          })
+        })
       })
       .eq('id', executionId)
       .eq('workflow_id', workflowId);
@@ -276,8 +283,70 @@ export async function updateNodeWithAIResponse({
   }
 }
 
-// Function implementation (will be properly implemented later)
-export function triggerAIResponse(params: any): Promise<any> {
-  console.error('triggerAIResponse is referenced but not yet implemented');
-  return Promise.reject(new AIServiceError('Not implemented', AIServiceErrorType.UNKNOWN_ERROR));
+// Function to trigger AI response in workflow execution
+export async function triggerAIResponse({
+  workflowId,
+  nodeId,
+  executionId,
+  nodeConfig
+}: {
+  workflowId: string;
+  nodeId: string;
+  executionId: string;
+  nodeConfig: any;
+}): Promise<{
+  success: boolean;
+  response?: string;
+  error?: string;
+}> {
+  try {
+    if (!nodeConfig.prompt) {
+      return { 
+        success: false, 
+        error: 'No prompt provided in node configuration' 
+      };
+    }
+
+    const aiProvider = nodeConfig.aiProvider || 'openai';
+    const modelName = nodeConfig.modelName || 
+      (aiProvider === 'openai' ? 'gpt-4o-mini' : 
+       aiProvider === 'anthropic' ? 'claude-3-haiku-20240307' : 
+       'deepseek-chat');
+    
+    const result = await askAI({
+      workflowId,
+      nodeId,
+      executionId,
+      aiProvider,
+      userQuery: nodeConfig.prompt,
+      systemMessage: nodeConfig.systemMessage,
+      modelName
+    });
+
+    if (!result.success) {
+      return { 
+        success: false, 
+        error: result.error || 'Failed to get AI response' 
+      };
+    }
+
+    // Update the node with the AI response
+    await updateNodeWithAIResponse({
+      workflowId,
+      nodeId,
+      aiResponse: result.aiResponse || '',
+      executionId
+    });
+
+    return {
+      success: true,
+      response: result.aiResponse
+    };
+  } catch (error) {
+    console.error('Error triggering AI response:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
 }
