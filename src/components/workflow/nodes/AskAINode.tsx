@@ -1,5 +1,5 @@
 
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Brain, Send, MessageSquare, GripVertical, Save } from 'lucide-react';
 import { AINodeData, NodeProps } from '@/types/workflow';
@@ -39,7 +39,11 @@ const providerOptions: Record<AIProvider, Array<{id: string, name: string}>> = {
   ]
 };
 
-const AskAINode = ({ data, selected, id }: NodeProps<AINodeData>) => {
+interface AskAINodeProps extends NodeProps<AINodeData> {
+  onConfigChange?: (nodeId: string, config: Partial<AINodeData['config']>) => void;
+}
+
+const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   // Use provided data or fallback to default data
   const nodeData: AINodeData = data ? {
     ...defaultData,
@@ -56,13 +60,39 @@ const AskAINode = ({ data, selected, id }: NodeProps<AINodeData>) => {
     (nodeData.config?.aiProvider as AIProvider) || 'openai'
   );
   const [model, setModel] = useState(nodeData.config?.modelName || providerOptions[provider][0].id);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Sync local state with node data when it changes
+  useEffect(() => {
+    setPrompt(nodeData.config?.prompt || '');
+    setProvider((nodeData.config?.aiProvider as AIProvider) || 'openai');
+    setModel(nodeData.config?.modelName || providerOptions[(nodeData.config?.aiProvider as AIProvider) || 'openai'][0].id);
+  }, [nodeData.config]);
 
   // Save changes to node data
   const saveChanges = () => {
-    // This would typically update the node in the parent component
-    // For now, we'll just update the local state and show a toast
-    setIsEditing(false);
+    if (!id) {
+      toast.error("Cannot save: Node ID is missing");
+      return;
+    }
+
+    setIsSaving(true);
+    
+    const updatedConfig = {
+      aiProvider: provider,
+      modelName: model,
+      prompt: prompt
+    };
+    
+    // Update node through parent component if callback exists
+    if (onConfigChange) {
+      onConfigChange(id, updatedConfig);
+    }
+    
+    // Show success message and exit editing mode
     toast.success("Changes saved to node");
+    setIsSaving(false);
+    setIsEditing(false);
   };
 
   // Determine appropriate icons
@@ -168,8 +198,9 @@ const AskAINode = ({ data, selected, id }: NodeProps<AINodeData>) => {
               size="sm" 
               className="w-full text-xs"
               onClick={saveChanges}
+              disabled={isSaving}
             >
-              Save Changes
+              {isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         ) : (

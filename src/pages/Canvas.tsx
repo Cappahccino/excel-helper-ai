@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -209,7 +208,6 @@ const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
   
-  // Updated to use correct generic types
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   
@@ -230,7 +228,6 @@ const Canvas = () => {
     }
   });
 
-  // Fixed the onConnect function
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds));
   }, [setEdges]);
@@ -535,10 +532,22 @@ const Canvas = () => {
       data: createNodeData()
     };
 
-    // Fixed node state update
     setNodes((prevNodes) => [...prevNodes, newNode]);
     toast.success(`Added ${nodeLabel} node to canvas`);
   };
+
+  const getNodeTypes = () => ({
+    dataInput: DataInputNode,
+    dataProcessing: DataProcessingNode,
+    aiNode: AINode,
+    askAI: (props: any) => <AskAINode {...props} onConfigChange={handleNodeConfigUpdate} />,
+    outputNode: OutputNode,
+    integrationNode: IntegrationNode,
+    controlNode: ControlNode,
+    spreadsheetGenerator: SpreadsheetGeneratorNode,
+    utilityNode: UtilityNode,
+    fileUpload: FileUploadNode,
+  });
 
   return (
     <div className="h-screen flex flex-col">
@@ -613,7 +622,7 @@ const Canvas = () => {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
-                nodeTypes={nodeTypes}
+                nodeTypes={getNodeTypes()}
                 fitView
                 attributionPosition="top-right"
                 style={{ backgroundColor: "#F7F9FB" }}
