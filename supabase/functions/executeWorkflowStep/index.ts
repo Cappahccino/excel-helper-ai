@@ -1,4 +1,3 @@
-
 // Follow Deno and Supabase Edge Function conventions
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.23.0";
@@ -52,6 +51,9 @@ const nodeHandlers: Record<string, (step: any, context: any) => Promise<any>> = 
   'conditionalBranch': handleConditionalBranch,
   'loopNode': handleLoopNode,
   'mergeNode': handleMergeNode,
+  
+  // New handler for askAI node
+  'askAI': handleAskAI,
 };
 
 serve(async (req) => {
@@ -437,4 +439,68 @@ async function handleLoopNode(step: any, context: any) {
 async function handleMergeNode(step: any, context: any) {
   console.log("Executing Merge node:", step.node_id);
   return { message: "Merge processed", timestamp: new Date().toISOString() };
+}
+
+// Add a new handler for askAI node
+async function handleAskAI(step: any, context: any) {
+  console.log("Executing Ask AI node:", step.node_id);
+  
+  const config = step.configuration?.config || {};
+  const aiProvider = config.aiProvider || 'openai';
+  const modelName = config.modelName || 'gpt-4o-mini';
+  const userQuery = config.prompt || 'Hello, AI assistant';
+  const systemMessage = config.systemMessage || 'You are a helpful assistant.';
+  
+  if (!userQuery) {
+    throw new Error("No prompt specified in node configuration");
+  }
+  
+  try {
+    // Prepare the request to call ask-ai function
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Missing Supabase configuration for calling ask-ai function");
+    }
+    
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    // Call the ask-ai function
+    const response = await supabase.functions.invoke('ask-ai', {
+      body: {
+        workflowId: step.workflow_id,
+        nodeId: step.node_id,
+        executionId: context.executionId,
+        aiProvider,
+        userQuery,
+        systemMessage,
+        modelName
+      }
+    });
+    
+    if (response.error) {
+      throw new Error(`Error calling ask-ai function: ${response.error.message}`);
+    }
+    
+    const { success, aiResponse, requestId } = response.data;
+    
+    if (!success) {
+      throw new Error("Failed to get response from AI");
+    }
+    
+    return {
+      aiResponse,
+      requestId,
+      aiProvider,
+      modelName,
+      promptUsed: userQuery,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Error in Ask AI node:", error);
+    throw error;
+  }
 }

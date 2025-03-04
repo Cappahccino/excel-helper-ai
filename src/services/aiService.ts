@@ -242,6 +242,40 @@ export async function askAI({
   }
 }
 
+// Create a function to update the node's config with the AI response
+export async function updateNodeWithAIResponse({
+  workflowId,
+  nodeId,
+  aiResponse,
+  executionId
+}: {
+  workflowId: string;
+  nodeId: string;
+  aiResponse: string;
+  executionId: string;
+}): Promise<boolean> {
+  try {
+    // Update the node state in the workflow execution
+    const { error } = await supabase
+      .from('workflow_executions')
+      .update({
+        node_states: supabase.sql`node_states || jsonb_build_object(${nodeId}, jsonb_build_object('lastResponse', ${aiResponse}, 'lastResponseTime', ${new Date().toISOString()}))`
+      })
+      .eq('id', executionId)
+      .eq('workflow_id', workflowId);
+
+    if (error) {
+      console.error('Error updating node with AI response:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating node with AI response:', error);
+    return false;
+  }
+}
+
 // Function implementation (will be properly implemented later)
 export function triggerAIResponse(params: any): Promise<any> {
   console.error('triggerAIResponse is referenced but not yet implemented');

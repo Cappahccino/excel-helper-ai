@@ -24,7 +24,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json() as RequestBody
-    const { workflowId, nodeId, executionId, aiProvider, userQuery, systemMessage, modelName = 'gpt-4o-mini' } = body
+    const { workflowId, nodeId, executionId, aiProvider, userQuery, systemMessage, modelName } = body
 
     // Input validation
     if (!workflowId || !nodeId || !executionId || !aiProvider || !userQuery) {
@@ -60,6 +60,8 @@ serve(async (req) => {
         )
       }
       
+      const defaultModelName = 'gpt-4o-mini'
+      
       try {
         const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -68,7 +70,7 @@ serve(async (req) => {
             'Authorization': `Bearer ${OPENAI_API_KEY}`
           },
           body: JSON.stringify({
-            model: modelName,
+            model: modelName || defaultModelName,
             messages: [
               { role: 'system', content: systemMessage || 'You are a helpful assistant.' },
               { role: 'user', content: userQuery }
@@ -103,8 +105,37 @@ serve(async (req) => {
         )
       }
       
-      // This is a placeholder - you would need to implement the Anthropic API call
-      aiResponse = `This is a placeholder Anthropic response for query: "${userQuery}"`
+      const defaultModelName = 'claude-3-haiku-20240307'
+      
+      try {
+        const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: modelName || defaultModelName,
+            system: systemMessage || 'You are a helpful assistant.',
+            messages: [
+              { role: 'user', content: userQuery }
+            ],
+            max_tokens: 1000
+          })
+        })
+        
+        if (!anthropicResponse.ok) {
+          const errorData = await anthropicResponse.json()
+          throw new Error(`Anthropic API error: ${JSON.stringify(errorData)}`)
+        }
+        
+        const data = await anthropicResponse.json()
+        aiResponse = data.content[0].text
+      } catch (error) {
+        console.error('Anthropic API error:', error)
+        aiResponse = `Could not connect to Anthropic Claude. This is a placeholder response for: "${userQuery}"`
+      }
     } else if (aiProvider === 'deepseek') {
       if (!DEEPSEEK_API_KEY) {
         return new Response(
@@ -119,8 +150,37 @@ serve(async (req) => {
         )
       }
       
-      // This is a placeholder - you would need to implement the Deepseek API call
-      aiResponse = `This is a placeholder Deepseek response for query: "${userQuery}"`
+      const defaultModelName = 'deepseek-chat'
+      
+      try {
+        const deepseekResponse = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: modelName || defaultModelName,
+            messages: [
+              { role: 'system', content: systemMessage || 'You are a helpful assistant.' },
+              { role: 'user', content: userQuery }
+            ],
+            temperature: 0.7,
+            max_tokens: 1000
+          })
+        })
+        
+        if (!deepseekResponse.ok) {
+          const errorData = await deepseekResponse.json()
+          throw new Error(`Deepseek API error: ${JSON.stringify(errorData)}`)
+        }
+        
+        const data = await deepseekResponse.json()
+        aiResponse = data.choices[0].message.content
+      } catch (error) {
+        console.error('Deepseek API error:', error)
+        aiResponse = `Could not connect to Deepseek. This is a placeholder response for: "${userQuery}"`
+      }
     } else {
       return new Response(
         JSON.stringify({
@@ -132,6 +192,40 @@ serve(async (req) => {
           status: 400,
         }
       )
+    }
+
+    // Store the AI request in the database for tracking
+    try {
+      // Create Supabase client within the edge function
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+      
+      if (supabaseUrl && supabaseKey) {
+        // Import is inside try block to handle potential failure gracefully
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
+        // Insert the request record
+        await supabase.from('workflow_ai_requests').insert({
+          id: requestId,
+          workflow_id: workflowId,
+          node_id: nodeId, 
+          execution_id: executionId,
+          ai_provider: aiProvider,
+          user_query: userQuery,
+          ai_response: aiResponse,
+          status: 'completed',
+          created_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          model_name: modelName,
+          system_message: systemMessage
+        });
+        
+        console.log(`Stored AI request with ID: ${requestId}`);
+      }
+    } catch (dbError) {
+      // Log error but don't fail the request
+      console.error('Error storing AI request in database:', dbError);
     }
 
     return new Response(
