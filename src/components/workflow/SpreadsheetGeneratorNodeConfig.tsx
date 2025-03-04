@@ -37,7 +37,7 @@ const SpreadsheetGeneratorNodeConfig: React.FC<SpreadsheetGeneratorNodeConfigPro
   useEffect(() => {
     const defaultConfig = {
       filename: 'generated',
-      fileExtension: 'xlsx',
+      fileExtension: 'xlsx' as 'xlsx' | 'csv' | 'xls',
       sheets: [{ name: 'Sheet1', columns: [] }],
       ...node.data.config
     };
@@ -88,7 +88,7 @@ const SpreadsheetGeneratorNodeConfig: React.FC<SpreadsheetGeneratorNodeConfigPro
             <Label htmlFor="fileExtension">File Format</Label>
             <Select
               value={config.fileExtension || 'xlsx'}
-              onValueChange={(value) => handleChange('fileExtension', value)}
+              onValueChange={(value: 'xlsx' | 'csv' | 'xls') => handleChange('fileExtension', value)}
             >
               <SelectTrigger id="fileExtension">
                 <SelectValue placeholder="Select format" />

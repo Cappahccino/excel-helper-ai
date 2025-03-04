@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { X, Trash, Copy, ChevronRight } from 'lucide-react';
-import { NodeConfigPanelProps, WorkflowNode, AINodeData } from '@/types/workflow';
+import { NodeConfigPanelProps, WorkflowNode, AINodeData, SpreadsheetGeneratorNodeData } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import AskAINodeConfig from './AskAINodeConfig';
@@ -16,6 +17,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
 }) => {
   // Check if node is an AskAI node
   const isAskAINode = node.type === 'askAI';
+  const isSpreadsheetGeneratorNode = node.type === 'spreadsheetGenerator';
   
   // Generic handler for updating the node
   const handleUpdate = (updatedData: any) => {
@@ -54,8 +56,11 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
       case 'spreadsheetGenerator':
         return (
           <SpreadsheetGeneratorNodeConfig
-            node={node}
-            onConfigChange={onUpdateConfig}
+            node={{
+              id: node.id as string,
+              data: node.data as SpreadsheetGeneratorNodeData
+            }}
+            onConfigChange={(nodeId, config) => onUpdateConfig(config)}
           />
         );
       
