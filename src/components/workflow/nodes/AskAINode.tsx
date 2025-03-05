@@ -1,11 +1,12 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Brain, Send, MessageSquare, GripVertical, Save } from 'lucide-react';
+import { Brain, Send, MessageSquare, GripVertical, Settings } from 'lucide-react';
 import { AINodeData, NodeProps } from '@/types/workflow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { toast } from 'sonner';
 
 // Define the AIProvider type
@@ -101,12 +102,12 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     
     switch (provider) {
       case 'anthropic':
-        return <MessageSquare className="h-4 w-4 text-blue-500" />;
+        return <MessageSquare className="h-4 w-4 text-indigo-500" />;
       case 'deepseek':
-        return <Brain className="h-4 w-4 text-green-500" />;
+        return <Brain className="h-4 w-4 text-indigo-500" />;
       case 'openai':
       default:
-        return <Brain className="h-4 w-4 text-purple-500" />;
+        return <Brain className="h-4 w-4 text-indigo-500" />;
     }
   };
 
@@ -122,9 +123,9 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   };
 
   return (
-    <div className={`relative p-0 rounded-lg border-2 w-64 transition-all ${selected ? 'border-indigo-500 shadow-md' : 'border-indigo-200'}`}>
+    <Card className={`w-64 relative p-0 border-2 shadow-md transition-all ${selected ? 'border-indigo-500' : 'border-indigo-200'}`}>
       {/* Header */}
-      <div className="flex items-center gap-2 bg-indigo-50 p-2 rounded-t-md drag-handle cursor-move">
+      <CardHeader className="flex flex-row items-center gap-2 bg-indigo-50 p-2 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-indigo-500 opacity-50" />
         {getProviderIcon()}
         <div className="text-sm font-medium text-indigo-800">{nodeData.label}</div>
@@ -137,13 +138,16 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
             onClick={() => setIsEditing(!isEditing)}
           >
             <span className="sr-only">Edit node</span>
-            {isEditing ? <Save className="h-3.5 w-3.5" /> : <span className="text-xs">Edit</span>}
+            {isEditing ? 
+              <span className="text-xs text-indigo-600">Save</span> : 
+              <Settings className="h-3.5 w-3.5 text-indigo-600" />
+            }
           </Button>
         </div>
-      </div>
+      </CardHeader>
       
       {/* Body */}
-      <div className="p-3 pt-2 bg-white rounded-b-md">
+      <CardContent className="p-3 pt-2 bg-white rounded-b-md">
         {isEditing ? (
           <div className="space-y-3">
             <div className="space-y-1">
@@ -196,7 +200,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
             
             <Button 
               size="sm" 
-              className="w-full text-xs"
+              className="w-full text-xs bg-indigo-600 hover:bg-indigo-700"
               onClick={saveChanges}
               disabled={isSaving}
             >
@@ -238,7 +242,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
             )}
           </div>
         )}
-      </div>
+      </CardContent>
       
       {/* Input handle - top center */}
       <Handle
@@ -265,7 +269,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
           bottom: -5,
         }}
       />
-    </div>
+    </Card>
   );
 };
 
