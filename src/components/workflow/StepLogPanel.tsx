@@ -53,25 +53,84 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       setLoading(true);
       try {
         // First, get all logs for this execution to enable navigation between steps
-        const { data: executionLogs, error: executionError } = await supabase
-          .from('workflow_step_logs')
-          .select('*')
-          .eq('execution_id', executionId);
-
-        if (executionError) throw executionError;
-        
-        if (executionLogs) {
-          // Explicitly cast to StepLog[] since we know the structure
-          setAllLogs(executionLogs as StepLog[]);
+        // Using raw query approach to handle type issues
+        const { data: executionLogsData, error: executionError } = await supabase
+          .rpc('check_node_logs', { node_id_param: nodeId })
+          .select()
+          .single();
           
-          // Find the specific log for this node
-          const currentLog = executionLogs.find(log => log.node_id === nodeId) || null;
-          setStepLog(currentLog as StepLog | null);
+        // If we have logs for this node, fetch the actual log data
+        if (executionLogsData && executionLogsData.has_logs) {
+          // Get all logs for this execution using a raw query to work around type issues
+          const { data, error } = await supabase
+            .from('workflow_step_logs')
+            .select('*')
+            .eq('execution_id', executionId)
+            .then(response => {
+              return {
+                data: response.data as unknown as StepLog[],
+                error: response.error
+              };
+            });
+            
+          if (error) {
+            throw error;
+          }
           
-          // Set the current index for navigation
-          if (currentLog) {
-            const index = executionLogs.findIndex(log => log.id === currentLog.id) || 0;
-            setCurrentLogIndex(index);
+          if (data && data.length > 0) {
+            // Set all logs for navigation
+            setAllLogs(data);
+            
+            // Find the specific log for this node
+            const currentLog = data.find(log => log.node_id === nodeId) || null;
+            setStepLog(currentLog);
+            
+            // Set the current index for navigation
+            if (currentLog) {
+              const index = data.findIndex(log => log.id === currentLog.id) || 0;
+              setCurrentLogIndex(index);
+            }
+          }
+        } else {
+          // If no logs found via RPC, try a direct query as a fallback
+          // This handles the case where the RPC might not be available yet
+          const { data, error } = await supabase
+            .from('workflow_step_logs')
+            .select('*')
+            .eq('node_id', nodeId)
+            .eq('execution_id', executionId)
+            .then(response => {
+              return {
+                data: response.data as unknown as StepLog[],
+                error: response.error
+              };
+            });
+            
+          if (!error && data && data.length > 0) {
+            // Set all logs for this execution
+            const { data: allExecutionLogs } = await supabase
+              .from('workflow_step_logs')
+              .select('*')
+              .eq('execution_id', executionId)
+              .then(response => {
+                return {
+                  data: response.data as unknown as StepLog[],
+                  error: response.error
+                };
+              });
+              
+            if (allExecutionLogs) {
+              setAllLogs(allExecutionLogs);
+            }
+            
+            // Set the specific log for this node
+            setStepLog(data[0]);
+            
+            // Set the current index for navigation
+            if (data[0] && allExecutionLogs) {
+              const index = allExecutionLogs.findIndex(log => log.id === data[0].id) || 0;
+              setCurrentLogIndex(index);
+            }
           }
         }
       } catch (error) {

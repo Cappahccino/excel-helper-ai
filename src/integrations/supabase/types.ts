@@ -1099,6 +1099,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_node_logs: {
+        Args: {
+          node_id_param: string
+        }
+        Returns: {
+          has_logs: boolean
+        }[]
+      }
       cleanup_orphaned_files: {
         Args: Record<PropertyKey, never>
         Returns: undefined

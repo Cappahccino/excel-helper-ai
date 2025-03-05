@@ -1,3 +1,4 @@
+
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileSpreadsheet, GripVertical, Save, FileText } from 'lucide-react';
@@ -48,19 +49,25 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
     
     const checkForLogs = async () => {
       try {
-        // Use a raw query to check for logs as a workaround for type issues
+        // Use the RPC function to check for logs
         const { data, error } = await supabase
           .rpc('check_node_logs', { node_id_param: id })
-          .select('has_logs')
           .single();
         
         if (error) {
-          // Fallback to direct query if RPC doesn't exist
+          console.log('RPC error, falling back to direct query:', error);
+          // Fallback to direct query if RPC doesn't exist or fails
           const { data: logsData, error: logsError } = await supabase
             .from('workflow_step_logs')
             .select('id')
             .eq('node_id', id)
-            .limit(1);
+            .limit(1)
+            .then(response => {
+              return {
+                data: response.data,
+                error: response.error
+              };
+            });
             
           if (!logsError && logsData && logsData.length > 0) {
             setHasLogs(true);
