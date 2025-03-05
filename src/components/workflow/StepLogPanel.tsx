@@ -54,31 +54,29 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       setLoading(true);
       try {
         const { data: logsExistResult, error: rpcError } = await supabase
-          .rpc<NodeLogsCheckResult>('check_node_logs', { node_id_param: nodeId })
+          .rpc<NodeLogsCheckResult, { node_id_param: string }>('check_node_logs', { node_id_param: nodeId })
           .single();
           
-        if (logsExistResult && logsExistResult.has_logs) {
+        if (logsExistResult && typeof logsExistResult === 'object' && 'has_logs' in logsExistResult && logsExistResult.has_logs) {
           const { data: executionLogsRaw, error: executionError } = await supabase
             .from('workflow_step_logs' as any)
             .select('*')
-            .eq('execution_id', executionId)
-            .then(response => ({
-              data: response.data as unknown as StepLog[],
-              error: response.error
-            }));
+            .eq('execution_id', executionId);
             
           if (executionError) {
             throw executionError;
           }
           
-          if (executionLogsRaw && executionLogsRaw.length > 0) {
-            setAllLogs(executionLogsRaw);
+          const typedLogs = executionLogsRaw as unknown as StepLog[];
+          
+          if (typedLogs && typedLogs.length > 0) {
+            setAllLogs(typedLogs);
             
-            const currentLog = executionLogsRaw.find(log => log.node_id === nodeId) || null;
+            const currentLog = typedLogs.find(log => log.node_id === nodeId) || null;
             setStepLog(currentLog);
             
             if (currentLog) {
-              const index = executionLogsRaw.findIndex(log => log.id === currentLog.id);
+              const index = typedLogs.findIndex(log => log.id === currentLog.id);
               setCurrentLogIndex(index >= 0 ? index : 0);
             }
           }
@@ -87,30 +85,26 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
             .from('workflow_step_logs' as any)
             .select('*')
             .eq('node_id', nodeId)
-            .eq('execution_id', executionId)
-            .then(response => ({
-              data: response.data as unknown as StepLog[],
-              error: response.error
-            }));
+            .eq('execution_id', executionId);
             
-          if (!nodeLogError && nodeLogsRaw && nodeLogsRaw.length > 0) {
+          const typedNodeLogs = nodeLogsRaw as unknown as StepLog[];
+          
+          if (!nodeLogError && typedNodeLogs && typedNodeLogs.length > 0) {
             const { data: allExecutionLogsRaw, error: allLogsError } = await supabase
               .from('workflow_step_logs' as any)
               .select('*')
-              .eq('execution_id', executionId)
-              .then(response => ({
-                data: response.data as unknown as StepLog[],
-                error: response.error
-              }));
+              .eq('execution_id', executionId);
               
-            if (allExecutionLogsRaw) {
-              setAllLogs(allExecutionLogsRaw);
+            const typedAllLogs = allExecutionLogsRaw as unknown as StepLog[];
+            
+            if (typedAllLogs) {
+              setAllLogs(typedAllLogs);
             }
             
-            setStepLog(nodeLogsRaw[0]);
+            setStepLog(typedNodeLogs[0]);
             
-            if (nodeLogsRaw[0] && allExecutionLogsRaw) {
-              const index = allExecutionLogsRaw.findIndex(log => log.id === nodeLogsRaw[0].id);
+            if (typedNodeLogs[0] && typedAllLogs) {
+              const index = typedAllLogs.findIndex(log => log.id === typedNodeLogs[0].id);
               setCurrentLogIndex(index >= 0 ? index : 0);
             }
           }

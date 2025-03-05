@@ -1,3 +1,4 @@
+
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileSpreadsheet, GripVertical, Save, FileText } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { Json } from '@/integrations/supabase/types';
 
 // Default data if none is provided
 const defaultData: SpreadsheetGeneratorNodeData = {
@@ -55,30 +57,23 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
       try {
         // Use the RPC function to check for logs with proper typing
         const { data, error } = await supabase
-          .rpc<NodeLogsCheckResult>('check_node_logs', { node_id_param: id })
+          .rpc<NodeLogsCheckResult, { node_id_param: string }>('check_node_logs', { node_id_param: id })
           .single();
         
         if (error) {
           console.log('RPC error, falling back to direct query:', error);
           // Fallback to direct query if RPC doesn't exist or fails
-          // We're using type assertion to avoid TypeScript errors
           const { data: rawData, error: queryError } = await supabase
             .from('workflow_step_logs' as any)
             .select('id')
             .eq('node_id', id)
-            .limit(1)
-            .then(response => {
-              return {
-                data: response.data,
-                error: response.error
-              };
-            });
+            .limit(1);
             
           if (!queryError && rawData && rawData.length > 0) {
             setHasLogs(true);
           }
-        } else if (data && data.has_logs) {
-          setHasLogs(true);
+        } else if (data && typeof data === 'object' && 'has_logs' in data) {
+          setHasLogs(data.has_logs);
         }
       } catch (error) {
         console.error('Error checking for logs:', error);
