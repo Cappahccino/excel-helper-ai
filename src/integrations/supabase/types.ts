@@ -881,6 +881,51 @@ export type Database = {
           },
         ]
       }
+      workflow_step_logs: {
+        Row: {
+          cell_changes: Json | null
+          created_at: string
+          execution_id: string
+          execution_time_ms: number
+          id: string
+          input_data: Json | null
+          node_id: string
+          node_type: string
+          output_data: Json | null
+          processing_metadata: Json | null
+          status: Database["public"]["Enums"]["log_status"]
+          workflow_id: string | null
+        }
+        Insert: {
+          cell_changes?: Json | null
+          created_at?: string
+          execution_id: string
+          execution_time_ms?: number
+          id?: string
+          input_data?: Json | null
+          node_id: string
+          node_type: string
+          output_data?: Json | null
+          processing_metadata?: Json | null
+          status?: Database["public"]["Enums"]["log_status"]
+          workflow_id?: string | null
+        }
+        Update: {
+          cell_changes?: Json | null
+          created_at?: string
+          execution_id?: string
+          execution_time_ms?: number
+          id?: string
+          input_data?: Json | null
+          node_id?: string
+          node_type?: string
+          output_data?: Json | null
+          processing_metadata?: Json | null
+          status?: Database["public"]["Enums"]["log_status"]
+          workflow_id?: string | null
+        }
+        Relationships: []
+      }
       workflow_steps: {
         Row: {
           completed_at: string | null
@@ -1115,6 +1160,27 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      compute_excel_diff: {
+        Args: {
+          input_data: Json
+          output_data: Json
+        }
+        Returns: Json
+      }
+      extract_excel_sheet_data: {
+        Args: {
+          log_data: Json
+        }
+        Returns: Json
+      }
+      has_excel_data: {
+        Args: {
+          node_id_param: string
+        }
+        Returns: {
+          has_excel_data: boolean
+        }[]
+      }
       start_workflow_execution: {
         Args: {
           workflow_id: string
@@ -1131,6 +1197,7 @@ export type Database = {
         | "analyzing"
         | "completed"
         | "error"
+      log_status: "success" | "error" | "warning" | "info"
       message_status:
         | "in_progress"
         | "completed"

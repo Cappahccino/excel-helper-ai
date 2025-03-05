@@ -1,7 +1,7 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileSpreadsheet, GripVertical, Save, FileText } from 'lucide-react';
+import { FileSpreadsheet, GripVertical, Save, FileText, Table, Plus } from 'lucide-react';
 import { NodeProps, SpreadsheetGeneratorNodeData } from '@/types/workflow';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { Json } from '@/integrations/supabase/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Default data if none is provided
 const defaultData: SpreadsheetGeneratorNodeData = {
@@ -34,6 +35,11 @@ interface NodeLogsResponse {
   has_logs: boolean;
 }
 
+// Define a type for the Excel data indicator
+interface ExcelDataIndicator {
+  has_excel_data: boolean;
+}
+
 const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: SpreadsheetGeneratorNodeProps) => {
   // Use provided data or fallback to default data
   const nodeData: SpreadsheetGeneratorNodeData = data ? {
@@ -48,6 +54,8 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
   const [filename, setFilename] = useState(nodeData.config?.filename || 'generated');
   const [fileExtension, setFileExtension] = useState(nodeData.config?.fileExtension || 'xlsx');
   const [hasLogs, setHasLogs] = useState(false);
+  const [hasExcelData, setHasExcelData] = useState(false);
+  const [sheetCount, setSheetCount] = useState(0);
 
   // Check if this node has execution logs
   useEffect(() => {
@@ -77,13 +85,45 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
             setHasLogs((data as NodeLogsResponse).has_logs);
           }
         }
+
+        // Check if the node has Excel data
+        const { data: excelData, error: excelError } = await supabase
+          .rpc('has_excel_data', { node_id_param: id });
+
+        if (!excelError && excelData) {
+          if (typeof excelData === 'object' && excelData !== null && 'has_excel_data' in excelData) {
+            setHasExcelData((excelData as ExcelDataIndicator).has_excel_data);
+          }
+        }
+
+        // Fetch sheet information if available
+        if (hasLogs) {
+          const { data: logData, error: logError } = await supabase
+            .from('workflow_step_logs' as any)
+            .select('output_data')
+            .eq('node_id', id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (!logError && logData && logData.length > 0) {
+            const output = logData[0].output_data;
+            if (output && typeof output === 'object') {
+              // Check for sheets in different possible output structures
+              if (output.fileMetadata && output.fileMetadata.sheets) {
+                setSheetCount(output.fileMetadata.sheets.length);
+              } else if (output.sheets && Array.isArray(output.sheets)) {
+                setSheetCount(output.sheets.length);
+              }
+            }
+          }
+        }
       } catch (error) {
         console.error('Error checking for logs:', error);
       }
     };
     
     checkForLogs();
-  }, [id]);
+  }, [id, hasLogs]);
 
   const handleSave = () => {
     if (!id) {
@@ -107,16 +147,45 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
         <GripVertical className="h-4 w-4 text-blue-500 opacity-50" />
         <FileSpreadsheet className="h-4 w-4 text-blue-500" />
         <div className="text-sm font-medium text-blue-800 flex-1">{nodeData.label}</div>
-        {hasLogs && (
-          <Badge 
-            variant="outline" 
-            className="text-xs bg-blue-50 text-blue-600 border-blue-200 flex items-center gap-1"
-            title="Execution logs available"
-          >
-            <FileText className="h-3 w-3" />
-            Logs
-          </Badge>
-        )}
+        <div className="flex items-center gap-1">
+          {hasExcelData && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs bg-green-50 text-green-600 border-green-200 flex items-center gap-1"
+                  >
+                    <Table className="h-3 w-3" />
+                    {sheetCount ? `${sheetCount} sheet${sheetCount > 1 ? 's' : ''}` : 'Data'}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>This node has Excel data available</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {hasLogs && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs bg-blue-50 text-blue-600 border-blue-200 flex items-center gap-1"
+                  >
+                    <FileText className="h-3 w-3" />
+                    Logs
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Execution logs available</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
       
       {/* Body */}
@@ -149,14 +218,36 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
             </Select>
           </div>
           
-          <Button 
-            size="sm" 
-            className="w-full text-xs mt-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 flex items-center justify-center gap-1"
-            onClick={handleSave}
-          >
-            <Save className="h-3 w-3" />
-            Save Changes
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              className="w-full text-xs mt-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 flex items-center justify-center gap-1"
+              onClick={handleSave}
+            >
+              <Save className="h-3 w-3" />
+              Save Changes
+            </Button>
+            
+            {hasExcelData && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="mt-2 px-2 border-blue-200 hover:bg-blue-50"
+                      onClick={() => toast.info("Sheet configuration will be implemented in a future update")}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Add/configure sheets</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
         </div>
       </div>
       

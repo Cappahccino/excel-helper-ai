@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { X, ArrowLeft, ArrowRight, Maximize2, Minimize2, FileText, Database, Terminal } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, ArrowLeft, ArrowRight, Maximize2, Minimize2, FileText, Database, Terminal, Table, AlertCircle, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -23,6 +23,10 @@ interface NodeLogsResponse {
   has_logs: boolean;
 }
 
+interface ExcelDataIndicator {
+  has_excel_data: boolean;
+}
+
 interface StepLog {
   id: string;
   node_id: string;
@@ -35,6 +39,7 @@ interface StepLog {
   status: 'success' | 'error' | 'warning' | 'info';
   execution_time_ms: number;
   created_at: string;
+  cell_changes?: any;
 }
 
 const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workflowId, onClose }) => {
@@ -44,6 +49,8 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
   const [stepLog, setStepLog] = useState<StepLog | null>(null);
   const [allLogs, setAllLogs] = useState<StepLog[]>([]);
   const [currentLogIndex, setCurrentLogIndex] = useState<number>(0);
+  const [hasExcelData, setHasExcelData] = useState<boolean>(false);
+  const [showExcelChanges, setShowExcelChanges] = useState<boolean>(false);
 
   useEffect(() => {
     if (!nodeId || !executionId) {
@@ -54,6 +61,16 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     const fetchStepLog = async () => {
       setLoading(true);
       try {
+        // Check if the node has Excel data
+        const { data: excelData, error: excelError } = await supabase
+          .rpc('has_excel_data', { node_id_param: nodeId });
+
+        if (!excelError && excelData) {
+          if (typeof excelData === 'object' && excelData !== null && 'has_excel_data' in excelData) {
+            setHasExcelData((excelData as ExcelDataIndicator).has_excel_data);
+          }
+        }
+
         const { data: logsExistResult, error: rpcError } = await supabase
           .rpc('check_node_logs', { node_id_param: nodeId });
           
@@ -153,6 +170,31 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     }
   };
 
+  // Function to detect changes between input and output cells
+  const detectCellChanges = (inputRow: any, outputRow: any, headers: string[]): Record<string, boolean> => {
+    if (!inputRow || !outputRow || !headers || headers.length === 0) {
+      return {};
+    }
+
+    const changes: Record<string, boolean> = {};
+    
+    headers.forEach(header => {
+      if (inputRow[header] !== outputRow[header]) {
+        changes[header] = true;
+      }
+    });
+    
+    return changes;
+  };
+
+  // Extract cell changes from the log
+  const cellChanges = useMemo(() => {
+    if (!stepLog || !stepLog.cell_changes || !stepLog.cell_changes.has_changes) {
+      return null;
+    }
+    return stepLog.cell_changes;
+  }, [stepLog]);
+
   const renderData = (data: any, type: 'input' | 'output') => {
     if (loading) {
       return (
@@ -170,7 +212,8 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
 
     const isSpreadsheetData = 
       stepLog?.node_type === 'spreadsheetGenerator' || 
-      (data.sheets || data.rows || data.columns || data.headers);
+      (data.sheets || data.rows || data.columns || data.headers) ||
+      hasExcelData;
 
     if (isSpreadsheetData) {
       return renderSpreadsheetData(data, type);
@@ -189,24 +232,32 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     let headers: string[] = [];
     let rows: any[] = [];
 
+    // Extract headers
     if (data.headers) {
       headers = data.headers;
     } else if (data.columns) {
       headers = Array.isArray(data.columns) ? data.columns.map((col: any) => col.header || col.name || col) : [];
     }
 
+    // Extract rows
     if (data.rows) {
       rows = data.rows;
     } else if (data.data) {
       rows = data.data;
     }
 
+    // If no headers but we have rows, try to extract headers from first row
     if (headers.length === 0 && rows.length > 0) {
       if (typeof rows[0] === 'object') {
         headers = Object.keys(rows[0]);
       }
     }
 
+    // Get complementary data for comparison
+    const compareData = type === 'input' ? stepLog?.output_data : stepLog?.input_data;
+    const compareRows = compareData?.rows || compareData?.data || [];
+
+    // Show raw JSON if we couldn't extract tabular data
     if (headers.length === 0) {
       return (
         <ScrollArea className="h-[300px] rounded-md border p-4">
@@ -217,40 +268,106 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       );
     }
 
+    // Added headers from cell changes
+    const addedHeaders = cellChanges?.added_headers || [];
+    const removedHeaders = cellChanges?.removed_headers || [];
+
     return (
-      <ScrollArea className="h-[300px]">
-        <div className="border rounded-md overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 border-b">
-                {headers.map((header, i) => (
-                  <th key={i} className="px-3 py-2 text-left text-xs font-medium text-slate-500">
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 50).map((row, i) => (
-                <tr key={i} className="border-b last:border-0">
-                  {headers.map((header, j) => (
-                    <td key={j} className="px-3 py-2 text-xs">
-                      {typeof row === 'object' ? String(row[header] || '') : String(row || '')}
+      <div className="space-y-2">
+        {cellChanges && cellChanges.has_changes && (
+          <div className="flex justify-between items-center mb-2">
+            <Badge variant="outline" className="flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-200">
+              <AlertCircle className="h-3 w-3" />
+              Data has changes
+            </Badge>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-xs"
+              onClick={() => setShowExcelChanges(!showExcelChanges)}
+            >
+              {showExcelChanges ? 'Hide changes' : 'Show changes'}
+            </Button>
+          </div>
+        )}
+        
+        <ScrollArea className="h-[300px]">
+          <div className="border rounded-md overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b">
+                  {headers.map((header, i) => {
+                    const isAdded = addedHeaders.includes(header) && showExcelChanges;
+                    const isRemoved = removedHeaders.includes(header) && showExcelChanges;
+                    
+                    return (
+                      <th 
+                        key={i} 
+                        className={`px-3 py-2 text-left text-xs font-medium ${
+                          isAdded ? 'bg-green-100 text-green-800' : 
+                          isRemoved ? 'bg-red-100 text-red-800' : 
+                          'text-slate-500'
+                        }`}
+                      >
+                        {header}
+                        {isAdded && <Check className="inline-block ml-1 h-3 w-3 text-green-600" />}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 50).map((row, i) => {
+                  // Find corresponding row in the other dataset (for highlighting changes)
+                  const compareRow = compareRows[i];
+                  // Detect changes if we're showing changes and have comparison data
+                  const changes = (showExcelChanges && compareRow && stepLog?.cell_changes?.has_changes) 
+                    ? detectCellChanges(
+                        type === 'input' ? row : compareRow, 
+                        type === 'input' ? compareRow : row, 
+                        headers
+                      ) 
+                    : {};
+                  
+                  return (
+                    <tr key={i} className="border-b last:border-0">
+                      {headers.map((header, j) => {
+                        const hasChanged = changes[header];
+                        const cellValue = typeof row === 'object' ? String(row[header] || '') : String(row || '');
+                        
+                        return (
+                          <td 
+                            key={j} 
+                            className={`px-3 py-2 text-xs ${
+                              hasChanged ? (type === 'output' ? 'bg-green-50 text-green-900' : 'bg-yellow-50 text-yellow-900') : ''
+                            }`}
+                          >
+                            {cellValue}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+                {rows.length > 50 && (
+                  <tr>
+                    <td colSpan={headers.length} className="px-3 py-2 text-xs text-center italic text-muted-foreground">
+                      Showing first 50 rows of {rows.length} total
                     </td>
-                  ))}
-                </tr>
-              ))}
-              {rows.length > 50 && (
-                <tr>
-                  <td colSpan={headers.length} className="px-3 py-2 text-xs text-center italic text-muted-foreground">
-                    Showing first 50 rows of {rows.length} total
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </ScrollArea>
+                  </tr>
+                )}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={headers.length} className="px-3 py-8 text-center italic text-muted-foreground">
+                      No data available
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </ScrollArea>
+      </div>
     );
   };
 
@@ -311,6 +428,11 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
               }
             >
               {stepLog.status}
+            </Badge>
+          )}
+          {hasExcelData && (
+            <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
+              <Table className="h-3 w-3 mr-1" /> Excel Data
             </Badge>
           )}
         </div>
@@ -408,6 +530,18 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
                       <dd className="font-medium">
                         {new Date(stepLog.created_at).toLocaleString()}
                       </dd>
+
+                      {stepLog.cell_changes && stepLog.cell_changes.has_changes && (
+                        <>
+                          <dt className="text-muted-foreground">Data Changes:</dt>
+                          <dd>
+                            <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">
+                              <AlertCircle className="h-3 w-3 mr-1" /> 
+                              Data was modified
+                            </Badge>
+                          </dd>
+                        </>
+                      )}
                     </dl>
                   </CardContent>
                 </Card>
@@ -447,6 +581,43 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
                     </CardContent>
                   </Card>
                 </div>
+
+                {stepLog.cell_changes && stepLog.cell_changes.has_changes && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Data Transformation Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        {stepLog.cell_changes.added_headers && stepLog.cell_changes.added_headers.length > 0 && (
+                          <>
+                            <dt className="text-muted-foreground">Added Columns:</dt>
+                            <dd className="font-medium">
+                              {stepLog.cell_changes.added_headers.map((header: string, index: number) => (
+                                <Badge key={index} variant="outline" className="bg-green-50 text-green-600 border-green-200 mr-1 mb-1">
+                                  {header}
+                                </Badge>
+                              ))}
+                            </dd>
+                          </>
+                        )}
+
+                        {stepLog.cell_changes.removed_headers && stepLog.cell_changes.removed_headers.length > 0 && (
+                          <>
+                            <dt className="text-muted-foreground">Removed Columns:</dt>
+                            <dd className="font-medium">
+                              {stepLog.cell_changes.removed_headers.map((header: string, index: number) => (
+                                <Badge key={index} variant="outline" className="bg-red-50 text-red-600 border-red-200 mr-1 mb-1">
+                                  {header}
+                                </Badge>
+                              ))}
+                            </dd>
+                          </>
+                        )}
+                      </dl>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             )}
           </TabsContent>
