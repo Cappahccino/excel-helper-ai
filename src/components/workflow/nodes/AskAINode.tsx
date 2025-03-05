@@ -1,7 +1,7 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Brain, Send, MessageSquare, GripVertical, Settings } from 'lucide-react';
+import { Brain, MessageSquare, GripVertical } from 'lucide-react';
 import { AINodeData, NodeProps } from '@/types/workflow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -55,19 +55,20 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     }
   } : defaultData;
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [prompt, setPrompt] = useState(nodeData.config?.prompt || '');
   const [provider, setProvider] = useState<AIProvider>(
     (nodeData.config?.aiProvider as AIProvider) || 'openai'
   );
   const [model, setModel] = useState(nodeData.config?.modelName || providerOptions[provider][0].id);
+  const [prompt, setPrompt] = useState(nodeData.config?.prompt || '');
+  const [systemMessage, setSystemMessage] = useState(nodeData.config?.systemMessage || '');
   const [isSaving, setIsSaving] = useState(false);
 
   // Sync local state with node data when it changes
   useEffect(() => {
-    setPrompt(nodeData.config?.prompt || '');
     setProvider((nodeData.config?.aiProvider as AIProvider) || 'openai');
     setModel(nodeData.config?.modelName || providerOptions[(nodeData.config?.aiProvider as AIProvider) || 'openai'][0].id);
+    setPrompt(nodeData.config?.prompt || '');
+    setSystemMessage(nodeData.config?.systemMessage || '');
   }, [nodeData.config]);
 
   // Save changes to node data
@@ -82,7 +83,8 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     const updatedConfig = {
       aiProvider: provider,
       modelName: model,
-      prompt: prompt
+      prompt: prompt,
+      systemMessage: systemMessage
     };
     
     // Update node through parent component if callback exists
@@ -90,16 +92,13 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
       onConfigChange(id, updatedConfig);
     }
     
-    // Show success message and exit editing mode
+    // Show success message
     toast.success("Changes saved to node");
     setIsSaving(false);
-    setIsEditing(false);
   };
 
   // Determine appropriate icons
   const getProviderIcon = () => {
-    const provider = nodeData.config?.aiProvider || 'openai';
-    
     switch (provider) {
       case 'anthropic':
         return <MessageSquare className="h-4 w-4 text-indigo-500" />;
@@ -111,137 +110,97 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     }
   };
 
-  // Get the current provider's model name for display
-  const getModelDisplayName = () => {
-    const provider = (nodeData.config?.aiProvider as AIProvider) || 'openai';
-    const modelId = nodeData.config?.modelName;
-    
-    if (!modelId) return 'Not selected';
-    
-    const modelOption = providerOptions[provider]?.find(model => model.id === modelId);
-    return modelOption?.name || modelId;
-  };
-
   return (
-    <Card className={`w-64 relative p-0 border-2 shadow-md transition-all ${selected ? 'border-indigo-500' : 'border-indigo-200'}`}>
+    <Card className={`w-64 relative p-0 border-2 shadow-md transition-all ${selected ? 'border-indigo-500' : 'border-indigo-200'} rounded-xl`}>
       {/* Header */}
-      <CardHeader className="flex flex-row items-center gap-2 bg-indigo-50 p-2 rounded-t-md drag-handle cursor-move">
+      <CardHeader className="flex flex-row items-center gap-2 bg-indigo-50 p-2 rounded-t-xl drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-indigo-500 opacity-50" />
         {getProviderIcon()}
         <div className="text-sm font-medium text-indigo-800">{nodeData.label}</div>
-        
-        <div className="ml-auto">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6"
-            onClick={() => setIsEditing(!isEditing)}
-          >
-            <span className="sr-only">Edit node</span>
-            {isEditing ? 
-              <span className="text-xs text-indigo-600">Save</span> : 
-              <Settings className="h-3.5 w-3.5 text-indigo-600" />
-            }
-          </Button>
-        </div>
       </CardHeader>
       
       {/* Body */}
-      <CardContent className="p-3 pt-2 bg-white rounded-b-md">
-        {isEditing ? (
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Provider</label>
-              <Select 
-                value={provider} 
-                onValueChange={(value: AIProvider) => {
-                  setProvider(value);
-                  // Reset model to first available for the new provider
-                  setModel(providerOptions[value][0].id);
-                }}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="deepseek">DeepSeek</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Model</label>
-              <Select 
-                value={model} 
-                onValueChange={(value) => setModel(value)}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {providerOptions[provider].map((model) => (
-                    <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Prompt</label>
-              <Textarea 
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Enter your query to the AI..."
-                className="min-h-[80px] text-xs"
-              />
-            </div>
-            
-            <Button 
-              size="sm" 
-              className="w-full text-xs bg-indigo-600 hover:bg-indigo-700"
-              onClick={saveChanges}
-              disabled={isSaving}
+      <CardContent className="p-3 pt-2 bg-white rounded-b-xl">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-indigo-700">Provider</label>
+            <Select 
+              value={provider} 
+              onValueChange={(value: AIProvider) => {
+                setProvider(value);
+                // Reset model to first available for the new provider
+                setModel(providerOptions[value][0].id);
+              }}
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </Button>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai">OpenAI</SelectItem>
+                <SelectItem value="anthropic">Anthropic</SelectItem>
+                <SelectItem value="deepseek">DeepSeek</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        ) : (
-          <div className="text-xs text-gray-600">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-medium">Provider:</span>
-              <span className="capitalize">{nodeData.config?.aiProvider || 'OpenAI'}</span>
-            </div>
-            
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-medium">Model:</span>
-              <span>{getModelDisplayName()}</span>
-            </div>
-            
-            {nodeData.config?.prompt && (
-              <div className="mb-2">
-                <span className="font-medium block mb-1">Prompt:</span>
-                <div className="text-xs bg-gray-50 p-2 rounded max-h-16 overflow-y-auto">
-                  {nodeData.config.prompt}
-                </div>
-              </div>
-            )}
-            
-            {nodeData.config?.lastResponse && (
-              <div className="mt-3 pt-2 border-t border-gray-100">
-                <div className="flex items-center text-xs font-medium text-indigo-600 mb-1">
-                  <Send className="h-3 w-3 mr-1" />
-                  Last Response
-                </div>
-                <div className="text-xs bg-gray-50 p-2 rounded max-h-16 overflow-y-auto">
-                  {nodeData.config.lastResponse.substring(0, 100)}
-                  {nodeData.config.lastResponse.length > 100 && '...'}
-                </div>
-              </div>
-            )}
+          
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-indigo-700">Model</label>
+            <Select 
+              value={model} 
+              onValueChange={(value) => setModel(value)}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerOptions[provider].map((model) => (
+                  <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        )}
+          
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-indigo-700">System Message</label>
+            <Textarea 
+              value={systemMessage}
+              onChange={(e) => setSystemMessage(e.target.value)}
+              placeholder="Enter system message..."
+              className="min-h-[60px] text-xs"
+            />
+          </div>
+          
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-indigo-700">Prompt</label>
+            <Textarea 
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Enter your query to the AI..."
+              className="min-h-[60px] text-xs"
+            />
+          </div>
+          
+          <Button 
+            size="sm" 
+            className="w-full text-xs bg-indigo-600 hover:bg-indigo-700"
+            onClick={saveChanges}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </Button>
+          
+          {nodeData.config?.lastResponse && (
+            <div className="pt-2 border-t border-gray-100">
+              <div className="flex items-center text-xs font-medium text-indigo-600 mb-1">
+                Last Response
+              </div>
+              <div className="text-xs bg-gray-50 p-2 rounded max-h-16 overflow-y-auto">
+                {nodeData.config.lastResponse.substring(0, 100)}
+                {nodeData.config.lastResponse.length > 100 && '...'}
+              </div>
+            </div>
+          )}
+        </div>
       </CardContent>
       
       {/* Input handle - top center */}
