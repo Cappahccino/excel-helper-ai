@@ -1,8 +1,8 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Brain, MessageSquare, GripVertical } from 'lucide-react';
-import { AINodeData, NodeProps } from '@/types/workflow';
+import { Brain, MessageSquare, GripVertical, Save } from 'lucide-react';
+import { AINodeData } from '@/types/workflow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,10 @@ const providerOptions: Record<AIProvider, Array<{id: string, name: string}>> = {
   ]
 };
 
-interface AskAINodeProps extends NodeProps<AINodeData> {
+interface AskAINodeProps {
+  data?: AINodeData;
+  selected?: boolean;
+  id?: string;
   onConfigChange?: (nodeId: string, config: Partial<AINodeData['config']>) => void;
 }
 
@@ -63,13 +66,10 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   const [systemMessage, setSystemMessage] = useState(nodeData.config?.systemMessage || '');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Sync local state with node data when it changes
+  // Update model options when provider changes
   useEffect(() => {
-    setProvider((nodeData.config?.aiProvider as AIProvider) || 'openai');
-    setModel(nodeData.config?.modelName || providerOptions[(nodeData.config?.aiProvider as AIProvider) || 'openai'][0].id);
-    setPrompt(nodeData.config?.prompt || '');
-    setSystemMessage(nodeData.config?.systemMessage || '');
-  }, [nodeData.config]);
+    setModel(providerOptions[provider][0].id);
+  }, [provider]);
 
   // Save changes to node data
   const saveChanges = () => {
@@ -111,9 +111,9 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   };
 
   return (
-    <Card className={`w-64 relative p-0 border-2 shadow-md transition-all ${selected ? 'border-indigo-500' : 'border-indigo-200'} rounded-xl`}>
+    <Card className={`w-64 relative p-0 border-2 shadow-md ${selected ? 'border-indigo-500' : 'border-indigo-200'} rounded-xl`}>
       {/* Header */}
-      <CardHeader className="flex flex-row items-center gap-2 bg-indigo-50 p-2 rounded-t-xl drag-handle cursor-move">
+      <CardHeader className="flex flex-row items-center gap-2 bg-gradient-to-r from-indigo-100 to-indigo-50 p-2 rounded-t-xl drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-indigo-500 opacity-50" />
         {getProviderIcon()}
         <div className="text-sm font-medium text-indigo-800">{nodeData.label}</div>
@@ -126,13 +126,9 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
             <label className="text-xs font-medium text-indigo-700">Provider</label>
             <Select 
               value={provider} 
-              onValueChange={(value: AIProvider) => {
-                setProvider(value);
-                // Reset model to first available for the new provider
-                setModel(providerOptions[value][0].id);
-              }}
+              onValueChange={(value: AIProvider) => setProvider(value)}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 text-xs border-indigo-200">
                 <SelectValue placeholder="Select provider" />
               </SelectTrigger>
               <SelectContent>
@@ -149,7 +145,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
               value={model} 
               onValueChange={(value) => setModel(value)}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 text-xs border-indigo-200">
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
@@ -166,7 +162,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
               value={systemMessage}
               onChange={(e) => setSystemMessage(e.target.value)}
               placeholder="Enter system message..."
-              className="min-h-[60px] text-xs"
+              className="min-h-[60px] text-xs border-indigo-200 focus:border-indigo-400 focus:ring-indigo-400"
             />
           </div>
           
@@ -176,16 +172,17 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Enter your query to the AI..."
-              className="min-h-[60px] text-xs"
+              className="min-h-[60px] text-xs border-indigo-200 focus:border-indigo-400 focus:ring-indigo-400"
             />
           </div>
           
           <Button 
             size="sm" 
-            className="w-full text-xs bg-indigo-600 hover:bg-indigo-700"
+            className="w-full text-xs bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 flex items-center justify-center gap-1"
             onClick={saveChanges}
             disabled={isSaving}
           >
+            <Save className="h-3 w-3" />
             {isSaving ? 'Saving...' : 'Save Changes'}
           </Button>
           
@@ -213,6 +210,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
           width: 10,
           height: 10,
           top: -5,
+          border: '2px solid white'
         }}
       />
       
@@ -226,6 +224,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
           width: 10,
           height: 10,
           bottom: -5,
+          border: '2px solid white'
         }}
       />
     </Card>
