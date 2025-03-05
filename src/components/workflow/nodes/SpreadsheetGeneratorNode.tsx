@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
-import { Json } from '@/integrations/supabase/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Default data if none is provided
@@ -71,7 +70,7 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
           console.log('RPC error, falling back to direct query:', error);
           // Fallback to direct query if RPC doesn't exist or fails
           const { data: rawData, error: queryError } = await supabase
-            .from('workflow_step_logs' as any)
+            .from('workflow_step_logs')
             .select('id')
             .eq('node_id', id)
             .limit(1);
@@ -99,7 +98,7 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
         // Fetch sheet information if available
         if (hasLogs) {
           const { data: logData, error: logError } = await supabase
-            .from('workflow_step_logs' as any)
+            .from('workflow_step_logs')
             .select('output_data')
             .eq('node_id', id)
             .order('created_at', { ascending: false })
