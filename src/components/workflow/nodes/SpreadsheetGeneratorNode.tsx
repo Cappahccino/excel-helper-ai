@@ -39,6 +39,23 @@ interface ExcelDataIndicator {
   has_excel_data: boolean;
 }
 
+// Define a type for the output data structure
+interface OutputData {
+  fileMetadata?: {
+    sheets?: Array<{
+      name: string;
+      columnCount?: number;
+    }>;
+    filename?: string;
+    format?: string;
+    generatedAt?: string;
+  };
+  sheets?: Array<any>;
+  status?: string;
+  message?: string;
+  timestamp?: string;
+}
+
 const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: SpreadsheetGeneratorNodeProps) => {
   // Use provided data or fallback to default data
   const nodeData: SpreadsheetGeneratorNodeData = data ? {
@@ -105,10 +122,11 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
             .limit(1);
 
           if (!logError && logData && logData.length > 0) {
-            const output = logData[0].output_data;
+            const output = logData[0].output_data as OutputData;
+            
             if (output && typeof output === 'object') {
               // Check for sheets in different possible output structures
-              if (output.fileMetadata && output.fileMetadata.sheets) {
+              if (output.fileMetadata && Array.isArray(output.fileMetadata.sheets)) {
                 setSheetCount(output.fileMetadata.sheets.length);
               } else if (output.sheets && Array.isArray(output.sheets)) {
                 setSheetCount(output.sheets.length);
