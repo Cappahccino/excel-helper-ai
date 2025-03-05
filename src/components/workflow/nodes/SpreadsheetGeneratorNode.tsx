@@ -30,7 +30,7 @@ interface SpreadsheetGeneratorNodeProps {
 }
 
 // Define a type for the response of check_node_logs RPC
-interface NodeLogsCheckResult {
+interface NodeLogsResponse {
   has_logs: boolean;
 }
 
@@ -55,10 +55,9 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
     
     const checkForLogs = async () => {
       try {
-        // Use the RPC function to check for logs with proper typing
+        // Use the RPC function to check for logs
         const { data, error } = await supabase
-          .rpc<NodeLogsCheckResult, { node_id_param: string }>('check_node_logs', { node_id_param: id })
-          .single();
+          .rpc('check_node_logs', { node_id_param: id });
         
         if (error) {
           console.log('RPC error, falling back to direct query:', error);
@@ -72,8 +71,11 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
           if (!queryError && rawData && rawData.length > 0) {
             setHasLogs(true);
           }
-        } else if (data && typeof data === 'object' && 'has_logs' in data) {
-          setHasLogs(data.has_logs);
+        } else if (data) {
+          // Handle the response safely with type checking
+          if (typeof data === 'object' && data !== null && 'has_logs' in data) {
+            setHasLogs((data as NodeLogsResponse).has_logs);
+          }
         }
       } catch (error) {
         console.error('Error checking for logs:', error);

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, ArrowLeft, ArrowRight, Maximize2, Minimize2, FileText, Database, Terminal } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,7 +19,7 @@ interface StepLogPanelProps {
   onClose: () => void;
 }
 
-interface NodeLogsCheckResult {
+interface NodeLogsResponse {
   has_logs: boolean;
 }
 
@@ -54,10 +55,15 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       setLoading(true);
       try {
         const { data: logsExistResult, error: rpcError } = await supabase
-          .rpc<NodeLogsCheckResult, { node_id_param: string }>('check_node_logs', { node_id_param: nodeId })
-          .single();
+          .rpc('check_node_logs', { node_id_param: nodeId });
           
-        if (logsExistResult && typeof logsExistResult === 'object' && 'has_logs' in logsExistResult && logsExistResult.has_logs) {
+        // Safely handle the RPC response with type checking
+        const hasLogs = !!logsExistResult && 
+                       typeof logsExistResult === 'object' && 
+                       'has_logs' in logsExistResult && 
+                       (logsExistResult as NodeLogsResponse).has_logs;
+          
+        if (hasLogs) {
           const { data: executionLogsRaw, error: executionError } = await supabase
             .from('workflow_step_logs' as any)
             .select('*')
