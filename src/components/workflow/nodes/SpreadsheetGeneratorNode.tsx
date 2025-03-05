@@ -57,7 +57,8 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
         if (error) {
           console.log('RPC error, falling back to direct query:', error);
           // Fallback to direct query if RPC doesn't exist or fails
-          const { data: logsData, error: logsError } = await supabase
+          // We're using raw query execution to avoid typescript errors with the table name
+          const { data: rawData, error: queryError } = await supabase
             .from('workflow_step_logs')
             .select('id')
             .eq('node_id', id)
@@ -69,7 +70,7 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
               };
             });
             
-          if (!logsError && logsData && logsData.length > 0) {
+          if (!queryError && rawData && rawData.length > 0) {
             setHasLogs(true);
           }
         } else if (data && data.has_logs) {
