@@ -1,13 +1,14 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Brain, MessageSquare, GripVertical, Save } from 'lucide-react';
+import { Brain, MessageSquare, GripVertical, Save, FileText } from 'lucide-react';
 import { AINodeData } from '@/types/workflow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 // Define the AIProvider type
 type AIProvider = 'openai' | 'anthropic' | 'deepseek';
@@ -65,11 +66,35 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   const [prompt, setPrompt] = useState(nodeData.config?.prompt || '');
   const [systemMessage, setSystemMessage] = useState(nodeData.config?.systemMessage || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [hasLogs, setHasLogs] = useState(false);
 
   // Update model options when provider changes
   useEffect(() => {
     setModel(providerOptions[provider][0].id);
   }, [provider]);
+
+  // Check if this node has execution logs
+  useEffect(() => {
+    if (!id) return;
+    
+    const checkForLogs = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('workflow_step_logs')
+          .select('id')
+          .eq('node_id', id)
+          .limit(1);
+        
+        if (!error && data && data.length > 0) {
+          setHasLogs(true);
+        }
+      } catch (error) {
+        console.error('Error checking for logs:', error);
+      }
+    };
+    
+    checkForLogs();
+  }, [id]);
 
   // Save changes to node data
   const saveChanges = () => {
@@ -111,16 +136,26 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   };
 
   return (
-    <Card className={`w-64 relative p-0 border-2 shadow-md ${selected ? 'border-indigo-500' : 'border-indigo-200'} rounded-xl`}>
+    <div className={`w-64 relative p-0 border-2 shadow-md ${selected ? 'border-indigo-500' : 'border-indigo-200'} rounded-xl`}>
       {/* Header */}
-      <CardHeader className="flex flex-row items-center gap-2 bg-gradient-to-r from-indigo-100 to-indigo-50 p-2 rounded-t-xl drag-handle cursor-move">
+      <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-100 to-indigo-50 p-2 rounded-t-xl drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-indigo-500 opacity-50" />
         {getProviderIcon()}
-        <div className="text-sm font-medium text-indigo-800">{nodeData.label}</div>
-      </CardHeader>
+        <div className="text-sm font-medium text-indigo-800 flex-1">{nodeData.label}</div>
+        {hasLogs && (
+          <Badge 
+            variant="outline" 
+            className="text-xs bg-indigo-50 text-indigo-600 border-indigo-200 flex items-center gap-1"
+            title="Execution logs available"
+          >
+            <FileText className="h-3 w-3" />
+            Logs
+          </Badge>
+        )}
+      </div>
       
       {/* Body */}
-      <CardContent className="p-3 pt-2 bg-white rounded-b-xl">
+      <div className="p-3 pt-2 bg-white rounded-b-xl">
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="text-xs font-medium text-indigo-700">Provider</label>
@@ -198,7 +233,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
             </div>
           )}
         </div>
-      </CardContent>
+      </div>
       
       {/* Input handle - top center */}
       <Handle
@@ -227,7 +262,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
           border: '2px solid white'
         }}
       />
-    </Card>
+    </div>
   );
 };
 

@@ -1,3 +1,4 @@
+
 // Follow Deno and Supabase Edge Function conventions
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.23.0";
@@ -55,6 +56,34 @@ const nodeHandlers: Record<string, (step: any, context: any) => Promise<any>> = 
   // New handler for askAI node
   'askAI': handleAskAI,
 };
+
+// Helper function to log step execution details
+async function logStepExecution(
+  nodeId: string, 
+  executionId: string, 
+  nodeType: string, 
+  inputData: any, 
+  outputData: any, 
+  status: 'success' | 'error' | 'warning' | 'info' = 'success',
+  executionTimeMs: number = 0,
+  processingMetadata: any = {}
+) {
+  try {
+    await supabase.from('workflow_step_logs').insert({
+      node_id: nodeId,
+      execution_id: executionId,
+      node_type: nodeType,
+      input_data: inputData,
+      output_data: outputData,
+      status,
+      execution_time_ms: executionTimeMs,
+      processing_metadata: processingMetadata
+    });
+    console.log(`Logged execution data for node ${nodeId}`);
+  } catch (error) {
+    console.error(`Error logging step execution: ${error}`);
+  }
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -114,6 +143,7 @@ serve(async (req) => {
     // 4. Execute the step
     let result;
     let error = null;
+    let stepStartTime = Date.now();
     
     try {
       // Create execution context
@@ -125,11 +155,15 @@ serve(async (req) => {
         outputs: execution.outputs || {},
       };
       
+      // Prepare input data for logging
+      const inputData = getNodeInputData(step, context);
+      
       // Get the appropriate handler for this node type
       const handler = nodeHandlers[step.node_type];
       
       if (handler) {
         result = await handler(step, context);
+        const executionTimeMs = Date.now() - stepStartTime;
         
         // Update the node states with the result
         const updatedNodeStates = {
@@ -160,6 +194,22 @@ serve(async (req) => {
           })
           .eq("id", stepId);
         
+        // Log the step execution details
+        await logStepExecution(
+          step.node_id,
+          executionId,
+          step.node_type,
+          inputData,
+          result,
+          'success',
+          executionTimeMs,
+          {
+            configurationUsed: step.configuration,
+            stepId,
+            executionTimeMs
+          }
+        );
+        
         console.log(`Step ${stepId} completed successfully`);
       } else {
         throw new Error(`No handler found for node type: ${step.node_type}`);
@@ -167,6 +217,7 @@ serve(async (req) => {
     } catch (e) {
       console.error(`Error executing step ${stepId}:`, e);
       error = e.message || "Unknown error during step execution";
+      const executionTimeMs = Date.now() - stepStartTime;
       
       // Update node states with the error
       const updatedNodeStates = {
@@ -195,6 +246,28 @@ serve(async (req) => {
           execution_data: { error }
         })
         .eq("id", stepId);
+      
+      // Log the failed step execution
+      await logStepExecution(
+        step.node_id,
+        executionId,
+        step.node_type,
+        getNodeInputData(step, {
+          executionId,
+          workflowId: step.workflow_id,
+          nodeStates: execution.node_states || {},
+          inputs: execution.inputs || {},
+          outputs: execution.outputs || {}
+        }),
+        { error },
+        'error',
+        executionTimeMs,
+        {
+          errorDetails: error,
+          configurationUsed: step.configuration,
+          stepId
+        }
+      );
     }
     
     // 5. Find and queue the next step(s)
@@ -283,6 +356,29 @@ serve(async (req) => {
     );
   }
 });
+
+// Helper function to get input data for a node
+function getNodeInputData(step: any, context: any): any {
+  const inputData: any = {
+    configuration: step.configuration,
+    dependencies: []
+  };
+  
+  // If this node has dependencies, include their outputs as input
+  if (step.dependencies && Array.isArray(step.dependencies)) {
+    step.dependencies.forEach((depNodeId: string) => {
+      const nodeState = context.nodeStates[depNodeId];
+      if (nodeState && nodeState.output) {
+        inputData.dependencies.push({
+          nodeId: depNodeId,
+          output: nodeState.output
+        });
+      }
+    });
+  }
+  
+  return inputData;
+}
 
 // Node type handler implementations
 async function handleDataInput(step: any, context: any) {

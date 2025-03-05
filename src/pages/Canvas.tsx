@@ -29,6 +29,7 @@ import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
+import StepLogPanel from '@/components/workflow/StepLogPanel';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
@@ -53,7 +54,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Play, Plus } from 'lucide-react';
+import { Save, Play, Plus, FileText } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 const nodeTypes: NodeTypes = {
@@ -219,6 +220,8 @@ const Canvas = () => {
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
   const [executionId, setExecutionId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
   
   const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
     executionId,
@@ -237,6 +240,11 @@ const Canvas = () => {
       loadWorkflow();
     }
   }, [workflowId]);
+
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.id);
+    setShowLogPanel(true);
+  }, []);
 
   const loadWorkflow = async () => {
     if (!workflowId || workflowId === 'new') return;
@@ -570,7 +578,7 @@ const Canvas = () => {
     outputNode: OutputNode,
     integrationNode: IntegrationNode,
     controlNode: ControlNode,
-    spreadsheetGenerator: SpreadsheetGeneratorNode,
+    spreadsheetGenerator: (props: any) => <SpreadsheetGeneratorNode {...props} onConfigChange={handleNodeConfigUpdate} />,
     utilityNode: UtilityNode,
     fileUpload: FileUploadNode,
   });
@@ -648,6 +656,7 @@ const Canvas = () => {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onNodeClick={onNodeClick}
                 nodeTypes={getNodeTypes()}
                 fitView
                 attributionPosition="top-right"
@@ -667,9 +676,28 @@ const Canvas = () => {
                     <Plus className="mr-2 h-4 w-4" />
                     Add Node
                   </Button>
+                  {executionId && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowLogPanel(!showLogPanel)}
+                      className="ml-2 flex items-center"
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      {showLogPanel ? 'Hide Logs' : 'Show Logs'}
+                    </Button>
+                  )}
                 </Panel>
               </ReactFlow>
             </div>
+
+            {showLogPanel && (
+              <StepLogPanel
+                nodeId={selectedNodeId}
+                executionId={executionId}
+                workflowId={savingWorkflowId}
+                onClose={() => setShowLogPanel(false)}
+              />
+            )}
           </TabsContent>
           
           <TabsContent value="settings">

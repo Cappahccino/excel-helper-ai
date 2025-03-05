@@ -1,12 +1,14 @@
 
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileSpreadsheet, GripVertical, Save } from 'lucide-react';
+import { FileSpreadsheet, GripVertical, Save, FileText } from 'lucide-react';
 import { NodeProps, SpreadsheetGeneratorNodeData } from '@/types/workflow';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
 
 // Default data if none is provided
 const defaultData: SpreadsheetGeneratorNodeData = {
@@ -19,12 +21,14 @@ const defaultData: SpreadsheetGeneratorNodeData = {
   }
 };
 
-const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: { 
-  data?: SpreadsheetGeneratorNodeData, 
-  selected?: boolean,
-  id?: string,
-  onConfigChange?: (nodeId: string, config: any) => void 
-}) => {
+interface SpreadsheetGeneratorNodeProps {
+  data?: SpreadsheetGeneratorNodeData;
+  selected?: boolean;
+  id?: string;
+  onConfigChange?: (nodeId: string, config: any) => void;
+}
+
+const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: SpreadsheetGeneratorNodeProps) => {
   // Use provided data or fallback to default data
   const nodeData: SpreadsheetGeneratorNodeData = data ? {
     ...defaultData,
@@ -37,6 +41,30 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: {
 
   const [filename, setFilename] = useState(nodeData.config?.filename || 'generated');
   const [fileExtension, setFileExtension] = useState(nodeData.config?.fileExtension || 'xlsx');
+  const [hasLogs, setHasLogs] = useState(false);
+
+  // Check if this node has execution logs
+  useEffect(() => {
+    if (!id) return;
+    
+    const checkForLogs = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('workflow_step_logs')
+          .select('id')
+          .eq('node_id', id)
+          .limit(1);
+        
+        if (!error && data && data.length > 0) {
+          setHasLogs(true);
+        }
+      } catch (error) {
+        console.error('Error checking for logs:', error);
+      }
+    };
+    
+    checkForLogs();
+  }, [id]);
 
   const handleSave = () => {
     if (!id) {
@@ -59,7 +87,17 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: {
       <div className="flex items-center gap-2 bg-gradient-to-r from-blue-100 to-blue-50 p-3 rounded-t-md drag-handle cursor-move">
         <GripVertical className="h-4 w-4 text-blue-500 opacity-50" />
         <FileSpreadsheet className="h-4 w-4 text-blue-500" />
-        <div className="text-sm font-medium text-blue-800">{nodeData.label}</div>
+        <div className="text-sm font-medium text-blue-800 flex-1">{nodeData.label}</div>
+        {hasLogs && (
+          <Badge 
+            variant="outline" 
+            className="text-xs bg-blue-50 text-blue-600 border-blue-200 flex items-center gap-1"
+            title="Execution logs available"
+          >
+            <FileText className="h-3 w-3" />
+            Logs
+          </Badge>
+        )}
       </div>
       
       {/* Body */}
