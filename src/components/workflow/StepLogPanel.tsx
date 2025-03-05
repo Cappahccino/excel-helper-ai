@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { X, ArrowLeft, ArrowRight, Maximize2, Minimize2, FileText, Database, Terminal } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,7 +18,10 @@ interface StepLogPanelProps {
   onClose: () => void;
 }
 
-// Define the StepLog interface based on the workflow_step_logs table structure
+interface NodeLogsCheckResult {
+  has_logs: boolean;
+}
+
 interface StepLog {
   id: string;
   node_id: string;
@@ -42,7 +44,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
   const [allLogs, setAllLogs] = useState<StepLog[]>([]);
   const [currentLogIndex, setCurrentLogIndex] = useState<number>(0);
 
-  // Fetch log data when nodeId or executionId changes
   useEffect(() => {
     if (!nodeId || !executionId) {
       setLoading(false);
@@ -52,17 +53,13 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     const fetchStepLog = async () => {
       setLoading(true);
       try {
-        // First, get all logs for this execution to enable navigation between steps
-        // Using raw query approach to handle type issues
         const { data: logsExistResult, error: rpcError } = await supabase
-          .rpc('check_node_logs', { node_id_param: nodeId })
+          .rpc<NodeLogsCheckResult>('check_node_logs', { node_id_param: nodeId })
           .single();
           
-        // If we have logs for this node, fetch the actual log data
         if (logsExistResult && logsExistResult.has_logs) {
-          // Get all logs for this execution using a raw query to work around type issues
           const { data: executionLogsRaw, error: executionError } = await supabase
-            .from('workflow_step_logs')
+            .from('workflow_step_logs' as any)
             .select('*')
             .eq('execution_id', executionId)
             .then(response => ({
@@ -75,24 +72,19 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
           }
           
           if (executionLogsRaw && executionLogsRaw.length > 0) {
-            // Set all logs for navigation
             setAllLogs(executionLogsRaw);
             
-            // Find the specific log for this node
             const currentLog = executionLogsRaw.find(log => log.node_id === nodeId) || null;
             setStepLog(currentLog);
             
-            // Set the current index for navigation
             if (currentLog) {
               const index = executionLogsRaw.findIndex(log => log.id === currentLog.id);
               setCurrentLogIndex(index >= 0 ? index : 0);
             }
           }
         } else {
-          // If no logs found via RPC, try a direct query as a fallback
-          // This handles the case where the RPC might not be available yet
           const { data: nodeLogsRaw, error: nodeLogError } = await supabase
-            .from('workflow_step_logs')
+            .from('workflow_step_logs' as any)
             .select('*')
             .eq('node_id', nodeId)
             .eq('execution_id', executionId)
@@ -102,9 +94,8 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
             }));
             
           if (!nodeLogError && nodeLogsRaw && nodeLogsRaw.length > 0) {
-            // Set all logs for this execution
             const { data: allExecutionLogsRaw, error: allLogsError } = await supabase
-              .from('workflow_step_logs')
+              .from('workflow_step_logs' as any)
               .select('*')
               .eq('execution_id', executionId)
               .then(response => ({
@@ -116,10 +107,8 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
               setAllLogs(allExecutionLogsRaw);
             }
             
-            // Set the specific log for this node
             setStepLog(nodeLogsRaw[0]);
             
-            // Set the current index for navigation
             if (nodeLogsRaw[0] && allExecutionLogsRaw) {
               const index = allExecutionLogsRaw.findIndex(log => log.id === nodeLogsRaw[0].id);
               setCurrentLogIndex(index >= 0 ? index : 0);
@@ -137,7 +126,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     fetchStepLog();
   }, [nodeId, executionId]);
 
-  // Navigate to previous or next log
   const navigateLog = (direction: 'prev' | 'next') => {
     if (allLogs.length <= 1) return;
     
@@ -151,24 +139,20 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     }
   };
 
-  // Format JSON data for display
   const formatJsonData = (data: any) => {
     if (!data) return 'No data available';
     
     try {
       if (typeof data === 'string') {
-        // Try to parse JSON strings
         const parsed = JSON.parse(data);
         return JSON.stringify(parsed, null, 2);
       }
       return JSON.stringify(data, null, 2);
     } catch (e) {
-      // If it's not valid JSON, return as-is
       return typeof data === 'string' ? data : JSON.stringify(data);
     }
   };
 
-  // Render data based on type
   const renderData = (data: any, type: 'input' | 'output') => {
     if (loading) {
       return (
@@ -184,7 +168,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       return <div className="text-muted-foreground italic">No data available</div>;
     }
 
-    // Try to determine if this is spreadsheet data
     const isSpreadsheetData = 
       stepLog?.node_type === 'spreadsheetGenerator' || 
       (data.sheets || data.rows || data.columns || data.headers);
@@ -193,7 +176,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       return renderSpreadsheetData(data, type);
     }
 
-    // Default to code/JSON view
     return (
       <ScrollArea className="h-[300px] rounded-md border p-4">
         <pre className="text-xs text-left font-mono whitespace-pre-wrap break-words">
@@ -203,9 +185,7 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     );
   };
 
-  // Render spreadsheet-like data
   const renderSpreadsheetData = (data: any, type: 'input' | 'output') => {
-    // Extract headers and rows from different possible formats
     let headers: string[] = [];
     let rows: any[] = [];
 
@@ -221,7 +201,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
       rows = data.data;
     }
 
-    // If we still don't have headers but have rows with properties
     if (headers.length === 0 && rows.length > 0) {
       if (typeof rows[0] === 'object') {
         headers = Object.keys(rows[0]);
@@ -275,7 +254,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
     );
   };
 
-  // Render a side-by-side comparison view
   const renderComparison = () => {
     if (loading) {
       return (
@@ -320,7 +298,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
         expanded ? 'w-[80vw]' : 'w-[40vw]'
       }`}
     >
-      {/* Header */}
       <div className="flex items-center justify-between border-b p-3">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">Step Execution Log</h2>
@@ -352,7 +329,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
         </div>
       </div>
 
-      {/* Navigation */}
       {allLogs.length > 1 && (
         <div className="flex items-center justify-between px-3 py-2 border-b">
           <Button 
@@ -379,7 +355,6 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
         </div>
       )}
 
-      {/* Content */}
       <div className="p-4">
         <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">

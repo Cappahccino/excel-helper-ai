@@ -1,4 +1,3 @@
-
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Brain, MessageSquare, GripVertical, Save, FileText } from 'lucide-react';
@@ -80,10 +79,14 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     const checkForLogs = async () => {
       try {
         const { data, error } = await supabase
-          .from('workflow_step_logs')
+          .from('workflow_step_logs' as any)
           .select('id')
           .eq('node_id', id)
-          .limit(1);
+          .limit(1)
+          .then(response => ({
+            data: response.data,
+            error: response.error
+          }));
         
         if (!error && data && data.length > 0) {
           setHasLogs(true);
@@ -112,12 +115,10 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
       systemMessage: systemMessage
     };
     
-    // Update node through parent component if callback exists
     if (onConfigChange) {
       onConfigChange(id, updatedConfig);
     }
     
-    // Show success message
     toast.success("Changes saved to node");
     setIsSaving(false);
   };

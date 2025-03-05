@@ -1,4 +1,3 @@
-
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileSpreadsheet, GripVertical, Save, FileText } from 'lucide-react';
@@ -28,6 +27,11 @@ interface SpreadsheetGeneratorNodeProps {
   onConfigChange?: (nodeId: string, config: any) => void;
 }
 
+// Define a type for the response of check_node_logs RPC
+interface NodeLogsCheckResult {
+  has_logs: boolean;
+}
+
 const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: SpreadsheetGeneratorNodeProps) => {
   // Use provided data or fallback to default data
   const nodeData: SpreadsheetGeneratorNodeData = data ? {
@@ -49,17 +53,17 @@ const SpreadsheetGeneratorNode = ({ data, selected, id, onConfigChange }: Spread
     
     const checkForLogs = async () => {
       try {
-        // Use the RPC function to check for logs
+        // Use the RPC function to check for logs with proper typing
         const { data, error } = await supabase
-          .rpc('check_node_logs', { node_id_param: id })
+          .rpc<NodeLogsCheckResult>('check_node_logs', { node_id_param: id })
           .single();
         
         if (error) {
           console.log('RPC error, falling back to direct query:', error);
           // Fallback to direct query if RPC doesn't exist or fails
-          // We're using raw query execution to avoid typescript errors with the table name
+          // We're using type assertion to avoid TypeScript errors
           const { data: rawData, error: queryError } = await supabase
-            .from('workflow_step_logs')
+            .from('workflow_step_logs' as any)
             .select('id')
             .eq('node_id', id)
             .limit(1)
