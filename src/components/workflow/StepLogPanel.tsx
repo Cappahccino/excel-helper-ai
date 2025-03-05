@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { Json } from '@/integrations/supabase/types';
 
 interface StepLogPanelProps {
   nodeId: string | null;
@@ -18,17 +19,19 @@ interface StepLogPanelProps {
   onClose: () => void;
 }
 
+// Define the StepLog interface based on the workflow_step_logs table structure
 interface StepLog {
   id: string;
   node_id: string;
   execution_id: string;
+  workflow_id?: string | null;
   node_type: string;
   input_data: any;
   output_data: any;
   processing_metadata: any;
   status: 'success' | 'error' | 'warning' | 'info';
-  created_at: string;
   execution_time_ms: number;
+  created_at: string;
 }
 
 const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workflowId, onClose }) => {
@@ -53,21 +56,23 @@ const StepLogPanel: React.FC<StepLogPanelProps> = ({ nodeId, executionId, workfl
         const { data: executionLogs, error: executionError } = await supabase
           .from('workflow_step_logs')
           .select('*')
-          .eq('execution_id', executionId)
-          .order('created_at', { ascending: true });
+          .eq('execution_id', executionId);
 
         if (executionError) throw executionError;
         
-        setAllLogs(executionLogs || []);
-        
-        // Find the specific log for this node
-        const currentLog = executionLogs?.find(log => log.node_id === nodeId) || null;
-        setStepLog(currentLog);
-        
-        // Set the current index for navigation
-        if (currentLog) {
-          const index = executionLogs?.findIndex(log => log.id === currentLog.id) || 0;
-          setCurrentLogIndex(index);
+        if (executionLogs) {
+          // Explicitly cast to StepLog[] since we know the structure
+          setAllLogs(executionLogs as StepLog[]);
+          
+          // Find the specific log for this node
+          const currentLog = executionLogs.find(log => log.node_id === nodeId) || null;
+          setStepLog(currentLog as StepLog | null);
+          
+          // Set the current index for navigation
+          if (currentLog) {
+            const index = executionLogs.findIndex(log => log.id === currentLog.id) || 0;
+            setCurrentLogIndex(index);
+          }
         }
       } catch (error) {
         console.error('Error fetching step log:', error);
