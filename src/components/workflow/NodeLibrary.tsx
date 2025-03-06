@@ -1,11 +1,11 @@
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search } from 'lucide-react';
-import { NodeLibraryProps } from '@/types/workflow';
+import { Search, FileSpreadsheet, Filter, SortAsc, Calculator, FormInput, Type, Calendar, LayoutGrid, GitMerge, Copy } from 'lucide-react';
+import { NodeLibraryProps, ProcessingNodeType } from '@/types/workflow';
 
 const NodeLibrary: React.FC<NodeLibraryProps> = ({
   isOpen,
@@ -13,16 +13,99 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
   onAddNode,
   nodeCategories = []
 }) => {
-  const [searchTerm, setSearchTerm] = React.useState('');
-  const [activeTab, setActiveTab] = React.useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
+  
+  // Define processing node types that are available to add
+  const processingNodeTypes: { type: ProcessingNodeType; label: string; description: string; icon: React.ReactNode }[] = [
+    { 
+      type: 'filtering', 
+      label: 'Filtering', 
+      description: 'Filter data based on conditions', 
+      icon: <Filter className="h-4 w-4" />
+    },
+    { 
+      type: 'sorting', 
+      label: 'Sorting', 
+      description: 'Sort data by specific criteria', 
+      icon: <SortAsc className="h-4 w-4" />
+    },
+    { 
+      type: 'aggregation', 
+      label: 'Aggregation', 
+      description: 'Compute sums, averages, counts, etc.', 
+      icon: <Calculator className="h-4 w-4" />
+    },
+    { 
+      type: 'formulaCalculation', 
+      label: 'Formula Calculation', 
+      description: 'Apply Excel-like formulas', 
+      icon: <FormInput className="h-4 w-4" />
+    },
+    { 
+      type: 'textTransformation', 
+      label: 'Text Transformation', 
+      description: 'Apply text operations', 
+      icon: <Type className="h-4 w-4" />
+    },
+    { 
+      type: 'dataTypeConversion', 
+      label: 'Data Type Conversion', 
+      description: 'Convert between data types', 
+      icon: <FileSpreadsheet className="h-4 w-4" />
+    },
+    { 
+      type: 'dateFormatting', 
+      label: 'Date Formatting', 
+      description: 'Format date values', 
+      icon: <Calendar className="h-4 w-4" />
+    },
+    { 
+      type: 'pivotTable', 
+      label: 'Pivot Table', 
+      description: 'Create pivot tables', 
+      icon: <LayoutGrid className="h-4 w-4" />
+    },
+    { 
+      type: 'joinMerge', 
+      label: 'Join/Merge', 
+      description: 'Combine multiple datasets', 
+      icon: <GitMerge className="h-4 w-4" />
+    },
+    { 
+      type: 'deduplication', 
+      label: 'Deduplication', 
+      description: 'Remove duplicate entries', 
+      icon: <Copy className="h-4 w-4" />
+    }
+  ];
+  
+  // Enhance nodeCategories with processing node types if processing category exists
+  const enhancedCategories = useMemo(() => {
+    return nodeCategories.map(category => {
+      if (category.id === 'processing') {
+        // Replace the items with our dynamic processing node types
+        return {
+          ...category,
+          items: processingNodeTypes.map(node => ({
+            type: node.type,
+            label: node.label,
+            description: node.description,
+            icon: node.icon
+          }))
+        };
+      }
+      return category;
+    });
+  }, [nodeCategories]);
   
   // Filter nodes based on search term and active tab
-  const filteredCategories = React.useMemo(() => {
-    let filteredByTab = nodeCategories;
+  const filteredCategories = useMemo(() => {
+    let filteredByTab = enhancedCategories;
     
     // Filter by tab first if not 'all'
     if (activeTab !== 'all') {
-      filteredByTab = nodeCategories.filter(category => {
+      filteredByTab = enhancedCategories.filter(category => {
         return category.id === activeTab;
       });
     }
@@ -58,7 +141,7 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
         )
       };
     });
-  }, [searchTerm, activeTab, nodeCategories]);
+  }, [searchTerm, activeTab, enhancedCategories]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -119,11 +202,16 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
                           }}
                           type="button"
                         >
-                          <div className="text-left">
-                            <div className="font-medium">{item.label}</div>
-                            {item.description && (
-                              <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
-                            )}
+                          <div className="flex items-center gap-2 w-full">
+                            <div className="p-1.5 rounded-md bg-blue-100">
+                              {React.isValidElement(item.icon) ? item.icon : <FileSpreadsheet className="h-4 w-4 text-blue-500" />}
+                            </div>
+                            <div className="text-left">
+                              <div className="font-medium">{item.label}</div>
+                              {item.description && (
+                                <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                              )}
+                            </div>
                           </div>
                         </Button>
                       ))}
