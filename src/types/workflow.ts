@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -185,14 +186,18 @@ export interface UtilityNodeData extends BaseNodeData {
   };
 }
 
-export interface FileUploadNodeData extends WorkflowNodeData {
+export interface FileUploadNodeData extends BaseNodeData {
   type: 'fileUpload';
-  config?: {
+  config: {
     fileId?: string;
     filename?: string;
+    hasHeaders?: boolean;
+    delimiter?: string;
+    [key: string]: any;
   };
   workflowId?: string;
   onChange?: (nodeId: string, updatedData: Partial<FileUploadNodeData>) => void;
+  [key: string]: any;
 }
 
 // A union of all possible node data types
@@ -208,8 +213,9 @@ export type WorkflowNodeData =
   | FileUploadNodeData;
 
 // Define our WorkflowNode type that extends ReactFlow's Node type
-export interface WorkflowNode extends ReactFlowNode<WorkflowNodeData> {
+export interface WorkflowNode extends Omit<ReactFlowNode, 'data'> {
   type: NodeComponentType;
+  data: WorkflowNodeData;
 }
 
 // Use a simplified NodeProps type that works with our component structure
