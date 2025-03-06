@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useDataProcessing } from '@/hooks/useDataProcessing';
 import { 
@@ -12,7 +12,8 @@ import {
   LayoutGrid, 
   GitMerge, 
   Copy, 
-  Loader2
+  Loader2,
+  Info
 } from 'lucide-react';
 import { ProcessingNodeType } from '@/types/workflow';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 function getNodeIcon(type: ProcessingNodeType) {
   switch (type) {
@@ -125,36 +127,69 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
 }) {
   const [localConfig, setLocalConfig] = useState(config || {});
   
-  useEffect(() => {
-    onConfigChange(localConfig);
+  const handleChange = useCallback((key: string, value: any) => {
+    const updatedConfig = { ...localConfig, [key]: value };
+    setLocalConfig(updatedConfig);
+    onConfigChange(updatedConfig);
   }, [localConfig, onConfigChange]);
 
-  const handleChange = (key: string, value: any) => {
-    setLocalConfig(prev => ({ ...prev, [key]: value }));
+  useEffect(() => {
+    if (JSON.stringify(config) !== JSON.stringify(localConfig)) {
+      setLocalConfig(config || {});
+    }
+  }, [config]);
+
+  const renderColumnSelect = (fieldName: string, label: string, filterFunc?: (col: { name: string, type: string }) => boolean) => {
+    const filteredColumns = filterFunc ? columns.filter(filterFunc) : columns;
+    
+    return (
+      <div>
+        <div className="flex items-center gap-1">
+          <Label htmlFor={fieldName}>{label}</Label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3 w-3 text-gray-400" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Select from columns available in the previous node</p>
+                {filteredColumns.length === 0 && (
+                  <p className="text-yellow-500 mt-1">No compatible columns found</p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <Select 
+          value={localConfig[fieldName] || ''} 
+          onValueChange={(value) => handleChange(fieldName, value)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select column" />
+          </SelectTrigger>
+          <SelectContent>
+            {filteredColumns.length === 0 ? (
+              <div className="px-2 py-1 text-xs text-gray-500">
+                No columns available
+              </div>
+            ) : (
+              filteredColumns.map((col) => (
+                <SelectItem key={col.name} value={col.name}>
+                  {col.name} ({col.type})
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+    );
   };
 
   switch (type) {
     case 'filtering':
       return (
         <div className="space-y-2">
-          <div>
-            <Label htmlFor="column">Column</Label>
-            <Select 
-              value={localConfig.column || ''} 
-              onValueChange={(value) => handleChange('column', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('column', 'Column')}
           
           {localConfig.column && (
             <>
@@ -194,24 +229,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
     case 'sorting':
       return (
         <div className="space-y-2">
-          <div>
-            <Label htmlFor="column">Column</Label>
-            <Select 
-              value={localConfig.column || ''} 
-              onValueChange={(value) => handleChange('column', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('column', 'Column')}
           
           <div>
             <Label htmlFor="order">Sort order</Label>
@@ -253,68 +271,16 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
             </Select>
           </div>
           
-          <div>
-            <Label htmlFor="column">Column</Label>
-            <Select 
-              value={localConfig.column || ''} 
-              onValueChange={(value) => handleChange('column', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.filter(col => col.type === 'number').map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('column', 'Column', col => col.type === 'number')}
           
-          <div>
-            <Label htmlFor="groupBy">Group by (optional)</Label>
-            <Select 
-              value={localConfig.groupBy || ''} 
-              onValueChange={(value) => handleChange('groupBy', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select group by column" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">None</SelectItem>
-                {columns.map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('groupBy', 'Group by (optional)')}
         </div>
       );
       
     case 'textTransformation':
       return (
         <div className="space-y-2">
-          <div>
-            <Label htmlFor="column">Text Column</Label>
-            <Select 
-              value={localConfig.column || ''} 
-              onValueChange={(value) => handleChange('column', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.filter(col => col.type === 'string').map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('column', 'Text Column', col => col.type === 'string')}
           
           <div>
             <Label htmlFor="transformation">Transformation</Label>
@@ -362,24 +328,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
     case 'dataTypeConversion':
       return (
         <div className="space-y-2">
-          <div>
-            <Label htmlFor="column">Column</Label>
-            <Select 
-              value={localConfig.column || ''} 
-              onValueChange={(value) => handleChange('column', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('column', 'Column')}
           
           <div>
             <Label htmlFor="fromType">Current type</Label>
@@ -422,24 +371,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
     case 'dateFormatting':
       return (
         <div className="space-y-2">
-          <div>
-            <Label htmlFor="column">Date Column</Label>
-            <Select 
-              value={localConfig.column || ''} 
-              onValueChange={(value) => handleChange('column', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.filter(col => col.type === 'date').map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('column', 'Date Column', col => col.type === 'date')}
           
           <div>
             <Label htmlFor="format">Date Format</Label>
@@ -485,24 +417,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
             </Select>
           </div>
           
-          <div>
-            <Label htmlFor="leftKey">Left Key</Label>
-            <Select 
-              value={localConfig.leftKey || ''} 
-              onValueChange={(value) => handleChange('leftKey', value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select left key" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('leftKey', 'Left Key')}
           
           <div>
             <Label htmlFor="rightKey">Right Key</Label>
@@ -519,24 +434,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
     case 'deduplication':
       return (
         <div className="space-y-2">
-          <div>
-            <Label htmlFor="columns">Columns to Check</Label>
-            <Select 
-              value={localConfig.columns?.[0] || ''} 
-              onValueChange={(value) => handleChange('columns', [value])}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map((col) => (
-                  <SelectItem key={col.name} value={col.name}>
-                    {col.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {renderColumnSelect('columns', 'Columns to Check')}
           
           <div>
             <Label htmlFor="caseSensitive">Case Sensitive</Label>
@@ -569,15 +467,14 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
 }) {
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
-  const [availableColumns, setAvailableColumns] = useState<Array<{ name: string, type: string }>>([
-    { name: 'id', type: 'number' },
-    { name: 'name', type: 'string' },
-    { name: 'email', type: 'string' },
-    { name: 'date', type: 'date' },
-    { name: 'amount', type: 'number' },
-    { name: 'active', type: 'boolean' }
-  ]);
-  const { isProcessing, schema } = useDataProcessing();
+  const [availableColumns, setAvailableColumns] = useState<Array<{ name: string, type: string }>>([]);
+  const { 
+    isProcessing, 
+    schema, 
+    isLoadingSchema,
+    fetchNodeSchema, 
+    fetchPreviousNodeSchema 
+  } = useDataProcessing();
   
   const needsSecondInput = data.type === 'joinMerge';
   const nodeLabel = data?.label || 'Data Processing';
@@ -589,11 +486,28 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [schema]);
   
-  const handleConfigChange = (newConfig: any) => {
+  useEffect(() => {
+    const loadSchemaFromPreviousNode = async () => {
+      if (selected && data.workflowId) {
+        console.log(`Node ${id} selected, fetching schema from previous node`);
+        const prevSchema = await fetchPreviousNodeSchema(data.workflowId, id);
+        if (prevSchema && prevSchema.length > 0) {
+          setAvailableColumns(prevSchema);
+        }
+      }
+    };
+    
+    loadSchemaFromPreviousNode();
+  }, [selected, id, data.workflowId, fetchPreviousNodeSchema]);
+  
+  const handleConfigChange = useCallback((newConfig: any) => {
     if (onConfigChange) {
-      onConfigChange(id, newConfig);
+      if (JSON.stringify(data.config) !== JSON.stringify(newConfig)) {
+        console.log(`Updating config for node ${id}:`, newConfig);
+        onConfigChange(id, newConfig);
+      }
     }
-  };
+  }, [id, data.config, onConfigChange]);
 
   useEffect(() => {
     if (isProcessing) {
@@ -622,6 +536,9 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
           {getNodeIcon(nodeType)}
         </div>
         <CardTitle className="text-sm font-medium ml-2">{nodeLabel}</CardTitle>
+        {isLoadingSchema && (
+          <Loader2 className="h-4 w-4 ml-auto animate-spin text-blue-500" />
+        )}
         {processing && (
           <Loader2 className="h-4 w-4 ml-auto animate-spin text-blue-500" />
         )}

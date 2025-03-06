@@ -431,7 +431,8 @@ const Canvas = () => {
               config: {
                 ...node.data.config,
                 ...config
-              }
+              },
+              workflowId: savingWorkflowId
             }
           };
         }
@@ -439,7 +440,11 @@ const Canvas = () => {
       });
     });
 
-    setTimeout(() => saveWorkflow(), 500);
+    if (window.saveWorkflowTimeout) {
+      clearTimeout(window.saveWorkflowTimeout);
+    }
+    
+    window.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000);
   };
 
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
@@ -621,7 +626,15 @@ const Canvas = () => {
     controlNode: ControlNode,
     spreadsheetGenerator: (props: any) => <SpreadsheetGeneratorNode {...props} onConfigChange={handleNodeConfigUpdate} />,
     utilityNode: UtilityNode,
-    fileUpload: FileUploadNode,
+    fileUpload: (props: any) => <FileUploadNode 
+      {...{
+        ...props,
+        data: {
+          ...props.data,
+          workflowId: savingWorkflowId
+        }
+      }} 
+    />,
   });
 
   return (
@@ -806,5 +819,11 @@ const Canvas = () => {
     </div>
   );
 };
+
+declare global {
+  interface Window {
+    saveWorkflowTimeout?: number;
+  }
+}
 
 export default Canvas;
