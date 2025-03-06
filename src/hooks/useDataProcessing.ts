@@ -64,6 +64,7 @@ export function useDataProcessing() {
     return detectedSchema;
   };
 
+  // Function to process data with progress tracking
   const processData = async (
     data: ProcessingData,
     config: ProcessingConfig,
@@ -77,6 +78,7 @@ export function useDataProcessing() {
     try {
       // Detect schema from the data for UI configuration
       const detectedSchema = detectSchema(Array.isArray(data) ? data : [data]);
+      console.log('Detected schema:', detectedSchema);
       setSchema(detectedSchema);
       
       // Simulate progress updates
@@ -87,6 +89,7 @@ export function useDataProcessing() {
         });
       }, 500);
       
+      // Send data to backend processing function
       const { data: responseData, error: responseError } = await supabase.functions.invoke(
         'process-excel',
         {
@@ -132,9 +135,34 @@ export function useDataProcessing() {
     }
   };
 
-  // Expose the detected schema to consumers
-  const getSchema = () => schema;
+  // Function to fetch schema from a specific node in the workflow
+  const fetchNodeSchema = async (workflowId: string, nodeId: string): Promise<SchemaColumn[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_executions')
+        .select('node_states')
+        .eq('workflow_id', workflowId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0 && data[0].node_states && data[0].node_states[nodeId]) {
+        const nodeOutput = data[0].node_states[nodeId].output;
+        
+        if (nodeOutput && nodeOutput.data && Array.isArray(nodeOutput.data)) {
+          return detectSchema(nodeOutput.data);
+        }
+      }
+      
+      return [];
+    } catch (err) {
+      console.error('Error fetching node schema:', err);
+      return [];
+    }
+  };
 
+  // Expose the schema and related functions
   return {
     processData,
     isProcessing,
@@ -142,6 +170,7 @@ export function useDataProcessing() {
     error,
     progress,
     schema,
-    getSchema
+    detectSchema,
+    fetchNodeSchema
   };
 }

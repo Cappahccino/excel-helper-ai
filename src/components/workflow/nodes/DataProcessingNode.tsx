@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useDataProcessing } from '@/hooks/useDataProcessing';
@@ -24,7 +23,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
-// Helper function to get the appropriate icon based on node type
 function getNodeIcon(type: ProcessingNodeType) {
   switch (type) {
     case 'filtering':
@@ -79,14 +77,12 @@ function getNodeDescription(type: ProcessingNodeType) {
   }
 }
 
-// Function to determine if a node requires configuration
 function nodeRequiresConfig(type: ProcessingNodeType) {
   return ['filtering', 'sorting', 'aggregation', 'formulaCalculation', 
     'textTransformation', 'dataTypeConversion', 'dateFormatting', 
     'pivotTable', 'joinMerge', 'deduplication'].includes(type);
 }
 
-// Function to get column type options based on selected column type
 const getOperatorOptions = (columnType: string) => {
   switch (columnType) {
     case 'string':
@@ -121,7 +117,6 @@ const getOperatorOptions = (columnType: string) => {
   }
 };
 
-// Function to generate node configuration UI based on node type
 function NodeConfigForm({ type, config, columns, onConfigChange }: { 
   type: ProcessingNodeType, 
   config: any, 
@@ -130,7 +125,6 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
 }) {
   const [localConfig, setLocalConfig] = useState(config || {});
   
-  // Update parent when local config changes
   useEffect(() => {
     onConfigChange(localConfig);
   }, [localConfig, onConfigChange]);
@@ -300,7 +294,6 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
         </div>
       );
       
-    // Add other node type configurations here
     case 'textTransformation':
       return (
         <div className="space-y-2">
@@ -389,6 +382,24 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
           </div>
           
           <div>
+            <Label htmlFor="fromType">Current type</Label>
+            <Select 
+              value={localConfig.fromType || ''} 
+              onValueChange={(value) => handleChange('fromType', value)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select source type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="string">Text</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
+                <SelectItem value="date">Date</SelectItem>
+                <SelectItem value="boolean">Boolean</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div>
             <Label htmlFor="toType">Convert to</Label>
             <Select 
               value={localConfig.toType || 'string'} 
@@ -444,6 +455,9 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
                 <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
                 <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
                 <SelectItem value="MMM DD, YYYY">MMM DD, YYYY</SelectItem>
+                <SelectItem value="DD MMM YYYY">DD MMM YYYY</SelectItem>
+                <SelectItem value="MM-DD-YYYY">MM-DD-YYYY</SelectItem>
+                <SelectItem value="YYYY/MM/DD">YYYY/MM/DD</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -524,29 +538,37 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
             </Select>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="caseSensitive"
-              checked={localConfig.caseSensitive ?? true}
-              onChange={(e) => handleChange('caseSensitive', e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
+          <div>
             <Label htmlFor="caseSensitive">Case Sensitive</Label>
+            <Select 
+              value={localConfig.caseSensitive?.toString() || 'true'} 
+              onValueChange={(value) => handleChange('caseSensitive', value === 'true')}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Case sensitivity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       );
       
-    // Add forms for other node types as needed
     default:
       return <div className="text-sm text-gray-500">No configuration needed</div>;
   }
 }
 
-export default function DataProcessingNode({ id, data, selected }: { id: string; data: any; selected: boolean }) {
+export default function DataProcessingNode({ id, data, selected, onConfigChange }: { 
+  id: string; 
+  data: any; 
+  selected: boolean;
+  onConfigChange?: (nodeId: string, config: any) => void;
+}) {
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
-  const [showConfig, setShowConfig] = useState(false);
   const [availableColumns, setAvailableColumns] = useState<Array<{ name: string, type: string }>>([
     { name: 'id', type: 'number' },
     { name: 'name', type: 'string' },
@@ -555,34 +577,43 @@ export default function DataProcessingNode({ id, data, selected }: { id: string;
     { name: 'amount', type: 'number' },
     { name: 'active', type: 'boolean' }
   ]);
-  const { isProcessing } = useDataProcessing();
+  const { isProcessing, schema } = useDataProcessing();
   
-  // Determine if this node requires a second input handle (for join/merge operations)
   const needsSecondInput = data.type === 'joinMerge';
   const nodeLabel = data?.label || 'Data Processing';
   const nodeType = data?.type || 'dataProcessing';
   
-  // In a real scenario, we would fetch available columns from the prior node
   useEffect(() => {
-    // This would be replaced with actual logic to get schema from prior nodes
-    // For now, we're using mock data
-    const mockSchema = [
-      { name: 'id', type: 'number' },
-      { name: 'name', type: 'string' },
-      { name: 'email', type: 'string' },
-      { name: 'date', type: 'date' },
-      { name: 'amount', type: 'number' },
-      { name: 'active', type: 'boolean' }
-    ];
-    
-    setAvailableColumns(mockSchema);
-  }, [id]);
+    if (schema && schema.length > 0) {
+      setAvailableColumns(schema);
+    }
+  }, [schema]);
   
   const handleConfigChange = (newConfig: any) => {
-    // This would update the node data in the parent component
-    // For now, we're just logging it
-    console.log('Config updated:', newConfig);
+    if (onConfigChange) {
+      onConfigChange(id, newConfig);
+    }
   };
+
+  useEffect(() => {
+    if (isProcessing) {
+      setProcessing(true);
+      const interval = setInterval(() => {
+        setProcessingProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            return 100;
+          }
+          return prev + 5;
+        });
+      }, 200);
+      
+      return () => clearInterval(interval);
+    } else {
+      setProcessing(false);
+      setProcessingProgress(0);
+    }
+  }, [isProcessing]);
 
   return (
     <Card className="w-[300px] shadow-md">
@@ -602,48 +633,18 @@ export default function DataProcessingNode({ id, data, selected }: { id: string;
             {getNodeDescription(nodeType)}
           </div>
           
-          {selected && nodeRequiresConfig(nodeType) && (
+          {nodeRequiresConfig(nodeType) && (
             <div className="border rounded p-2 bg-gray-50">
-              <div className="font-medium text-xs mb-2 flex justify-between items-center">
+              <div className="font-medium text-xs mb-2">
                 <span>Configuration:</span>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-6 text-xs"
-                  onClick={() => setShowConfig(!showConfig)}
-                >
-                  {showConfig ? 'Hide' : 'Edit'}
-                </Button>
               </div>
               
-              {showConfig ? (
-                <NodeConfigForm 
-                  type={nodeType} 
-                  config={data.config} 
-                  columns={availableColumns} 
-                  onConfigChange={handleConfigChange} 
-                />
-              ) : (
-                data.config && Object.keys(data.config).length > 0 ? (
-                  <div className="text-xs">
-                    {Object.entries(data.config)
-                      .filter(([key]) => key !== 'operation')
-                      .map(([key, value]) => (
-                        <div key={key} className="truncate">
-                          <span className="font-medium">{key}:</span> {
-                            typeof value === 'object' 
-                              ? Array.isArray(value) 
-                                ? value.join(', ') 
-                                : JSON.stringify(value)
-                              : String(value)
-                          }
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">No configuration set</div>
-                )
-              )}
+              <NodeConfigForm 
+                type={nodeType} 
+                config={data.config} 
+                columns={availableColumns} 
+                onConfigChange={handleConfigChange} 
+              />
             </div>
           )}
           
@@ -662,14 +663,12 @@ export default function DataProcessingNode({ id, data, selected }: { id: string;
         </div>
       </CardContent>
       
-      {/* Input handle at the top */}
       <Handle
         type="target"
         position={Position.Top}
         className="w-2 h-2 !bg-blue-500"
       />
       
-      {/* Second input handle for join/merge operations */}
       {needsSecondInput && (
         <Handle
           type="target"
@@ -679,7 +678,6 @@ export default function DataProcessingNode({ id, data, selected }: { id: string;
         />
       )}
       
-      {/* Output handle at the bottom */}
       <Handle
         type="source"
         position={Position.Bottom}
