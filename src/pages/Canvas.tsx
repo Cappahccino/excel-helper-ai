@@ -510,7 +510,7 @@ const Canvas = () => {
                 value: ''
               }),
               ...(nodeType === 'sorting' && {
-                columns: [],
+                column: '',
                 order: 'ascending'
               }),
               ...(nodeType === 'aggregation' && {
@@ -613,7 +613,7 @@ const Canvas = () => {
 
   const getNodeTypes = () => ({
     dataInput: DataInputNode,
-    dataProcessing: DataProcessingNode,
+    dataProcessing: (props: any) => <DataProcessingNode {...props} onConfigChange={handleNodeConfigUpdate} />,
     aiNode: AINode,
     askAI: (props: any) => <AskAINode {...props} onConfigChange={handleNodeConfigUpdate} />,
     outputNode: OutputNode,

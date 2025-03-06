@@ -52,7 +52,7 @@ function generatePrompt(operation: typeof operations[number], data: any, config:
       specificPrompt = `Filter the data where ${config.column} ${config.operator} ${config.value}.`;
       break;
     case "sorting":
-      specificPrompt = `Sort the data by ${config.columns.join(", ")} in ${config.order} order.`;
+      specificPrompt = `Sort the data by ${config.column} in ${config.order} order.`;
       break;
     case "aggregation":
       specificPrompt = `Perform ${config.function} on column ${config.column}${config.groupBy ? ` grouped by ${config.groupBy}` : ""}.`;
@@ -61,28 +61,181 @@ function generatePrompt(operation: typeof operations[number], data: any, config:
       specificPrompt = `Create a formula that ${config.description}. The formula should be applicable to Excel.`;
       break;
     case "textTransformation":
-      specificPrompt = `Transform the text in column ${config.column} by ${config.transformation}.`;
+      specificPrompt = `Transform the text in column ${config.column} by ${config.transformation}${config.transformation === 'replace' ? ` replacing "${config.find}" with "${config.replace}"` : ''}.`;
       break;
     case "dataTypeConversion":
-      specificPrompt = `Convert column ${config.column} from ${config.fromType} to ${config.toType}.`;
+      specificPrompt = `Convert column ${config.column} from ${config.fromType || 'its current type'} to ${config.toType}.`;
       break;
     case "dateFormatting":
       specificPrompt = `Format dates in column ${config.column} to ${config.format}.`;
       break;
     case "pivotTable":
-      specificPrompt = `Create a pivot table with rows ${config.rows.join(", ")}, columns ${config.columns.join(", ")}, and values ${config.values.join(", ")}.`;
+      specificPrompt = `Create a pivot table with rows ${config.rows?.join(", ") || 'undefined'}, columns ${config.columns?.join(", ") || 'undefined'}, and values ${config.values?.join(", ") || 'undefined'}.`;
       break;
     case "joinMerge":
       specificPrompt = `Merge these two datasets using a ${config.joinType} join on columns ${config.leftKey} from the first dataset and ${config.rightKey} from the second dataset.`;
       break;
     case "deduplication":
-      specificPrompt = `Remove duplicate entries based on columns ${config.columns.join(", ")}. ${config.caseSensitive ? "Consider case when comparing" : "Ignore case when comparing"}.`;
+      specificPrompt = `Remove duplicate entries based on columns ${config.columns?.join(", ") || 'all columns'}. ${config.caseSensitive ? "Consider case when comparing" : "Ignore case when comparing"}.`;
       break;
     default:
       specificPrompt = `Analyze this data and ${config.customInstructions || "provide insights"}.`;
   }
   
   return `${basePrompt}\n\n${specificPrompt}\n\nHere is the data:\n${JSON.stringify(data, null, 2)}\n\nProvide the processed data in JSON format and include an explanation of what you did.`;
+}
+
+// Process the data programmatically when possible, fallback to AI for complex cases
+async function processData(operation: typeof operations[number], data: any, config: Record<string, any>) {
+  // Simple implementation for basic operations
+  try {
+    switch (operation) {
+      case "filtering":
+        if (!config.column || !config.operator) {
+          throw new Error("Missing required configuration for filtering");
+        }
+        
+        const filteredData = data.filter((item: any) => {
+          const value = item[config.column];
+          switch(config.operator) {
+            case "equals":
+              return String(value) === String(config.value);
+            case "contains":
+              return String(value).includes(String(config.value));
+            case "startsWith":
+              return String(value).startsWith(String(config.value));
+            case "endsWith":
+              return String(value).endsWith(String(config.value));
+            case "greaterThan":
+              return Number(value) > Number(config.value);
+            case "lessThan":
+              return Number(value) < Number(config.value);
+            default:
+              return false;
+          }
+        });
+        
+        return {
+          success: true,
+          data: filteredData,
+          explanation: `Filtered data where ${config.column} ${config.operator} ${config.value}. Found ${filteredData.length} matching rows.`
+        };
+        
+      case "sorting":
+        if (!config.column) {
+          throw new Error("Missing required configuration for sorting");
+        }
+        
+        const sortedData = [...data].sort((a: any, b: any) => {
+          const valueA = a[config.column];
+          const valueB = b[config.column];
+          
+          // Handle different data types
+          if (typeof valueA === 'string' && typeof valueB === 'string') {
+            return config.order === 'ascending' 
+              ? valueA.localeCompare(valueB) 
+              : valueB.localeCompare(valueA);
+          } else {
+            return config.order === 'ascending' 
+              ? (valueA - valueB) 
+              : (valueB - valueA);
+          }
+        });
+        
+        return {
+          success: true,
+          data: sortedData,
+          explanation: `Sorted data by ${config.column} in ${config.order} order.`
+        };
+        
+      case "textTransformation":
+        if (!config.column || !config.transformation) {
+          throw new Error("Missing required configuration for text transformation");
+        }
+        
+        const transformedData = data.map((item: any) => {
+          const value = String(item[config.column]);
+          let transformed;
+          
+          switch (config.transformation) {
+            case "uppercase":
+              transformed = value.toUpperCase();
+              break;
+            case "lowercase":
+              transformed = value.toLowerCase();
+              break;
+            case "trim":
+              transformed = value.trim();
+              break;
+            case "replace":
+              if (config.find) {
+                transformed = value.split(config.find).join(config.replace || '');
+              } else {
+                transformed = value;
+              }
+              break;
+            default:
+              transformed = value;
+          }
+          
+          return { ...item, [config.column]: transformed };
+        });
+        
+        return {
+          success: true,
+          data: transformedData,
+          explanation: `Applied ${config.transformation} transformation to column ${config.column}.`
+        };
+        
+      case "deduplication":
+        if (!config.columns || !config.columns.length) {
+          // Deduplicate based on all fields
+          const seen = new Set();
+          const deduplicatedData = data.filter((item: any) => {
+            const key = JSON.stringify(item);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          
+          return {
+            success: true,
+            data: deduplicatedData,
+            explanation: `Removed duplicates based on all columns. Reduced from ${data.length} to ${deduplicatedData.length} rows.`
+          };
+        } else {
+          // Deduplicate based on specific columns
+          const seen = new Set();
+          const deduplicatedData = data.filter((item: any) => {
+            const keyParts = config.columns.map((col: string) => {
+              let value = item[col];
+              if (typeof value === 'string' && !config.caseSensitive) {
+                value = value.toLowerCase();
+              }
+              return value;
+            });
+            
+            const key = JSON.stringify(keyParts);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          
+          return {
+            success: true,
+            data: deduplicatedData,
+            explanation: `Removed duplicates based on columns: ${config.columns.join(', ')}. Reduced from ${data.length} to ${deduplicatedData.length} rows.`
+          };
+        }
+        
+      // For more complex operations, fallback to AI processing
+      default:
+        return null; // Fallback to AI processing
+    }
+  } catch (error) {
+    console.error(`Error in programmatic processing: ${error.message}`);
+    return null; // Fallback to AI processing
+  }
 }
 
 // Process the data using OpenAI
@@ -223,6 +376,33 @@ serve(async (req) => {
     // Update node status to processing
     await updateWorkflowNodeState(executionId, nodeId, "processing", null);
     
+    // Try to process data programmatically first
+    const programmaticResult = await processData(operation, data, configuration || {});
+    
+    if (programmaticResult) {
+      // Update node status with programmatic results
+      await updateWorkflowNodeState(
+        executionId, 
+        nodeId, 
+        programmaticResult.error ? "error" : "completed", 
+        {
+          data: programmaticResult.data,
+          explanation: programmaticResult.explanation,
+          error: programmaticResult.error
+        }
+      );
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          operation,
+          result: programmaticResult
+        }),
+        { headers: corsHeaders }
+      );
+    }
+    
+    // If programmatic processing failed or not implemented, fallback to AI
     // Generate prompt and process with AI
     const prompt = generatePrompt(operation, data, configuration || {});
     console.log("Generated prompt:", prompt);
