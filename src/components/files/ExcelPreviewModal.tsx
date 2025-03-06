@@ -1,6 +1,7 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AgGridReact } from "ag-grid-react";
+import { ColDef } from 'ag-grid-community';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 import "ag-grid-community/styles/ag-grid.css";
@@ -48,6 +49,11 @@ export function ExcelPreviewModal({ isOpen, onClose, files }: ExcelPreviewModalP
     },
   };
 
+  const columnDefs: ColDef[] = currentSheet?.headers.map(header => ({
+    field: header,
+    headerName: header,
+  })) || [];
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col">
@@ -83,10 +89,7 @@ export function ExcelPreviewModal({ isOpen, onClose, files }: ExcelPreviewModalP
                     <TabsContent key={sheet.name} value={sheet.name} className="flex-grow">
                       <div className="ag-theme-alpine w-full h-[500px]">
                         <AgGridReact
-                          columnDefs={sheet.headers.map(header => ({
-                            field: header,
-                            headerName: header,
-                          }))}
+                          columnDefs={columnDefs}
                           rowData={sheet.rows.slice(0, 15)}
                           gridOptions={gridOptions}
                         />

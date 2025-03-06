@@ -1,3 +1,4 @@
+
 import { FileListTable } from './files/FileListTable';
 import { FileListPagination } from './files/FileListPagination';
 import { EmptyFilesList } from './files/EmptyFilesList';
@@ -5,6 +6,8 @@ import { useFileOperations } from './files/useFileOperations';
 import { ExcelFile } from '@/types/files';
 import { FileSpreadsheet, Download, Trash2, MessageSquare, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { formatDistanceToNow } from 'date-fns';
 import { useState } from 'react';
 import { ExcelPreviewModal } from './files/ExcelPreviewModal';
 import { useQuery } from '@tanstack/react-query';
