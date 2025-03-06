@@ -1,13 +1,15 @@
-
 import { FileListTable } from './files/FileListTable';
 import { FileListPagination } from './files/FileListPagination';
 import { EmptyFilesList } from './files/EmptyFilesList';
 import { useFileOperations } from './files/useFileOperations';
 import { ExcelFile } from '@/types/files';
-import { FileSpreadsheet, Download, Trash2, MessageSquare } from 'lucide-react';
+import { FileSpreadsheet, Download, Trash2, MessageSquare, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { formatDistanceToNow } from 'date-fns';
+import { useState } from 'react';
+import { ExcelPreviewModal } from './files/ExcelPreviewModal';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import * as XLSX from 'xlsx';
 import {
   ColumnDef,
   getCoreRowModel,
@@ -24,9 +26,82 @@ interface FilesListProps {
   onSelectionChange: (selectedFiles: string[]) => void;
 }
 
+interface SheetData {
+  name: string;
+  headers: string[];
+  rows: any[][];
+}
+
+interface FilePreview {
+  id: string;
+  filename: string;
+  sheets: SheetData[];
+}
+
 export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }: FilesListProps) {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const queryClient = useQueryClient();
   const { handleDownload, handleDelete, handleChatWithFile, formatFileSize } = useFileOperations({ queryClient });
+
+  const { data: previewData } = useQuery({
+    queryKey: ['excel-preview', selectedFiles],
+    queryFn: async () => {
+      if (!selectedFiles.length) return [];
+
+      const previews = await Promise.all(
+        selectedFiles.map(async (fileId) => {
+          const file = files.find(f => f.id === fileId);
+          if (!file) return null;
+
+          try {
+            const { data: fileRecord } = await supabase
+              .from('excel_files')
+              .select('file_path')
+              .eq('id', fileId)
+              .single();
+
+            if (!fileRecord) throw new Error("File not found");
+
+            const { data: fileData, error } = await supabase.storage
+              .from('excel_files')
+              .download(fileRecord.file_path);
+
+            if (error) throw error;
+
+            const workbook = XLSX.read(await fileData.arrayBuffer());
+            
+            const sheets = workbook.SheetNames.map(sheetName => {
+              const worksheet = workbook.Sheets[sheetName];
+              const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+              
+              if (!jsonData.length) return null;
+
+              const headers = (jsonData[0] || []) as string[];
+              const rows = jsonData.slice(1) as any[][];
+
+              return {
+                name: sheetName,
+                headers,
+                rows
+              };
+            }).filter(Boolean);
+
+            return {
+              id: fileId,
+              filename: file.filename,
+              sheets
+            };
+          } catch (error) {
+            console.error('Error processing file:', error);
+            return null;
+          }
+        })
+      );
+
+      return previews.filter(Boolean) as FilePreview[];
+    },
+    enabled: selectedFiles.length > 0
+  });
 
   const columns: ColumnDef<ExcelFile>[] = [
     {
@@ -85,6 +160,16 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
           >
             <MessageSquare className="h-4 w-4" />
             <span className="sr-only">Chat with file</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsPreviewOpen(true)}
+            disabled={!selectedFiles.includes(row.original.id)}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            <Eye className="h-4 w-4" />
+            <span className="sr-only">Preview file</span>
           </Button>
           <Button
             variant="ghost"
@@ -158,6 +243,13 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
     <div className="space-y-4">
       <FileListTable table={table} columns={columns} />
       <FileListPagination table={table} />
+      {isPreviewOpen && previewData && (
+        <ExcelPreviewModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          files={previewData}
+        />
+      )}
     </div>
   );
 }
