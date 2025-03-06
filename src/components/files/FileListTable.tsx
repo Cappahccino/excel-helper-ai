@@ -10,14 +10,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Fragment } from 'react';
-import { ColumnDef, flexRender } from '@tanstack/react-table';
+import { flexRender } from '@tanstack/react-table';
 import { formatDistanceToNow } from 'date-fns';
 import { ExcelFile } from '@/types/files';
 
 interface FileListTableProps {
   table: any;
-  columns: ColumnDef<ExcelFile>[];
+  columns: any[];
 }
 
 export function FileListTable({ table, columns }: FileListTableProps) {
@@ -40,15 +39,13 @@ export function FileListTable({ table, columns }: FileListTableProps) {
         <TableBody>
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row: any) => (
-              <Fragment key={row.id}>
-                <TableRow data-state={row.getIsSelected() && "selected"}>
-                  {row.getVisibleCells().map((cell: any) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </Fragment>
+              <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                {row.getVisibleCells().map((cell: any) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
             ))
           ) : (
             <TableRow>

@@ -21,6 +21,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 interface FilesListProps {
   files: ExcelFile[];
@@ -44,9 +45,10 @@ interface FilePreview {
 export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }: FilesListProps) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { handleDownload, handleDelete, handleChatWithFile, formatFileSize } = useFileOperations({ queryClient });
 
-  const { data: previewData } = useQuery({
+  const { data: previewData, isLoading: isPreviewLoading, error: previewError } = useQuery({
     queryKey: ['excel-preview', selectedFiles],
     queryFn: async () => {
       if (!selectedFiles.length) return [];
@@ -57,24 +59,35 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
           if (!file) return null;
 
           try {
-            const { data: fileRecord } = await supabase
+            // Get the file path from the database
+            const { data: fileRecord, error: fileError } = await supabase
               .from('excel_files')
               .select('file_path')
               .eq('id', fileId)
               .single();
 
-            if (!fileRecord) throw new Error("File not found");
+            if (fileError || !fileRecord) {
+              console.error('Error fetching file record:', fileError);
+              throw new Error("File not found in database");
+            }
 
-            const { data: fileData, error } = await supabase.storage
+            // Download the file from storage bucket 'excel_files' (note the case)
+            const { data: fileData, error: downloadError } = await supabase.storage
               .from('excel_files')
               .download(fileRecord.file_path);
 
-            if (error) throw error;
+            if (downloadError) {
+              console.error('Error downloading file:', downloadError);
+              throw downloadError;
+            }
 
+            // Process the Excel file
             const workbook = XLSX.read(await fileData.arrayBuffer());
             
+            // Extract data from each sheet
             const sheets = workbook.SheetNames.map(sheetName => {
               const worksheet = workbook.Sheets[sheetName];
+              // Use sheet_to_json with header: 1 to get array of arrays format
               const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
               
               if (!jsonData.length) return null;
@@ -87,7 +100,11 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
                 headers,
                 rows
               };
-            }).filter(Boolean);
+            }).filter(Boolean) as SheetData[];
+
+            if (sheets.length === 0) {
+              throw new Error("No data found in Excel file");
+            }
 
             return {
               id: fileId,
@@ -96,14 +113,32 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
             };
           } catch (error) {
             console.error('Error processing file:', error);
+            toast({
+              title: "Error Preview",
+              description: `Failed to preview ${file.filename}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              variant: "destructive",
+            });
             return null;
           }
         })
       );
 
-      return previews.filter(Boolean) as FilePreview[];
+      // Filter out null values (failed previews)
+      const validPreviews = previews.filter(Boolean) as FilePreview[];
+      
+      if (validPreviews.length === 0 && selectedFiles.length > 0) {
+        toast({
+          title: "Preview Failed",
+          description: "Could not preview any of the selected files",
+          variant: "destructive",
+        });
+      }
+      
+      return validPreviews;
     },
-    enabled: selectedFiles.length > 0
+    enabled: selectedFiles.length > 0 && isPreviewOpen,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });
 
   const columns: ColumnDef<ExcelFile>[] = [
@@ -167,8 +202,10 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setIsPreviewOpen(true)}
-            disabled={!selectedFiles.includes(row.original.id)}
+            onClick={() => {
+              onSelectionChange([row.original.id]);
+              setIsPreviewOpen(true);
+            }}
             className="text-gray-600 hover:text-gray-900"
           >
             <Eye className="h-4 w-4" />
@@ -246,11 +283,11 @@ export function FilesList({ files, isLoading, selectedFiles, onSelectionChange }
     <div className="space-y-4">
       <FileListTable table={table} columns={columns} />
       <FileListPagination table={table} />
-      {isPreviewOpen && previewData && (
+      {isPreviewOpen && (
         <ExcelPreviewModal
           isOpen={isPreviewOpen}
           onClose={() => setIsPreviewOpen(false)}
-          files={previewData}
+          files={previewData || []}
         />
       )}
     </div>
