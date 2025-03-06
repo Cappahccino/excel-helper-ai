@@ -2,7 +2,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-import * as XLSX from 'npm:xlsx@0.18.5';
+import * as XLSX from 'npm:xlsx';
 import OpenAI from 'npm:openai';
 
 const corsHeaders = {
@@ -57,18 +57,16 @@ serve(async (req) => {
       throw new Error(fileError?.message || 'File not found');
     }
 
-    // Download file from storage - note bucket name case sensitivity
+    // Download file from storage
     const { data: fileContent, error: downloadError } = await supabase.storage
-      .from('excel_files') // Correct bucket name casing
+      .from('excel_files')
       .download(fileData.file_path);
 
     if (downloadError) {
-      console.error('Error downloading file:', downloadError);
       throw new Error(`Failed to download file: ${downloadError.message}`);
     }
 
     // Process Excel file
-    console.log('Processing Excel file');
     const workbook = XLSX.read(await fileContent.arrayBuffer());
     if (!workbook.SheetNames.length) {
       throw new Error('Excel file contains no sheets');
