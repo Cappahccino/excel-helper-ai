@@ -1,7 +1,7 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AgGridReact } from "ag-grid-react";
-import { ColDef } from 'ag-grid-community';
+import { ColDef, GridOptions } from 'ag-grid-community';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import "ag-grid-community/styles/ag-grid.css";
@@ -70,13 +70,13 @@ export function ExcelPreviewModal({ isOpen, onClose, files }: ExcelPreviewModalP
     filter: true,
   })) || [];
 
-  const gridOptions = {
+  const gridOptions: GridOptions = {
     defaultColDef: {
       resizable: true,
       sortable: true,
       filter: true,
     },
-    domLayout: 'autoHeight',
+    domLayout: 'autoHeight' as 'autoHeight', // Use the correct type for domLayout
   };
 
   return (
