@@ -1,363 +1,626 @@
 
-import React, { useState, useEffect } from 'react';
-import { ProcessingNodeType } from '@/types/workflow';
-import { 
-  Card, 
-  CardContent 
-} from '@/components/ui/card';
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from '@/components/ui/tabs';
+import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { 
-  Filter, 
-  SortAsc, 
-  Calculator, 
-  FormInput, 
-  Type, 
-  FileSpreadsheet, 
-  Calendar, 
-  LayoutGrid, 
-  GitMerge, 
-  Copy 
-} from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Tag, X, Plus } from 'lucide-react';
+import { ProcessingNodeType } from '@/types/workflow';
 
 interface DataProcessingNodeConfigProps {
   nodeId: string;
-  config: Record<string, any>;
+  config: any;
   type: ProcessingNodeType;
-  onConfigChange: (updatedConfig: Record<string, any>) => void;
+  onConfigChange: (config: any) => void;
 }
 
 export function DataProcessingNodeConfig({ nodeId, config, type, onConfigChange }: DataProcessingNodeConfigProps) {
-  const [activeTab, setActiveTab] = useState<string>('basic');
-  const [localConfig, setLocalConfig] = useState<Record<string, any>>(config || {});
-  
+  const [localConfig, setLocalConfig] = useState(config || {});
+
   useEffect(() => {
-    // Initialize with default operation if not set
-    if (!localConfig.operation) {
-      setLocalConfig({
-        ...localConfig,
-        operation: getDefaultOperation(type)
-      });
-    }
-  }, [type]);
-  
-  useEffect(() => {
-    // Update local config when props change
     setLocalConfig(config || {});
   }, [config]);
-  
-  const handleConfigChange = (key: string, value: any) => {
-    const updatedConfig = {
-      ...localConfig,
-      [key]: value
-    };
-    
+
+  const handleChange = (field: string, value: any) => {
+    const updatedConfig = { ...localConfig, [field]: value };
     setLocalConfig(updatedConfig);
     onConfigChange(updatedConfig);
   };
-  
-  const getDefaultOperation = (nodeType: ProcessingNodeType): string => {
-    switch (nodeType) {
-      case 'filtering':
-        return 'filter';
-      case 'sorting':
-        return 'sort';
-      case 'aggregation':
-        return 'aggregate';
-      case 'formulaCalculation':
-        return 'formula';
-      case 'textTransformation':
-        return 'text';
-      case 'dataTypeConversion':
-        return 'convert';
-      case 'dateFormatting':
-        return 'formatDate';
-      case 'pivotTable':
-        return 'pivot';
-      case 'joinMerge':
-        return 'join';
-      case 'deduplication':
-        return 'deduplicate';
-      default:
-        return 'process';
+
+  const addArrayItem = (field: string, item: string) => {
+    if (!item.trim()) return;
+    const currentArray = localConfig[field] || [];
+    if (!currentArray.includes(item)) {
+      const updatedArray = [...currentArray, item];
+      handleChange(field, updatedArray);
     }
   };
-  
-  const getNodeIcon = () => {
-    switch (type) {
-      case 'filtering':
-        return <Filter className="h-4 w-4" />;
-      case 'sorting':
-        return <SortAsc className="h-4 w-4" />;
-      case 'aggregation':
-        return <Calculator className="h-4 w-4" />;
-      case 'formulaCalculation':
-        return <FormInput className="h-4 w-4" />;
-      case 'textTransformation':
-        return <Type className="h-4 w-4" />;
-      case 'dataTypeConversion':
-        return <FileSpreadsheet className="h-4 w-4" />;
-      case 'dateFormatting':
-        return <Calendar className="h-4 w-4" />;
-      case 'pivotTable':
-        return <LayoutGrid className="h-4 w-4" />;
-      case 'joinMerge':
-        return <GitMerge className="h-4 w-4" />;
-      case 'deduplication':
-        return <Copy className="h-4 w-4" />;
-      default:
-        return <FileSpreadsheet className="h-4 w-4" />;
-    }
+
+  const removeArrayItem = (field: string, index: number) => {
+    const currentArray = localConfig[field] || [];
+    const updatedArray = currentArray.filter((_, i) => i !== index);
+    handleChange(field, updatedArray);
   };
-  
-  const renderOperationConfig = () => {
-    switch (type) {
-      case 'filtering':
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label htmlFor="column">Column</Label>
-                <Input 
-                  id="column" 
-                  placeholder="Column to filter"
-                  value={localConfig.column || ''}
-                  onChange={(e) => handleConfigChange('column', e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="operator">Operator</Label>
-                <Select 
-                  value={localConfig.operator || 'equals'} 
-                  onValueChange={(value) => handleConfigChange('operator', value)}
+
+  const renderFilteringConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="column">Column to Filter</Label>
+        <Input
+          id="column"
+          value={localConfig.column || ''}
+          onChange={(e) => handleChange('column', e.target.value)}
+          placeholder="Enter column name"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="operator">Operator</Label>
+        <Select 
+          value={localConfig.operator || 'equals'} 
+          onValueChange={(value) => handleChange('operator', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select operator" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="equals">Equals</SelectItem>
+            <SelectItem value="notEquals">Not Equals</SelectItem>
+            <SelectItem value="contains">Contains</SelectItem>
+            <SelectItem value="greaterThan">Greater Than</SelectItem>
+            <SelectItem value="lessThan">Less Than</SelectItem>
+            <SelectItem value="startsWith">Starts With</SelectItem>
+            <SelectItem value="endsWith">Ends With</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="value">Filter Value</Label>
+        <Input
+          id="value"
+          value={localConfig.value || ''}
+          onChange={(e) => handleChange('value', e.target.value)}
+          placeholder="Enter filter value"
+        />
+      </div>
+    </>
+  );
+
+  const renderSortingConfig = () => {
+    const [newColumn, setNewColumn] = useState('');
+    
+    return (
+      <>
+        <div className="mb-4">
+          <Label htmlFor="order">Sort Order</Label>
+          <Select 
+            value={localConfig.order || 'ascending'} 
+            onValueChange={(value) => handleChange('order', value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select sort order" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ascending">Ascending</SelectItem>
+              <SelectItem value="descending">Descending</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="mb-4">
+          <Label className="mb-2 block">Columns to Sort</Label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(localConfig.columns || []).map((col: string, index: number) => (
+              <div key={index} className="flex items-center bg-gray-100 rounded-md px-2 py-1">
+                <span className="text-sm">{col}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeArrayItem('columns', index)}
+                  className="ml-1 p-0 h-4 w-4"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select operator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="equals">Equals</SelectItem>
-                    <SelectItem value="notEquals">Not Equals</SelectItem>
-                    <SelectItem value="contains">Contains</SelectItem>
-                    <SelectItem value="startsWith">Starts With</SelectItem>
-                    <SelectItem value="endsWith">Ends With</SelectItem>
-                    <SelectItem value="greaterThan">Greater Than</SelectItem>
-                    <SelectItem value="lessThan">Less Than</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-            </div>
-            <div>
-              <Label htmlFor="value">Value</Label>
-              <Input 
-                id="value" 
-                placeholder="Value to compare with"
-                value={localConfig.value || ''}
-                onChange={(e) => handleConfigChange('value', e.target.value)}
-              />
-            </div>
+            ))}
           </div>
-        );
-        
-      case 'sorting':
-        return (
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="column">Column</Label>
-              <Input 
-                id="column" 
-                placeholder="Column to sort"
-                value={localConfig.column || ''}
-                onChange={(e) => handleConfigChange('column', e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="direction">Direction</Label>
-              <Select 
-                value={localConfig.direction || 'ascending'} 
-                onValueChange={(value) => handleConfigChange('direction', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select direction" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ascending">Ascending</SelectItem>
-                  <SelectItem value="descending">Descending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex gap-2">
+            <Input
+              value={newColumn}
+              onChange={(e) => setNewColumn(e.target.value)}
+              placeholder="Enter column name"
+            />
+            <Button
+              type="button"
+              onClick={() => {
+                addArrayItem('columns', newColumn);
+                setNewColumn('');
+              }}
+              disabled={!newColumn.trim()}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add
+            </Button>
           </div>
-        );
-        
-      case 'aggregation':
-        return (
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="function">Aggregation Function</Label>
-              <Select 
-                value={localConfig.function || 'sum'} 
-                onValueChange={(value) => handleConfigChange('function', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select function" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sum">Sum</SelectItem>
-                  <SelectItem value="average">Average</SelectItem>
-                  <SelectItem value="count">Count</SelectItem>
-                  <SelectItem value="min">Minimum</SelectItem>
-                  <SelectItem value="max">Maximum</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="column">Column</Label>
-              <Input 
-                id="column" 
-                placeholder="Column to aggregate"
-                value={localConfig.column || ''}
-                onChange={(e) => handleConfigChange('column', e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="groupBy">Group By (optional)</Label>
-              <Input 
-                id="groupBy" 
-                placeholder="Column to group by"
-                value={localConfig.groupBy || ''}
-                onChange={(e) => handleConfigChange('groupBy', e.target.value)}
-              />
-            </div>
-          </div>
-        );
-        
-      case 'formulaCalculation':
-        return (
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="formula">Formula</Label>
-              <Input 
-                id="formula" 
-                placeholder="e.g., A1 + B1 * C1"
-                value={localConfig.formula || ''}
-                onChange={(e) => handleConfigChange('formula', e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="outputColumn">Output Column</Label>
-              <Input 
-                id="outputColumn" 
-                placeholder="Result column name"
-                value={localConfig.outputColumn || ''}
-                onChange={(e) => handleConfigChange('outputColumn', e.target.value)}
-              />
-            </div>
-          </div>
-        );
-        
-      // Add configurations for other processing types as needed
-      default:
-        return (
-          <div className="flex items-center justify-center p-4 text-muted-foreground">
-            Configure the {type} operation
-          </div>
-        );
-    }
+        </div>
+      </>
+    );
   };
-  
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="p-2 rounded bg-blue-100">
-            {getNodeIcon()}
+
+  const renderAggregationConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="function">Aggregation Function</Label>
+        <Select 
+          value={localConfig.function || 'sum'} 
+          onValueChange={(value) => handleChange('function', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select function" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sum">Sum</SelectItem>
+            <SelectItem value="average">Average</SelectItem>
+            <SelectItem value="count">Count</SelectItem>
+            <SelectItem value="min">Minimum</SelectItem>
+            <SelectItem value="max">Maximum</SelectItem>
+            <SelectItem value="median">Median</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="column">Column for Aggregation</Label>
+        <Input
+          id="column"
+          value={localConfig.column || ''}
+          onChange={(e) => handleChange('column', e.target.value)}
+          placeholder="Enter column name"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="groupBy">Group By (Optional)</Label>
+        <Input
+          id="groupBy"
+          value={localConfig.groupBy || ''}
+          onChange={(e) => handleChange('groupBy', e.target.value)}
+          placeholder="Enter grouping column"
+        />
+      </div>
+    </>
+  );
+
+  const renderFormulaCalculationConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="description">Formula Description</Label>
+        <Textarea
+          id="description"
+          value={localConfig.description || ''}
+          onChange={(e) => handleChange('description', e.target.value)}
+          placeholder="Describe what the formula should do, e.g., 'Calculate the compound interest based on principal, rate, and time'"
+          rows={4}
+        />
+      </div>
+    </>
+  );
+
+  const renderTextTransformationConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="column">Column to Transform</Label>
+        <Input
+          id="column"
+          value={localConfig.column || ''}
+          onChange={(e) => handleChange('column', e.target.value)}
+          placeholder="Enter column name"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="transformation">Transformation Type</Label>
+        <Select 
+          value={localConfig.transformation || 'uppercase'} 
+          onValueChange={(value) => handleChange('transformation', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select transformation" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="uppercase">UPPERCASE</SelectItem>
+            <SelectItem value="lowercase">lowercase</SelectItem>
+            <SelectItem value="capitalize">Capitalize</SelectItem>
+            <SelectItem value="trim">Trim Whitespace</SelectItem>
+            <SelectItem value="replace">Find and Replace</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {localConfig.transformation === 'replace' && (
+        <>
+          <div className="mb-4">
+            <Label htmlFor="find">Find</Label>
+            <Input
+              id="find"
+              value={localConfig.find || ''}
+              onChange={(e) => handleChange('find', e.target.value)}
+              placeholder="Text to find"
+            />
           </div>
-          <div className="font-medium">{type.charAt(0).toUpperCase() + type.slice(1)}</div>
+          <div className="mb-4">
+            <Label htmlFor="replace">Replace With</Label>
+            <Input
+              id="replace"
+              value={localConfig.replace || ''}
+              onChange={(e) => handleChange('replace', e.target.value)}
+              placeholder="Replacement text"
+            />
+          </div>
+        </>
+      )}
+      {localConfig.transformation === 'custom' && (
+        <div className="mb-4">
+          <Label htmlFor="customTransformation">Custom Transformation</Label>
+          <Textarea
+            id="customTransformation"
+            value={localConfig.customTransformation || ''}
+            onChange={(e) => handleChange('customTransformation', e.target.value)}
+            placeholder="Describe the custom transformation, e.g., 'Extract phone numbers from text'"
+            rows={3}
+          />
+        </div>
+      )}
+    </>
+  );
+
+  const renderDataTypeConversionConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="column">Column to Convert</Label>
+        <Input
+          id="column"
+          value={localConfig.column || ''}
+          onChange={(e) => handleChange('column', e.target.value)}
+          placeholder="Enter column name"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="fromType">From Type</Label>
+        <Select 
+          value={localConfig.fromType || 'text'} 
+          onValueChange={(value) => handleChange('fromType', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select source type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="text">Text</SelectItem>
+            <SelectItem value="number">Number</SelectItem>
+            <SelectItem value="date">Date</SelectItem>
+            <SelectItem value="boolean">Boolean</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="toType">To Type</Label>
+        <Select 
+          value={localConfig.toType || 'number'} 
+          onValueChange={(value) => handleChange('toType', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select target type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="text">Text</SelectItem>
+            <SelectItem value="number">Number</SelectItem>
+            <SelectItem value="date">Date</SelectItem>
+            <SelectItem value="boolean">Boolean</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  );
+
+  const renderDateFormattingConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="column">Date Column</Label>
+        <Input
+          id="column"
+          value={localConfig.column || ''}
+          onChange={(e) => handleChange('column', e.target.value)}
+          placeholder="Enter column name"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="format">Date Format</Label>
+        <Select 
+          value={localConfig.format || 'MM/DD/YYYY'} 
+          onValueChange={(value) => handleChange('format', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select date format" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
+            <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
+            <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
+            <SelectItem value="MMM DD, YYYY">MMM DD, YYYY</SelectItem>
+            <SelectItem value="DD MMM YYYY">DD MMM YYYY</SelectItem>
+            <SelectItem value="custom">Custom Format</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {localConfig.format === 'custom' && (
+        <div className="mb-4">
+          <Label htmlFor="customFormat">Custom Format</Label>
+          <Input
+            id="customFormat"
+            value={localConfig.customFormat || ''}
+            onChange={(e) => handleChange('customFormat', e.target.value)}
+            placeholder="Enter custom format, e.g., YYYY-MM-DD HH:mm:ss"
+          />
+        </div>
+      )}
+    </>
+  );
+
+  const renderPivotTableConfig = () => {
+    const [newRow, setNewRow] = useState('');
+    const [newColumn, setNewColumn] = useState('');
+    const [newValue, setNewValue] = useState('');
+    
+    return (
+      <>
+        <div className="mb-4">
+          <Label className="mb-2 block">Row Fields</Label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(localConfig.rows || []).map((row: string, index: number) => (
+              <div key={index} className="flex items-center bg-gray-100 rounded-md px-2 py-1">
+                <span className="text-sm">{row}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeArrayItem('rows', index)}
+                  className="ml-1 p-0 h-4 w-4"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newRow}
+              onChange={(e) => setNewRow(e.target.value)}
+              placeholder="Enter row field"
+            />
+            <Button
+              type="button"
+              onClick={() => {
+                addArrayItem('rows', newRow);
+                setNewRow('');
+              }}
+              disabled={!newRow.trim()}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add
+            </Button>
+          </div>
         </div>
         
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="basic">Basic</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="basic" className="space-y-4 pt-4">
-            <div>
-              <Label htmlFor="operation">Operation</Label>
-              <Input 
-                id="operation" 
-                value={localConfig.operation || getDefaultOperation(type)}
-                onChange={(e) => handleConfigChange('operation', e.target.value)}
-                className="mb-4"
-              />
-            </div>
-            
-            <Separator className="my-4" />
-            
-            {renderOperationConfig()}
-          </TabsContent>
-          
-          <TabsContent value="advanced" className="pt-4">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Input 
-                  id="description" 
-                  placeholder="Add a description for this operation"
-                  value={localConfig.description || ''}
-                  onChange={(e) => handleConfigChange('description', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="errorHandling">Error Handling</Label>
-                <Select 
-                  value={localConfig.errorHandling || 'stopExecution'} 
-                  onValueChange={(value) => handleConfigChange('errorHandling', value)}
+        <div className="mb-4">
+          <Label className="mb-2 block">Column Fields</Label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(localConfig.columns || []).map((col: string, index: number) => (
+              <div key={index} className="flex items-center bg-gray-100 rounded-md px-2 py-1">
+                <span className="text-sm">{col}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeArrayItem('columns', index)}
+                  className="ml-1 p-0 h-4 w-4"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select error handling strategy" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="stopExecution">Stop Execution</SelectItem>
-                    <SelectItem value="continueExecution">Continue Execution</SelectItem>
-                    <SelectItem value="skipRecord">Skip Record</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-              
-              <div className="flex items-center space-x-2 pt-2">
-                <Label htmlFor="cacheResults" className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="cacheResults"
-                    checked={localConfig.cacheResults || false}
-                    onChange={(e) => handleConfigChange('cacheResults', e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  <span>Cache Results</span>
-                </Label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newColumn}
+              onChange={(e) => setNewColumn(e.target.value)}
+              placeholder="Enter column field"
+            />
+            <Button
+              type="button"
+              onClick={() => {
+                addArrayItem('columns', newColumn);
+                setNewColumn('');
+              }}
+              disabled={!newColumn.trim()}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add
+            </Button>
+          </div>
+        </div>
+        
+        <div className="mb-4">
+          <Label className="mb-2 block">Value Fields</Label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(localConfig.values || []).map((val: string, index: number) => (
+              <div key={index} className="flex items-center bg-gray-100 rounded-md px-2 py-1">
+                <span className="text-sm">{val}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeArrayItem('values', index)}
+                  className="ml-1 p-0 h-4 w-4"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              placeholder="Enter value field"
+            />
+            <Button
+              type="button"
+              onClick={() => {
+                addArrayItem('values', newValue);
+                setNewValue('');
+              }}
+              disabled={!newValue.trim()}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add
+            </Button>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const renderJoinMergeConfig = () => (
+    <>
+      <div className="mb-4">
+        <Label htmlFor="leftKey">Primary Dataset Key</Label>
+        <Input
+          id="leftKey"
+          value={localConfig.leftKey || ''}
+          onChange={(e) => handleChange('leftKey', e.target.value)}
+          placeholder="Enter key column from primary dataset"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="rightKey">Secondary Dataset Key</Label>
+        <Input
+          id="rightKey"
+          value={localConfig.rightKey || ''}
+          onChange={(e) => handleChange('rightKey', e.target.value)}
+          placeholder="Enter key column from secondary dataset"
+        />
+      </div>
+      <div className="mb-4">
+        <Label htmlFor="joinType">Join Type</Label>
+        <Select 
+          value={localConfig.joinType || 'inner'} 
+          onValueChange={(value) => handleChange('joinType', value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select join type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="inner">Inner Join</SelectItem>
+            <SelectItem value="left">Left Join</SelectItem>
+            <SelectItem value="right">Right Join</SelectItem>
+            <SelectItem value="full">Full Outer Join</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  );
+
+  const renderDeduplicationConfig = () => {
+    const [newColumn, setNewColumn] = useState('');
+    
+    return (
+      <>
+        <div className="mb-4">
+          <Label className="mb-2 block">Columns for Deduplication</Label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(localConfig.columns || []).map((col: string, index: number) => (
+              <div key={index} className="flex items-center bg-gray-100 rounded-md px-2 py-1">
+                <span className="text-sm">{col}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeArrayItem('columns', index)}
+                  className="ml-1 p-0 h-4 w-4"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newColumn}
+              onChange={(e) => setNewColumn(e.target.value)}
+              placeholder="Enter column name"
+            />
+            <Button
+              type="button"
+              onClick={() => {
+                addArrayItem('columns', newColumn);
+                setNewColumn('');
+              }}
+              disabled={!newColumn.trim()}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mb-4">
+          <Switch 
+            id="caseSensitive"
+            checked={localConfig.caseSensitive ?? true}
+            onCheckedChange={(checked) => handleChange('caseSensitive', checked)}
+          />
+          <Label htmlFor="caseSensitive">Case Sensitive Comparison</Label>
+        </div>
+      </>
+    );
+  };
+
+  // Render different configuration forms based on the node type
+  const renderConfigFields = () => {
+    switch (type) {
+      case 'filtering':
+        return renderFilteringConfig();
+      case 'sorting':
+        return renderSortingConfig();
+      case 'aggregation':
+        return renderAggregationConfig();
+      case 'formulaCalculation':
+        return renderFormulaCalculationConfig();
+      case 'textTransformation':
+        return renderTextTransformationConfig();
+      case 'dataTypeConversion':
+        return renderDataTypeConversionConfig();
+      case 'dateFormatting':
+        return renderDateFormattingConfig();
+      case 'pivotTable':
+        return renderPivotTableConfig();
+      case 'joinMerge':
+        return renderJoinMergeConfig();
+      case 'deduplication':
+        return renderDeduplicationConfig();
+      default:
+        return <p className="text-sm text-gray-500">No configuration available for this node type.</p>;
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label htmlFor="nodeLabel">Node Label</Label>
+        <Input
+          id="nodeLabel"
+          value={localConfig.label || ''}
+          onChange={(e) => handleChange('label', e.target.value)}
+          placeholder="Enter node label"
+        />
+      </div>
+      
+      <div className="pt-4 border-t">
+        <h3 className="font-medium mb-3">Operation Configuration</h3>
+        {renderConfigFields()}
+      </div>
+    </div>
   );
 }
-
-export default DataProcessingNodeConfig;
