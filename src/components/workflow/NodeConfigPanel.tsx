@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import AskAINodeConfig from './AskAINodeConfig';
 import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
-import DataProcessingNodeConfig from './DataProcessingNodeConfig';
+import { DataProcessingNodeConfig } from './DataProcessingNodeConfig';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   node,
