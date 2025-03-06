@@ -1,4 +1,5 @@
 
+import { WorkflowDefinition, WorkflowNode, Edge, WorkflowExecution, NodeExecutionContext, NodeType } from '@/types/workflow';
 import { supabase } from '@/integrations/supabase/client';
 import { dataProcessing } from './workflow/handlers/dataProcessing';
 import { executeDataTransform } from './workflow/handlers/dataTransform';

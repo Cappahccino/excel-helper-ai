@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { X, Trash, Copy, ChevronRight } from 'lucide-react';
-import { NodeConfigPanelProps, WorkflowNode, AINodeData, SpreadsheetGeneratorNodeData } from '@/types/workflow';
+import { NodeConfigPanelProps, WorkflowNode, AINodeData, SpreadsheetGeneratorNodeData, ProcessingNodeType } from '@/types/workflow';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import AskAINodeConfig from './AskAINodeConfig';
@@ -71,18 +72,18 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   };
 
   const renderConfigPanel = () => {
-    const processingNodeTypes = [
+    const processingNodeTypes: ProcessingNodeType[] = [
       'filtering', 'sorting', 'aggregation', 'formulaCalculation', 
       'textTransformation', 'dataTypeConversion', 'dateFormatting', 
       'pivotTable', 'joinMerge', 'deduplication'
     ];
     
-    if (processingNodeTypes.includes(node.data.type)) {
+    if (processingNodeTypes.includes(node.data.type as ProcessingNodeType)) {
       return (
         <DataProcessingNodeConfig
           nodeId={node.id}
           config={node.data.config}
-          type={node.data.type}
+          type={node.data.type as ProcessingNodeType}
           onConfigChange={handleUpdate}
         />
       );
