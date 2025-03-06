@@ -95,22 +95,16 @@ const nodeCategories = [
     id: 'processing',
     name: 'Data Processing',
     items: [
-      { type: 'dataProcessing', label: 'Data Processing', description: 'Transform and process data' },
-      { type: 'columnMapping', label: 'Column Mapping', description: 'Renames or reorders columns in datasets' },
-      { type: 'filtering', label: 'Filtering', description: 'Excludes data based on conditions' },
+      { type: 'filtering', label: 'Filtering', description: 'Filter data based on specified conditions' },
       { type: 'sorting', label: 'Sorting', description: 'Orders data based on specified criteria' },
-      { type: 'aggregation', label: 'Aggregation', description: 'Computes sums, averages, min/max, etc' },
+      { type: 'aggregation', label: 'Aggregation', description: 'Computes sums, averages, counts, etc.' },
       { type: 'formulaCalculation', label: 'Formula Calculation', description: 'Applies Excel-like formulas to data' },
-      { type: 'currencyConversion', label: 'Currency Conversion', description: 'Converts financial values using live FX rates' },
       { type: 'textTransformation', label: 'Text Transformation', description: 'Applies string operations' },
-      { type: 'dataTypeConversion', label: 'Data Type Conversion', description: 'Converts text to numbers, dates, etc' },
-      { type: 'deduplication', label: 'Deduplication', description: 'Removes duplicate entries' },
+      { type: 'dataTypeConversion', label: 'Data Type Conversion', description: 'Converts text to numbers, dates, etc.' },
+      { type: 'dateFormatting', label: 'Date Formatting', description: 'Converts timestamps or applies date formats' },
       { type: 'joinMerge', label: 'Join/Merge Datasets', description: 'Combines data from multiple sources' },
       { type: 'pivotTable', label: 'Pivot Table Creation', description: 'Restructures tabular data' },
-      { type: 'conditionalLogic', label: 'Conditional Logic', description: 'Performs different actions based on conditions' },
-      { type: 'dateFormatting', label: 'Date Formatting', description: 'Converts timestamps or applies offsets' },
-      { type: 'dataMasking', label: 'Data Masking', description: 'Redacts or anonymizes sensitive data' },
-      { type: 'normalization', label: 'Normalization', description: 'Scales numerical data for analysis' }
+      { type: 'deduplication', label: 'Deduplication', description: 'Removes duplicate entries' },
     ]
   },
   {
@@ -508,7 +502,54 @@ const Canvas = () => {
           return {
             ...baseData,
             type: nodeType as ProcessingNodeType,
-            config: {}
+            config: {
+              operation: nodeType,
+              ...(nodeType === 'filtering' && {
+                column: '',
+                operator: 'equals',
+                value: ''
+              }),
+              ...(nodeType === 'sorting' && {
+                columns: [],
+                order: 'ascending'
+              }),
+              ...(nodeType === 'aggregation' && {
+                function: 'sum',
+                column: '',
+                groupBy: ''
+              }),
+              ...(nodeType === 'formulaCalculation' && {
+                description: '',
+                applyTo: []
+              }),
+              ...(nodeType === 'textTransformation' && {
+                column: '',
+                transformation: 'uppercase'
+              }),
+              ...(nodeType === 'dataTypeConversion' && {
+                column: '',
+                fromType: 'text',
+                toType: 'number'
+              }),
+              ...(nodeType === 'dateFormatting' && {
+                column: '',
+                format: 'MM/DD/YYYY'
+              }),
+              ...(nodeType === 'pivotTable' && {
+                rows: [],
+                columns: [],
+                values: []
+              }),
+              ...(nodeType === 'joinMerge' && {
+                leftKey: '',
+                rightKey: '',
+                joinType: 'inner'
+              }),
+              ...(nodeType === 'deduplication' && {
+                columns: [],
+                caseSensitive: true
+              })
+            }
           };
         case 'aiNode':
           return {

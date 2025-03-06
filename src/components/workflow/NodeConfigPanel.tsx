@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { X, Trash, Copy, ChevronRight } from 'lucide-react';
 import { NodeConfigPanelProps, WorkflowNode, AINodeData, SpreadsheetGeneratorNodeData } from '@/types/workflow';
@@ -6,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import AskAINodeConfig from './AskAINodeConfig';
 import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
+import DataProcessingNodeConfig from './DataProcessingNodeConfig';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   node,
@@ -15,17 +15,13 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
   onClose,
   readOnly = false,
 }) => {
-  // Check if node is an AskAI node
   const isAskAINode = node.type === 'askAI';
   const isSpreadsheetGeneratorNode = node.type === 'spreadsheetGenerator';
   
-  // Generic handler for updating the node
   const handleUpdate = (updatedData: any) => {
     if (!node) return;
     
-    // Create updated config based on node type
     if (isAskAINode) {
-      // Type-safe handling for askAI node
       const aiNodeData = node.data as AINodeData;
       
       const updatedConfig = {
@@ -35,7 +31,6 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
       
       onUpdateConfig(updatedConfig);
     } else {
-      // Generic handling for other node types
       onUpdateConfig({
         ...node.data.config,
         ...(updatedData || {})
@@ -75,6 +70,27 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
     }
   };
 
+  const renderConfigPanel = () => {
+    const processingNodeTypes = [
+      'filtering', 'sorting', 'aggregation', 'formulaCalculation', 
+      'textTransformation', 'dataTypeConversion', 'dateFormatting', 
+      'pivotTable', 'joinMerge', 'deduplication'
+    ];
+    
+    if (processingNodeTypes.includes(node.data.type)) {
+      return (
+        <DataProcessingNodeConfig
+          nodeId={node.id}
+          config={node.data.config}
+          type={node.data.type}
+          onConfigChange={handleUpdate}
+        />
+      );
+    }
+
+    return renderConfig();
+  };
+
   return (
     <div className="w-80 min-w-80 border-l border-gray-200 bg-white flex flex-col h-full">
       <div className="flex items-center justify-between border-b border-gray-200 p-4">
@@ -92,7 +108,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
       </div>
       
       <div className="flex-1 overflow-y-auto">
-        {renderConfig()}
+        {renderConfigPanel()}
       </div>
       
       {!readOnly && (
