@@ -444,7 +444,7 @@ const Canvas = () => {
       clearTimeout(window.saveWorkflowTimeout);
     }
     
-    window.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000);
+    window.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000) as unknown as number;
   };
 
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {

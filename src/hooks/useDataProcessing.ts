@@ -232,23 +232,31 @@ export function useDataProcessing() {
 
       if (logError) {
         console.error('Error fetching workflow step logs:', logError);
-      } else if (logData && logData.length > 0 && logData[0].output_data) {
+      } else if (logData && logData.length > 0) {
+        // Fix: Add type checking before accessing properties
         const outputData = logData[0].output_data;
-        let dataToCheck = outputData;
         
-        // Handle different output data structures
-        if (outputData.result && outputData.result.processedData) {
-          dataToCheck = outputData.result.processedData;
-        } else if (outputData.data) {
-          dataToCheck = outputData.data;
-        }
-        
-        if (Array.isArray(dataToCheck) && dataToCheck.length > 0) {
-          const detectedSchema = detectSchema(dataToCheck);
-          console.log('Detected schema from logs:', detectedSchema);
-          setSchema(detectedSchema);
-          schemaCache.set(nodeId, detectedSchema);
-          return detectedSchema;
+        if (outputData) {
+          let dataToCheck: any[] = [];
+          
+          // Handle different output data structures with proper type checking
+          if (typeof outputData === 'object' && outputData !== null) {
+            if ('result' in outputData && typeof outputData.result === 'object' && outputData.result !== null) {
+              if ('processedData' in outputData.result && Array.isArray(outputData.result.processedData)) {
+                dataToCheck = outputData.result.processedData;
+              }
+            } else if ('data' in outputData && Array.isArray(outputData.data)) {
+              dataToCheck = outputData.data;
+            }
+          }
+          
+          if (dataToCheck.length > 0) {
+            const detectedSchema = detectSchema(dataToCheck);
+            console.log('Detected schema from logs:', detectedSchema);
+            setSchema(detectedSchema);
+            schemaCache.set(nodeId, detectedSchema);
+            return detectedSchema;
+          }
         }
       }
       
