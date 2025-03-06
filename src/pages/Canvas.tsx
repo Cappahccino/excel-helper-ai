@@ -631,7 +631,8 @@ const Canvas = () => {
         ...props,
         data: {
           ...props.data,
-          workflowId: savingWorkflowId
+          workflowId: savingWorkflowId,
+          onChange: handleNodeConfigUpdate
         }
       }} 
     />,

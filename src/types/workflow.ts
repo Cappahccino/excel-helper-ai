@@ -185,14 +185,14 @@ export interface UtilityNodeData extends BaseNodeData {
   };
 }
 
-export interface FileUploadNodeData extends BaseNodeData {
+export interface FileUploadNodeData extends WorkflowNodeData {
   type: 'fileUpload';
-  config: {
-    fileId?: string | null;
-    hasHeaders?: boolean;
-    delimiter?: string;
-    [key: string]: any;
+  config?: {
+    fileId?: string;
+    filename?: string;
   };
+  workflowId?: string;
+  onChange?: (nodeId: string, updatedData: Partial<FileUploadNodeData>) => void;
 }
 
 // A union of all possible node data types

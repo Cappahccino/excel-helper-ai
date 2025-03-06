@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
@@ -30,10 +31,40 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [fileProcessingError, setFileProcessingError] = useState<string | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const label = data?.label || 'File Upload';
+  
+  // Check if a file is already selected in data
+  useEffect(() => {
+    if (data?.config?.fileId && data?.config?.filename && !selectedFile) {
+      // Fetch the file details by ID to properly set the selectedFile state
+      const fetchFileDetails = async () => {
+        try {
+          const { data: fileData, error } = await supabase
+            .from('excel_files')
+            .select('*')
+            .eq('id', data.config.fileId)
+            .single();
+            
+          if (error) {
+            console.error('Error fetching file details:', error);
+            return;
+          }
+          
+          if (fileData) {
+            setSelectedFile(fileData);
+          }
+        } catch (err) {
+          console.error('Error fetching file details:', err);
+        }
+      };
+      
+      fetchFileDetails();
+    }
+  }, [data?.config?.fileId, data?.config?.filename, selectedFile]);
   
   useEffect(() => {
     fetchRecentFiles();
@@ -51,6 +82,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           .select('*')
           .eq('file_id', selectedFile.id)
           .eq('workflow_id', data.workflowId)
+          .eq('node_id', id)
           .maybeSingle();
           
         if (error) {
@@ -93,7 +125,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     return () => {
       if (intervalId) window.clearInterval(intervalId);
     };
-  }, [selectedFile?.id, data?.workflowId]);
+  }, [selectedFile?.id, data?.workflowId, id]);
   
   useEffect(() => {
     if (searchTerm.trim() === '') {
@@ -203,18 +235,27 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       
       await fetchRecentFiles();
       setSelectedFile(fileRecord);
+      setSearchTerm(''); // Clear search term after upload
+      setIsDropdownOpen(false); // Close dropdown after selection
       
       setProcessingStatus('pending');
       setProcessingProgress(0);
       setFileProcessingError(null);
       
       if (data) {
-        if (!data.config) {
-          data.config = {};
-        }
-        data.config.fileId = fileRecord.id;
-        data.config.filename = fileRecord.filename;
+        // Update the data config
+        const updatedConfig = {
+          ...(data.config || {}),
+          fileId: fileRecord.id,
+          filename: fileRecord.filename,
+        };
         
+        // Update the node data
+        if (typeof data.onChange === 'function') {
+          data.onChange(id, { config: updatedConfig });
+        }
+        
+        // Queue file for processing if workflowId exists
         if (data.workflowId) {
           await queueFileForProcessing(fileRecord.id, data.workflowId, id);
         }
@@ -332,19 +373,27 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   
   const handleFileSelection = async (file: ExcelFile) => {
     setSelectedFile(file);
-    setSearchTerm('');
+    setSearchTerm(''); // Clear search term after selection
+    setIsDropdownOpen(false); // Close dropdown after selection
     
     setProcessingStatus(null);
     setProcessingProgress(0);
     setFileProcessingError(null);
     
     if (data) {
-      if (!data.config) {
-        data.config = {};
-      }
-      data.config.fileId = file.id;
-      data.config.filename = file.filename;
+      // Update the data config
+      const updatedConfig = {
+        ...(data.config || {}),
+        fileId: file.id,
+        filename: file.filename,
+      };
       
+      // Update the node data
+      if (typeof data.onChange === 'function') {
+        data.onChange(id, { config: updatedConfig });
+      }
+      
+      // Queue file for processing if workflowId exists
       if (data.workflowId) {
         await queueFileForProcessing(file.id, data.workflowId, id);
       }
@@ -357,9 +406,16 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setProcessingProgress(0);
     setFileProcessingError(null);
     
-    if (data && data.config) {
-      data.config.fileId = undefined;
-      data.config.filename = undefined;
+    if (data) {
+      // Update the data config to remove file information
+      const updatedConfig = { ...(data.config || {}) };
+      delete updatedConfig.fileId;
+      delete updatedConfig.filename;
+      
+      // Update the node data
+      if (typeof data.onChange === 'function') {
+        data.onChange(id, { config: updatedConfig });
+      }
     }
   };
   
@@ -404,6 +460,48 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     );
   };
   
+  // Custom file search interface
+  const renderFileSearch = () => {
+    return (
+      <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+        <DropdownMenuTrigger asChild>
+          <div className="relative cursor-pointer">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder={selectedFile ? selectedFile.filename : "Search files..."}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 text-sm"
+              onClick={() => setIsDropdownOpen(true)}
+            />
+          </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-[280px] max-h-[200px] overflow-y-auto">
+          {isLoading ? (
+            <div className="flex justify-center p-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          ) : filteredFiles.length > 0 ? (
+            filteredFiles.map(file => (
+              <DropdownMenuItem 
+                key={file.id}
+                onClick={() => handleFileSelection(file)}
+                className="flex items-center py-2"
+              >
+                <File className="h-4 w-4 mr-2 text-blue-500" />
+                <span className="text-sm truncate">{file.filename}</span>
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <div className="p-2 text-sm text-center text-muted-foreground">
+              No files found
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+  
   return (
     <Card className="w-[300px] shadow-md">
       <CardHeader className="bg-blue-50 py-2 flex flex-row items-center">
@@ -413,41 +511,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       <CardContent className="p-4">
         <div className="flex flex-col gap-3">
           <div className="relative">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search files..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8 text-sm"
-                  />
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[280px] max-h-[200px] overflow-y-auto">
-                {isLoading ? (
-                  <div className="flex justify-center p-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
-                ) : filteredFiles.length > 0 ? (
-                  filteredFiles.map(file => (
-                    <DropdownMenuItem 
-                      key={file.id}
-                      onClick={() => handleFileSelection(file)}
-                      className="flex items-center py-2"
-                    >
-                      <File className="h-4 w-4 mr-2 text-blue-500" />
-                      <span className="text-sm truncate">{file.filename}</span>
-                    </DropdownMenuItem>
-                  ))
-                ) : (
-                  <div className="p-2 text-sm text-center text-muted-foreground">
-                    No files found
-                  </div>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {renderFileSearch()}
           </div>
           
           {selectedFile ? (
