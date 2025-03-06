@@ -16,6 +16,9 @@ import {
   Loader2
 } from 'lucide-react';
 import { ProcessingNodeType } from '@/types/workflow';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 
 // Helper function to get the appropriate icon based on node type
 function getNodeIcon(type: ProcessingNodeType) {
@@ -74,60 +77,36 @@ function getNodeDescription(type: ProcessingNodeType) {
 
 export default function DataProcessingNode({ id, data, selected }: { id: string; data: any; selected: boolean }) {
   const [processing, setProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState<number>(0);
+  const { isProcessing } = useDataProcessing();
   
   // Determine if this node requires a second input handle (for join/merge operations)
   const needsSecondInput = data.type === 'joinMerge';
-  
+  const nodeLabel = data?.label || 'Data Processing';
+
   return (
-    <div className={`rounded-md border ${selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300'} bg-white shadow-sm`}>
-      {/* Input handle */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-3 h-3 bg-blue-500"
-      />
-      
-      {/* Second input handle for join/merge operations */}
-      {needsSecondInput && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="w-3 h-3 bg-green-500"
-          id="secondary"
-          style={{ top: '70%' }}
-        />
-      )}
-      
-      {/* Output handle */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-3 h-3 bg-blue-500"
-      />
-      
-      <div className="p-3">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-md bg-blue-100">
-            {getNodeIcon(data.type)}
-          </div>
-          <div>
-            <div className="font-medium text-sm">{data.label || 'Data Processing'}</div>
-            <div className="text-xs text-gray-500">{getNodeDescription(data.type)}</div>
-          </div>
-          {processing && (
-            <Loader2 className="h-4 w-4 ml-auto animate-spin text-blue-500" />
-          )}
+    <Card className="w-[300px] shadow-md">
+      <CardHeader className="bg-blue-50 py-2 flex flex-row items-center">
+        <div className="p-1 rounded-md bg-blue-100">
+          {getNodeIcon(data.type)}
         </div>
-        
-        {selected && (
-          <div className="mt-2 p-2 bg-gray-50 rounded-md text-xs">
-            <div className="font-medium mb-1">Operation:</div>
-            <div className="text-blue-600">{data.type}</div>
-            
-            {data.config && Object.keys(data.config).length > 0 && (
-              <div className="mt-2">
-                <div className="font-medium mb-1">Configuration:</div>
-                <div className="text-gray-600 truncate">
+        <CardTitle className="text-sm font-medium ml-2">{nodeLabel}</CardTitle>
+        {processing && (
+          <Loader2 className="h-4 w-4 ml-auto animate-spin text-blue-500" />
+        )}
+      </CardHeader>
+      
+      <CardContent className="p-4">
+        <div className="flex flex-col gap-3">
+          <div className="text-xs text-gray-600">
+            {getNodeDescription(data.type)}
+          </div>
+          
+          {selected && (
+            <div className="border rounded p-2 bg-gray-50">
+              <div className="font-medium text-xs mb-1">Configuration:</div>
+              {data.config && Object.keys(data.config).length > 0 ? (
+                <div className="text-xs">
                   {Object.entries(data.config)
                     .filter(([key]) => key !== 'operation')
                     .map(([key, value]) => (
@@ -142,11 +121,50 @@ export default function DataProcessingNode({ id, data, selected }: { id: string;
                       </div>
                     ))}
                 </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">No configuration set</div>
+              )}
+            </div>
+          )}
+          
+          {isProcessing && (
+            <div className="mt-2 flex flex-col space-y-1">
+              <div className="flex justify-between items-center">
+                <Badge variant="secondary" className="flex items-center text-xs">
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Processing
+                </Badge>
+                <span className="text-xs text-gray-500">{processingProgress}%</span>
               </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+              <Progress value={processingProgress} className="h-1 w-full" />
+            </div>
+          )}
+        </div>
+      </CardContent>
+      
+      {/* Input handle at the top */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="w-2 h-2 !bg-blue-500"
+      />
+      
+      {/* Second input handle for join/merge operations */}
+      {needsSecondInput && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="w-2 h-2 !bg-green-500"
+          id="secondary"
+        />
+      )}
+      
+      {/* Output handle at the bottom */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="w-2 h-2 !bg-blue-500"
+      />
+    </Card>
   );
 }
