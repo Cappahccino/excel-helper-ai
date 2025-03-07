@@ -13,6 +13,51 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Helper function to determine column data types based on sample data
+const detectDataTypes = (rows: any[]): Record<string, string> => {
+  if (!rows || rows.length === 0) return {};
+  
+  const firstRow = rows[0];
+  const dataTypes: Record<string, string> = {};
+  
+  for (const key in firstRow) {
+    const value = firstRow[key];
+    
+    if (value === null || value === undefined) {
+      dataTypes[key] = 'unknown';
+      continue;
+    }
+
+    const type = typeof value;
+    
+    if (type === 'number') {
+      // Distinguish between integer and float
+      dataTypes[key] = Number.isInteger(value) ? 'integer' : 'number';
+    } else if (type === 'boolean') {
+      dataTypes[key] = 'boolean';
+    } else if (type === 'object') {
+      if (Array.isArray(value)) {
+        dataTypes[key] = 'array';
+      } else {
+        dataTypes[key] = 'object';
+      }
+    } else if (type === 'string') {
+      // Try to detect dates
+      if (!isNaN(Date.parse(value)) && 
+          (value.includes('-') || value.includes('/')) && 
+          (value.length >= 8)) {
+        dataTypes[key] = 'date';
+      } else {
+        dataTypes[key] = 'string';
+      }
+    } else {
+      dataTypes[key] = type;
+    }
+  }
+  
+  return dataTypes;
+};
+
 // Handle requests
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -22,7 +67,7 @@ serve(async (req) => {
 
   try {
     // Parse the request body
-    const { fileId, workflowId, executionId } = await req.json();
+    const { fileId, workflowId, nodeId } = await req.json();
     
     if (!fileId) {
       return new Response(
@@ -31,7 +76,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing file ${fileId} for workflow ${workflowId || 'N/A'}`);
+    console.log(`Processing file ${fileId} for workflow ${workflowId || 'N/A'} and node ${nodeId || 'N/A'}`);
 
     // Update file status to processing
     const { error: updateError } = await supabase
@@ -47,38 +92,77 @@ serve(async (req) => {
       );
     }
 
-    // If this is part of a workflow, mark the associated workflow step as processing
-    if (workflowId) {
-      // Get the first pending step (should be file upload step)
-      const { data: steps, error: stepsError } = await supabase
-        .from('workflow_steps')
-        .select('*')
-        .eq('workflow_id', workflowId)
-        .eq('status', 'pending')
-        .order('step_order', { ascending: true })
-        .limit(1);
-
-      if (!stepsError && steps && steps.length > 0) {
-        const step = steps[0];
-        
-        // Update step status
-        await supabase
-          .from('workflow_steps')
-          .update({ 
-            status: 'processing',
-            started_at: new Date().toISOString()
-          })
-          .eq('id', step.id);
-          
-        console.log(`Workflow step ${step.id} status updated to processing`);
+    // If this is part of a workflow, mark the workflow file as processing
+    if (workflowId && nodeId) {
+      const { error: workflowFileError } = await supabase
+        .from('workflow_files')
+        .upsert({
+          workflow_id: workflowId,
+          file_id: fileId,
+          node_id: nodeId,
+          status: 'processing',
+          processing_status: 'processing',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'workflow_id,file_id,node_id' });
+      
+      if (workflowFileError) {
+        console.error("Error updating workflow file status:", workflowFileError);
       }
     }
 
-    // Process the file (you would normally send this to a queue)
-    // For now, we'll simulate processing directly
+    // Process the file (in a real implementation, you'd read the file from storage)
     try {
       // Simulate file processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Generate mock sample data for demonstration
+      // In a real implementation, this data would be read from the actual file
+      const sampleRows = [
+        { Column_A: 120, Column_B: "Value 1", Column_C: "2023-05-15" },
+        { Column_A: 85, Column_B: "Value 2", Column_C: "2023-05-16" },
+        { Column_A: 200, Column_B: "Value 3", Column_C: "2023-05-17" }
+      ];
+      
+      // Extract column names and detect data types
+      const columns = Object.keys(sampleRows[0]);
+      const dataTypes = detectDataTypes(sampleRows);
+      
+      // Store file metadata
+      const { error: metadataError } = await supabase
+        .from('file_metadata')
+        .upsert({
+          file_id: fileId,
+          column_definitions: dataTypes,
+          row_count: 100, // Mock row count
+          data_summary: {
+            sample_data: sampleRows.slice(0, 5)
+          },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'file_id' });
+      
+      if (metadataError) {
+        console.error("Error storing file metadata:", metadataError);
+      }
+      
+      // If this is part of a workflow, create a file schema entry
+      if (workflowId && nodeId) {
+        const { error: schemaError } = await supabase
+          .from('workflow_file_schemas')
+          .upsert({
+            workflow_id: workflowId,
+            node_id: nodeId,
+            file_id: fileId,
+            columns: columns,
+            data_types: dataTypes,
+            sample_data: sampleRows.slice(0, 10),
+            has_headers: true,
+            total_rows: 100 // Mock row count
+          }, { onConflict: 'workflow_id,file_id,node_id' });
+        
+        if (schemaError) {
+          console.error("Error creating file schema:", schemaError);
+        }
+      }
       
       // Update file status to completed
       await supabase
@@ -89,99 +173,23 @@ serve(async (req) => {
         })
         .eq('id', fileId);
       
-      // If this is part of a workflow, mark the step as completed and queue the next step
-      if (workflowId) {
-        // Get the current processing step
-        const { data: steps, error: stepsError } = await supabase
-          .from('workflow_steps')
-          .select('*')
+      // Update workflow file status
+      if (workflowId && nodeId) {
+        await supabase
+          .from('workflow_files')
+          .update({
+            status: 'completed',
+            processing_status: 'completed',
+            processing_result: {
+              columns: columns,
+              row_count: 100,
+              data_types: dataTypes
+            },
+            completed_at: new Date().toISOString()
+          })
           .eq('workflow_id', workflowId)
-          .eq('status', 'processing')
-          .order('step_order', { ascending: true })
-          .limit(1);
-        
-        if (!stepsError && steps && steps.length > 0) {
-          const step = steps[0];
-          
-          // Mark step as completed
-          await supabase
-            .from('workflow_steps')
-            .update({ 
-              status: 'completed',
-              completed_at: new Date().toISOString(),
-              output_data: JSON.stringify({ fileId, status: 'success' })
-            })
-            .eq('id', step.id);
-            
-          console.log(`Workflow step ${step.id} completed`);
-          
-          // Get the next step
-          const { data: nextSteps, error: nextStepsError } = await supabase
-            .from('workflow_steps')
-            .select('*')
-            .eq('workflow_id', workflowId)
-            .eq('status', 'pending')
-            .order('step_order', { ascending: true })
-            .limit(1);
-            
-          if (!nextStepsError && nextSteps && nextSteps.length > 0) {
-            // There's a next step to process
-            const nextStep = nextSteps[0];
-            
-            // Queue the next step processing (for now we'll just mark it as processing)
-            await supabase
-              .from('workflow_steps')
-              .update({ 
-                status: 'processing',
-                started_at: new Date().toISOString(),
-                input_data: JSON.stringify({ 
-                  fileId, 
-                  previousStep: step.id 
-                })
-              })
-              .eq('id', nextStep.id);
-              
-            console.log(`Next workflow step ${nextStep.id} queued for processing`);
-            
-            // Trigger the actual processing of the next step
-            // Here you would typically send a message to a queue
-            // For now, we'll just call another edge function
-            fetch(`${supabaseUrl}/functions/v1/executeWorkflowStep`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseKey}`
-              },
-              body: JSON.stringify({
-                stepId: nextStep.id,
-                workflowId,
-                fileId
-              })
-            })
-            .catch(error => {
-              console.error("Error triggering next step:", error);
-            });
-          } else {
-            // No more steps, mark workflow as completed
-            await supabase
-              .from('workflow_executions')
-              .update({ 
-                status: 'completed',
-                completed_at: new Date().toISOString()
-              })
-              .eq('workflow_id', workflowId);
-              
-            // Update workflow last run status
-            await supabase
-              .from('workflows')
-              .update({ 
-                last_run_status: 'completed'
-              })
-              .eq('id', workflowId);
-              
-            console.log(`Workflow ${workflowId} completed successfully`);
-          }
-        }
+          .eq('file_id', fileId)
+          .eq('node_id', nodeId);
       }
       
       return new Response(
@@ -189,7 +197,13 @@ serve(async (req) => {
           success: true, 
           message: "File processed successfully",
           fileId,
-          workflowId
+          workflowId,
+          nodeId,
+          schema: {
+            columns,
+            dataTypes,
+            rowCount: 100
+          }
         }),
         { 
           status: 200, 
@@ -208,46 +222,18 @@ serve(async (req) => {
         })
         .eq('id', fileId);
       
-      // If this is part of a workflow, mark the step as failed
-      if (workflowId) {
-        // Get the current processing step
-        const { data: steps } = await supabase
-          .from('workflow_steps')
-          .select('*')
+      // Update workflow file status if applicable
+      if (workflowId && nodeId) {
+        await supabase
+          .from('workflow_files')
+          .update({ 
+            status: 'failed',
+            processing_status: 'failed',
+            processing_error: error.message || "Unknown error during processing"
+          })
           .eq('workflow_id', workflowId)
-          .eq('status', 'processing')
-          .order('step_order', { ascending: true })
-          .limit(1);
-        
-        if (steps && steps.length > 0) {
-          const step = steps[0];
-          
-          // Mark step as failed
-          await supabase
-            .from('workflow_steps')
-            .update({ 
-              status: 'failed',
-              error_message: error.message || "Unknown error during processing"
-            })
-            .eq('id', step.id);
-            
-          // Mark workflow execution as failed
-          await supabase
-            .from('workflow_executions')
-            .update({ 
-              status: 'failed',
-              error: error.message || "Unknown error during processing"
-            })
-            .eq('workflow_id', workflowId);
-            
-          // Update workflow last run status
-          await supabase
-            .from('workflows')
-            .update({ 
-              last_run_status: 'failed'
-            })
-            .eq('id', workflowId);
-        }
+          .eq('file_id', fileId)
+          .eq('node_id', nodeId);
       }
       
       return new Response(

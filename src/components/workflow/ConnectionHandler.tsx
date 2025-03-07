@@ -36,8 +36,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
             sourceHandle: edge.sourceHandle as Json,
             targetHandle: edge.targetHandle as Json,
             animated: (edge.animated || false) as Json,
-            // Omit label, style, and data if they might contain non-serializable content
-            // or convert them safely if needed
           };
           
           if (edge.label && typeof edge.label === 'string') {
@@ -92,9 +90,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       saveEdgesToDatabase(currentEdges);
     };
     
-    // Set up manual event handling for edge changes
-    // Since reactFlowInstance.on() doesn't exist, we use useEffect with dependencies
-    
     // Initial save of edges
     handleEdgeChanges();
     
@@ -109,17 +104,23 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     if (!workflowId) return;
     
     // Process all edges to propagate file schemas
-    const handleEdges = async () => {
+    const handleEdgeChanges = async () => {
       // Get edges from the reactFlowInstance state using getEdges method
       const currentEdges = reactFlowInstance.getEdges();
       
+      // Process each edge to propagate file schemas
       for (const edge of currentEdges) {
-        // Propagate file schema from source to target
-        await propagateFileSchema(edge.source, edge.target);
+        try {
+          console.log(`Propagating schema from ${edge.source} to ${edge.target}`);
+          await propagateFileSchema(edge.source, edge.target);
+        } catch (error) {
+          console.error(`Error propagating schema for edge from ${edge.source} to ${edge.target}:`, error);
+          toast.error(`Failed to propagate data schema between nodes. Please check console for details.`);
+        }
       }
     };
     
-    handleEdges();
+    handleEdgeChanges();
   }, [reactFlowInstance, workflowId, propagateFileSchema]);
 
   // No rendering needed, this is a utility component

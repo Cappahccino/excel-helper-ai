@@ -62,13 +62,39 @@ export const createFileSchema = async (
   workflowId: string,
   nodeId: string,
   fileId: string,
-  sampleData: any[],
+  sampleData: any[] = [],
   sheetName?: string,
   hasHeaders: boolean = true
 ): Promise<WorkflowFileSchema | null> => {
   try {
-    const columns = extractColumns(sampleData);
-    const dataTypes = detectDataTypes(sampleData);
+    // If no sample data, try to get it from file metadata
+    let columns: string[] = [];
+    let dataTypes: Record<string, any> = {};
+
+    if (sampleData.length === 0) {
+      // Try to get from file_metadata
+      const { data: metaData, error: metaError } = await supabase
+        .from('file_metadata')
+        .select('column_definitions, data_summary')
+        .eq('file_id', fileId)
+        .single();
+        
+      if (metaError) {
+        console.error('Could not fetch metadata:', metaError);
+      } else if (metaData) {
+        if (metaData.column_definitions) {
+          dataTypes = metaData.column_definitions;
+          columns = Object.keys(dataTypes);
+        }
+        
+        if (metaData.data_summary?.sample_data) {
+          sampleData = metaData.data_summary.sample_data;
+        }
+      }
+    } else {
+      columns = extractColumns(sampleData);
+      dataTypes = detectDataTypes(sampleData);
+    }
     
     const schema: WorkflowFileSchema = {
       workflow_id: workflowId,
@@ -83,7 +109,9 @@ export const createFileSchema = async (
 
     const { data, error } = await supabase
       .from('workflow_file_schemas')
-      .insert(schema)
+      .upsert(schema, {
+        onConflict: 'workflow_id,node_id,file_id'
+      })
       .select('*')
       .single();
 
