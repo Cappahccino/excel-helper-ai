@@ -17,7 +17,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     // Process all edges to propagate file schemas
     const handleEdges = async () => {
-      // Get edges from the reactFlowInstance state rather than directly from the instance
+      // Get edges from the reactFlowInstance state using getEdges method
       const currentEdges = reactFlowInstance.getEdges();
       
       for (const edge of currentEdges) {

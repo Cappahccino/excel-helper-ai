@@ -21,6 +21,16 @@ import { Badge } from '@/components/ui/badge';
 import { useWorkflow } from '../context/WorkflowContext';
 import { createFileSchema } from '@/utils/fileSchemaUtils';
 
+type FileProcessingState = 
+  | 'idle'
+  | 'pending'
+  | 'queuing'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'error';
+
 const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,20 +39,24 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const [selectedFile, setSelectedFile] = useState<ExcelFile | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  const [processingState, setProcessingState] = useState<FileProcessingState>('idle');
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [fileProcessingError, setFileProcessingError] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isSchemaProcessed, setIsSchemaProcessed] = useState(false);
+  const processingIntervalRef = useRef<number | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { saveFileSchema, propagateFileSchema } = useWorkflow();
+  const { saveFileSchema, propagateFileSchema, getFileSchema } = useWorkflow();
   const label = data?.label || 'File Upload';
   
   useEffect(() => {
-    if (data?.config?.fileId && data?.config?.filename && !selectedFile) {
+    if (!isInitialized && data?.config?.fileId && data?.config?.filename && !selectedFile) {
       const fetchFileDetails = async () => {
         try {
+          setIsLoading(true);
           const { data: fileData, error } = await supabase
             .from('excel_files')
             .select('*')
@@ -56,76 +70,25 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           
           if (fileData) {
             setSelectedFile(fileData);
+            checkFileProcessingStatus(fileData.id, data.workflowId, id);
           }
         } catch (err) {
           console.error('Error fetching file details:', err);
+        } finally {
+          setIsLoading(false);
+          setIsInitialized(true);
         }
       };
       
       fetchFileDetails();
     }
-  }, [data?.config?.fileId, data?.config?.filename, selectedFile]);
+  }, [data?.config?.fileId, data?.config?.filename, data?.workflowId, id, isInitialized, selectedFile]);
   
   useEffect(() => {
-    fetchRecentFiles();
-  }, []);
-  
-  useEffect(() => {
-    let intervalId: number | null = null;
-    
-    const checkProcessingStatus = async () => {
-      if (!selectedFile?.id || !data?.workflowId) return;
-      
-      try {
-        const { data: workflowFile, error } = await supabase
-          .from('workflow_files')
-          .select('*')
-          .eq('file_id', selectedFile.id)
-          .eq('workflow_id', data.workflowId)
-          .eq('node_id', id)
-          .maybeSingle();
-          
-        if (error) {
-          console.error('Error fetching workflow file status:', error);
-          return;
-        }
-        
-        if (workflowFile) {
-          setProcessingStatus(workflowFile.status);
-          
-          if (workflowFile.status === 'completed') {
-            setProcessingProgress(100);
-            setFileProcessingError(null);
-            if (intervalId) window.clearInterval(intervalId);
-          } else if (workflowFile.status === 'failed') {
-            setProcessingProgress(100);
-            const metadata = workflowFile.metadata;
-            const errorMessage = typeof metadata === 'object' && metadata !== null && 'error' in metadata
-              ? String(metadata.error)
-              : 'Processing failed';
-            setFileProcessingError(errorMessage);
-            if (intervalId) window.clearInterval(intervalId);
-          } else if (workflowFile.status === 'processing') {
-            setProcessingProgress(prev => Math.min(prev + 5, 90));
-          } else if (workflowFile.status === 'queued') {
-            setProcessingProgress(10);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking processing status:', error);
-      }
-    };
-    
-    if (selectedFile?.id && data?.workflowId) {
-      checkProcessingStatus();
-      
-      intervalId = window.setInterval(checkProcessingStatus, 3000);
+    if (!isInitialized) {
+      fetchRecentFiles();
     }
-    
-    return () => {
-      if (intervalId) window.clearInterval(intervalId);
-    };
-  }, [selectedFile?.id, data?.workflowId, id]);
+  }, [isInitialized]);
   
   useEffect(() => {
     if (searchTerm.trim() === '') {
@@ -137,6 +100,112 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setFilteredFiles(filtered);
     }
   }, [searchTerm, files]);
+  
+  useEffect(() => {
+    if (selectedFile?.id && data?.workflowId && !isSchemaProcessed) {
+      const checkFileSchema = async () => {
+        const schema = getFileSchema(id);
+        
+        if (!schema) {
+          console.log('No schema found for node, creating one...');
+          try {
+            const fileSchema = await createFileSchema(
+              data.workflowId,
+              id,
+              selectedFile.id,
+              [],
+              null,
+              true
+            );
+            
+            if (fileSchema) {
+              console.log('File schema created:', fileSchema);
+              if (typeof propagateFileSchema === 'function') {
+                await propagateFileSchema(id, id);
+              }
+              setIsSchemaProcessed(true);
+            }
+          } catch (error) {
+            console.error('Error creating file schema:', error);
+          }
+        } else {
+          console.log('Schema already exists for this node:', schema);
+          setIsSchemaProcessed(true);
+        }
+      };
+      
+      checkFileSchema();
+    }
+  }, [selectedFile?.id, data?.workflowId, id, getFileSchema, propagateFileSchema, isSchemaProcessed]);
+  
+  useEffect(() => {
+    return () => {
+      if (processingIntervalRef.current) {
+        window.clearInterval(processingIntervalRef.current);
+      }
+    };
+  }, []);
+  
+  const checkFileProcessingStatus = async (fileId: string, workflowId?: string, nodeId?: string) => {
+    if (!fileId || !workflowId || !nodeId) return;
+    
+    try {
+      const { data: workflowFile, error } = await supabase
+        .from('workflow_files')
+        .select('*')
+        .eq('file_id', fileId)
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
+        
+      if (error) {
+        console.error('Error fetching workflow file status:', error);
+        return;
+      }
+      
+      if (workflowFile) {
+        const status = workflowFile.status as string;
+        setProcessingState(status as FileProcessingState);
+        
+        if (status === 'completed') {
+          setProcessingProgress(100);
+          setFileProcessingError(null);
+          setIsSchemaProcessed(true);
+          if (processingIntervalRef.current) {
+            window.clearInterval(processingIntervalRef.current);
+            processingIntervalRef.current = null;
+          }
+        } else if (status === 'failed') {
+          setProcessingProgress(100);
+          const metadata = workflowFile.metadata;
+          const errorMessage = typeof metadata === 'object' && metadata !== null && 'error' in metadata
+            ? String(metadata.error)
+            : 'Processing failed';
+          setFileProcessingError(errorMessage);
+          if (processingIntervalRef.current) {
+            window.clearInterval(processingIntervalRef.current);
+            processingIntervalRef.current = null;
+          }
+        } else if (status === 'processing') {
+          setProcessingProgress(prev => Math.min(prev + 5, 90));
+        } else if (status === 'queued') {
+          setProcessingProgress(10);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking processing status:', error);
+    }
+  };
+  
+  const startFileProcessingPolling = (fileId: string, workflowId: string, nodeId: string) => {
+    if (processingIntervalRef.current) {
+      window.clearInterval(processingIntervalRef.current);
+    }
+    
+    processingIntervalRef.current = window.setInterval(() => {
+      checkFileProcessingStatus(fileId, workflowId, nodeId);
+    }, 3000) as unknown as number;
+  };
 
   const fetchRecentFiles = async () => {
     try {
@@ -183,6 +252,9 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const uploadFile = async (file: File) => {
     try {
       setIsUploading(true);
+      setProcessingState('pending');
+      setProcessingProgress(0);
+      setFileProcessingError(null);
       
       const validation = validateFile(file);
       if (!validation.isValid) {
@@ -191,6 +263,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           description: validation.error || "Please upload a valid file",
           variant: "destructive",
         });
+        setProcessingState('idle');
         return;
       }
       
@@ -201,6 +274,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           description: "Please login to upload files",
           variant: "destructive",
         });
+        setProcessingState('idle');
         return;
       }
       
@@ -238,9 +312,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setSearchTerm(''); // Clear search term after upload
       setIsDropdownOpen(false); // Close dropdown after selection
       
-      setProcessingStatus('pending');
+      setProcessingState('pending');
       setProcessingProgress(0);
       setFileProcessingError(null);
+      setIsSchemaProcessed(false);
       
       if (data) {
         const updatedConfig = {
@@ -255,33 +330,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         
         if (data.workflowId) {
           await queueFileForProcessing(fileRecord.id, data.workflowId, id);
+          
+          startFileProcessingPolling(fileRecord.id, data.workflowId, id);
         }
       }
-      
-      const createSchema = async () => {
-        try {
-          const fileSchema = await createFileSchema(
-            data.workflowId,
-            id,
-            fileRecord.id,
-            [],
-            null,
-            true
-          );
-          
-          if (fileSchema) {
-            console.log('File schema created:', fileSchema);
-            
-            if (typeof propagateFileSchema === 'function') {
-              await propagateFileSchema(id, id);  // Propagate from this node to itself initially
-            }
-          }
-        } catch (error) {
-          console.error('Error creating file schema:', error);
-        }
-      };
-      
-      createSchema();
     } catch (error) {
       console.error('Upload error:', error);
       toast({
@@ -289,6 +341,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         description: "Could not upload the file",
         variant: "destructive",
       });
+      setProcessingState('error');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -299,7 +352,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   
   const queueFileForProcessing = async (fileId: string, workflowId: string, nodeId: string) => {
     try {
-      setProcessingStatus('queuing');
+      setProcessingState('queuing');
       setProcessingProgress(5);
       
       const { data: existingRecord, error: checkError } = await supabase
@@ -350,12 +403,12 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       
       if (fnError) throw fnError;
       
-      setProcessingStatus('queued');
+      setProcessingState('queued');
       setProcessingProgress(10);
       
     } catch (error) {
       console.error('Error queueing file for processing:', error);
-      setProcessingStatus('error');
+      setProcessingState('error');
       setFileProcessingError('Failed to queue file for processing');
       toast({
         title: "Processing Error",
@@ -394,13 +447,19 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   };
   
   const handleFileSelection = async (file: ExcelFile) => {
+    if (selectedFile?.id === file.id) {
+      setIsDropdownOpen(false);
+      return;
+    }
+    
     setSelectedFile(file);
     setSearchTerm(''); // Clear search term after selection
     setIsDropdownOpen(false); // Close dropdown after selection
     
-    setProcessingStatus(null);
+    setProcessingState('idle');
     setProcessingProgress(0);
     setFileProcessingError(null);
+    setIsSchemaProcessed(false);
     
     if (data) {
       const updatedConfig = {
@@ -410,20 +469,28 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       };
       
       if (typeof data.onChange === 'function') {
-        data.onChange(id, updatedConfig);
+        data.onChange(id, { config: updatedConfig });
       }
       
       if (data.workflowId) {
         await queueFileForProcessing(file.id, data.workflowId, id);
+        
+        startFileProcessingPolling(file.id, data.workflowId, id);
       }
     }
   };
   
   const clearSelectedFile = () => {
+    if (processingIntervalRef.current) {
+      window.clearInterval(processingIntervalRef.current);
+      processingIntervalRef.current = null;
+    }
+    
     setSelectedFile(null);
-    setProcessingStatus(null);
+    setProcessingState('idle');
     setProcessingProgress(0);
     setFileProcessingError(null);
+    setIsSchemaProcessed(false);
     
     if (data) {
       const updatedConfig = { ...(data.config || {}) };
@@ -437,13 +504,13 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   };
   
   const renderStatusBadge = () => {
-    if (!processingStatus) return null;
+    if (processingState === 'idle') return null;
     
     let variant = 'default';
     let icon = null;
-    let label = processingStatus;
+    let label = processingState;
     
-    switch (processingStatus) {
+    switch (processingState) {
       case 'completed':
         variant = 'success';
         icon = <CheckCircle2 className="h-3 w-3 mr-1" />;
@@ -456,17 +523,18 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         label = 'Failed';
         break;
       case 'processing':
-      case 'analyzing':
       case 'queued':
-      case 'queued_for_processing':
-      case 'downloading':
+      case 'queuing':
+      case 'pending':
         variant = 'secondary';
         icon = <Loader2 className="h-3 w-3 mr-1 animate-spin" />;
-        label = 'Processing';
+        label = processingState === 'pending' ? 'Initializing' : 
+                processingState === 'queuing' ? 'Queuing' : 
+                processingState === 'queued' ? 'Queued' : 'Processing';
         break;
       default:
         variant = 'outline';
-        label = processingStatus;
+        label = processingState;
     }
     
     return (
@@ -548,7 +616,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
                   </span>
                 </div>
                 
-                {processingStatus && (
+                {processingState !== 'idle' && (
                   <div className="mt-2 flex flex-col space-y-1">
                     <div className="flex justify-between items-center">
                       {renderStatusBadge()}
