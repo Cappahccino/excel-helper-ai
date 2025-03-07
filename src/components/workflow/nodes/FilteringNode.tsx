@@ -39,10 +39,22 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ data, id }) => {
 
   // Get file schema when component mounts or when connections change
   useEffect(() => {
-    const schema = getFileSchema(id);
-    if (schema) {
-      setAvailableColumns(schema.columns || []);
-    }
+    const fetchSchema = async () => {
+      if (getFileSchema) {
+        try {
+          // Await the Promise returned by getFileSchema
+          const schema = await getFileSchema(id);
+          if (schema && schema.columns) {
+            setAvailableColumns(schema.columns);
+          }
+        } catch (error) {
+          console.error("Failed to fetch file schema:", error);
+          setAvailableColumns([]);
+        }
+      }
+    };
+    
+    fetchSchema();
   }, [id, getFileSchema]);
 
   // Update configuration when user changes settings
