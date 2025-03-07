@@ -21,6 +21,28 @@ import { Badge } from '@/components/ui/badge';
 import { saveFileSchema } from '@/utils/fileSchemaUtils';
 import { useWorkflow } from '../context/WorkflowContext';
 
+interface ProcessingResult {
+  sample_data?: any[];
+  selected_sheet?: string;
+  row_count?: number;
+  processed_at?: string;
+  [key: string]: any;
+}
+
+interface WorkflowFileData {
+  id?: string;
+  file_id?: string;
+  workflow_id?: string;
+  node_id?: string;
+  status?: string;
+  processing_status?: string;
+  processing_error?: string | null;
+  processing_result?: ProcessingResult;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string;
+}
+
 const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -516,18 +538,21 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             return;
           }
           
-          if (fileData?.processing_result) {
-            const sampleData = fileData.processing_result.sample_data || [];
+          const workflowFileData = fileData as unknown as WorkflowFileData;
+          
+          if (workflowFileData?.processing_result) {
+            const processingResult = workflowFileData.processing_result;
+            const sampleData = processingResult?.sample_data || [];
             const effectiveWorkflowId = data?.workflowId || workflowId;
             
-            if (effectiveWorkflowId && sampleData.length > 0) {
+            if (effectiveWorkflowId && Array.isArray(sampleData) && sampleData.length > 0) {
               const schema = await saveFileSchema(
                 selectedFile.id,
                 effectiveWorkflowId,
                 id,
                 sampleData,
                 data?.config?.hasHeaders !== false,
-                fileData.processing_result.selected_sheet
+                processingResult?.selected_sheet
               );
               
               if (schema) {
