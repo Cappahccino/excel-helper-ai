@@ -12,13 +12,19 @@ interface ConnectionHandlerProps {
 
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
   const reactFlowInstance = useReactFlow();
-  const { propagateFileSchema } = useWorkflow();
+  const { propagateFileSchema, isTemporaryId } = useWorkflow();
 
   // Save edges to the database
   const saveEdgesToDatabase = useCallback(async (edges: Edge[]) => {
     if (!workflowId) return;
     
     try {
+      // Only attempt database operations if we have a workflow ID and it's not a temporary one
+      if (isTemporaryId) {
+        console.log('Using temporary workflow ID, skipping permanent edge storage');
+        return;
+      }
+      
       // First, remove existing edges for this workflow to avoid duplicates
       await supabase
         .from('workflow_edges')
@@ -79,7 +85,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     } catch (error) {
       console.error('Error in saveEdgesToDatabase:', error);
     }
-  }, [workflowId]);
+  }, [workflowId, isTemporaryId]);
 
   // Handle edge changes
   useEffect(() => {
@@ -87,7 +93,13 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     const handleEdgeChanges = () => {
       const currentEdges = reactFlowInstance.getEdges();
-      saveEdgesToDatabase(currentEdges);
+      
+      if (!isTemporaryId) {
+        // Only save to database if we have a permanent ID
+        saveEdgesToDatabase(currentEdges);
+      } else {
+        console.log('Using temporary workflow ID, edges saved locally only');
+      }
     };
     
     // Initial save of edges
@@ -97,7 +109,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     return () => {
       // No cleanup needed since we're not using a subscription
     };
-  }, [reactFlowInstance, workflowId, saveEdgesToDatabase]);
+  }, [reactFlowInstance, workflowId, saveEdgesToDatabase, isTemporaryId]);
 
   // Handle data propagation when connections change
   useEffect(() => {

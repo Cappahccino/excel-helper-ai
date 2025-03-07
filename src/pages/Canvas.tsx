@@ -19,6 +19,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+import { WorkflowProvider, useWorkflow } from '@/components/workflow/context/WorkflowContext';
+import { useTemporaryId } from '@/hooks/useTemporaryId';
+
 import AINode from '@/components/workflow/nodes/AINode';
 import AskAINode from '@/components/workflow/nodes/AskAINode';
 import DataInputNode from '@/components/workflow/nodes/DataInputNode';
@@ -57,8 +60,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Save, Play, Plus, FileText } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-
-import { WorkflowProvider } from '@/components/workflow/context/WorkflowContext';
 
 const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
@@ -215,10 +216,16 @@ const Canvas = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
-  const [savingWorkflowId, setSavingWorkflowId] = useState<string | null>(null);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [optimisticSave, setOptimisticSave] = useState<boolean>(false);
+  
+  const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
+    workflowId === 'new' ? null : workflowId,
+    workflowId === 'new' || (workflowId && workflowId.startsWith('temp-'))
+  );
   
   const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
     executionId,
@@ -234,7 +241,11 @@ const Canvas = () => {
 
   useEffect(() => {
     if (workflowId && workflowId !== 'new') {
-      loadWorkflow();
+      if (workflowId.startsWith('temp-')) {
+        console.log('Loading workflow with temporary ID:', workflowId);
+      } else {
+        loadWorkflow();
+      }
     }
   }, [workflowId]);
 
@@ -244,7 +255,7 @@ const Canvas = () => {
   }, []);
 
   const loadWorkflow = async () => {
-    if (!workflowId || workflowId === 'new') return;
+    if (!workflowId || workflowId === 'new' || workflowId.startsWith('temp-')) return;
     
     try {
       setIsLoading(true);
@@ -259,6 +270,7 @@ const Canvas = () => {
       if (data) {
         setWorkflowName(data.name || 'New Workflow');
         setWorkflowDescription(data.description || '');
+        
         setSavingWorkflowId(data.id);
         
         const definition = typeof data.definition === 'string' 
@@ -394,8 +406,11 @@ const Canvas = () => {
       
       let response;
       let savedWorkflowId;
+      let isTemporaryWorkflow = savingWorkflowId?.startsWith('temp-') || false;
       
-      if (savingWorkflowId) {
+      setOptimisticSave(true);
+      
+      if (savingWorkflowId && !savingWorkflowId.startsWith('temp-')) {
         response = await supabase
           .from('workflows')
           .update(workflow)
@@ -411,9 +426,28 @@ const Canvas = () => {
         
         if (response.data && response.data[0]) {
           savedWorkflowId = response.data[0].id;
+          
+          if (isTemporaryWorkflow && savedWorkflowId) {
+            try {
+              const workflow = useWorkflow();
+              const migrationSuccess = await workflow.migrateTemporaryWorkflow(
+                savingWorkflowId, 
+                savedWorkflowId
+              );
+              
+              if (!migrationSuccess) {
+                setMigrationError('Migration partially completed. Some data might need to be re-entered.');
+                toast.warning('Some workflow data could not be migrated. Please check your configuration.');
+              }
+            } catch (error) {
+              console.error('Error during workflow data migration:', error);
+              setMigrationError('Failed to migrate workflow data');
+            }
+          }
+          
           setSavingWorkflowId(savedWorkflowId);
           
-          if (workflowId === 'new') {
+          if (workflowId === 'new' || isTemporaryWorkflow) {
             navigate(`/canvas/${savedWorkflowId}`, { replace: true });
           }
         }
@@ -422,10 +456,16 @@ const Canvas = () => {
       if (response.error) throw response.error;
       
       toast.success('Workflow saved successfully');
+      
+      setOptimisticSave(false);
+      
       return savedWorkflowId;
     } catch (error) {
       console.error('Error saving workflow:', error);
       toast.error('Failed to save workflow');
+      
+      setOptimisticSave(false);
+      
       return null;
     } finally {
       setIsSaving(false);
@@ -702,6 +742,12 @@ const Canvas = () => {
             />
           </div>
           <div className="flex space-x-2 items-center">
+            {migrationError && (
+              <div className="px-3 py-1 text-sm rounded-full bg-yellow-100 text-yellow-800 flex items-center">
+                Warning: {migrationError}
+              </div>
+            )}
+            
             {executionStatus && (
               <div className={`px-3 py-1 text-sm rounded-full flex items-center ${
                 executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
@@ -721,13 +767,20 @@ const Canvas = () => {
               </div>
             )}
             
+            {savingWorkflowId?.startsWith('temp-') && (
+              <div className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800 flex items-center">
+                <span className="mr-2 h-2 w-2 rounded-full bg-blue-500"></span>
+                Temporary ID
+              </div>
+            )}
+            
             <Button 
               onClick={saveWorkflow} 
               disabled={isSaving}
-              className="flex items-center"
+              className={`flex items-center ${optimisticSave ? 'bg-green-500 hover:bg-green-600' : ''}`}
             >
               <Save className="mr-2 h-4 w-4" />
-              {isSaving ? 'Saving...' : 'Save'}
+              {isSaving ? 'Saving...' : optimisticSave ? 'Saved!' : 'Save'}
             </Button>
             <Button 
               onClick={runWorkflow} 
@@ -876,3 +929,4 @@ declare global {
 }
 
 export default Canvas;
+

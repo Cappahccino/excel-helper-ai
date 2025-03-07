@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Json } from '@/types/workflow';
 import { toast } from 'sonner';
+import { useDebounce } from '@/hooks/useDebounce';
 
 // Define the file schema interface
 export interface WorkflowFileSchema {
@@ -20,21 +21,153 @@ export interface WorkflowFileSchema {
 
 interface WorkflowContextType {
   workflowId?: string;
+  isTemporaryId: boolean;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<void>;
   getFileSchema: (nodeId: string) => Promise<WorkflowFileSchema | null>;
   saveFileSchema: (schema: WorkflowFileSchema) => Promise<boolean>;
+  migrateTemporaryWorkflow: (tempId: string, permanentId: string) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextType>({
+  isTemporaryId: false,
   propagateFileSchema: async () => {},
   getFileSchema: async () => null,
   saveFileSchema: async () => false,
+  migrateTemporaryWorkflow: async () => false,
 });
 
 export const WorkflowProvider: React.FC<{
   children: React.ReactNode;
   workflowId?: string;
 }> = ({ children, workflowId }) => {
+  const [migrationInProgress, setMigrationInProgress] = useState<boolean>(false);
+  const [migrationStatus, setMigrationStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const isTemporaryId = workflowId ? workflowId.startsWith('temp-') : false;
+  const debouncedMigrationStatus = useDebounce(migrationStatus, 300);
+  
+  // Migrate data from a temporary workflow ID to a permanent one
+  const migrateTemporaryWorkflow = useCallback(async (tempId: string, permanentId: string): Promise<boolean> => {
+    if (!tempId || !permanentId || !tempId.startsWith('temp-')) {
+      console.error('Invalid migration: Source must be temporary ID and target must be permanent');
+      return false;
+    }
+    
+    try {
+      setMigrationInProgress(true);
+      setMigrationStatus('pending');
+      console.log(`Migrating workflow data from ${tempId} to ${permanentId}`);
+      
+      // 1. Migrate file schemas
+      const { data: schemas, error: schemasError } = await supabase
+        .from('workflow_file_schemas')
+        .select('*')
+        .eq('workflow_id', tempId);
+        
+      if (schemasError) {
+        console.error('Error fetching schemas to migrate:', schemasError);
+        throw new Error(`Schema fetch failed: ${schemasError.message}`);
+      }
+      
+      if (schemas && schemas.length > 0) {
+        // Update workflow_id in all schemas
+        const updates = schemas.map(schema => ({
+          ...schema,
+          workflow_id: permanentId,
+          id: undefined // Let the database generate new IDs
+        }));
+        
+        const { error: updateError } = await supabase
+          .from('workflow_file_schemas')
+          .upsert(updates, { 
+            onConflict: 'workflow_id,node_id,file_id',
+            ignoreDuplicates: false
+          });
+          
+        if (updateError) {
+          console.error('Error migrating schemas:', updateError);
+          throw new Error(`Schema migration failed: ${updateError.message}`);
+        }
+      }
+      
+      // 2. Migrate workflow files
+      const { data: files, error: filesError } = await supabase
+        .from('workflow_files')
+        .select('*')
+        .eq('workflow_id', tempId);
+        
+      if (filesError) {
+        console.error('Error fetching files to migrate:', filesError);
+        throw new Error(`Files fetch failed: ${filesError.message}`);
+      }
+      
+      if (files && files.length > 0) {
+        const fileUpdates = files.map(file => ({
+          ...file,
+          workflow_id: permanentId,
+          id: undefined // Let the database generate new IDs
+        }));
+        
+        const { error: fileUpdateError } = await supabase
+          .from('workflow_files')
+          .upsert(fileUpdates, {
+            onConflict: 'workflow_id,file_id,node_id',
+            ignoreDuplicates: false
+          });
+          
+        if (fileUpdateError) {
+          console.error('Error migrating workflow files:', fileUpdateError);
+          throw new Error(`File migration failed: ${fileUpdateError.message}`);
+        }
+      }
+      
+      // 3. Migrate workflow edges
+      const { data: edges, error: edgesError } = await supabase
+        .from('workflow_edges')
+        .select('*')
+        .eq('workflow_id', tempId);
+        
+      if (edgesError) {
+        console.error('Error fetching edges to migrate:', edgesError);
+        throw new Error(`Edges fetch failed: ${edgesError.message}`);
+      }
+      
+      if (edges && edges.length > 0) {
+        const edgeUpdates = edges.map(edge => ({
+          ...edge,
+          workflow_id: permanentId,
+          id: undefined // Let the database generate new IDs
+        }));
+        
+        const { error: edgeUpdateError } = await supabase
+          .from('workflow_edges')
+          .upsert(edgeUpdates, {
+            onConflict: 'workflow_id,source_node_id,target_node_id',
+            ignoreDuplicates: false
+          });
+          
+        if (edgeUpdateError) {
+          console.error('Error migrating workflow edges:', edgeUpdateError);
+          throw new Error(`Edge migration failed: ${edgeUpdateError.message}`);
+        }
+      }
+      
+      // 4. We don't need to delete the temporary data - it will eventually be cleaned up
+      
+      setMigrationStatus('success');
+      console.log(`Successfully migrated workflow from ${tempId} to ${permanentId}`);
+      return true;
+    } catch (error) {
+      console.error('Error during workflow migration:', error);
+      setMigrationStatus('error');
+      
+      // Attempt recovery - could implement reassociation here
+      toast.error('Failed to migrate workflow data. Your work is still saved under a temporary ID.');
+      return false;
+    } finally {
+      setMigrationInProgress(false);
+    }
+  }, []);
+  
   // Propagate file schema from source node to target node
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string) => {
     if (!workflowId) return;
@@ -183,9 +316,11 @@ export const WorkflowProvider: React.FC<{
   return (
     <WorkflowContext.Provider value={{
       workflowId,
+      isTemporaryId,
       propagateFileSchema,
       getFileSchema,
       saveFileSchema,
+      migrateTemporaryWorkflow,
     }}>
       {children}
     </WorkflowContext.Provider>
