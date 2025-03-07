@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -235,7 +236,13 @@ const Canvas = () => {
     }
   }, [workflowId]);
 
+  // Updated onNodeClick handler to prevent default behavior and stop propagation
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Prevent default behavior to avoid navigation
+    event.preventDefault();
+    // Stop event propagation
+    event.stopPropagation();
+    
     setSelectedNodeId(node.id);
     setShowLogPanel(true);
   }, []);

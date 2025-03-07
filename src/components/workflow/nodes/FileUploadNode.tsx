@@ -62,6 +62,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   
   const { workflowId, setFileSchemas } = useWorkflow();
   
+  const handleNodeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+  
   useEffect(() => {
     if (data?.config?.fileId && data?.config?.filename && !selectedFile) {
       const fetchFileDetails = async () => {
@@ -186,7 +190,9 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }
   };
   
-  const handleBrowseClick = () => {
+  const handleBrowseClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
@@ -481,18 +487,21 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     return (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
         <DropdownMenuTrigger asChild>
-          <div className="relative cursor-pointer">
+          <div className="relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input 
               placeholder={selectedFile ? selectedFile.filename : "Search files..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 text-sm"
-              onClick={() => setIsDropdownOpen(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDropdownOpen(true);
+              }}
             />
           </div>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[280px] max-h-[200px] overflow-y-auto">
+        <DropdownMenuContent className="w-[280px] max-h-[200px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
           {isLoading ? (
             <div className="flex justify-center p-2">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -501,7 +510,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             filteredFiles.map(file => (
               <DropdownMenuItem 
                 key={file.id}
-                onClick={() => handleFileSelection(file)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleFileSelection(file);
+                }}
                 className="flex items-center py-2"
               >
                 <File className="h-4 w-4 mr-2 text-blue-500" />
@@ -577,7 +589,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   }, [processingStatus, selectedFile?.id, id, data?.workflowId, workflowId, data?.config?.hasHeaders, setFileSchemas]);
   
   return (
-    <Card className="w-[300px] shadow-md">
+    <Card className="w-[300px] shadow-md" onClick={handleNodeClick}>
       <CardHeader className="bg-blue-50 py-2 flex flex-row items-center">
         <FileUp className="h-4 w-4 mr-2 text-blue-500" />
         <CardTitle className="text-sm font-medium">{label}</CardTitle>
@@ -594,7 +606,11 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
                 variant="ghost" 
                 size="icon" 
                 className="absolute top-1 right-1 h-6 w-6"
-                onClick={clearSelectedFile}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  clearSelectedFile();
+                }}
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -668,6 +684,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
               accept=".csv,.xlsx,.xls"
               style={{ display: 'none' }}
               onChange={handleFileSelect}
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
           
