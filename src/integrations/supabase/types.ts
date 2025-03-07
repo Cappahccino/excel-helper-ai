@@ -712,6 +712,66 @@ export type Database = {
           },
         ]
       }
+      workflow_file_schemas: {
+        Row: {
+          columns: string[]
+          created_at: string
+          data_types: Json
+          file_id: string
+          has_headers: boolean
+          id: string
+          node_id: string
+          sample_data: Json[] | null
+          sheet_name: string | null
+          total_rows: number | null
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          columns?: string[]
+          created_at?: string
+          data_types?: Json
+          file_id: string
+          has_headers?: boolean
+          id?: string
+          node_id: string
+          sample_data?: Json[] | null
+          sheet_name?: string | null
+          total_rows?: number | null
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          columns?: string[]
+          created_at?: string
+          data_types?: Json
+          file_id?: string
+          has_headers?: boolean
+          id?: string
+          node_id?: string
+          sample_data?: Json[] | null
+          sheet_name?: string | null
+          total_rows?: number | null
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_file_schemas_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "excel_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_file_schemas_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflow_files: {
         Row: {
           completed_at: string | null
@@ -721,6 +781,8 @@ export type Database = {
           is_active: boolean | null
           metadata: Json | null
           node_id: string | null
+          processing_result: Json | null
+          processing_status: string | null
           status: string | null
           updated_at: string | null
           workflow_id: string
@@ -733,6 +795,8 @@ export type Database = {
           is_active?: boolean | null
           metadata?: Json | null
           node_id?: string | null
+          processing_result?: Json | null
+          processing_status?: string | null
           status?: string | null
           updated_at?: string | null
           workflow_id: string
@@ -745,6 +809,8 @@ export type Database = {
           is_active?: boolean | null
           metadata?: Json | null
           node_id?: string | null
+          processing_result?: Json | null
+          processing_status?: string | null
           status?: string | null
           updated_at?: string | null
           workflow_id?: string
