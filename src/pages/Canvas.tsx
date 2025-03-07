@@ -269,7 +269,11 @@ const Canvas = () => {
           setNodes(definition.nodes as WorkflowNode[]);
         }
         
-        if (definition.edges) {
+        const edgesFromDb = await loadEdgesFromDatabase(data.id);
+        
+        if (edgesFromDb && edgesFromDb.length > 0) {
+          setEdges(edgesFromDb);
+        } else if (definition.edges) {
           setEdges(definition.edges);
         }
 
@@ -289,6 +293,40 @@ const Canvas = () => {
       toast.error('Failed to load workflow');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadEdgesFromDatabase = async (workflowId: string): Promise<Edge[] | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_edges')
+        .select('*')
+        .eq('workflow_id', workflowId);
+        
+      if (error) {
+        console.error('Error loading edges:', error);
+        return null;
+      }
+      
+      if (data && data.length > 0) {
+        return data.map(edge => ({
+          id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
+          source: edge.source_node_id,
+          target: edge.target_node_id,
+          type: edge.edge_type !== 'default' ? edge.edge_type : undefined,
+          sourceHandle: edge.metadata?.sourceHandle,
+          targetHandle: edge.metadata?.targetHandle,
+          label: edge.metadata?.label,
+          animated: edge.metadata?.animated,
+          style: edge.metadata?.style,
+          data: edge.metadata?.data
+        }));
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error in loadEdgesFromDatabase:', error);
+      return null;
     }
   };
 

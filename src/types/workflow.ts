@@ -1,4 +1,3 @@
-
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -467,4 +466,33 @@ export function isAIRequestData(obj: any): obj is AIRequestData {
     (obj.ai_provider === 'openai' || obj.ai_provider === 'anthropic' || obj.ai_provider === 'deepseek') &&
     typeof obj.user_query === 'string'
   );
+}
+
+// Add new interface for the workflow_edges table
+export interface WorkflowEdge {
+  id: string;
+  workflow_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  edge_id?: string;
+  edge_type: string;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Map database edge to ReactFlow edge
+export function mapDatabaseEdgeToReactFlowEdge(dbEdge: WorkflowEdge): Edge {
+  return {
+    id: dbEdge.edge_id || `${dbEdge.source_node_id}-${dbEdge.target_node_id}`,
+    source: dbEdge.source_node_id,
+    target: dbEdge.target_node_id,
+    type: dbEdge.edge_type !== 'default' ? dbEdge.edge_type : undefined,
+    sourceHandle: dbEdge.metadata?.sourceHandle,
+    targetHandle: dbEdge.metadata?.targetHandle,
+    label: dbEdge.metadata?.label,
+    animated: dbEdge.metadata?.animated,
+    style: dbEdge.metadata?.style,
+    data: dbEdge.metadata?.data
+  };
 }
