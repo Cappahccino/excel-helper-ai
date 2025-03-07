@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -69,8 +70,7 @@ export type NodeComponentType =
   | 'controlNode'
   | 'spreadsheetGenerator'
   | 'utilityNode'
-  | 'fileUpload'
-  | 'filtering';
+  | 'fileUpload';
 
 // Base node data types
 export interface BaseNodeData {
@@ -314,15 +314,6 @@ export interface NodeLibraryProps {
       label: string;
       description?: string;
       icon?: string;
-    }>;
-  }>;
-  categories?: Array<{
-    id: string;
-    name: string;
-    items: Array<{
-      type: string;
-      label: string;
-      description?: string;
     }>;
   }>;
 }

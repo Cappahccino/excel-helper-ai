@@ -65,25 +65,8 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          {/* Fixed Canvas routes to properly handle 'new' workflows and optional parameters */}
           <Route
-            path="/canvas"
-            element={
-              <ProtectedRoute>
-                <Canvas />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/canvas/new"
-            element={
-              <ProtectedRoute>
-                <Canvas />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/canvas/:workflowId"
+            path="/canvas/:workflowId?"
             element={
               <ProtectedRoute>
                 <Canvas />
