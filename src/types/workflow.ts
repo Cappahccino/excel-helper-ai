@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -70,6 +71,29 @@ export type NodeComponentType =
   | 'spreadsheetGenerator'
   | 'utilityNode'
   | 'fileUpload';
+
+// Define FileProcessingState type for FileUploadNode
+export type FileProcessingState = 
+  | 'idle'
+  | 'pending'
+  | 'queuing'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'error';
+
+// Define display labels for FileProcessingState
+export const FileProcessingStateLabels: Record<FileProcessingState, string> = {
+  idle: 'Idle',
+  pending: 'Initializing',
+  queuing: 'Queuing',
+  queued: 'Queued',
+  processing: 'Processing',
+  completed: 'Processed',
+  failed: 'Failed',
+  error: 'Error'
+};
 
 // Base node data types
 export interface BaseNodeData {
@@ -187,9 +211,11 @@ export interface UtilityNodeData extends BaseNodeData {
 
 export interface FileUploadNodeData extends BaseNodeData {
   type: 'fileUpload';
-  config?: {
+  config: {
     fileId?: string;
     filename?: string;
+    hasHeaders?: boolean;
+    delimiter?: string;
   };
   onChange?: (nodeId: string, config: any) => void;
   workflowId?: string;
@@ -197,7 +223,7 @@ export interface FileUploadNodeData extends BaseNodeData {
 
 export interface FilteringNodeData extends BaseNodeData {
   type: 'filtering';
-  config?: {
+  config: {
     column?: string;
     operator?: "equals" | "contains" | "not-equals" | "greater-than" | "less-than" | "starts-with" | "ends-with";
     value?: string;

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { NodeProps, FileUploadNodeData } from '@/types/workflow';
+import { NodeProps, FileUploadNodeData, FileProcessingState, FileProcessingStateLabels } from '@/types/workflow';
 import { supabase } from '@/integrations/supabase/client';
 import { validateFile } from '@/utils/fileUtils';
 import { useToast } from '@/hooks/use-toast';
@@ -20,16 +20,6 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useWorkflow } from '../context/WorkflowContext';
 import { createFileSchema } from '@/utils/fileSchemaUtils';
-
-type FileProcessingState = 
-  | 'idle'
-  | 'pending'
-  | 'queuing'
-  | 'queued'
-  | 'processing'
-  | 'completed'
-  | 'failed'
-  | 'error';
 
 const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -207,7 +197,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }, 3000) as unknown as number;
   };
 
-  const fetchRecentFiles = async () => {
+  const fetchRecentFiles = async function() {
     try {
       setIsLoading(true);
       const { data: fileData, error } = await supabase
@@ -231,25 +221,25 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setIsLoading(false);
     }
   };
-  
+
   const handleBrowseClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
   
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async function(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (file) {
       await uploadFile(file);
     }
   };
   
-  const handleFileDrop = async (file: File) => {
+  const handleFileDrop = async function(file: File) {
     await uploadFile(file);
   };
   
-  const uploadFile = async (file: File) => {
+  const uploadFile = async function(file: File) {
     try {
       setIsUploading(true);
       setProcessingState('pending');
@@ -283,7 +273,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       const { error: uploadError } = await supabase.storage
         .from('excel_files')
         .upload(filePath, file);
-        
+      
       if (uploadError) throw uploadError;
       
       const { data: fileRecord, error: dbError } = await supabase
@@ -299,7 +289,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         })
         .select()
         .single();
-        
+      
       if (dbError) throw dbError;
       
       toast({
@@ -322,6 +312,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           ...(data.config || {}),
           fileId: fileRecord.id,
           filename: fileRecord.filename,
+          hasHeaders: true, // Set a default value
         };
         
         if (typeof data.onChange === 'function') {
@@ -350,7 +341,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }
   };
   
-  const queueFileForProcessing = async (fileId: string, workflowId: string, nodeId: string) => {
+  const queueFileForProcessing = async function(fileId: string, workflowId: string, nodeId: string) {
     try {
       setProcessingState('queuing');
       setProcessingProgress(5);
@@ -418,24 +409,24 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }
   };
   
-  const handleDragEnter = (e: React.DragEvent) => {
+  const handleDragEnter = function(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   };
   
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = function(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   };
   
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = function(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
   };
   
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = function(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -446,7 +437,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }
   };
   
-  const handleFileSelection = async (file: ExcelFile) => {
+  const handleFileSelection = async function(file: ExcelFile) {
     if (selectedFile?.id === file.id) {
       setIsDropdownOpen(false);
       return;
@@ -466,6 +457,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         ...(data.config || {}),
         fileId: file.id,
         filename: file.filename,
+        hasHeaders: true, // Set a default value
       };
       
       if (typeof data.onChange === 'function') {
@@ -480,7 +472,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }
   };
   
-  const clearSelectedFile = () => {
+  const clearSelectedFile = function() {
     if (processingIntervalRef.current) {
       window.clearInterval(processingIntervalRef.current);
       processingIntervalRef.current = null;
@@ -508,19 +500,17 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     
     let variant = 'default';
     let icon = null;
-    let label = processingState;
+    let label = FileProcessingStateLabels[processingState];
     
     switch (processingState) {
       case 'completed':
         variant = 'success';
         icon = <CheckCircle2 className="h-3 w-3 mr-1" />;
-        label = 'Processed';
         break;
       case 'failed':
       case 'error':
         variant = 'destructive';
         icon = <AlertCircle className="h-3 w-3 mr-1" />;
-        label = 'Failed';
         break;
       case 'processing':
       case 'queued':
@@ -528,13 +518,9 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       case 'pending':
         variant = 'secondary';
         icon = <Loader2 className="h-3 w-3 mr-1 animate-spin" />;
-        label = processingState === 'pending' ? 'Initializing' : 
-                processingState === 'queuing' ? 'Queuing' : 
-                processingState === 'queued' ? 'Queued' : 'Processing';
         break;
       default:
         variant = 'outline';
-        label = processingState;
     }
     
     return (
@@ -545,7 +531,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     );
   };
   
-  const renderFileSearch = () => {
+  const renderFileSearch = function() {
     return (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
         <DropdownMenuTrigger asChild>
