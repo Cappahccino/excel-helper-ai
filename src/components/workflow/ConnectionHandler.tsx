@@ -8,7 +8,7 @@ interface ConnectionHandlerProps {
 }
 
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
-  const { edges, getNodes } = useReactFlow();
+  const reactFlowInstance = useReactFlow();
   const { propagateFileSchema } = useWorkflow();
 
   // Handle data propagation when connections change
@@ -17,14 +17,17 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     // Process all edges to propagate file schemas
     const handleEdges = async () => {
-      for (const edge of edges) {
+      // Get edges from the reactFlowInstance state rather than directly from the instance
+      const currentEdges = reactFlowInstance.getEdges();
+      
+      for (const edge of currentEdges) {
         // Propagate file schema from source to target
         await propagateFileSchema(edge.source, edge.target);
       }
     };
     
     handleEdges();
-  }, [edges, workflowId, propagateFileSchema]);
+  }, [reactFlowInstance, workflowId, propagateFileSchema]);
 
   // No rendering needed, this is a utility component
   return null;

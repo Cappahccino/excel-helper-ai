@@ -58,6 +58,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Save, Play, Plus, FileText } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
+import { WorkflowProvider } from '@/components/workflow/context/WorkflowContext';
+
 const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
   dataProcessing: DataProcessingNode,

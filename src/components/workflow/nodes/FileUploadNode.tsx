@@ -272,7 +272,9 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           if (fileSchema) {
             console.log('File schema created:', fileSchema);
             
-            propagateFileSchema(fileSchema);
+            if (typeof propagateFileSchema === 'function') {
+              await propagateFileSchema(id, id);  // Propagate from this node to itself initially
+            }
           }
         } catch (error) {
           console.error('Error creating file schema:', error);
