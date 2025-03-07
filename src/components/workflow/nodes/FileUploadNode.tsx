@@ -1,6 +1,7 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,9 +21,11 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useWorkflow } from '../context/WorkflowContext';
 import { createFileSchema } from '@/utils/fileSchemaUtils';
+import { useDebounce } from '@/hooks/useDebounce';
 
 const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<ExcelFile[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<ExcelFile[]>([]);
@@ -36,6 +39,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSchemaProcessed, setIsSchemaProcessed] = useState(false);
   const processingIntervalRef = useRef<number | null>(null);
+  const debouncedSearch = useDebounce(debouncedSearchTerm, 300);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -81,15 +85,12 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   }, [isInitialized]);
   
   useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredFiles(files);
-    } else {
-      const filtered = files.filter(file => 
-        file.filename.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredFiles(filtered);
+    if (debouncedSearch && debouncedSearch.length >= 2) {
+      searchFiles(debouncedSearch);
+    } else if (debouncedSearch === '') {
+      fetchRecentFiles();
     }
-  }, [searchTerm, files]);
+  }, [debouncedSearch]);
   
   useEffect(() => {
     if (selectedFile?.id && data?.workflowId && !isSchemaProcessed) {
@@ -135,6 +136,31 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       }
     };
   }, []);
+  
+  const searchFiles = async (term: string) => {
+    try {
+      setIsLoading(true);
+      const { data: fileData, error } = await supabase
+        .from('excel_files')
+        .select('*')
+        .is('deleted_at', null)
+        .ilike('filename', `%${term}%`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setFilteredFiles(fileData || []);
+    } catch (error) {
+      console.error('Error searching files:', error);
+      toast({
+        title: "Search Error",
+        description: "Could not search files",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   const checkFileProcessingStatus = async (fileId: string, workflowId?: string, nodeId?: string) => {
     if (!fileId || !workflowId || !nodeId) return;
@@ -445,6 +471,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     
     setSelectedFile(file);
     setSearchTerm(''); // Clear search term after selection
+    setDebouncedSearchTerm(''); // Also clear debounced search term
     setIsDropdownOpen(false); // Close dropdown after selection
     
     setProcessingState('idle');
@@ -535,38 +562,78 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     return (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
         <DropdownMenuTrigger asChild>
-          <div className="relative cursor-pointer">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder={selectedFile ? selectedFile.filename : "Search files..."}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 text-sm"
-              onClick={() => setIsDropdownOpen(true)}
-            />
-          </div>
+          <Button 
+            variant="outline" 
+            className="w-full justify-between" 
+            onClick={() => setIsDropdownOpen(true)}
+          >
+            <div className="flex items-center gap-2 overflow-hidden">
+              {selectedFile ? (
+                <>
+                  <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                  <span className="truncate">{selectedFile.filename}</span>
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">Select a file...</span>
+                </>
+              )}
+            </div>
+          </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[280px] max-h-[200px] overflow-y-auto">
-          {isLoading ? (
-            <div className="flex justify-center p-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
+        <DropdownMenuContent className="w-[280px] p-0" align="start">
+          <div className="p-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search files..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setDebouncedSearchTerm(e.target.value);
+                }}
+                className="pl-8 text-sm h-9"
+                onClick={(e) => e.stopPropagation()}
+              />
             </div>
-          ) : filteredFiles.length > 0 ? (
-            filteredFiles.map(file => (
-              <DropdownMenuItem 
-                key={file.id}
-                onClick={() => handleFileSelection(file)}
-                className="flex items-center py-2"
-              >
-                <File className="h-4 w-4 mr-2 text-blue-500" />
-                <span className="text-sm truncate">{file.filename}</span>
-              </DropdownMenuItem>
-            ))
-          ) : (
-            <div className="p-2 text-sm text-center text-muted-foreground">
-              No files found
-            </div>
-          )}
+          </div>
+          <div className="max-h-[200px] overflow-y-auto">
+            {isLoading ? (
+              <div className="flex justify-center p-4">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            ) : filteredFiles.length > 0 ? (
+              filteredFiles.map(file => (
+                <DropdownMenuItem 
+                  key={file.id}
+                  onClick={() => handleFileSelection(file)}
+                  className="flex items-center gap-2 py-2 px-3 cursor-pointer"
+                >
+                  <File className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm truncate">{file.filename}</span>
+                  {file.id === selectedFile?.id && (
+                    <Check className="h-3.5 w-3.5 ml-auto text-green-500" />
+                  )}
+                </DropdownMenuItem>
+              ))
+            ) : (
+              <div className="p-3 text-sm text-center text-muted-foreground">
+                {searchTerm ? 'No files found' : 'No recent files'}
+              </div>
+            )}
+          </div>
+          <div className="border-t p-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="w-full text-xs justify-center"
+              onClick={handleBrowseClick}
+            >
+              <FileUp className="h-3.5 w-3.5 mr-1.5" />
+              Upload New File
+            </Button>
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -608,7 +675,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
                       {renderStatusBadge()}
                       <span className="text-xs text-gray-500">{processingProgress}%</span>
                     </div>
-                    <Progress value={processingProgress} className="h-1 w-full" />
+                    <Progress value={processingProgress} className="h-1.5 w-full" />
                     {fileProcessingError && (
                       <p className="text-xs text-red-500 mt-1">{fileProcessingError}</p>
                     )}
