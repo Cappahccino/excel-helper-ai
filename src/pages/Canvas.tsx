@@ -54,16 +54,20 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Play, Plus, FileText, Loader2 } from 'lucide-react';
+import { Save, Play, Plus, FileText } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
-const staticNodeTypes: NodeTypes = {
+const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
+  dataProcessing: DataProcessingNode,
   aiNode: AINode,
+  askAI: AskAINode,
   outputNode: OutputNode,
   integrationNode: IntegrationNode,
   controlNode: ControlNode,
+  spreadsheetGenerator: SpreadsheetGeneratorNode,
   utilityNode: UtilityNode,
+  fileUpload: FileUploadNode,
 };
 
 const nodeCategories = [
@@ -196,10 +200,8 @@ const nodeCategories = [
 ];
 
 const Canvas = () => {
-  const { workflowId: encodedWorkflowId } = useParams<{ workflowId?: string }>();
+  const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
-  
-  const workflowId = encodedWorkflowId ? decodeURIComponent(encodedWorkflowId) : 'new';
   
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -234,9 +236,6 @@ const Canvas = () => {
   }, [workflowId]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    event.preventDefault();
-    event.stopPropagation();
-    
     setSelectedNodeId(node.id);
     setShowLogPanel(true);
   }, []);
@@ -252,12 +251,7 @@ const Canvas = () => {
         .eq('id', workflowId)
         .single();
       
-      if (error) {
-        console.error('Error loading workflow:', error);
-        toast.error('Failed to load workflow');
-        navigate('/canvas/new', { replace: true });
-        return;
-      }
+      if (error) throw error;
       
       if (data) {
         setWorkflowName(data.name || 'New Workflow');
@@ -622,21 +616,27 @@ const Canvas = () => {
     toast.success(`Added ${nodeLabel} node to canvas`);
   };
 
-  const getNodeTypes = useCallback(() => ({
-    ...staticNodeTypes,
+  const getNodeTypes = () => ({
+    dataInput: DataInputNode,
     dataProcessing: (props: any) => <DataProcessingNode {...props} onConfigChange={handleNodeConfigUpdate} />,
+    aiNode: AINode,
     askAI: (props: any) => <AskAINode {...props} onConfigChange={handleNodeConfigUpdate} />,
+    outputNode: OutputNode,
+    integrationNode: IntegrationNode,
+    controlNode: ControlNode,
     spreadsheetGenerator: (props: any) => <SpreadsheetGeneratorNode {...props} onConfigChange={handleNodeConfigUpdate} />,
-    fileUpload: (props: any) => {
-      const mergedData = {
-        ...props.data,
-        workflowId: savingWorkflowId,
-        onChange: handleNodeConfigUpdate
-      };
-      
-      return <FileUploadNode {...props} data={mergedData} />;
-    },
-  }), [savingWorkflowId, handleNodeConfigUpdate]);
+    utilityNode: UtilityNode,
+    fileUpload: (props: any) => <FileUploadNode 
+      {...{
+        ...props,
+        data: {
+          ...props.data,
+          workflowId: savingWorkflowId,
+          onChange: handleNodeConfigUpdate
+        }
+      }} 
+    />,
+  });
 
   return (
     <div className="h-screen flex flex-col">
@@ -705,56 +705,44 @@ const Canvas = () => {
           
           <TabsContent value="canvas" className="flex-1 h-full">
             <div className="h-full">
-              {isLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                  <span className="ml-2">Loading workflow...</span>
-                </div>
-              ) : (
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  onNodeClick={onNodeClick}
-                  nodeTypes={getNodeTypes()}
-                  fitView
-                  attributionPosition="top-right"
-                  style={{ backgroundColor: "#F7F9FB" }}
-                >
-                  <Controls />
-                  <MiniMap nodeClassName={node => node.type} />
-                  <Background />
-                  <Panel position="top-right">
-                    <Button 
-                      onClick={(e: MouseEvent) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsAddingNode(true);
-                      }} 
-                      className="flex items-center"
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                nodeTypes={getNodeTypes()}
+                fitView
+                attributionPosition="top-right"
+                style={{ backgroundColor: "#F7F9FB" }}
+              >
+                <Controls />
+                <MiniMap nodeClassName={node => node.type} />
+                <Background />
+                <Panel position="top-right">
+                  <Button 
+                    onClick={(e: MouseEvent) => {
+                      e.preventDefault();
+                      setIsAddingNode(true);
+                    }} 
+                    className="flex items-center"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Node
+                  </Button>
+                  {executionId && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowLogPanel(!showLogPanel)}
+                      className="ml-2 flex items-center"
                     >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Node
+                      <FileText className="mr-2 h-4 w-4" />
+                      {showLogPanel ? 'Hide Logs' : 'Show Logs'}
                     </Button>
-                    {executionId && (
-                      <Button
-                        variant="outline"
-                        onClick={(e: MouseEvent) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setShowLogPanel(!showLogPanel);
-                        }}
-                        className="ml-2 flex items-center"
-                      >
-                        <FileText className="mr-2 h-4 w-4" />
-                        {showLogPanel ? 'Hide Logs' : 'Show Logs'}
-                      </Button>
-                    )}
-                  </Panel>
-                </ReactFlow>
-              )}
+                  )}
+                </Panel>
+              </ReactFlow>
             </div>
 
             {showLogPanel && (

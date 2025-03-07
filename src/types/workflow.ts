@@ -1,3 +1,4 @@
+
 import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
 // Define our own Json type since we can't import it from supabase
@@ -197,21 +198,6 @@ export interface FileUploadNodeData extends BaseNodeData {
   workflowId?: string;
   onChange?: (nodeId: string, updatedData: Partial<FileUploadNodeData>) => void;
   [key: string]: any;
-}
-
-// File schema structure for sharing file metadata between nodes
-export interface FileSchema {
-  fileId: string;
-  workflowId: string;
-  nodeId: string;
-  columns: string[];
-  dataTypes: Record<string, string>;
-  sampleData?: any[];
-  totalRows?: number;
-  hasHeaders: boolean;
-  sheetName?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 // A union of all possible node data types
@@ -449,28 +435,4 @@ export function isAIRequestData(obj: any): obj is AIRequestData {
     (obj.ai_provider === 'openai' || obj.ai_provider === 'anthropic' || obj.ai_provider === 'deepseek') &&
     typeof obj.user_query === 'string'
   );
-}
-
-// Helper function to create a new file schema record
-export function createFileSchema(
-  fileId: string,
-  workflowId: string,
-  nodeId: string,
-  columns: string[],
-  dataTypes: Record<string, string>,
-  sampleData?: any[],
-  hasHeaders: boolean = true,
-  sheetName?: string
-): Omit<FileSchema, 'createdAt' | 'updatedAt'> {
-  return {
-    fileId,
-    workflowId,
-    nodeId,
-    columns,
-    dataTypes,
-    sampleData,
-    hasHeaders,
-    sheetName,
-    totalRows: sampleData?.length
-  };
 }

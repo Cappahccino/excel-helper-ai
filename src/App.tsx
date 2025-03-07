@@ -66,15 +66,7 @@ const App = () => (
             }
           />
           <Route
-            path="/canvas/:workflowId"
-            element={
-              <ProtectedRoute>
-                <Canvas />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/canvas"
+            path="/canvas/:workflowId?"
             element={
               <ProtectedRoute>
                 <Canvas />
