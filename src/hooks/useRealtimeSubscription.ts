@@ -25,8 +25,9 @@ export function useRealtimeSubscription<T>(
     // Setup channel
     const channel = supabase
       .channel('table-db-changes')
-      .on(
-        'postgres_changes', // This is a valid string literal for the supabase-js channel method
+      // In Supabase JS v2, we need to cast this as any because the TypeScript types 
+      // are stricter than the actual implementation allows
+      .on('postgres_changes' as any, 
         {
           event: options.event || '*',
           schema: options.schema || 'public',
