@@ -83,12 +83,12 @@ export const createFileSchema = async (
         console.error('Could not fetch metadata:', metaError);
       } else if (metaData) {
         if (metaData.column_definitions) {
-          dataTypes = metaData.column_definitions;
+          dataTypes = metaData.column_definitions as Record<string, any>;
           columns = Object.keys(dataTypes);
         }
         
-        if (metaData.data_summary?.sample_data) {
-          sampleData = metaData.data_summary.sample_data;
+        if (metaData.data_summary && typeof metaData.data_summary === 'object' && 'sample_data' in metaData.data_summary) {
+          sampleData = metaData.data_summary.sample_data as any[];
         }
       }
     } else {

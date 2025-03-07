@@ -1,50 +1,56 @@
 
-import { useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-type RealtimeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
-
-interface UseRealtimeSubscriptionOptions {
-  schema?: string;
+type RealtimeSubscriptionOptions = {
   table: string;
-  event?: RealtimeEvent;
+  schema?: string;
+  event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
   filter?: string;
-  callback: (payload: any) => void;
-}
+};
 
-/**
- * Hook to subscribe to real-time changes in Supabase tables
- */
-export function useRealtimeSubscription({
-  schema = 'public',
-  table,
-  event = '*',
-  filter,
-  callback
-}: UseRealtimeSubscriptionOptions) {
+export function useRealtimeSubscription<T>(
+  options: RealtimeSubscriptionOptions,
+  callback: (payload: any) => void,
+  enabled: boolean = true
+) {
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const channelRef = useRef<any>(null);
+
   useEffect(() => {
-    // Create a subscription configuration
-    const config = {
-      schema,
-      table,
-      event,
-      filter
-    };
+    if (!enabled) {
+      return;
+    }
 
-    console.log(`Setting up realtime subscription for ${schema}.${table} (${event})`);
-    
-    // Create the channel
+    // Setup channel
     const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', config, callback)
+      .channel('table-db-changes')
+      .on(
+        'postgres_changes', // This is a valid string literal for the supabase-js channel method
+        {
+          event: options.event || '*',
+          schema: options.schema || 'public',
+          table: options.table,
+          filter: options.filter
+        },
+        (payload) => {
+          callback(payload);
+        }
+      )
       .subscribe((status) => {
-        console.log(`Subscription status for ${table}: ${status}`);
+        setIsSubscribed(status === 'SUBSCRIBED');
       });
 
-    // Clean up subscription when the component unmounts
+    channelRef.current = channel;
+
+    // Cleanup function
     return () => {
-      console.log(`Cleaning up realtime subscription for ${schema}.${table}`);
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
-  }, [schema, table, event, filter, callback]);
+  }, [options.table, options.schema, options.event, options.filter, callback, enabled]);
+
+  return { isSubscribed };
 }
