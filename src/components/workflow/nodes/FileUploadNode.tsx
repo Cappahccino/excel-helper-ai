@@ -63,6 +63,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const { workflowId, setFileSchemas } = useWorkflow();
   
   const handleNodeClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
   };
   
@@ -199,6 +200,8 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   };
   
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     const file = event.target.files?.[0];
     if (file) {
       await uploadFile(file);
@@ -425,7 +428,12 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     }
   };
   
-  const clearSelectedFile = () => {
+  const clearSelectedFile = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
     setSelectedFile(null);
     setProcessingStatus(null);
     setProcessingProgress(0);
@@ -485,23 +493,46 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   
   const renderFileSearch = () => {
     return (
-      <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+      <DropdownMenu open={isDropdownOpen} onOpenChange={(open) => {
+        setIsDropdownOpen(open);
+      }}>
         <DropdownMenuTrigger asChild>
-          <div className="relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
+          <div 
+            className="relative cursor-pointer" 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input 
               placeholder={selectedFile ? selectedFile.filename : "Search files..."}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setSearchTerm(e.target.value);
+              }}
               className="pl-8 text-sm"
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 setIsDropdownOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                }
               }}
             />
           </div>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[280px] max-h-[200px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent 
+          className="w-[280px] max-h-[200px] overflow-y-auto" 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
           {isLoading ? (
             <div className="flex justify-center p-2">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -511,6 +542,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
               <DropdownMenuItem 
                 key={file.id}
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   handleFileSelection(file);
                 }}
@@ -589,12 +621,18 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   }, [processingStatus, selectedFile?.id, id, data?.workflowId, workflowId, data?.config?.hasHeaders, setFileSchemas]);
   
   return (
-    <Card className="w-[300px] shadow-md" onClick={handleNodeClick}>
+    <Card 
+      className="w-[300px] shadow-md" 
+      onClick={handleNodeClick}
+      onMouseDown={(e) => {
+        e.preventDefault();
+      }}
+    >
       <CardHeader className="bg-blue-50 py-2 flex flex-row items-center">
         <FileUp className="h-4 w-4 mr-2 text-blue-500" />
         <CardTitle className="text-sm font-medium">{label}</CardTitle>
       </CardHeader>
-      <CardContent className="p-4">
+      <CardContent className="p-4" onClick={handleNodeClick}>
         <div className="flex flex-col gap-3">
           <div className="relative">
             {renderFileSearch()}
@@ -611,6 +649,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
                   e.stopPropagation();
                   clearSelectedFile();
                 }}
+                type="button"
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -670,6 +709,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
               className="w-full text-xs"
               onClick={handleBrowseClick}
               disabled={isUploading}
+              type="button"
             >
               {isUploading ? (
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
@@ -700,6 +740,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         position={Position.Top}
         id="in"
         className="w-2 h-2 !bg-blue-500"
+        onClick={(e) => e.stopPropagation()}
       />
       
       <Handle
@@ -707,6 +748,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         position={Position.Bottom}
         id="out"
         className="w-2 h-2 !bg-blue-500"
+        onClick={(e) => e.stopPropagation()}
       />
     </Card>
   );
