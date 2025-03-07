@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -448,11 +447,18 @@ const Canvas = () => {
       });
     });
 
-    if (window.saveWorkflowTimeout) {
-      clearTimeout(window.saveWorkflowTimeout);
+    interface CustomWindow extends Window {
+      saveWorkflowTimeout?: number;
     }
     
-    window.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000) as unknown as number;
+    // Cast window to our custom interface
+    const customWindow = window as CustomWindow;
+
+    if (customWindow.saveWorkflowTimeout) {
+      clearTimeout(customWindow.saveWorkflowTimeout);
+    }
+    
+    customWindow.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000) as unknown as number;
   };
 
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
@@ -698,6 +704,8 @@ const Canvas = () => {
             <NodeLibrary 
               categories={nodeCategories}
               onAddNode={handleAddNode}
+              isOpen={true}
+              onClose={() => {}}
             />
           </div>
           

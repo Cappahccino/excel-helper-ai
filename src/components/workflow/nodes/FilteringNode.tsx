@@ -10,18 +10,22 @@ import { Badge } from '@/components/ui/badge';
 import { NodeProps } from '@/types/workflow';
 import { useWorkflow } from '../context/WorkflowContext';
 
-interface FilteringNodeProps extends NodeProps {
-  data?: {
-    label?: string;
-    config?: {
-      column?: string;
-      operator?: 'equals' | 'not-equals' | 'contains' | 'greater-than' | 'less-than' | 'starts-with' | 'ends-with';
-      value?: string;
-      isCaseSensitive?: boolean;
-    };
-    onChange?: (nodeId: string, config: any) => void;
+interface FilteringNodeData {
+  label: string;
+  type: string; // Adding required 'type' property
+  config?: {
+    column?: string;
+    operator?: 'equals' | 'not-equals' | 'contains' | 'greater-than' | 'less-than' | 'starts-with' | 'ends-with';
+    value?: string;
+    isCaseSensitive?: boolean;
   };
+  onChange?: (nodeId: string, config: any) => void;
+}
+
+interface FilteringNodeProps extends Omit<NodeProps, 'data'> {
+  data?: FilteringNodeData;
   id: string;
+  onConfigChange?: (nodeId: string, config: any) => void;
 }
 
 interface SourceFile {
@@ -30,7 +34,7 @@ interface SourceFile {
   hasColumns: boolean;
 }
 
-const FilteringNode: React.FC<FilteringNodeProps> = ({ data, id }) => {
+const FilteringNode: React.FC<FilteringNodeProps> = ({ data, id, onConfigChange }) => {
   const label = data?.label || 'Filtering';
   const { fileSchemas, workflowId } = useWorkflow();
   
@@ -84,14 +88,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ data, id }) => {
   
   // Update configuration when selections change
   useEffect(() => {
-    if (selectedColumn !== undefined && data?.onChange) {
-      data.onChange(id, {
+    if (selectedColumn !== undefined && onConfigChange) {
+      onConfigChange(id, {
         column: selectedColumn,
         operator,
         value: filterValue
       });
     }
-  }, [selectedColumn, operator, filterValue, id, data?.onChange]);
+  }, [selectedColumn, operator, filterValue, id, onConfigChange]);
   
   // Update local state if configuration changes from outside
   useEffect(() => {

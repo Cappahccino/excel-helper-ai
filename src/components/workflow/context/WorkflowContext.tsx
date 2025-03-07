@@ -53,10 +53,10 @@ export const WorkflowProvider: React.FC<{
             nodeId: schema.node_id,
             workflowId: schema.workflow_id,
             columns: schema.columns || [],
-            headers: schema.headers || [],
-            previewData: schema.preview_data,
-            selectedSheet: schema.selected_sheet,
-            rowCount: schema.row_count
+            headers: schema.headers || schema.columns || [],
+            previewData: schema.preview_data || schema.sample_data,
+            selectedSheet: schema.selected_sheet || schema.sheet_name,
+            rowCount: schema.row_count || schema.total_rows
           }));
           
           setFileSchemas(schemas);

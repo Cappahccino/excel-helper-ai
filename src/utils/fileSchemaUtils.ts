@@ -56,8 +56,7 @@ export async function saveFileSchema(
     const { data, error } = await supabase
       .from('workflow_file_schemas')
       .upsert(schema, { 
-        onConflict: 'file_id,node_id,workflow_id', 
-        returning: 'minimal' 
+        onConflict: 'file_id,node_id,workflow_id'
       });
 
     if (error) {
@@ -108,10 +107,10 @@ export async function getFileSchema(
       nodeId: data.node_id,
       workflowId: data.workflow_id,
       columns: data.columns || [],
-      headers: data.headers || [],
-      previewData: data.preview_data,
-      selectedSheet: data.selected_sheet,
-      rowCount: data.row_count
+      headers: data.headers || data.columns || [],
+      previewData: data.preview_data || data.sample_data,
+      selectedSheet: data.selected_sheet || data.sheet_name,
+      rowCount: data.row_count || data.total_rows
     };
   } catch (err) {
     console.error('Error in getFileSchema:', err);
