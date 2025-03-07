@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
@@ -19,6 +18,8 @@ import {
 import { ExcelFile } from '@/types/files';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { saveFileSchema } from '@/utils/fileSchemaUtils';
+import { useWorkflow } from '../context/WorkflowContext';
 
 const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,10 +38,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   const { toast } = useToast();
   const label = data?.label || 'File Upload';
   
-  // Check if a file is already selected in data
+  const { workflowId, setFileSchemas } = useWorkflow();
+  
   useEffect(() => {
     if (data?.config?.fileId && data?.config?.filename && !selectedFile) {
-      // Fetch the file details by ID to properly set the selectedFile state
       const fetchFileDetails = async () => {
         try {
           const { data: fileData, error } = await supabase
@@ -243,19 +244,16 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setFileProcessingError(null);
       
       if (data) {
-        // Update the data config
         const updatedConfig = {
           ...(data.config || {}),
           fileId: fileRecord.id,
           filename: fileRecord.filename,
         };
         
-        // Update the node data
         if (typeof data.onChange === 'function') {
           data.onChange(id, { config: updatedConfig });
         }
         
-        // Queue file for processing if workflowId exists
         if (data.workflowId) {
           await queueFileForProcessing(fileRecord.id, data.workflowId, id);
         }
@@ -322,7 +320,8 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         body: {
           fileId,
           workflowId,
-          nodeId
+          nodeId,
+          extractSchema: true
         }
       });
       
@@ -381,21 +380,19 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setFileProcessingError(null);
     
     if (data) {
-      // Update the data config
       const updatedConfig = {
         ...(data.config || {}),
         fileId: file.id,
         filename: file.filename,
       };
       
-      // Update the node data
       if (typeof data.onChange === 'function') {
         data.onChange(id, { config: updatedConfig });
       }
       
-      // Queue file for processing if workflowId exists
-      if (data.workflowId) {
-        await queueFileForProcessing(file.id, data.workflowId, id);
+      const effectiveWorkflowId = data?.workflowId || workflowId;
+      if (effectiveWorkflowId) {
+        await queueFileForProcessing(file.id, effectiveWorkflowId, id);
       }
     }
   };
@@ -407,12 +404,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setFileProcessingError(null);
     
     if (data) {
-      // Update the data config to remove file information
       const updatedConfig = { ...(data.config || {}) };
       delete updatedConfig.fileId;
       delete updatedConfig.filename;
       
-      // Update the node data
       if (typeof data.onChange === 'function') {
         data.onChange(id, { config: updatedConfig });
       }
@@ -460,7 +455,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     );
   };
   
-  // Custom file search interface
   const renderFileSearch = () => {
     return (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
@@ -501,6 +495,61 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       </DropdownMenu>
     );
   };
+  
+  useEffect(() => {
+    const extractSchema = async () => {
+      if (
+        processingStatus === 'completed' && 
+        selectedFile?.id && 
+        (data?.workflowId || workflowId)
+      ) {
+        try {
+          const { data: fileData, error } = await supabase
+            .from('workflow_files')
+            .select('processing_result')
+            .eq('file_id', selectedFile.id)
+            .eq('node_id', id)
+            .maybeSingle();
+            
+          if (error) {
+            console.error('Error fetching file data for schema extraction:', error);
+            return;
+          }
+          
+          if (fileData?.processing_result) {
+            const sampleData = fileData.processing_result.sample_data || [];
+            const effectiveWorkflowId = data?.workflowId || workflowId;
+            
+            if (effectiveWorkflowId && sampleData.length > 0) {
+              const schema = await saveFileSchema(
+                selectedFile.id,
+                effectiveWorkflowId,
+                id,
+                sampleData,
+                data?.config?.hasHeaders !== false,
+                fileData.processing_result.selected_sheet
+              );
+              
+              if (schema) {
+                setFileSchemas(prev => {
+                  const filteredSchemas = prev.filter(s => 
+                    !(s.fileId === schema.fileId && s.nodeId === schema.nodeId)
+                  );
+                  return [...filteredSchemas, schema];
+                });
+                
+                console.log('File schema extracted and saved:', schema);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error extracting schema:', err);
+        }
+      }
+    };
+    
+    extractSchema();
+  }, [processingStatus, selectedFile?.id, id, data?.workflowId, workflowId, data?.config?.hasHeaders, setFileSchemas]);
   
   return (
     <Card className="w-[300px] shadow-md">
@@ -622,3 +671,4 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
 };
 
 export default FileUploadNode;
+

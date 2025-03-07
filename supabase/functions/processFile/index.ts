@@ -13,6 +13,133 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Function to extract data types from sample data
+function determineDataType(value: any): string {
+  if (value === null || value === undefined) return 'unknown';
+  
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? 'integer' : 'decimal';
+  }
+  
+  if (typeof value === 'boolean') return 'boolean';
+  
+  if (typeof value === 'string') {
+    // Check for date format
+    if (!isNaN(Date.parse(value)) && value.match(/^\d{4}-\d{2}-\d{2}|^\d{2}\/\d{2}\/\d{4}/)) {
+      return 'date';
+    }
+    return 'string';
+  }
+  
+  if (Array.isArray(value)) return 'array';
+  
+  if (typeof value === 'object') return 'object';
+  
+  return 'unknown';
+}
+
+// Extract schema from sample data
+async function extractAndSaveSchema(fileId: string, workflowId: string, nodeId: string, sampleData: any[]) {
+  try {
+    if (!sampleData || !Array.isArray(sampleData) || sampleData.length === 0) {
+      console.log('No sample data available for schema extraction');
+      return null;
+    }
+    
+    // Extract all column names
+    const columns = Array.from(
+      new Set(sampleData.flatMap(row => Object.keys(row)))
+    );
+    
+    // Determine data types for each column
+    const dataTypes: Record<string, string> = {};
+    columns.forEach(column => {
+      const values = sampleData
+        .map(row => row[column])
+        .filter(value => value !== null && value !== undefined);
+      
+      if (values.length === 0) {
+        dataTypes[column] = 'unknown';
+      } else {
+        const firstType = determineDataType(values[0]);
+        const allSameType = values.every(value => determineDataType(value) === firstType);
+        
+        if (allSameType) {
+          dataTypes[column] = firstType;
+        } else {
+          dataTypes[column] = 'mixed';
+        }
+      }
+    });
+    
+    // Check if schema already exists
+    const { data: existingSchema, error: checkError } = await supabase
+      .from('workflow_file_schemas')
+      .select('*')
+      .eq('file_id', fileId)
+      .eq('workflow_id', workflowId)
+      .eq('node_id', nodeId)
+      .maybeSingle();
+    
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking existing schema:', checkError);
+      return null;
+    }
+    
+    const schemaData = {
+      columns,
+      data_types: dataTypes,
+      sample_data: sampleData.slice(0, 10), // Store only first 10 rows
+      total_rows: sampleData.length,
+      has_headers: true // Assume headers by default
+    };
+    
+    if (existingSchema) {
+      // Update existing schema
+      const { data, error } = await supabase
+        .from('workflow_file_schemas')
+        .update({
+          ...schemaData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingSchema.id)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error updating schema:', error);
+        return null;
+      }
+      
+      console.log('Schema updated successfully:', data);
+      return data;
+    } else {
+      // Create new schema
+      const { data, error } = await supabase
+        .from('workflow_file_schemas')
+        .insert({
+          file_id: fileId,
+          workflow_id: workflowId,
+          node_id: nodeId,
+          ...schemaData
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error creating schema:', error);
+        return null;
+      }
+      
+      console.log('Schema created successfully:', data);
+      return data;
+    }
+  } catch (error) {
+    console.error('Error in extractAndSaveSchema:', error);
+    return null;
+  }
+}
+
 // Handle requests
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -22,7 +149,7 @@ serve(async (req) => {
 
   try {
     // Parse the request body
-    const { fileId, workflowId, executionId } = await req.json();
+    const { fileId, workflowId, nodeId, executionId, extractSchema = false } = await req.json();
     
     if (!fileId) {
       return new Response(
@@ -80,6 +207,16 @@ serve(async (req) => {
       // Simulate file processing
       await new Promise(resolve => setTimeout(resolve, 2000));
       
+      // Generate some sample data for demonstration
+      const sampleData = Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1,
+        name: `Item ${i + 1}`,
+        value: Math.round(Math.random() * 1000) / 10,
+        date: new Date(Date.now() - Math.random() * 10000000000).toISOString().split('T')[0],
+        category: ['A', 'B', 'C'][Math.floor(Math.random() * 3)],
+        inStock: Math.random() > 0.3
+      }));
+      
       // Update file status to completed
       await supabase
         .from('excel_files')
@@ -88,6 +225,33 @@ serve(async (req) => {
           processing_completed_at: new Date().toISOString()
         })
         .eq('id', fileId);
+      
+      // Store processing result with sample data
+      const processingResult = {
+        sample_data: sampleData,
+        row_count: sampleData.length,
+        processed_at: new Date().toISOString()
+      };
+      
+      // Update workflow_files record with processing result
+      await supabase
+        .from('workflow_files')
+        .update({
+          status: 'completed',
+          processing_status: 'completed',
+          processing_error: null,
+          processing_result: processingResult,
+          completed_at: new Date().toISOString()
+        })
+        .eq('file_id', fileId)
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId);
+      
+      // Extract and save schema if requested
+      if (extractSchema && workflowId && nodeId) {
+        const schema = await extractAndSaveSchema(fileId, workflowId, nodeId, sampleData);
+        console.log('Schema extraction result:', schema ? 'success' : 'failed');
+      }
       
       // If this is part of a workflow, mark the step as completed and queue the next step
       if (workflowId) {
@@ -189,7 +353,8 @@ serve(async (req) => {
           success: true, 
           message: "File processed successfully",
           fileId,
-          workflowId
+          workflowId,
+          sample_data: sampleData.slice(0, 5) // Return just a preview
         }),
         { 
           status: 200, 
