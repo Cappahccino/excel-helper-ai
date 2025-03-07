@@ -54,9 +54,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Play, Plus, FileText } from 'lucide-react';
+import { Save, Play, Plus, FileText, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Loader2 } from '@/components/ui/loader';
 
 const staticNodeTypes: NodeTypes = {
   dataInput: DataInputNode,
