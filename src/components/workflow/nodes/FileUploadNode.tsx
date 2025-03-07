@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
@@ -19,6 +18,8 @@ import {
 import { ExcelFile } from '@/types/files';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { useWorkflow } from '../context/WorkflowContext';
+import { createFileSchema } from '@/utils/fileSchemaUtils';
 
 const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,12 +36,11 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { saveFileSchema, propagateFileSchema } = useWorkflow();
   const label = data?.label || 'File Upload';
   
-  // Check if a file is already selected in data
   useEffect(() => {
     if (data?.config?.fileId && data?.config?.filename && !selectedFile) {
-      // Fetch the file details by ID to properly set the selectedFile state
       const fetchFileDetails = async () => {
         try {
           const { data: fileData, error } = await supabase
@@ -243,23 +243,43 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setFileProcessingError(null);
       
       if (data) {
-        // Update the data config
         const updatedConfig = {
           ...(data.config || {}),
           fileId: fileRecord.id,
           filename: fileRecord.filename,
         };
         
-        // Update the node data
         if (typeof data.onChange === 'function') {
           data.onChange(id, { config: updatedConfig });
         }
         
-        // Queue file for processing if workflowId exists
         if (data.workflowId) {
           await queueFileForProcessing(fileRecord.id, data.workflowId, id);
         }
       }
+      
+      const createSchema = async () => {
+        try {
+          const fileSchema = await createFileSchema(
+            data.workflowId,
+            id,
+            fileRecord.id,
+            [],
+            null,
+            true
+          );
+          
+          if (fileSchema) {
+            console.log('File schema created:', fileSchema);
+            
+            propagateFileSchema(fileSchema);
+          }
+        } catch (error) {
+          console.error('Error creating file schema:', error);
+        }
+      };
+      
+      createSchema();
     } catch (error) {
       console.error('Upload error:', error);
       toast({
@@ -381,19 +401,16 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setFileProcessingError(null);
     
     if (data) {
-      // Update the data config
       const updatedConfig = {
         ...(data.config || {}),
         fileId: file.id,
         filename: file.filename,
       };
       
-      // Update the node data
       if (typeof data.onChange === 'function') {
-        data.onChange(id, { config: updatedConfig });
+        data.onChange(id, updatedConfig);
       }
       
-      // Queue file for processing if workflowId exists
       if (data.workflowId) {
         await queueFileForProcessing(file.id, data.workflowId, id);
       }
@@ -407,12 +424,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     setFileProcessingError(null);
     
     if (data) {
-      // Update the data config to remove file information
       const updatedConfig = { ...(data.config || {}) };
       delete updatedConfig.fileId;
       delete updatedConfig.filename;
       
-      // Update the node data
       if (typeof data.onChange === 'function') {
         data.onChange(id, { config: updatedConfig });
       }
@@ -460,7 +475,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
     );
   };
   
-  // Custom file search interface
   const renderFileSearch = () => {
     return (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>

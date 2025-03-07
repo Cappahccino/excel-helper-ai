@@ -30,6 +30,7 @@ import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGen
 import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 import StepLogPanel from '@/components/workflow/StepLogPanel';
+import ConnectionHandler from '@/components/workflow/ConnectionHandler';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
@@ -639,185 +640,189 @@ const Canvas = () => {
   });
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="border-b p-4 flex justify-between items-center">
-        <div className="flex-1 mr-4">
-          <Input
-            value={workflowName}
-            onChange={(e) => setWorkflowName(e.target.value)}
-            className="text-xl font-bold mb-2"
-            placeholder="Workflow Name"
-          />
-          <Textarea
-            value={workflowDescription}
-            onChange={(e) => setWorkflowDescription(e.target.value)}
-            className="text-sm resize-none"
-            placeholder="Describe your workflow..."
-            rows={2}
-          />
-        </div>
-        <div className="flex space-x-2 items-center">
-          {executionStatus && (
-            <div className={`px-3 py-1 text-sm rounded-full flex items-center ${
-              executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
-              executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
-              executionStatus === 'running' ? 'bg-blue-100 text-blue-800' :
-              executionStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
-              {subscriptionStatus === 'subscribing' && (
-                <span className="mr-2 h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-              )}
-              {executionStatus === 'completed' ? 'Completed' :
-               executionStatus === 'failed' ? 'Failed' :
-               executionStatus === 'pending' ? 'Pending' :
-               executionStatus === 'running' ? 'Running...' :
-               executionStatus}
-            </div>
-          )}
-          
-          <Button 
-            onClick={saveWorkflow} 
-            disabled={isSaving}
-            className="flex items-center"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isSaving ? 'Saving...' : 'Save'}
-          </Button>
-          <Button 
-            onClick={runWorkflow} 
-            variant="outline"
-            disabled={isRunning || executionStatus === 'running'}
-            className="flex items-center"
-          >
-            <Play className="mr-2 h-4 w-4" />
-            {isRunning ? 'Starting...' : executionStatus === 'running' ? 'Running...' : 'Run'}
-          </Button>
-        </div>
-      </div>
-      
-      <div className="flex-1 flex">
-        <Tabs defaultValue="canvas" className="w-full">
-          <TabsList className="px-4 pt-2">
-            <TabsTrigger value="canvas">Canvas</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="canvas" className="flex-1 h-full">
-            <div className="h-full">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onNodeClick={onNodeClick}
-                nodeTypes={getNodeTypes()}
-                fitView
-                attributionPosition="top-right"
-                style={{ backgroundColor: "#F7F9FB" }}
-              >
-                <Controls />
-                <MiniMap nodeClassName={node => node.type} />
-                <Background />
-                <Panel position="top-right">
-                  <Button 
-                    onClick={(e: MouseEvent) => {
-                      e.preventDefault();
-                      setIsAddingNode(true);
-                    }} 
-                    className="flex items-center"
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Node
-                  </Button>
-                  {executionId && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowLogPanel(!showLogPanel)}
-                      className="ml-2 flex items-center"
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      {showLogPanel ? 'Hide Logs' : 'Show Logs'}
-                    </Button>
-                  )}
-                </Panel>
-              </ReactFlow>
-            </div>
-
-            {showLogPanel && (
-              <StepLogPanel
-                nodeId={selectedNodeId}
-                executionId={executionId}
-                workflowId={savingWorkflowId}
-                onClose={() => setShowLogPanel(false)}
-              />
+    <WorkflowProvider workflowId={savingWorkflowId || undefined}>
+      <div className="h-screen flex flex-col">
+        <div className="border-b p-4 flex justify-between items-center">
+          <div className="flex-1 mr-4">
+            <Input
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              className="text-xl font-bold mb-2"
+              placeholder="Workflow Name"
+            />
+            <Textarea
+              value={workflowDescription}
+              onChange={(e) => setWorkflowDescription(e.target.value)}
+              className="text-sm resize-none"
+              placeholder="Describe your workflow..."
+              rows={2}
+            />
+          </div>
+          <div className="flex space-x-2 items-center">
+            {executionStatus && (
+              <div className={`px-3 py-1 text-sm rounded-full flex items-center ${
+                executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                executionStatus === 'running' ? 'bg-blue-100 text-blue-800' :
+                executionStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {subscriptionStatus === 'subscribing' && (
+                  <span className="mr-2 h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                )}
+                {executionStatus === 'completed' ? 'Completed' :
+                 executionStatus === 'failed' ? 'Failed' :
+                 executionStatus === 'pending' ? 'Pending' :
+                 executionStatus === 'running' ? 'Running...' :
+                 executionStatus}
+              </div>
             )}
-          </TabsContent>
-          
-          <TabsContent value="settings">
-            <Card>
-              <CardHeader>
-                <CardTitle>Workflow Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {executionStatus && (
-                  <div className="mb-4">
-                    <h3 className="text-sm font-semibold mb-2">Execution Status</h3>
-                    <div className={`px-3 py-2 rounded ${
-                      executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
-                      executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {executionStatus === 'completed' ? 'Workflow completed successfully' :
-                       executionStatus === 'failed' ? 'Workflow execution failed' :
-                       executionStatus === 'pending' ? 'Workflow is queued and waiting to be processed' :
-                       executionStatus === 'running' ? 'Workflow is currently running...' :
-                       `Workflow status: ${executionStatus}`}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="mb-4">
-                  <h3 className="text-sm font-semibold mb-2">Workflow ID</h3>
-                  <div className="text-sm bg-gray-100 p-2 rounded">
-                    {savingWorkflowId || 'Not saved yet'}
-                  </div>
-                </div>
-                
-                {executionId && (
-                  <div className="mb-4">
-                    <h3 className="text-sm font-semibold mb-2">Current Execution ID</h3>
-                    <div className="text-sm bg-gray-100 p-2 rounded">
-                      {executionId}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="mb-4">
-                  <h3 className="text-sm font-semibold mb-2">Node Count</h3>
-                  <div className="text-sm">{nodes.length} nodes in this workflow</div>
-                </div>
-                
-                <div>
-                  <h3 className="text-sm font-semibold mb-2">Edge Count</h3>
-                  <div className="text-sm">{edges.length} connections between nodes</div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+            
+            <Button 
+              onClick={saveWorkflow} 
+              disabled={isSaving}
+              className="flex items-center"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {isSaving ? 'Saving...' : 'Save'}
+            </Button>
+            <Button 
+              onClick={runWorkflow} 
+              variant="outline"
+              disabled={isRunning || executionStatus === 'running'}
+              className="flex items-center"
+            >
+              <Play className="mr-2 h-4 w-4" />
+              {isRunning ? 'Starting...' : executionStatus === 'running' ? 'Running...' : 'Run'}
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex-1 flex">
+          <Tabs defaultValue="canvas" className="w-full">
+            <TabsList className="px-4 pt-2">
+              <TabsTrigger value="canvas">Canvas</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="canvas" className="flex-1 h-full">
+              <div className="h-full">
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onNodeClick={onNodeClick}
+                  nodeTypes={getNodeTypes()}
+                  fitView
+                  attributionPosition="top-right"
+                  style={{ backgroundColor: "#F7F9FB" }}
+                >
+                  <ConnectionHandler workflowId={savingWorkflowId || undefined} />
+                  
+                  <Controls />
+                  <MiniMap nodeClassName={node => node.type} />
+                  <Background />
+                  <Panel position="top-right">
+                    <Button 
+                      onClick={(e: MouseEvent) => {
+                        e.preventDefault();
+                        setIsAddingNode(true);
+                      }} 
+                      className="flex items-center"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Node
+                    </Button>
+                    {executionId && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowLogPanel(!showLogPanel)}
+                        className="ml-2 flex items-center"
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        {showLogPanel ? 'Hide Logs' : 'Show Logs'}
+                      </Button>
+                    )}
+                  </Panel>
+                </ReactFlow>
+              </div>
 
-      <NodeLibrary
-        isOpen={isAddingNode}
-        onClose={() => setIsAddingNode(false)}
-        onAddNode={(nodeType, nodeCategory, nodeLabel) => {
-          handleAddNode(nodeType, nodeCategory, nodeLabel);
-        }}
-        nodeCategories={nodeCategories}
-      />
-    </div>
+              {showLogPanel && (
+                <StepLogPanel
+                  nodeId={selectedNodeId}
+                  executionId={executionId}
+                  workflowId={savingWorkflowId}
+                  onClose={() => setShowLogPanel(false)}
+                />
+              )}
+            </TabsContent>
+            
+            <TabsContent value="settings">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Workflow Settings</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {executionStatus && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold mb-2">Execution Status</h3>
+                      <div className={`px-3 py-2 rounded ${
+                        executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                        executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}>
+                        {executionStatus === 'completed' ? 'Workflow completed successfully' :
+                         executionStatus === 'failed' ? 'Workflow execution failed' :
+                         executionStatus === 'pending' ? 'Workflow is queued and waiting to be processed' :
+                         executionStatus === 'running' ? 'Workflow is currently running...' :
+                         `Workflow status: ${executionStatus}`}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2">Workflow ID</h3>
+                    <div className="text-sm bg-gray-100 p-2 rounded">
+                      {savingWorkflowId || 'Not saved yet'}
+                    </div>
+                  </div>
+                  
+                  {executionId && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold mb-2">Current Execution ID</h3>
+                      <div className="text-sm bg-gray-100 p-2 rounded">
+                        {executionId}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2">Node Count</h3>
+                    <div className="text-sm">{nodes.length} nodes in this workflow</div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">Edge Count</h3>
+                    <div className="text-sm">{edges.length} connections between nodes</div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <NodeLibrary
+          isOpen={isAddingNode}
+          onClose={() => setIsAddingNode(false)}
+          onAddNode={(nodeType, nodeCategory, nodeLabel) => {
+            handleAddNode(nodeType, nodeCategory, nodeLabel);
+          }}
+          nodeCategories={nodeCategories}
+        />
+      </div>
+    </WorkflowProvider>
   );
 };
 
