@@ -181,7 +181,7 @@ export async function saveFileSchema(
       result = data;
     }
     
-    return result as FileSchema;
+    return result as unknown as FileSchema;
   } catch (error) {
     console.error('Error in saveFileSchema:', error);
     return null;
@@ -219,7 +219,7 @@ export async function getFileSchema(
       return null;
     }
     
-    return data as FileSchema;
+    return data as unknown as FileSchema;
   } catch (error) {
     console.error('Error in getFileSchema:', error);
     return null;

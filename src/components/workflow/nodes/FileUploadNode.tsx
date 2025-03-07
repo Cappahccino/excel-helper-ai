@@ -506,7 +506,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         try {
           const { data: fileData, error } = await supabase
             .from('workflow_files')
-            .select('processing_result')
+            .select('*')
             .eq('file_id', selectedFile.id)
             .eq('node_id', id)
             .maybeSingle();
@@ -671,4 +671,3 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
 };
 
 export default FileUploadNode;
-

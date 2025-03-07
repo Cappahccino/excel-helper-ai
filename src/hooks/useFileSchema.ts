@@ -1,22 +1,19 @@
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { FileSchema } from '@/types/workflow';
 
 /**
- * Hook to subscribe to and fetch file schema data
+ * Custom hook for getting and subscribing to file schemas
  * 
- * @param workflowId - The ID of the workflow
- * @param fileId - Optional file ID to filter by
- * @param nodeId - Optional node ID to filter by
+ * @param workflowId - ID of the workflow
  * @returns Object containing file schemas and loading state
  */
-export function useFileSchema(workflowId: string, fileId?: string, nodeId?: string) {
+export function useFileSchema(workflowId?: string) {
   const [fileSchemas, setFileSchemas] = useState<FileSchema[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Fetch file schemas on component mount
   useEffect(() => {
     if (!workflowId) {
       setFileSchemas([]);
@@ -24,27 +21,17 @@ export function useFileSchema(workflowId: string, fileId?: string, nodeId?: stri
       return;
     }
 
+    // Initial fetch of file schemas
     const fetchFileSchemas = async () => {
       try {
         setIsLoading(true);
-        let query = supabase
+        const { data, error } = await supabase
           .from('workflow_file_schemas')
           .select('*')
           .eq('workflow_id', workflowId);
-        
-        if (fileId) {
-          query = query.eq('file_id', fileId);
-        }
-        
-        if (nodeId) {
-          query = query.eq('node_id', nodeId);
-        }
-        
-        const { data, error } = await query;
-        
+
         if (error) throw error;
-        
-        setFileSchemas(data as FileSchema[]);
+        setFileSchemas(data as unknown as FileSchema[]);
       } catch (err) {
         console.error('Error fetching file schemas:', err);
         setError(err instanceof Error ? err : new Error(String(err)));
@@ -55,43 +42,52 @@ export function useFileSchema(workflowId: string, fileId?: string, nodeId?: stri
 
     fetchFileSchemas();
 
-    // Subscribe to changes in file schemas
-    const channel = supabase
+    // Set up subscription for real-time updates
+    const subscription = supabase
       .channel(`schema-changes-${workflowId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'workflow_file_schemas',
-          filter: `workflow_id=eq.${workflowId}`
-        },
-        () => {
-          // Refetch file schemas when changes occur
-          fetchFileSchemas();
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'workflow_file_schemas',
+        filter: `workflow_id=eq.${workflowId}`
+      }, (payload) => {
+        // Update the file schemas based on the change
+        if (payload.eventType === 'INSERT') {
+          setFileSchemas(prev => [...prev, payload.new as unknown as FileSchema]);
+        } else if (payload.eventType === 'UPDATE') {
+          setFileSchemas(prev => 
+            prev.map(schema => 
+              schema.nodeId === (payload.new as any).node_id ? 
+                payload.new as unknown as FileSchema : 
+                schema
+            )
+          );
+        } else if (payload.eventType === 'DELETE') {
+          setFileSchemas(prev => 
+            prev.filter(schema => schema.nodeId !== (payload.old as any).node_id)
+          );
         }
-      )
+      })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      subscription.unsubscribe();
     };
-  }, [workflowId, fileId, nodeId]);
+  }, [workflowId]);
 
-  // Function to get a specific file schema
-  const getFileSchema = (specificFileId: string, specificNodeId?: string): FileSchema | undefined => {
-    if (specificNodeId) {
-      return fileSchemas.find(
-        schema => schema.fileId === specificFileId && schema.nodeId === specificNodeId
-      );
-    }
-    return fileSchemas.find(schema => schema.fileId === specificFileId);
+  const getSchemaForNode = (nodeId: string): FileSchema | undefined => {
+    return fileSchemas.find(schema => schema.nodeId === nodeId);
+  };
+
+  const getSchemaByFileId = (fileId: string): FileSchema | undefined => {
+    return fileSchemas.find(schema => schema.fileId === fileId);
   };
 
   return {
     fileSchemas,
     isLoading,
     error,
-    getFileSchema
+    getSchemaForNode,
+    getSchemaByFileId
   };
 }
