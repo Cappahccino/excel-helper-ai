@@ -662,6 +662,50 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_edges: {
+        Row: {
+          created_at: string | null
+          edge_id: string | null
+          edge_type: string
+          id: string
+          metadata: Json | null
+          source_node_id: string
+          target_node_id: string
+          updated_at: string | null
+          workflow_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          edge_id?: string | null
+          edge_type?: string
+          id?: string
+          metadata?: Json | null
+          source_node_id: string
+          target_node_id: string
+          updated_at?: string | null
+          workflow_id: string
+        }
+        Update: {
+          created_at?: string | null
+          edge_id?: string | null
+          edge_type?: string
+          id?: string
+          metadata?: Json | null
+          source_node_id?: string
+          target_node_id?: string
+          updated_at?: string | null
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_edges_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflow_executions: {
         Row: {
           completed_at: string | null

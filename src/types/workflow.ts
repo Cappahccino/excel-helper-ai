@@ -470,7 +470,7 @@ export function isAIRequestData(obj: any): obj is AIRequestData {
 
 // Add new interface for the workflow_edges table
 export interface WorkflowEdge {
-  id: string;
+  id?: string;
   workflow_id: string;
   source_node_id: string;
   target_node_id: string;
