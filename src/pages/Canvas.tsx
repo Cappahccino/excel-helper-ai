@@ -302,25 +302,28 @@ const Canvas = () => {
         .from('workflow_edges')
         .select('*')
         .eq('workflow_id', workflowId);
-        
+      
       if (error) {
         console.error('Error loading edges:', error);
         return null;
       }
       
       if (data && data.length > 0) {
-        return data.map(edge => ({
-          id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
-          source: edge.source_node_id,
-          target: edge.target_node_id,
-          type: edge.edge_type !== 'default' ? edge.edge_type : undefined,
-          sourceHandle: edge.metadata?.sourceHandle,
-          targetHandle: edge.metadata?.targetHandle,
-          label: edge.metadata?.label,
-          animated: edge.metadata?.animated,
-          style: edge.metadata?.style,
-          data: edge.metadata?.data
-        }));
+        return data.map(edge => {
+          const metadata = edge.metadata as Record<string, any> || {};
+          
+          return {
+            id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
+            source: edge.source_node_id,
+            target: edge.target_node_id,
+            type: edge.edge_type !== 'default' ? edge.edge_type : undefined,
+            sourceHandle: metadata.sourceHandle?.toString(),
+            targetHandle: metadata.targetHandle?.toString(),
+            label: typeof metadata.label === 'string' ? metadata.label : undefined,
+            animated: metadata.animated === true,
+            data: metadata.data || undefined
+          };
+        });
       }
       
       return null;
