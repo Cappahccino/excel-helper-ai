@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -647,5 +648,101 @@ const Canvas = () => {
         }
       }} 
     />,
-   
+    filtering: (props: any) => <FilteringNode 
+      {...props} 
+      onConfigChange={handleNodeConfigUpdate} 
+    />
+  });
 
+  return (
+    <WorkflowProvider workflowId={savingWorkflowId || undefined}>
+      <div className="flex flex-col h-screen bg-gray-50">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center space-x-4">
+            <Input
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              className="text-lg font-semibold w-64"
+              placeholder="Workflow Name"
+            />
+            <Textarea
+              value={workflowDescription}
+              onChange={(e) => setWorkflowDescription(e.target.value)}
+              className="h-9 w-96"
+              placeholder="Workflow Description"
+            />
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Button 
+              variant="outline" 
+              onClick={() => saveWorkflow()}
+              disabled={isSaving}
+            >
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save
+            </Button>
+            
+            <Button 
+              onClick={() => runWorkflow()}
+              disabled={isRunning}
+            >
+              {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              Run
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex flex-1 overflow-hidden">
+          <div className="w-64 border-r bg-white p-4 overflow-y-auto">
+            <NodeLibrary 
+              categories={nodeCategories}
+              onAddNode={handleAddNode}
+            />
+          </div>
+          
+          <div className="flex-1 relative">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              nodeTypes={getNodeTypes()}
+              onNodeClick={onNodeClick}
+              fitView
+            >
+              <Background />
+              <Controls />
+              <MiniMap />
+              
+              <Panel position="top-right">
+                <Button 
+                  variant="outline" 
+                  className="flex items-center" 
+                  onClick={() => setShowLogPanel(!showLogPanel)}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  {showLogPanel ? 'Hide' : 'Show'} Logs
+                </Button>
+              </Panel>
+            </ReactFlow>
+            
+            {showLogPanel && selectedNodeId && (
+              <div className="absolute right-0 top-0 h-full bg-white border-l w-80 overflow-y-auto">
+                <StepLogPanel 
+                  nodeId={selectedNodeId} 
+                  workflowId={savingWorkflowId || ''} 
+                  executionId={executionId || ''} 
+                  onClose={() => setShowLogPanel(false)} 
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </WorkflowProvider>
+  );
+};
+
+export default Canvas;
