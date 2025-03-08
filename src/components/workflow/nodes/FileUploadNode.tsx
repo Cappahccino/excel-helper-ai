@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
@@ -94,14 +95,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
   useEffect(() => {
     if (selectedFile?.id && data?.workflowId && !isSchemaProcessed) {
       const checkFileSchema = async () => {
-        const schema = await getFileSchema(id);
+        const schema = getFileSchema(id);
         
         if (!schema) {
-          console.log('No schema found for node, creating one...', {
-            workflowId: data.workflowId,
-            nodeId: id,
-            fileId: selectedFile.id
-          });
+          console.log('No schema found for node, creating one...');
           try {
             const fileSchema = await createFileSchema(
               data.workflowId,
@@ -113,7 +110,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             );
             
             if (fileSchema) {
-              console.log('File schema created successfully:', fileSchema);
+              console.log('File schema created:', fileSchema);
               if (typeof propagateFileSchema === 'function') {
                 await propagateFileSchema(id, id);
               }
@@ -375,13 +372,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setProcessingState('queuing');
       setProcessingProgress(5);
       
-      console.log('Queueing file for processing:', {
-        fileId,
-        workflowId,
-        nodeId,
-        isTemporary: workflowId.startsWith('temp-')
-      });
-      
       const { data: existingRecord, error: checkError } = await supabase
         .from('workflow_files')
         .select('*')
@@ -391,32 +381,23 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         .maybeSingle();
       
       if (checkError && checkError.code !== 'PGRST116') {
-        console.error('Error checking existing workflow file:', checkError);
         throw checkError;
       }
       
       if (existingRecord) {
-        console.log('Found existing workflow file record:', existingRecord.id);
-        
         const { error: updateError } = await supabase
           .from('workflow_files')
           .update({
             status: 'queued',
             processing_status: 'queued',
             processing_error: null,
-            processing_result: null,
-            updated_at: new Date().toISOString()
+            processing_result: null
           })
           .eq('id', existingRecord.id);
           
-        if (updateError) {
-          console.error('Error updating workflow file:', updateError);
-          throw updateError;
-        }
+        if (updateError) throw updateError;
       } else {
-        console.log('Creating new workflow file record');
-        
-        const { data: newRecord, error: insertError } = await supabase
+        const { error: insertError } = await supabase
           .from('workflow_files')
           .insert({
             workflow_id: workflowId,
@@ -424,44 +405,24 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             node_id: nodeId,
             status: 'queued',
             processing_status: 'queued'
-          })
-          .select()
-          .single();
+          });
           
-        if (insertError) {
-          console.error('Error inserting workflow file:', insertError);
-          throw insertError;
-        }
-        
-        console.log('Created new workflow file record:', newRecord);
+        if (insertError) throw insertError;
       }
       
-      console.log('Invoking processFile edge function with:', {
-        fileId,
-        workflowId,
-        nodeId
-      });
-      
-      const { data: fnResult, error: fnError } = await supabase.functions.invoke('processFile', {
+      const { error: fnError } = await supabase.functions.invoke('processFile', {
         body: {
           fileId,
           workflowId,
-          nodeId,
-          isTemporary: workflowId.startsWith('temp-')
+          nodeId
         }
       });
       
-      if (fnError) {
-        console.error('Error invoking processFile function:', fnError);
-        throw fnError;
-      }
-      
-      console.log('processFile function response:', fnResult);
+      if (fnError) throw fnError;
       
       setProcessingState('queued');
       setProcessingProgress(10);
       
-      return true;
     } catch (error) {
       console.error('Error queueing file for processing:', error);
       setProcessingState('error');
@@ -471,7 +432,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         description: "Failed to queue file for processing",
         variant: "destructive",
       });
-      return false;
     }
   };
   
