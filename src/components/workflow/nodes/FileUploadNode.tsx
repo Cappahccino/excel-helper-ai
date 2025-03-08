@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -393,6 +392,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         ),
         progressStatus: 'success'
       },
+      failed: {
+        statusComponent: (
+          <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2">
+            <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-medium">Error:</span> {error || 'Processing failed'}
+            </div>
+          </div>
+        ),
+        progressStatus: 'error'
+      },
       error: {
         statusComponent: (
           <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2">
@@ -411,7 +421,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     return (
       <>
         {statusComponent}
-        {status !== 'pending' && status !== 'completed' && status !== 'error' && (
+        {status !== 'pending' && status !== 'completed' && status !== 'error' && status !== 'failed' && (
           <NodeProgress 
             value={progress} 
             status={progressStatus} 
@@ -419,7 +429,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             className="mt-2" 
           />
         )}
-        {status === 'error' && (
+        {(status === 'error' || status === 'failed') && (
           <Button 
             size="sm" 
             variant="outline" 
@@ -435,7 +445,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
 
   return (
     <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>
-      {/* Position handles at top and bottom instead of left and right */}
       <Handle type="target" position={Position.Top} id="in" />
       <Handle type="source" position={Position.Bottom} id="out" />
       
@@ -506,7 +515,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           )}
         </div>
         
-        {/* Process status indicator */}
         {renderProcessingStatus()}
         
         {selectedFileId && fileInfo && processingState.status === 'completed' && !isLoadingSelectedFile && (
@@ -549,7 +557,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           </div>
         )}
         
-        {/* Display workflow ID info */}
         {workflowId && (
           <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
             {workflowId.startsWith('temp-') ? 'Temporary workflow: ' : 'Workflow: '}
