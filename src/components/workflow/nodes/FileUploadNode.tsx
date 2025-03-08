@@ -19,6 +19,7 @@ import {
 
 import { FileUploadNodeData } from '@/types/workflow';
 import { useWorkflow } from '../context/WorkflowContext';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface FileUploadNodeProps {
   id: string;
@@ -31,6 +32,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
   const [selectedFileId, setSelectedFileId] = useState<string | undefined>(
     data.config?.fileId
   );
+  const debouncedFileId = useDebounce(selectedFileId, 300); // Debounce file ID to prevent flickering
   const [isLoading, setIsLoading] = useState(false);
   const [fileSuccess, setFileSuccess] = useState(false);
   const [fileInfo, setFileInfo] = useState<any>(null);
@@ -57,14 +59,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
 
   // Query to get selected file info
   const { data: selectedFile, isLoading: isLoadingSelectedFile } = useQuery({
-    queryKey: ['excel-file-info', selectedFileId],
+    queryKey: ['excel-file-info', debouncedFileId], // Use debounced ID to prevent unnecessary queries
     queryFn: async () => {
-      if (!selectedFileId) return null;
+      if (!debouncedFileId) return null;
 
       const { data, error } = await supabase
         .from('excel_files')
         .select('*, file_metadata(*)')
-        .eq('id', selectedFileId)
+        .eq('id', debouncedFileId)
         .maybeSingle();
 
       if (error) {
@@ -74,7 +76,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
 
       return data;
     },
-    enabled: !!selectedFileId,
+    enabled: !!debouncedFileId,
   });
 
   // Update file info when selected file changes
@@ -98,62 +100,74 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     if (!fileId) return;
     
     try {
+      // Skip processing if this file is already selected and processed
+      if (fileId === selectedFileId && fileInfo && fileInfo.processing_status === 'completed') {
+        return;
+      }
+      
       setIsLoading(true);
       setProcessingError(null); // Clear any previous errors
       setSelectedFileId(fileId);
       
-      // Associate the file with this node in the workflow
-      if (workflowId) {
-        console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
+      // Validate workflow ID availability
+      if (!workflowId) {
+        setProcessingError("No workflow ID available. Please save the workflow first.");
+        toast.error('Cannot associate file with workflow yet. Please save the workflow.');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Log the workflow ID for debugging
+      console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
+      
+      // Associate the file with this node in the workflow - no need to convert temp ID
+      const { error } = await supabase
+        .from('workflow_files')
+        .upsert({
+          workflow_id: workflowId, // Use ID as-is - both temp and permanent IDs are handled
+          node_id: id,
+          file_id: fileId,
+          status: 'selected',
+          is_active: true,
+          processing_status: 'queued'
+        });
+      
+      if (error) {
+        console.error('Error creating workflow file association:', error);
+        setProcessingError(`Database error: ${error.message}`);
+        toast.error('Failed to associate file with workflow node');
+        throw error;
+      }
+      
+      // Queue the file for processing with improved error handling
+      try {
+        const response = await supabase.functions.invoke('processFile', {
+          body: {
+            fileId,
+            workflowId: workflowId, // Send workflow ID as-is
+            nodeId: id
+          }
+        });
         
-        // We don't need to convert temp IDs now that we have RLS policies that handle them
-        const { error } = await supabase
-          .from('workflow_files')
-          .upsert({
-            workflow_id: workflowId,
-            node_id: id,
-            file_id: fileId,
-            status: 'selected',
-            is_active: true,
-            processing_status: 'queued'
-          });
-        
-        if (error) {
-          console.error('Error creating workflow file association:', error);
-          setProcessingError(`Database error: ${error.message}`);
-          toast.error('Failed to associate file with workflow node');
-          throw error;
+        if (response.error) {
+          console.error('Error invoking processFile function:', response.error);
+          setProcessingError(`Processing error: ${response.error.message}`);
+          toast.error('Failed to queue file for processing');
+          throw response.error;
         }
         
-        // Queue the file for processing - Now in a try/catch to handle errors better
-        try {
-          const response = await supabase.functions.invoke('processFile', {
-            body: {
-              fileId,
-              workflowId: workflowId,
-              nodeId: id
-            }
-          });
-          
-          if (response.error) {
-            console.error('Error invoking processFile function:', response.error);
-            setProcessingError(`Processing error: ${response.error.message}`);
-            toast.error('Failed to queue file for processing');
-            throw response.error;
-          }
-          
-          // Check for error in the successful response body
-          const responseData = response.data;
-          if (responseData && responseData.error) {
-            console.error('Process file returned error:', responseData.error);
-            setProcessingError(`Process error: ${responseData.error}`);
-            toast.error(responseData.error);
-          }
-        } catch (fnError) {
-          console.warn('Function call failed, but association may still be valid:', fnError);
-          setProcessingError(`API error: ${fnError.message}`);
-          // Continue execution - the association might still be valid
+        // Check for error in the successful response body
+        const responseData = response.data;
+        if (responseData && responseData.error) {
+          console.error('Process file returned error:', responseData.error);
+          setProcessingError(`Process error: ${responseData.error}`);
+          toast.error(responseData.error);
         }
+      } catch (fnError) {
+        console.error('Function call failed, but association may still be valid:', fnError);
+        setProcessingError(`API error: ${fnError.message}`);
+        toast.error('Error processing file. Please try again.');
+        // Continue execution - the association might still be valid
       }
       
       // Update node configuration
@@ -335,9 +349,9 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           </div>
         )}
         
-        {/* Added workflow ID debugging info - can be removed in production */}
+        {/* Workflow ID debugging info with improved display */}
         {workflowId && (
-          <div className="mt-2 text-[10px] text-gray-400">
+          <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
             WorkflowID: {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
           </div>
         )}
