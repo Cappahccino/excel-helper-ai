@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { toast } from 'sonner';
@@ -120,11 +120,12 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Log the workflow ID for debugging
       console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
       
-      // Associate the file with this node in the workflow - no need to convert temp ID
+      // Associate the file with this node in the workflow
+      // Using the workflowId as-is, including with temp- prefix if present
       const { error } = await supabase
         .from('workflow_files')
         .upsert({
-          workflow_id: workflowId, // Use ID as-is - both temp and permanent IDs are handled
+          workflow_id: workflowId, // Use workflowId as-is
           node_id: id,
           file_id: fileId,
           status: 'selected',

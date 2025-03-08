@@ -12,13 +12,19 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 /**
- * This function is no longer needed as we now store temporary IDs directly.
- * Keep for backward compatibility but mark as deprecated.
- * @deprecated No conversion needed, workflow IDs are used directly including temp- prefix
+ * Converts a potentially temporary workflow ID to a database-compatible UUID
+ * @param workflowId The workflow ID to convert (can be with or without temp- prefix)
+ * @returns UUID string that can be safely used in database operations
  */
 export function convertToDbWorkflowId(workflowId: string): string {
   if (!workflowId) return workflowId;
   
-  // No longer strip temp- prefix - return ID as-is
+  // If it's a temporary ID, extract the UUID part after 'temp-'
+  if (workflowId.startsWith('temp-')) {
+    return workflowId;
+  }
+  
+  // Already a UUID or other format, return as-is
   return workflowId;
 }
+

@@ -57,6 +57,16 @@ const detectDataTypes = (rows: any[]): Record<string, string> => {
   return dataTypes;
 };
 
+/**
+ * Helper function to handle workflow IDs that might have temp- prefix
+ * For database operations, we want to use the ID as-is, including the temp- prefix
+ * This ensures consistency with how the frontend is handling temporary IDs
+ */
+const normalizeWorkflowId = (workflowId: string): string => {
+  if (!workflowId) return workflowId;
+  return workflowId; // Return as-is, even with temp- prefix if present
+};
+
 // Handle requests
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -95,11 +105,14 @@ serve(async (req) => {
     // If this is part of a workflow, mark the workflow file as processing
     if (workflowId && nodeId) {
       try {
-        // We now handle temporary IDs by directly using them - no longer trying to convert
+        // Use the normalized workflow ID (keeping temp- prefix if present)
+        const normalizedId = normalizeWorkflowId(workflowId);
+        console.log(`Using normalized workflow ID for database operations: ${normalizedId}`);
+        
         const { error: workflowFileError } = await supabase
           .from('workflow_files')
           .upsert({
-            workflow_id: workflowId,  // Use the workflow ID as-is, including with temp- prefix
+            workflow_id: normalizedId,
             file_id: fileId,
             node_id: nodeId,
             status: 'processing',
@@ -159,10 +172,13 @@ serve(async (req) => {
       // If this is part of a workflow, create a file schema entry
       if (workflowId && nodeId) {
         try {
+          // Use the normalized workflow ID consistently
+          const normalizedId = normalizeWorkflowId(workflowId);
+          
           const { error: schemaError } = await supabase
             .from('workflow_file_schemas')
             .upsert({
-              workflow_id: workflowId,  // Use the workflow ID as-is
+              workflow_id: normalizedId,
               node_id: nodeId,
               file_id: fileId,
               columns: columns,
@@ -200,6 +216,9 @@ serve(async (req) => {
       // Update workflow file status
       if (workflowId && nodeId) {
         try {
+          // Use the normalized workflow ID consistently
+          const normalizedId = normalizeWorkflowId(workflowId);
+          
           const { error: workflowUpdateError } = await supabase
             .from('workflow_files')
             .update({
@@ -212,7 +231,7 @@ serve(async (req) => {
               },
               completed_at: new Date().toISOString()
             })
-            .eq('workflow_id', workflowId)
+            .eq('workflow_id', normalizedId)
             .eq('file_id', fileId)
             .eq('node_id', nodeId);
             

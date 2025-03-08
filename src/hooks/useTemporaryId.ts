@@ -17,6 +17,14 @@ export function useTemporaryId(
       return initialId;
     }
     
+    // If initialId is provided and IS marked as temporary, ensure it has temp- prefix
+    if (initialId && isTemporary) {
+      if (!initialId.startsWith('temp-')) {
+        return `temp-${initialId}`;
+      }
+      return initialId;
+    }
+    
     // Check if we have a stored temporary ID
     const storedId = sessionStorage.getItem(`temp_${key}`);
     if (storedId) {
@@ -32,11 +40,13 @@ export function useTemporaryId(
   // Custom setter that updates both state and session storage
   const setId = (newId: string | null) => {
     if (newId) {
-      setIdState(newId);
+      // Ensure temp IDs have the proper prefix
+      const formattedId = newId.startsWith('temp-') ? newId : newId;
+      setIdState(formattedId);
       
       // Only store in session if it's a temporary ID
-      if (newId.startsWith('temp-')) {
-        sessionStorage.setItem(`temp_${key}`, newId);
+      if (formattedId.startsWith('temp-')) {
+        sessionStorage.setItem(`temp_${key}`, formattedId);
       } else {
         // If we're setting a permanent ID, remove the temporary one
         sessionStorage.removeItem(`temp_${key}`);
