@@ -11,6 +11,9 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
+// Cache for ID conversions to avoid repeated string operations on the same IDs
+const idConversionCache = new Map<string, string>();
+
 /**
  * Converts a potentially temporary workflow ID to a database-compatible UUID
  * @param workflowId The workflow ID to convert (can be with or without temp- prefix)
@@ -19,13 +22,20 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
 export function convertToDbWorkflowId(workflowId: string): string {
   if (!workflowId) return workflowId;
   
-  // If it's a temporary ID, extract the UUID part after 'temp-'
-  if (workflowId.startsWith('temp-')) {
-    return workflowId.substring(5); // Remove 'temp-' prefix
+  // Check cache first to avoid redundant string operations
+  if (idConversionCache.has(workflowId)) {
+    return idConversionCache.get(workflowId)!;
   }
   
-  // Already a UUID or other format, return as-is
-  return workflowId;
+  // Using indexOf instead of startsWith for better performance in hot paths
+  const result = workflowId.indexOf('temp-') === 0 
+    ? workflowId.substring(5) // Remove 'temp-' prefix
+    : workflowId; // Already a UUID or other format
+  
+  // Cache the result for future calls
+  idConversionCache.set(workflowId, result);
+  
+  return result;
 }
 
 /**
@@ -34,5 +44,8 @@ export function convertToDbWorkflowId(workflowId: string): string {
  * @returns boolean indicating if the ID is temporary
  */
 export function isTemporaryWorkflowId(workflowId: string): boolean {
-  return workflowId ? workflowId.startsWith('temp-') : false;
+  if (!workflowId) return false;
+  
+  // Using indexOf instead of startsWith for better performance in hot paths
+  return workflowId.indexOf('temp-') === 0;
 }
