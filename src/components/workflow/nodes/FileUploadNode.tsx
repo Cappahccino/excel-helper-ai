@@ -115,20 +115,29 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             processing_status: 'queued'
           });
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error creating workflow file association:', error);
+          toast.error('Failed to associate file with workflow node');
+          throw error;
+        }
         
         // Queue the file for processing
-        const { error: fnError } = await supabase.functions.invoke('processFile', {
-          body: {
-            fileId,
-            workflowId: workflowId,
-            nodeId: id
+        try {
+          const { error: fnError } = await supabase.functions.invoke('processFile', {
+            body: {
+              fileId,
+              workflowId: workflowId,
+              nodeId: id
+            }
+          });
+          
+          if (fnError) {
+            console.error('Error invoking processFile function:', fnError);
+            throw fnError;
           }
-        });
-        
-        if (fnError) {
-          console.error('Error invoking processFile function:', fnError);
-          throw fnError;
+        } catch (fnError) {
+          console.warn('Function call failed, but association may still be valid:', fnError);
+          // Continue execution - the association might still be valid
         }
       }
       
