@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useDebounce } from './useDebounce';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseRealtimeSubscriptionOptions {
   table: string;
@@ -28,7 +29,7 @@ export function useOptimizedRealtimeSubscription<T = any>({
   const [error, setError] = useState<Error | null>(null);
   const [status, setStatus] = useState<'idle' | 'subscribed' | 'error'>('idle');
   const lastUpdateTime = useRef<number>(0);
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const debouncedFilter = useDebounce(filter, throttleMs);
   const debouncedValue = useDebounce(filterValue, throttleMs);
 
@@ -43,33 +44,36 @@ export function useOptimizedRealtimeSubscription<T = any>({
     if (filterCondition) channelName += `_${filterCondition}`;
 
     try {
-      const channel = supabase
-        .channel(channelName)
-        .on(
-          'postgres_changes', // Properly quoted string here
-          {
-            event: event,
-            schema: schema,
-            table: table,
-            filter: filterCondition,
-          },
-          (payload) => {
-            const now = Date.now();
-            // Throttle updates to avoid rapid re-renders
-            if (now - lastUpdateTime.current > throttleMs) {
-              setData(payload.new as T);
-              lastUpdateTime.current = now;
-            }
+      // Create the channel and subscribe to PostgreSQL changes
+      const channel = supabase.channel(channelName);
+      
+      // Add the subscription to PostgreSQL changes
+      // Using type assertion to work around TypeScript error
+      (channel as any).on(
+        'postgres_changes',
+        {
+          event: event,
+          schema: schema,
+          table: table,
+          filter: filterCondition,
+        },
+        (payload: any) => {
+          const now = Date.now();
+          // Throttle updates to avoid rapid re-renders
+          if (now - lastUpdateTime.current > throttleMs) {
+            setData(payload.new as T);
+            lastUpdateTime.current = now;
           }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            setStatus('subscribed');
-          } else if (status === 'CHANNEL_ERROR') {
-            setStatus('error');
-            setError(new Error('Failed to subscribe to realtime changes'));
-          }
-        });
+        }
+      )
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          setStatus('subscribed');
+        } else if (status === 'CHANNEL_ERROR') {
+          setStatus('error');
+          setError(new Error('Failed to subscribe to realtime changes'));
+        }
+      });
 
       channelRef.current = channel;
     } catch (err) {
