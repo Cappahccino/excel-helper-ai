@@ -95,24 +95,30 @@ serve(async (req) => {
 
     // If this is part of a workflow, mark the workflow file as processing
     if (workflowId && nodeId) {
-      // Check if the workflowId is a temporary ID (starts with 'temp-')
-      const isTemporaryId = typeof workflowId === 'string' && workflowId.startsWith('temp-');
-      console.log(`Is temporary workflow ID: ${isTemporaryId}`);
-      
-      const { error: workflowFileError } = await supabase
-        .from('workflow_files')
-        .upsert({
-          workflow_id: workflowId,  // This will now accept string value including temp IDs
-          file_id: fileId,
-          node_id: nodeId,
-          status: 'processing',
-          processing_status: 'processing',
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'workflow_id,file_id,node_id' });
-      
-      if (workflowFileError) {
-        console.error("Error updating workflow file status:", workflowFileError);
-        console.error("Error details:", JSON.stringify(workflowFileError));
+      try {
+        // We now handle temporary IDs by directly using them - no longer trying to convert
+        const { error: workflowFileError } = await supabase
+          .from('workflow_files')
+          .upsert({
+            workflow_id: workflowId,  // Use the workflow ID as-is, including with temp- prefix
+            file_id: fileId,
+            node_id: nodeId,
+            status: 'processing',
+            processing_status: 'processing',
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'workflow_id,file_id,node_id' });
+        
+        if (workflowFileError) {
+          console.error("Error updating workflow file status:", workflowFileError);
+          console.error("Error details:", JSON.stringify(workflowFileError));
+          
+          // Continue execution but log the error - the file processing can still work
+          console.warn("Continuing despite workflow file association error");
+        }
+      } catch (workflowError) {
+        // Log error but continue with file processing
+        console.error("Exception in workflow file association:", workflowError);
+        console.warn("Continuing with file processing despite association error");
       }
     }
 
@@ -148,55 +154,77 @@ serve(async (req) => {
       
       if (metadataError) {
         console.error("Error storing file metadata:", metadataError);
+        throw new Error(`Metadata storage failed: ${metadataError.message}`);
       }
       
       // If this is part of a workflow, create a file schema entry
       if (workflowId && nodeId) {
-        const { error: schemaError } = await supabase
-          .from('workflow_file_schemas')
-          .upsert({
-            workflow_id: workflowId,  // This will now accept string value including temp IDs
-            node_id: nodeId,
-            file_id: fileId,
-            columns: columns,
-            data_types: dataTypes,
-            sample_data: sampleRows.slice(0, 10),
-            has_headers: true,
-            total_rows: 100 // Mock row count
-          }, { onConflict: 'workflow_id,file_id,node_id' });
-        
-        if (schemaError) {
-          console.error("Error creating file schema:", schemaError);
-          console.error("Error details:", JSON.stringify(schemaError));
+        try {
+          const { error: schemaError } = await supabase
+            .from('workflow_file_schemas')
+            .upsert({
+              workflow_id: workflowId,  // Use the workflow ID as-is
+              node_id: nodeId,
+              file_id: fileId,
+              columns: columns,
+              data_types: dataTypes,
+              sample_data: sampleRows.slice(0, 10),
+              has_headers: true,
+              total_rows: 100 // Mock row count
+            }, { onConflict: 'workflow_id,file_id,node_id' });
+          
+          if (schemaError) {
+            console.error("Error creating file schema:", schemaError);
+            console.error("Error details:", JSON.stringify(schemaError));
+            throw new Error(`Schema creation failed: ${schemaError.message}`);
+          }
+        } catch (schemaError) {
+          console.error("Exception in file schema creation:", schemaError);
+          // Continue execution despite the schema error
         }
       }
       
       // Update file status to completed
-      await supabase
+      const { error: completeError } = await supabase
         .from('excel_files')
         .update({ 
           processing_status: 'completed',
           processing_completed_at: new Date().toISOString()
         })
         .eq('id', fileId);
+        
+      if (completeError) {
+        console.error("Error updating file completion status:", completeError);
+        throw new Error(`File completion update failed: ${completeError.message}`);
+      }
       
       // Update workflow file status
       if (workflowId && nodeId) {
-        await supabase
-          .from('workflow_files')
-          .update({
-            status: 'completed',
-            processing_status: 'completed',
-            processing_result: {
-              columns: columns,
-              row_count: 100,
-              data_types: dataTypes
-            },
-            completed_at: new Date().toISOString()
-          })
-          .eq('workflow_id', workflowId)
-          .eq('file_id', fileId)
-          .eq('node_id', nodeId);
+        try {
+          const { error: workflowUpdateError } = await supabase
+            .from('workflow_files')
+            .update({
+              status: 'completed',
+              processing_status: 'completed',
+              processing_result: {
+                columns: columns,
+                row_count: 100,
+                data_types: dataTypes
+              },
+              completed_at: new Date().toISOString()
+            })
+            .eq('workflow_id', workflowId)
+            .eq('file_id', fileId)
+            .eq('node_id', nodeId);
+            
+          if (workflowUpdateError) {
+            console.error("Error updating workflow file completion:", workflowUpdateError);
+            // Continue despite the error - the main file processing is done
+          }
+        } catch (workflowUpdateError) {
+          console.error("Exception in workflow file status update:", workflowUpdateError);
+          // Continue despite the error
+        }
       }
       
       return new Response(
@@ -231,16 +259,20 @@ serve(async (req) => {
       
       // Update workflow file status if applicable
       if (workflowId && nodeId) {
-        await supabase
-          .from('workflow_files')
-          .update({ 
-            status: 'failed',
-            processing_status: 'failed',
-            processing_error: error.message || "Unknown error during processing"
-          })
-          .eq('workflow_id', workflowId)
-          .eq('file_id', fileId)
-          .eq('node_id', nodeId);
+        try {
+          await supabase
+            .from('workflow_files')
+            .update({ 
+              status: 'failed',
+              processing_status: 'failed',
+              processing_error: error.message || "Unknown error during processing"
+            })
+            .eq('workflow_id', workflowId)
+            .eq('file_id', fileId)
+            .eq('node_id', nodeId);
+        } catch (updateError) {
+          console.error("Failed to update workflow file error status:", updateError);
+        }
       }
       
       return new Response(

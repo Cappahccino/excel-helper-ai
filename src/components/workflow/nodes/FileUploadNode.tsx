@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Handle, Position } from '@xyflow/react';
-import { FileText, Upload, RefreshCw, Database, AlertCircle, Check } from 'lucide-react';
+import { FileText, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -34,6 +34,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
   const [isLoading, setIsLoading] = useState(false);
   const [fileSuccess, setFileSuccess] = useState(false);
   const [fileInfo, setFileInfo] = useState<any>(null);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   
   // Query to fetch available files
   const { data: files, isLoading: isLoadingFiles, refetch } = useQuery({
@@ -80,6 +81,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
   useEffect(() => {
     if (selectedFile) {
       setFileInfo(selectedFile);
+      // Clear any previous errors when file loads successfully
+      setProcessingError(null);
     }
   }, [selectedFile]);
 
@@ -96,6 +99,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     
     try {
       setIsLoading(true);
+      setProcessingError(null); // Clear any previous errors
       setSelectedFileId(fileId);
       
       // Associate the file with this node in the workflow
@@ -116,13 +120,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         
         if (error) {
           console.error('Error creating workflow file association:', error);
+          setProcessingError(`Database error: ${error.message}`);
           toast.error('Failed to associate file with workflow node');
           throw error;
         }
         
-        // Queue the file for processing
+        // Queue the file for processing - Now in a try/catch to handle errors better
         try {
-          const { error: fnError } = await supabase.functions.invoke('processFile', {
+          const response = await supabase.functions.invoke('processFile', {
             body: {
               fileId,
               workflowId: workflowId,
@@ -130,12 +135,23 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             }
           });
           
-          if (fnError) {
-            console.error('Error invoking processFile function:', fnError);
-            throw fnError;
+          if (response.error) {
+            console.error('Error invoking processFile function:', response.error);
+            setProcessingError(`Processing error: ${response.error.message}`);
+            toast.error('Failed to queue file for processing');
+            throw response.error;
+          }
+          
+          // Check for error in the successful response body
+          const responseData = response.data;
+          if (responseData && responseData.error) {
+            console.error('Process file returned error:', responseData.error);
+            setProcessingError(`Process error: ${responseData.error}`);
+            toast.error(responseData.error);
           }
         } catch (fnError) {
           console.warn('Function call failed, but association may still be valid:', fnError);
+          setProcessingError(`API error: ${fnError.message}`);
           // Continue execution - the association might still be valid
         }
       }
@@ -155,7 +171,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       toast.success('File associated with workflow node successfully');
     } catch (error) {
       console.error('Error associating file with workflow node:', error);
-      toast.error('Failed to queue file for processing');
+      toast.error('Failed to associate file with workflow');
+      setProcessingError(`Error: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -269,6 +286,15 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           </div>
         )}
         
+        {processingError && (
+          <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2">
+            <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-medium">Error:</span> {processingError}
+            </div>
+          </div>
+        )}
+        
         {selectedFileId && fileInfo && !isLoading && !isLoadingSelectedFile && (
           <div className="bg-gray-50 p-2 rounded-md border border-gray-100">
             <div className="flex items-center gap-2 mb-1">
@@ -292,6 +318,13 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
               </div>
             </div>
             
+            {fileInfo.processing_status !== 'completed' && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-amber-600">
+                <Info className="h-3 w-3" />
+                <span>Status: {fileInfo.processing_status}</span>
+              </div>
+            )}
+            
             {getSchemaInfo()}
           </div>
         )}
@@ -299,6 +332,13 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         {!selectedFileId && !isLoadingFiles && (
           <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-700 border border-blue-100">
             <p>Select a file to use in this workflow. You can upload files in the Files section.</p>
+          </div>
+        )}
+        
+        {/* Added workflow ID debugging info - can be removed in production */}
+        {workflowId && (
+          <div className="mt-2 text-[10px] text-gray-400">
+            WorkflowID: {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
           </div>
         )}
       </div>
