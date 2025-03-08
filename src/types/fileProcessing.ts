@@ -10,7 +10,7 @@ export type FileProcessingStatus =
   | 'fetching_schema'
   | 'verifying'
   | 'completed'
-  | 'failed'
+  | 'failed'  // Explicitly include 'failed' status
   | 'error';
 
 /**

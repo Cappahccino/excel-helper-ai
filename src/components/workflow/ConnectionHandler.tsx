@@ -89,7 +89,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   }, [workflowId, isTemporaryId, convertToDbWorkflowId]);
 
   // Smart schema propagation with retries
-  const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string) => {
+  const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string): Promise<boolean> => {
     // Generate a unique key for this edge
     const edgeKey = `${sourceId}-${targetId}`;
     
@@ -161,7 +161,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         }
         
         try {
-          // Fix: Don't test void expression for truthiness
+          // Fix: Return a boolean value from propagateSchemaWithRetry and use it directly
           const success = await propagateSchemaWithRetry(edge.source, edge.target);
           
           if (!success && retryInfo.attempts < retryInfo.maxAttempts) {
