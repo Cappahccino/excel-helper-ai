@@ -1,614 +1,300 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Handle, Position } from '@xyflow/react';
-import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useDropzone } from 'react-dropzone';
-import { toast } from 'sonner';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { FileUploadNodeData, FileProcessingState, FileProcessingStateLabels } from '@/types/workflow';
+import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Progress } from '@/components/ui/progress';
+import { Handle, Position } from '@xyflow/react';
+import { FileText, Upload, RefreshCw, Database, AlertCircle, Check } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+import { FileUploadNodeData } from '@/types/workflow';
 import { useWorkflow } from '../context/WorkflowContext';
 
-const ProcessingIndicator: React.FC<{
-  state: FileProcessingState;
-  progress?: number;
-}> = ({ state, progress = 0 }) => {
-  return (
-    <div className="mt-2">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center">
-          {state === 'idle' && <File className="h-4 w-4 mr-2 text-gray-400" />}
-          {state === 'pending' && <Loader2 className="h-4 w-4 mr-2 text-blue-500 animate-spin" />}
-          {state === 'queuing' && <Loader2 className="h-4 w-4 mr-2 text-blue-500 animate-spin" />}
-          {state === 'queued' && <Loader2 className="h-4 w-4 mr-2 text-blue-500 animate-spin" />}
-          {state === 'processing' && <Loader2 className="h-4 w-4 mr-2 text-blue-500 animate-spin" />}
-          {state === 'completed' && <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />}
-          {state === 'failed' && <AlertCircle className="h-4 w-4 mr-2 text-red-500" />}
-          {state === 'error' && <AlertCircle className="h-4 w-4 mr-2 text-red-500" />}
-          <span className="text-xs font-medium">{FileProcessingStateLabels[state]}</span>
-        </div>
-        {(state === 'processing' || state === 'queuing' || state === 'queued') && (
-          <span className="text-xs text-gray-500">{progress}%</span>
-        )}
-      </div>
-      {(state === 'processing' || state === 'queuing' || state === 'queued') && (
-        <Progress value={progress} className="h-1" />
-      )}
-    </div>
-  );
-};
-
-const FileDetails: React.FC<{
-  filename: string;
-  fileSize?: number;
-  onRemove: () => void;
-  processingState: FileProcessingState;
-  processingProgress?: number;
-  isPreview?: boolean;
-}> = ({ filename, fileSize, onRemove, processingState, processingProgress = 0, isPreview = false }) => {
-  return (
-    <div className="mt-2 p-2 bg-gray-50 rounded-md border">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center overflow-hidden">
-          <FileText className="h-4 w-4 mr-2 flex-shrink-0 text-blue-500" />
-          <span className="text-sm font-medium truncate">{filename}</span>
-        </div>
-        {processingState !== 'processing' && processingState !== 'queued' && processingState !== 'queuing' && !isPreview && (
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6" 
-            onClick={onRemove}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-      {fileSize && (
-        <div className="text-xs text-gray-500 mt-1">
-          {(fileSize / 1024 / 1024).toFixed(2)} MB
-        </div>
-      )}
-      <ProcessingIndicator state={processingState} progress={processingProgress} />
-    </div>
-  );
-};
-
-const FileUploadNode: React.FC<{
+interface FileUploadNodeProps {
   id: string;
   selected: boolean;
   data: FileUploadNodeData;
-}> = ({ id, selected, data }) => {
+}
+
+const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) => {
   const { workflowId, convertToDbWorkflowId } = useWorkflow();
+  const [selectedFileId, setSelectedFileId] = useState<string | undefined>(
+    data.config?.fileId
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [fileSuccess, setFileSuccess] = useState(false);
+  const [fileInfo, setFileInfo] = useState<any>(null);
   
-  const [file, setFile] = useState<File | null>(null);
-  const [fileId, setFileId] = useState<string | null>(data.config?.fileId || null);
-  const [filename, setFilename] = useState<string>(data.config?.filename || '');
-  const [hasHeaders, setHasHeaders] = useState<boolean>(data.config?.hasHeaders !== false);
-  const [delimiter, setDelimiter] = useState<string>(data.config?.delimiter || ',');
-  const [processingState, setProcessingState] = useState<FileProcessingState>('idle');
-  const [processingProgress, setProcessingProgress] = useState<number>(0);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [previewMode, setPreviewMode] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: handleFileDrop,
-    accept: {
-      'text/csv': ['.csv'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/json': ['.json'],
+  // Query to fetch available files
+  const { data: files, isLoading: isLoadingFiles, refetch } = useQuery({
+    queryKey: ['excel-files-for-workflow'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('excel_files')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        toast.error('Failed to load files');
+        throw error;
+      }
+
+      return data || [];
     },
-    maxFiles: 1,
-    disabled: isUploading || processingState === 'processing' || processingState === 'queued' || processingState === 'queuing',
   });
 
-  function handleFileDrop(acceptedFiles: File[]) {
-    if (acceptedFiles.length > 0) {
-      const droppedFile = acceptedFiles[0];
-      setPreviewFile(droppedFile);
-      setPreviewMode(true);
-    }
-  }
+  // Query to get selected file info
+  const { data: selectedFile, isLoading: isLoadingSelectedFile } = useQuery({
+    queryKey: ['excel-file-info', selectedFileId],
+    queryFn: async () => {
+      if (!selectedFileId) return null;
 
-  const confirmFileSelection = async () => {
-    if (!previewFile) return;
-    
-    setFile(previewFile);
-    setFilename(previewFile.name);
-    setPreviewMode(false);
-    
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      
-      const fileExt = previewFile.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      
-      // Fix: Use type assertion for the upload options to include onUploadProgress
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('workflow-files')
-        .upload(fileName, previewFile, {
-          cacheControl: '3600',
-          upsert: false,
-          // This is where we need to fix the TypeScript error
-          onUploadProgress: (progress) => {
-            const percent = Math.round((progress.loaded / progress.total) * 100);
-            setUploadProgress(percent);
-          }
-        } as any); // Use type assertion to bypass TypeScript error
-      
-      if (uploadError) {
-        throw uploadError;
-      }
-      
-      const newFileId = crypto.randomUUID();
-      
-      const { error: fileError } = await supabase
+      const { data, error } = await supabase
         .from('excel_files')
-        .insert({
-          id: newFileId,
-          filename: previewFile.name,
-          file_size: previewFile.size,
-          mime_type: previewFile.type,
-          file_path: uploadData.path,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
-        });
-      
-      if (fileError) {
-        throw fileError;
+        .select('*, file_metadata(*)')
+        .eq('id', selectedFileId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching file info:', error);
+        return null;
       }
-      
-      setFileId(newFileId);
-      
-      if (data.onChange) {
-        data.onChange(id, {
-          fileId: newFileId,
-          filename: previewFile.name,
-          hasHeaders,
-          delimiter,
-        });
-      }
-      
-      if (workflowId) {
-        await queueFileForProcessing(newFileId, workflowId, id);
-      } else {
-        console.warn('No workflow ID available, file will not be processed yet');
-      }
-      
-      toast.success('File uploaded successfully');
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      toast.error('Failed to upload file');
-      setProcessingState('error');
-    } finally {
-      setIsUploading(false);
-      setPreviewFile(null);
+
+      return data;
+    },
+    enabled: !!selectedFileId,
+  });
+
+  // Update file info when selected file changes
+  useEffect(() => {
+    if (selectedFile) {
+      setFileInfo(selectedFile);
     }
+  }, [selectedFile]);
+
+  // Format file size for display
+  const formatFileSize = (sizeInBytes: number): string => {
+    if (sizeInBytes < 1024) return `${sizeInBytes} B`;
+    if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`;
+    return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const cancelFileSelection = () => {
-    setPreviewFile(null);
-    setPreviewMode(false);
-  };
-
-  const removeFile = async () => {
+  // Handle file selection
+  const handleFileSelection = async (fileId: string) => {
     if (!fileId) return;
     
     try {
-      setFile(null);
-      setFileId(null);
-      setFilename('');
-      setProcessingState('idle');
-      setProcessingProgress(0);
+      setIsLoading(true);
+      setSelectedFileId(fileId);
       
+      // Associate the file with this node in the workflow
+      if (workflowId) {
+        console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
+        
+        const dbWorkflowId = convertToDbWorkflowId(workflowId);
+        
+        const { error } = await supabase
+          .from('workflow_files')
+          .upsert({
+            workflow_id: dbWorkflowId,
+            node_id: id,
+            file_id: fileId,
+            status: 'selected',
+            is_active: true,
+            processing_status: 'queued'
+          });
+        
+        if (error) throw error;
+        
+        // Queue the file for processing
+        const { error: fnError } = await supabase.functions.invoke('processFile', {
+          body: {
+            fileId,
+            workflowId: workflowId,
+            nodeId: id
+          }
+        });
+        
+        if (fnError) {
+          console.error('Error invoking processFile function:', fnError);
+          throw fnError;
+        }
+      }
+      
+      // Update node configuration
       if (data.onChange) {
-        data.onChange(id, {
-          fileId: null,
-          filename: '',
+        data.onChange(id, { 
+          fileId, 
+          filename: files?.find(f => f.id === fileId)?.filename 
         });
       }
       
-      toast.success('File removed from node');
+      // Show success state briefly
+      setFileSuccess(true);
+      setTimeout(() => setFileSuccess(false), 1500);
+      
+      toast.success('File associated with workflow node successfully');
     } catch (error) {
-      console.error('Error removing file:', error);
-      toast.error('Failed to remove file');
-    }
-  };
-
-  const queueFileForProcessing = async (fileId: string, workflowId: string, nodeId: string) => {
-    try {
-      setProcessingState('queuing');
-      setProcessingProgress(5);
-      
-      console.log(`Queueing file ${fileId} for workflow ${workflowId} (${typeof workflowId}), node ${nodeId}`);
-      console.log(`Is temporary workflow ID: ${workflowId?.startsWith('temp-')}`);
-      
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      const { data: existingRecord, error: checkError } = await supabase
-        .from('workflow_files')
-        .select('*')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('file_id', fileId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
-      
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('Error checking existing workflow file:', checkError);
-        throw checkError;
-      }
-      
-      if (existingRecord) {
-        const { error: updateError } = await supabase
-          .from('workflow_files')
-          .update({
-            is_active: true,
-            status: 'selected',
-            processing_status: 'queued',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingRecord.id);
-          
-        if (updateError) {
-          console.error('Error updating workflow file:', updateError);
-          throw updateError;
-        }
-      } else {
-        const { error: insertError } = await supabase
-          .from('workflow_files')
-          .insert({
-            workflow_id: dbWorkflowId,
-            file_id: fileId,
-            node_id: nodeId,
-            is_active: true,
-            status: 'selected',
-            processing_status: 'queued'
-          });
-          
-        if (insertError) {
-          console.error('Error inserting workflow file:', insertError);
-          console.error('Insert error details:', JSON.stringify(insertError));
-          throw insertError;
-        }
-      }
-      
-      const { error: fnError } = await supabase.functions.invoke('processFile', {
-        body: {
-          fileId,
-          workflowId: workflowId,
-          nodeId
-        }
-      });
-      
-      if (fnError) {
-        console.error('Error invoking processFile function:', fnError);
-        throw fnError;
-      }
-      
-      setProcessingState('queued');
-      setProcessingProgress(10);
-      return true;
-    } catch (error) {
-      console.error('Error queueing file for processing:', error);
-      setProcessingState('error');
+      console.error('Error associating file with workflow node:', error);
       toast.error('Failed to queue file for processing');
-      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const checkFileProcessingStatus = async () => {
-    if (!fileId || !workflowId) return;
+  // Get file schema columns
+  const getSchemaInfo = () => {
+    if (!fileInfo?.file_metadata?.column_definitions) return null;
     
-    try {
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      const { data, error } = await supabase
-        .from('workflow_files')
-        .select('*')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('file_id', fileId)
-        .eq('node_id', id)
-        .maybeSingle();
-      
-      if (error) {
-        console.error('Error checking file processing status:', error);
-        return;
-      }
-      
-      if (data) {
-        const statusMap: Record<string, FileProcessingState> = {
-          'selected': 'idle',
-          'queued': 'queued',
-          'processing': 'processing',
-          'processed': 'completed',
-          'failed': 'failed',
-          'error': 'error'
-        };
-        
-        const newState = statusMap[data.processing_status] || 'idle';
-        setProcessingState(newState);
-        
-        if (newState === 'queued') {
-          setProcessingProgress(10);
-        } else if (newState === 'processing') {
-          setProcessingProgress(50);
-        } else if (newState === 'completed') {
-          setProcessingProgress(100);
-        }
-      }
-    } catch (error) {
-      console.error('Error in checkFileProcessingStatus:', error);
-    }
+    const columnDefs = fileInfo.file_metadata.column_definitions;
+    const columns = Object.keys(columnDefs).map(key => ({
+      name: key,
+      type: columnDefs[key].type || 'string'
+    }));
+    
+    if (!columns.length) return null;
+    
+    return (
+      <div className="mt-3 border-t pt-2">
+        <h4 className="text-xs font-semibold mb-1">File Schema</h4>
+        <div className="max-h-28 overflow-y-auto pr-1 custom-scrollbar">
+          {columns.map((column, index) => (
+            <div 
+              key={index} 
+              className="text-xs flex gap-2 items-center p-1 border-b border-gray-100 last:border-0"
+            >
+              <span className="font-medium truncate max-w-28">{column.name}</span>
+              <Badge variant="outline" className="h-5 text-[10px]">
+                {column.type}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
-
-  useEffect(() => {
-    if (fileId && workflowId && (processingState === 'queued' || processingState === 'processing')) {
-      const interval = setInterval(checkFileProcessingStatus, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [fileId, workflowId, processingState]);
-
-  useEffect(() => {
-    if (fileId && workflowId) {
-      checkFileProcessingStatus();
-    }
-  }, [fileId, workflowId]);
-
-  useEffect(() => {
-    const loadFileDetails = async () => {
-      if (fileId && !file && !filename) {
-        try {
-          const { data, error } = await supabase
-            .from('excel_files')
-            .select('*')
-            .eq('id', fileId)
-            .maybeSingle();
-          
-          if (error) {
-            console.error('Error loading file details:', error);
-            return;
-          }
-          
-          if (data) {
-            setFilename(data.filename || '');
-          }
-        } catch (error) {
-          console.error('Error in loadFileDetails:', error);
-        }
-      }
-    };
-    
-    loadFileDetails();
-  }, [fileId, file, filename]);
-
-  useEffect(() => {
-    if (data.onChange && (
-      data.config?.fileId !== fileId ||
-      data.config?.filename !== filename ||
-      data.config?.hasHeaders !== hasHeaders ||
-      data.config?.delimiter !== delimiter
-    )) {
-      data.onChange(id, {
-        fileId,
-        filename,
-        hasHeaders,
-        delimiter
-      });
-    }
-  }, [fileId, filename, hasHeaders, delimiter]);
 
   return (
-    <Card className={`w-[280px] ${selected ? 'border-blue-500 shadow-md' : ''}`}>
-      <CardHeader className="p-4 pb-0">
-        <CardTitle className="text-md flex items-center">
-          <FileUp className="h-4 w-4 mr-2" />
-          {data.label || 'File Upload'}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        {!fileId && !previewMode && (
-          <div 
-            {...getRootProps()} 
-            className={`border-2 border-dashed rounded-md p-4 text-center cursor-pointer transition-colors ${
-              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-500 hover:bg-gray-50'
-            }`}
-          >
-            <input {...getInputProps()} ref={fileInputRef} />
-            <FileUp className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-            <p className="text-sm text-gray-500">
-              {isDragActive ? 'Drop the file here' : 'Drag & drop a file here, or click to select'}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              Supports CSV, Excel, and JSON files
-            </p>
-          </div>
-        )}
-        
-        {previewMode && previewFile && (
-          <div className="border rounded-md p-3">
-            <h4 className="text-sm font-medium mb-2">Confirm file upload</h4>
-            <FileDetails 
-              filename={previewFile.name}
-              fileSize={previewFile.size}
-              onRemove={cancelFileSelection}
-              processingState="idle"
-              isPreview={true}
-            />
-            
-            <div className="mt-3 space-y-3">
-              <div className="space-y-1">
-                <Label htmlFor="hasHeaders" className="text-xs flex items-center">
-                  <Checkbox 
-                    id="hasHeaders" 
-                    checked={hasHeaders} 
-                    onCheckedChange={(checked) => setHasHeaders(checked === true)}
-                    className="mr-2 h-3 w-3"
-                  />
-                  File has headers
-                </Label>
-              </div>
-              
-              {previewFile.name.endsWith('.csv') && (
-                <div className="space-y-1">
-                  <Label htmlFor="delimiter" className="text-xs">Delimiter</Label>
-                  <Select 
-                    value={delimiter} 
-                    onValueChange={setDelimiter}
-                  >
-                    <SelectTrigger id="delimiter" className="h-8 text-xs">
-                      <SelectValue placeholder="Select delimiter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value=",">Comma (,)</SelectItem>
-                      <SelectItem value=";">Semicolon (;)</SelectItem>
-                      <SelectItem value="\t">Tab</SelectItem>
-                      <SelectItem value="|">Pipe (|)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              
-              <div className="flex space-x-2 pt-2">
-                <Button 
-                  size="sm" 
-                  className="w-full text-xs h-8" 
-                  onClick={confirmFileSelection}
-                  disabled={isUploading}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      Uploading {uploadProgress}%
-                    </>
-                  ) : (
-                    'Upload File'
-                  )}
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="w-full text-xs h-8" 
-                  onClick={cancelFileSelection}
-                  disabled={isUploading}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {fileId && filename && (
-          <div className="space-y-3">
-            <FileDetails 
-              filename={filename}
-              onRemove={removeFile}
-              processingState={processingState}
-              processingProgress={processingProgress}
-            />
-            
-            <div className="space-y-1">
-              <Label htmlFor="hasHeaders" className="text-xs flex items-center">
-                <Checkbox 
-                  id="hasHeaders" 
-                  checked={hasHeaders} 
-                  onCheckedChange={(checked) => setHasHeaders(checked === true)}
-                  className="mr-2 h-3 w-3"
-                  disabled={processingState === 'processing' || processingState === 'queued' || processingState === 'queuing'}
-                />
-                File has headers
-              </Label>
-            </div>
-            
-            {filename.endsWith('.csv') && (
-              <div className="space-y-1">
-                <Label htmlFor="delimiter" className="text-xs">Delimiter</Label>
-                <Select 
-                  value={delimiter} 
-                  onValueChange={setDelimiter}
-                  disabled={processingState === 'processing' || processingState === 'queued' || processingState === 'queuing'}
-                >
-                  <SelectTrigger id="delimiter" className="h-8 text-xs">
-                    <SelectValue placeholder="Select delimiter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value=",">Comma (,)</SelectItem>
-                    <SelectItem value=";">Semicolon (;)</SelectItem>
-                    <SelectItem value="\t">Tab</SelectItem>
-                    <SelectItem value="|">Pipe (|)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            
-            {processingState === 'completed' && (
-              <div className="pt-1">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="w-full text-xs h-8 flex items-center justify-center"
-                  onClick={() => {
-                    toast.info('Data preview not implemented yet');
-                  }}
-                >
-                  <Search className="h-3 w-3 mr-1" />
-                  Preview Data
-                </Button>
-              </div>
-            )}
-            
-            {(processingState === 'error' || processingState === 'failed') && (
-              <div className="pt-1">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="w-full text-xs h-8 flex items-center justify-center"
-                  onClick={async () => {
-                    if (fileId && workflowId) {
-                      try {
-                        setProcessingState('queuing');
-                        setProcessingProgress(0);
-                        await queueFileForProcessing(fileId, workflowId, id);
-                      } catch (error) {
-                        console.error('Error retrying file processing:', error);
-                      }
-                    }
-                  }}
-                >
-                  <Loader2 className="h-3 w-3 mr-1" />
-                  Retry Processing
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
+    <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>
+      <Handle type="target" position={Position.Left} id="in" />
+      <Handle type="source" position={Position.Right} id="out" />
       
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="in"
-        style={{ background: '#555' }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="out"
-        style={{ background: '#555' }}
-      />
-    </Card>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-md bg-blue-100">
+            <FileText className="h-4 w-4 text-blue-600" />
+          </div>
+          <h3 className="font-medium text-sm">{data.label || 'File Upload'}</h3>
+        </div>
+        
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-6 w-6 p-0" 
+          onClick={() => refetch()}
+          disabled={isLoading}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
+        </Button>
+      </div>
+      
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="fileSelect" className="text-xs font-medium">
+            Select File
+          </Label>
+          
+          {isLoadingFiles ? (
+            <Skeleton className="h-9 w-full mt-1" />
+          ) : (
+            <Select 
+              value={selectedFileId} 
+              onValueChange={handleFileSelection}
+              disabled={isLoading}
+            >
+              <SelectTrigger id="fileSelect" className="mt-1">
+                <SelectValue placeholder="Choose a file..." />
+              </SelectTrigger>
+              <SelectContent>
+                {files?.length === 0 ? (
+                  <div className="py-6 px-2 text-center">
+                    <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No files found</p>
+                  </div>
+                ) : (
+                  files?.map((file) => (
+                    <SelectItem key={file.id} value={file.id}>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate max-w-[180px]">{file.filename}</span>
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        
+        {isLoading && (
+          <div className="flex items-center gap-2 text-xs text-blue-600">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            <span>Processing file...</span>
+          </div>
+        )}
+        
+        {fileSuccess && (
+          <div className="flex items-center gap-2 text-xs text-green-600">
+            <Check className="h-3 w-3" />
+            <span>File ready</span>
+          </div>
+        )}
+        
+        {selectedFileId && fileInfo && !isLoading && !isLoadingSelectedFile && (
+          <div className="bg-gray-50 p-2 rounded-md border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="h-4 w-4 text-gray-500" />
+              <h4 className="font-medium text-xs truncate">{fileInfo.filename}</h4>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+              <div className="flex items-center gap-1">
+                <Upload className="h-3 w-3" />
+                <span>{formatFileSize(fileInfo.file_size || 0)}</span>
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <Database className="h-3 w-3" />
+                <span>
+                  {fileInfo.file_metadata?.row_count 
+                    ? `${fileInfo.file_metadata.row_count} rows` 
+                    : 'Unknown size'}
+                </span>
+              </div>
+            </div>
+            
+            {getSchemaInfo()}
+          </div>
+        )}
+        
+        {!selectedFileId && !isLoadingFiles && (
+          <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-700 border border-blue-100">
+            <p>Select a file to use in this workflow. You can upload files in the Files section.</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
