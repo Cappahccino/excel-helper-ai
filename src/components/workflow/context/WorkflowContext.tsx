@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { Json } from '@/types/workflow';
@@ -23,7 +22,7 @@ export interface WorkflowFileSchema {
 interface WorkflowContextType {
   workflowId?: string;
   isTemporaryId: boolean;
-  propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<void>;
+  propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
   getFileSchema: (nodeId: string) => Promise<WorkflowFileSchema | null>;
   saveFileSchema: (schema: WorkflowFileSchema) => Promise<boolean>;
   migrateTemporaryWorkflow: (tempId: string, permanentId: string) => Promise<boolean>;
@@ -32,7 +31,7 @@ interface WorkflowContextType {
 
 const WorkflowContext = createContext<WorkflowContextType>({
   isTemporaryId: false,
-  propagateFileSchema: async () => {},
+  propagateFileSchema: async () => false,
   getFileSchema: async () => null,
   saveFileSchema: async () => false,
   migrateTemporaryWorkflow: async () => false,
@@ -187,8 +186,8 @@ export const WorkflowProvider: React.FC<{
   }, []);
   
   // Propagate file schema from source node to target node
-  const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string) => {
-    if (!workflowId) return;
+  const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
+    if (!workflowId) return false;
     
     try {
       console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}`);
@@ -206,16 +205,18 @@ export const WorkflowProvider: React.FC<{
       
       if (sourceError) {
         console.error('Error fetching source schemas:', sourceError);
-        return;
+        return false;
       }
       
       // If no schemas found for source node, nothing to propagate
       if (!sourceSchemas || sourceSchemas.length === 0) {
         console.log(`No schemas found for source node ${sourceNodeId}`);
-        return;
+        return false;
       }
       
       console.log(`Found ${sourceSchemas.length} schemas for source node ${sourceNodeId}`);
+      
+      let propagatedAny = false;
       
       // For each file schema in the source node
       for (const schema of sourceSchemas) {
@@ -256,6 +257,8 @@ export const WorkflowProvider: React.FC<{
             console.error('Error propagating schema:', insertError);
             toast.error(`Failed to propagate data schema to node ${targetNodeId}`);
           } else {
+            propagatedAny = true;
+            
             // Also add an entry in workflow_files table to maintain file associations
             const { error: fileAssocError } = await supabase
               .from('workflow_files')
@@ -275,11 +278,15 @@ export const WorkflowProvider: React.FC<{
           }
         } else {
           console.log(`Node ${targetNodeId} already has schema for file ${schema.file_id}`);
+          propagatedAny = true; // Consider it successful if schema already exists
         }
       }
+      
+      return propagatedAny;
     } catch (error) {
       console.error('Error in propagateFileSchema:', error);
       toast.error('Failed to propagate file schema between nodes');
+      return false;
     }
   }, [workflowId]);
 
