@@ -1,4 +1,3 @@
-
 import { useEffect, useCallback, useState } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
@@ -88,7 +87,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     }
   }, [workflowId, isTemporaryId, convertToDbWorkflowId]);
 
-  // Smart schema propagation with retries
+  // Smart schema propagation with retries - modified to ensure it returns a Promise<boolean>
   const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string): Promise<boolean> => {
     // Generate a unique key for this edge
     const edgeKey = `${sourceId}-${targetId}`;
