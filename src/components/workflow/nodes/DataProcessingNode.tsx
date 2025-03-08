@@ -165,7 +165,8 @@ function NodeConfigForm({ type, config, columns, onConfigChange, validationError
                   <p className="text-yellow-500 mt-1">No compatible columns found</p>
                 )}
               </TooltipContent>
-            </TooltipProvider>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <Select 
           value={localConfig[fieldName] || ''} 
@@ -502,7 +503,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [schema]);
   
-  // Enhanced schema loading with retry for pending file processing
   useEffect(() => {
     const loadSchemaFromPreviousNode = async () => {
       if (selected && data.workflowId) {
@@ -512,7 +512,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
           if (prevSchema && prevSchema.length > 0) {
             setAvailableColumns(prevSchema);
             
-            // Validate the current configuration against the schema
             if (data.config) {
               const validation = validateNodeConfig(data.config, prevSchema);
               setValidationErrors(validation.errors);
@@ -521,8 +520,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
         } catch (err) {
           console.error('Error loading previous node schema:', err);
           
-          // If we failed, try again after a delay
-          // This helps with timing issues when file is still being processed
           if (selected) {
             setTimeout(() => {
               console.log('Retrying schema load after delay');
@@ -541,7 +538,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
       if (JSON.stringify(data.config) !== JSON.stringify(newConfig)) {
         console.log(`Updating config for node ${id}:`, newConfig);
         
-        // Validate the new configuration
         const validation = validateNodeConfig(newConfig, availableColumns);
         setValidationErrors(validation.errors);
         
@@ -550,7 +546,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [id, data.config, onConfigChange, validateNodeConfig, availableColumns]);
 
-  // Data preview handling
   const loadPreviewData = useCallback(async (forceRefresh = false) => {
     if (!data.workflowId || !id) return;
     
@@ -570,7 +565,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [data.workflowId, id, data.config, fetchNodePreviewData]);
 
-  // Toggle preview visibility
   const togglePreview = useCallback(() => {
     if (!previewVisible) {
       loadPreviewData(false);
@@ -579,7 +573,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [previewVisible, loadPreviewData]);
 
-  // Processing animation
   useEffect(() => {
     if (isProcessing) {
       setProcessing(true);
@@ -600,7 +593,6 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [isProcessing]);
 
-  // Generate filter highlight config for preview based on current node configuration
   const highlightFilters = useMemo(() => {
     if (!data.config || !data.type) return [];
     
@@ -617,14 +609,12 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     return filters;
   }, [data.config, data.type]);
 
-  // Add validation error display
   useEffect(() => {
     if (validationErrors && validationErrors.length > 0) {
       console.warn('Configuration validation errors:', validationErrors);
     }
   }, [validationErrors]);
   
-  // Add validation error display component
   const renderValidationErrors = () => {
     if (!validationErrors || validationErrors.length === 0) return null;
     
@@ -725,7 +715,8 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
             </div>
           )}
           
-          {/* Preview section */}
+          {renderValidationErrors()}
+          
           {previewVisible && (
             <div className="mt-2">
               <div className="flex items-center justify-between mb-1">
