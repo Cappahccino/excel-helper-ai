@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { isTemporaryWorkflowId } from '@/integrations/supabase/client';
 
 /**
  * Hook to generate and manage temporary IDs with session storage persistence
@@ -8,17 +9,17 @@ import { v4 as uuidv4 } from 'uuid';
 export function useTemporaryId(
   key: string, 
   initialId?: string | null,
-  isTemporary: boolean = false
+  forceTemporary: boolean = false
 ): [string, (id: string | null) => void] {
   // Initialize state from session storage or generate a new ID
   const [id, setIdState] = useState<string>(() => {
     // If initialId is provided and not marked as temporary, use it
-    if (initialId && !isTemporary) {
+    if (initialId && !forceTemporary && !isTemporaryWorkflowId(initialId)) {
       return initialId;
     }
     
     // If initialId is provided and IS marked as temporary, ensure it has temp- prefix
-    if (initialId && isTemporary) {
+    if (initialId && (forceTemporary || isTemporaryWorkflowId(initialId))) {
       if (!initialId.startsWith('temp-')) {
         return `temp-${initialId}`;
       }
@@ -41,11 +42,11 @@ export function useTemporaryId(
   const setId = (newId: string | null) => {
     if (newId) {
       // Ensure temp IDs have the proper prefix
-      const formattedId = newId.startsWith('temp-') ? newId : newId;
+      const formattedId = isTemporaryWorkflowId(newId) ? newId : newId;
       setIdState(formattedId);
       
       // Only store in session if it's a temporary ID
-      if (formattedId.startsWith('temp-')) {
+      if (isTemporaryWorkflowId(formattedId)) {
         sessionStorage.setItem(`temp_${key}`, formattedId);
       } else {
         // If we're setting a permanent ID, remove the temporary one

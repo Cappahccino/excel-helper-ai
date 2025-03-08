@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.23.0";
 
@@ -58,13 +59,25 @@ const detectDataTypes = (rows: any[]): Record<string, string> => {
 };
 
 /**
- * Helper function to handle workflow IDs that might have temp- prefix
- * For database operations, we want to use the ID as-is, including the temp- prefix
- * This ensures consistency with how the frontend is handling temporary IDs
+ * Helper function to normalize workflow IDs for database operations
+ * If it has a temp- prefix, extract the UUID part
  */
 const normalizeWorkflowId = (workflowId: string): string => {
   if (!workflowId) return workflowId;
-  return workflowId; // Return as-is, even with temp- prefix if present
+  
+  // Extract UUID if it has temp- prefix
+  if (workflowId.startsWith('temp-')) {
+    return workflowId.substring(5); // Remove 'temp-' prefix
+  }
+  
+  return workflowId;
+};
+
+/**
+ * Determines if a workflow ID should be treated as temporary
+ */
+const isTemporaryWorkflow = (workflowId: string): boolean => {
+  return workflowId ? workflowId.startsWith('temp-') : false;
 };
 
 // Handle requests
@@ -86,7 +99,14 @@ serve(async (req) => {
     }
 
     console.log(`Processing file ${fileId} for workflow ${workflowId || 'N/A'} and node ${nodeId || 'N/A'}`);
-    console.log(`Workflow ID type: ${typeof workflowId}, value: ${workflowId}`);
+    
+    // Check if this is a temporary workflow
+    const isTemporary = isTemporaryWorkflow(workflowId);
+    console.log(`Workflow temporary status: ${isTemporary}`);
+    
+    // Get normalized ID for database operations
+    const normalizedId = normalizeWorkflowId(workflowId);
+    console.log(`Normalized workflow ID: ${normalizedId}`);
 
     // Update file status to processing
     const { error: updateError } = await supabase
@@ -105,10 +125,7 @@ serve(async (req) => {
     // If this is part of a workflow, mark the workflow file as processing
     if (workflowId && nodeId) {
       try {
-        // Use the normalized workflow ID (keeping temp- prefix if present)
-        const normalizedId = normalizeWorkflowId(workflowId);
-        console.log(`Using normalized workflow ID for database operations: ${normalizedId}`);
-        
+        // Create or update workflow file entry
         const { error: workflowFileError } = await supabase
           .from('workflow_files')
           .upsert({
@@ -117,6 +134,7 @@ serve(async (req) => {
             node_id: nodeId,
             status: 'processing',
             processing_status: 'processing',
+            is_temporary: isTemporary,
             updated_at: new Date().toISOString()
           }, { onConflict: 'workflow_id,file_id,node_id' });
         
@@ -172,9 +190,7 @@ serve(async (req) => {
       // If this is part of a workflow, create a file schema entry
       if (workflowId && nodeId) {
         try {
-          // Use the normalized workflow ID consistently
-          const normalizedId = normalizeWorkflowId(workflowId);
-          
+          // Create file schema with normalized ID and temporary flag
           const { error: schemaError } = await supabase
             .from('workflow_file_schemas')
             .upsert({
@@ -185,6 +201,7 @@ serve(async (req) => {
               data_types: dataTypes,
               sample_data: sampleRows.slice(0, 10),
               has_headers: true,
+              is_temporary: isTemporary,
               total_rows: 100 // Mock row count
             }, { onConflict: 'workflow_id,file_id,node_id' });
           
@@ -216,9 +233,6 @@ serve(async (req) => {
       // Update workflow file status
       if (workflowId && nodeId) {
         try {
-          // Use the normalized workflow ID consistently
-          const normalizedId = normalizeWorkflowId(workflowId);
-          
           const { error: workflowUpdateError } = await supabase
             .from('workflow_files')
             .update({
@@ -285,7 +299,7 @@ serve(async (req) => {
               processing_status: 'failed',
               processing_error: error.message || "Unknown error during processing"
             })
-            .eq('workflow_id', workflowId)
+            .eq('workflow_id', normalizedId)
             .eq('file_id', fileId)
             .eq('node_id', nodeId);
         } catch (updateError) {

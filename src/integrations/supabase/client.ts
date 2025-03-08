@@ -21,10 +21,18 @@ export function convertToDbWorkflowId(workflowId: string): string {
   
   // If it's a temporary ID, extract the UUID part after 'temp-'
   if (workflowId.startsWith('temp-')) {
-    return workflowId;
+    return workflowId.substring(5); // Remove 'temp-' prefix
   }
   
   // Already a UUID or other format, return as-is
   return workflowId;
 }
 
+/**
+ * Determines if a workflow ID is temporary based on its format
+ * @param workflowId The workflow ID to check
+ * @returns boolean indicating if the ID is temporary
+ */
+export function isTemporaryWorkflowId(workflowId: string): boolean {
+  return workflowId ? workflowId.startsWith('temp-') : false;
+}

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { Json } from '@/types/workflow';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -17,6 +17,7 @@ export interface WorkflowFileSchema {
   has_headers: boolean;
   sheet_name?: string | null;
   total_rows?: number;
+  is_temporary?: boolean;
 }
 
 interface WorkflowContextType {
@@ -44,25 +45,12 @@ export const WorkflowProvider: React.FC<{
 }> = ({ children, workflowId }) => {
   const [migrationInProgress, setMigrationInProgress] = useState<boolean>(false);
   const [migrationStatus, setMigrationStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
-  const isTemporaryId = workflowId ? workflowId.startsWith('temp-') : false;
+  const isTemporaryId = workflowId ? isTemporaryWorkflowId(workflowId) : false;
   const debouncedMigrationStatus = useDebounce(migrationStatus, 300);
-  
-  // Convert a temporary workflow ID to a UUID for database operations
-  const convertToDbWorkflowId = useCallback((id: string): string => {
-    if (!id) return id;
-    
-    // If it's a temporary ID, extract the UUID part after 'temp-'
-    if (id.startsWith('temp-')) {
-      return id.substring(5); // Remove 'temp-' prefix to get the UUID
-    }
-    
-    // Already a UUID, return as-is
-    return id;
-  }, []);
   
   // Migrate data from a temporary workflow ID to a permanent one
   const migrateTemporaryWorkflow = useCallback(async (tempId: string, permanentId: string): Promise<boolean> => {
-    if (!tempId || !permanentId || !tempId.startsWith('temp-')) {
+    if (!tempId || !permanentId || !isTemporaryWorkflowId(tempId)) {
       console.error('Invalid migration: Source must be temporary ID and target must be permanent');
       return false;
     }
@@ -79,7 +67,8 @@ export const WorkflowProvider: React.FC<{
       const { data: schemas, error: schemasError } = await supabase
         .from('workflow_file_schemas')
         .select('*')
-        .eq('workflow_id', tempUuid);
+        .eq('workflow_id', tempUuid)
+        .eq('is_temporary', true);
         
       if (schemasError) {
         console.error('Error fetching schemas to migrate:', schemasError);
@@ -91,6 +80,7 @@ export const WorkflowProvider: React.FC<{
         const updates = schemas.map(schema => ({
           ...schema,
           workflow_id: permanentId,
+          is_temporary: false,
           id: undefined // Let the database generate new IDs
         }));
         
@@ -111,7 +101,8 @@ export const WorkflowProvider: React.FC<{
       const { data: files, error: filesError } = await supabase
         .from('workflow_files')
         .select('*')
-        .eq('workflow_id', tempUuid);
+        .eq('workflow_id', tempUuid)
+        .eq('is_temporary', true);
         
       if (filesError) {
         console.error('Error fetching files to migrate:', filesError);
@@ -122,6 +113,7 @@ export const WorkflowProvider: React.FC<{
         const fileUpdates = files.map(file => ({
           ...file,
           workflow_id: permanentId,
+          is_temporary: false,
           id: undefined // Let the database generate new IDs
         }));
         
@@ -169,7 +161,15 @@ export const WorkflowProvider: React.FC<{
         }
       }
       
-      // 4. We don't need to delete the temporary data - it will eventually be cleaned up
+      // 4. Update the workflow itself
+      const { error: workflowUpdateError } = await supabase
+        .from('workflows')
+        .update({ is_temporary: false })
+        .eq('id', permanentId);
+        
+      if (workflowUpdateError) {
+        console.error('Error updating workflow temporary status:', workflowUpdateError);
+      }
       
       setMigrationStatus('success');
       console.log(`Successfully migrated workflow from ${tempId} to ${permanentId}`);
@@ -184,7 +184,7 @@ export const WorkflowProvider: React.FC<{
     } finally {
       setMigrationInProgress(false);
     }
-  }, [convertToDbWorkflowId]);
+  }, []);
   
   // Propagate file schema from source node to target node
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string) => {
@@ -195,6 +195,7 @@ export const WorkflowProvider: React.FC<{
       
       // Convert temporary ID to UUID for database operations if needed
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      const isTemporary = isTemporaryWorkflowId(workflowId);
       
       // Find schema associated with source node
       const { data: sourceSchemas, error: sourceError } = await supabase
@@ -247,7 +248,8 @@ export const WorkflowProvider: React.FC<{
               sample_data: schema.sample_data,
               has_headers: schema.has_headers,
               sheet_name: schema.sheet_name,
-              total_rows: schema.total_rows
+              total_rows: schema.total_rows,
+              is_temporary: isTemporary
             });
             
           if (insertError) {
@@ -261,7 +263,8 @@ export const WorkflowProvider: React.FC<{
                 workflow_id: dbWorkflowId,
                 file_id: schema.file_id,
                 node_id: targetNodeId,
-                status: 'queued' // Initially mark as queued, will be processed later
+                status: 'queued', // Initially mark as queued, will be processed later
+                is_temporary: isTemporary
               });
               
             if (fileAssocError) {
@@ -278,7 +281,7 @@ export const WorkflowProvider: React.FC<{
       console.error('Error in propagateFileSchema:', error);
       toast.error('Failed to propagate file schema between nodes');
     }
-  }, [workflowId, convertToDbWorkflowId]);
+  }, [workflowId]);
 
   // Get file schema for a specific node in the workflow
   const getFileSchema = useCallback(async (nodeId: string): Promise<WorkflowFileSchema | null> => {
@@ -307,7 +310,7 @@ export const WorkflowProvider: React.FC<{
       console.error('Error in getFileSchema:', error);
       return null;
     }
-  }, [workflowId, convertToDbWorkflowId]);
+  }, [workflowId]);
 
   // Save or update file schema
   const saveFileSchema = useCallback(async (schema: WorkflowFileSchema): Promise<boolean> => {
@@ -316,6 +319,7 @@ export const WorkflowProvider: React.FC<{
       
       // Use the provided workflow_id or convert the current one
       const dbWorkflowId = schema.workflow_id || (workflowId ? convertToDbWorkflowId(workflowId) : null);
+      const isTemporary = workflowId ? isTemporaryWorkflowId(workflowId) : false;
       
       if (!dbWorkflowId) {
         console.error('No workflow ID available for saving schema');
@@ -326,7 +330,8 @@ export const WorkflowProvider: React.FC<{
         .from('workflow_file_schemas')
         .upsert({
           ...schema,
-          workflow_id: dbWorkflowId
+          workflow_id: dbWorkflowId,
+          is_temporary: isTemporary
         }, {
           onConflict: 'workflow_id,file_id,node_id'
         });
@@ -343,7 +348,7 @@ export const WorkflowProvider: React.FC<{
       toast.error('Error saving file schema');
       return false;
     }
-  }, [workflowId, convertToDbWorkflowId]);
+  }, [workflowId]);
 
   return (
     <WorkflowContext.Provider value={{

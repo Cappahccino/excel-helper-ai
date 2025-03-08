@@ -764,6 +764,7 @@ export type Database = {
           file_id: string
           has_headers: boolean
           id: string
+          is_temporary: boolean
           node_id: string
           sample_data: Json[] | null
           sheet_name: string | null
@@ -778,6 +779,7 @@ export type Database = {
           file_id: string
           has_headers?: boolean
           id?: string
+          is_temporary?: boolean
           node_id: string
           sample_data?: Json[] | null
           sheet_name?: string | null
@@ -792,6 +794,7 @@ export type Database = {
           file_id?: string
           has_headers?: boolean
           id?: string
+          is_temporary?: boolean
           node_id?: string
           sample_data?: Json[] | null
           sheet_name?: string | null
@@ -823,6 +826,7 @@ export type Database = {
           file_id: string
           id: string
           is_active: boolean | null
+          is_temporary: boolean
           metadata: Json | null
           node_id: string | null
           processing_result: Json | null
@@ -837,6 +841,7 @@ export type Database = {
           file_id: string
           id?: string
           is_active?: boolean | null
+          is_temporary?: boolean
           metadata?: Json | null
           node_id?: string | null
           processing_result?: Json | null
@@ -851,6 +856,7 @@ export type Database = {
           file_id?: string
           id?: string
           is_active?: boolean | null
+          is_temporary?: boolean
           metadata?: Json | null
           node_id?: string | null
           processing_result?: Json | null
@@ -1196,6 +1202,7 @@ export type Database = {
           folder_id: string | null
           id: string
           is_template: boolean
+          is_temporary: boolean
           last_run_at: string | null
           last_run_status: string | null
           name: string
@@ -1213,6 +1220,7 @@ export type Database = {
           folder_id?: string | null
           id?: string
           is_template?: boolean
+          is_temporary?: boolean
           last_run_at?: string | null
           last_run_status?: string | null
           name: string
@@ -1230,6 +1238,7 @@ export type Database = {
           folder_id?: string | null
           id?: string
           is_template?: boolean
+          is_temporary?: boolean
           last_run_at?: string | null
           last_run_status?: string | null
           name?: string
@@ -1290,6 +1299,12 @@ export type Database = {
         Returns: {
           has_excel_data: boolean
         }[]
+      }
+      normalize_workflow_id: {
+        Args: {
+          workflow_id: string
+        }
+        Returns: string
       }
       start_workflow_execution: {
         Args: {

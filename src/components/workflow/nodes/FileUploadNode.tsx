@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
+import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { toast } from 'sonner';
@@ -120,17 +120,21 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Log the workflow ID for debugging
       console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
       
+      // Determine if this is a temporary workflow
+      const isTemporary = isTemporaryWorkflowId(workflowId);
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
       // Associate the file with this node in the workflow
-      // Using the workflowId as-is, including with temp- prefix if present
       const { error } = await supabase
         .from('workflow_files')
         .upsert({
-          workflow_id: workflowId, // Use workflowId as-is
+          workflow_id: dbWorkflowId,
           node_id: id,
           file_id: fileId,
           status: 'selected',
           is_active: true,
-          processing_status: 'queued'
+          processing_status: 'queued',
+          is_temporary: isTemporary
         });
       
       if (error) {
@@ -145,7 +149,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         const response = await supabase.functions.invoke('processFile', {
           body: {
             fileId,
-            workflowId: workflowId, // Send workflow ID as-is
+            workflowId: workflowId, // Send workflow ID as-is, processFile will handle normalization
             nodeId: id
           }
         });
@@ -227,8 +231,9 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
 
   return (
     <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>
-      <Handle type="target" position={Position.Left} id="in" />
-      <Handle type="source" position={Position.Right} id="out" />
+      {/* Position handles at top and bottom instead of left and right */}
+      <Handle type="target" position={Position.Top} id="in" />
+      <Handle type="source" position={Position.Bottom} id="out" />
       
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -353,7 +358,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         {/* Workflow ID debugging info with improved display */}
         {workflowId && (
           <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
-            WorkflowID: {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
+            {isTemporaryWorkflowId(workflowId) ? 'Temporary workflow: ' : 'Workflow: '}
+            {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
           </div>
         )}
       </div>
