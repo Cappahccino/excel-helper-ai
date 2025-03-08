@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -23,8 +22,12 @@ interface SchemaColumn {
   type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
 }
 
-// Cache to store schemas by node ID
 const schemaCache = new Map<string, SchemaColumn[]>();
+const previewDataCache = new Map<string, {
+  data: any[],
+  timestamp: number,
+  columns: string[]
+}>();
 
 export function useDataProcessing() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -33,8 +36,11 @@ export function useDataProcessing() {
   const [progress, setProgress] = useState<number>(0);
   const [schema, setSchema] = useState<SchemaColumn[]>([]);
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
+  const [previewData, setPreviewData] = useState<any[]>([]);
+  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // Helper function to detect data types from sample data
   const detectSchema = useCallback((data: any[]): SchemaColumn[] => {
     if (!data || !data.length) return [];
     
@@ -45,7 +51,6 @@ export function useDataProcessing() {
       let type: SchemaColumn['type'] = 'unknown';
       
       if (typeof value === 'string') {
-        // Try to detect if it's a date
         const dateTest = new Date(value);
         if (!isNaN(dateTest.getTime()) && value.match(/^\d{4}-\d{2}-\d{2}|^\d{2}\/\d{2}\/\d{4}/)) {
           type = 'date';
@@ -68,7 +73,6 @@ export function useDataProcessing() {
     return detectedSchema;
   }, []);
 
-  // Function to process data with progress tracking
   const processData = useCallback(async (
     data: ProcessingData,
     config: ProcessingConfig,
@@ -80,17 +84,14 @@ export function useDataProcessing() {
     setProgress(0);
     
     try {
-      // Detect schema from the data for UI configuration
       const detectedSchema = detectSchema(Array.isArray(data) ? data : [data]);
       console.log('Detected schema:', detectedSchema);
       setSchema(detectedSchema);
       
-      // Store in cache
       if (options.nodeId) {
         schemaCache.set(options.nodeId, detectedSchema);
       }
       
-      // Simulate progress updates
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           const next = prev + Math.random() * 15;
@@ -98,7 +99,6 @@ export function useDataProcessing() {
         });
       }, 500);
       
-      // Send data to backend processing function
       const { data: responseData, error: responseError } = await supabase.functions.invoke(
         'process-excel',
         {
@@ -123,14 +123,12 @@ export function useDataProcessing() {
 
       setResult(responseData);
       
-      // Update schema if result data format changed
       if (responseData?.result?.processedData) {
         const processedData = responseData.result.processedData;
         if (Array.isArray(processedData) && processedData.length > 0) {
           const newSchema = detectSchema(processedData);
           setSchema(newSchema);
           
-          // Update cache
           if (options.nodeId) {
             schemaCache.set(options.nodeId, newSchema);
           }
@@ -149,9 +147,207 @@ export function useDataProcessing() {
     }
   }, [detectSchema]);
 
-  // Function to fetch schema from a specific node in the workflow
+  const fetchNodePreviewData = useCallback(async (
+    workflowId: string, 
+    nodeId: string, 
+    config: any,
+    options?: { 
+      forceRefresh?: boolean, 
+      maxRows?: number,
+      applyTransformation?: boolean 
+    }
+  ): Promise<{data: any[], columns: string[]}> => {
+    const opts = {
+      forceRefresh: false,
+      maxRows: 10,
+      applyTransformation: true,
+      ...options
+    };
+    
+    const cacheKey = `${workflowId}-${nodeId}`;
+    if (!opts.forceRefresh && previewDataCache.has(cacheKey)) {
+      const cachedData = previewDataCache.get(cacheKey);
+      if (cachedData && Date.now() - cachedData.timestamp < 5 * 60 * 1000) {
+        console.log('Using cached preview data for node:', nodeId);
+        return { data: cachedData.data, columns: cachedData.columns };
+      }
+    }
+    
+    setIsLoadingPreview(true);
+    setPreviewError(null);
+    
+    try {
+      console.log(`Fetching preview data for node ${nodeId} in workflow ${workflowId}`);
+      
+      const { data: fileNodeData, error: fileNodeError } = await supabase
+        .from('workflow_files')
+        .select('file_id')
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
+        
+      if (fileNodeError) {
+        throw new Error(`Error fetching file node data: ${fileNodeError.message}`);
+      }
+      
+      let previewResult: { data: any[], columns: string[] } = { data: [], columns: [] };
+      
+      if (fileNodeData && fileNodeData.file_id) {
+        const { data: filePreview, error: previewError } = await supabase.functions.invoke('preview-file-data', {
+          body: { 
+            fileId: fileNodeData.file_id,
+            maxRows: opts.maxRows
+          }
+        });
+        
+        if (previewError) {
+          throw new Error(`Error fetching file preview: ${previewError.message}`);
+        }
+        
+        if (filePreview && filePreview.data) {
+          previewResult = {
+            data: filePreview.data,
+            columns: filePreview.columns || Object.keys(filePreview.data[0] || {})
+          };
+        }
+      } else {
+        const { data: schemaData, error: schemaError } = await supabase
+          .from('workflow_file_schemas')
+          .select('*')
+          .eq('workflow_id', workflowId)
+          .eq('node_id', nodeId)
+          .maybeSingle();
+          
+        if (schemaError) {
+          throw new Error(`Error fetching node schema: ${schemaError.message}`);
+        }
+        
+        if (!schemaData) {
+          throw new Error('No schema found for this node');
+        }
+        
+        const { data: edgeData, error: edgeError } = await supabase
+          .from('workflow_edges')
+          .select('source_node_id')
+          .eq('workflow_id', workflowId)
+          .eq('target_node_id', nodeId)
+          .maybeSingle();
+          
+        if (edgeError) {
+          throw new Error(`Error fetching edge data: ${edgeError.message}`);
+        }
+        
+        if (!edgeData || !edgeData.source_node_id) {
+          throw new Error('No source node found for this node');
+        }
+        
+        const sourcePreview = await fetchNodePreviewData(
+          workflowId, 
+          edgeData.source_node_id,
+          null,
+          { maxRows: opts.maxRows * 2, forceRefresh: opts.forceRefresh, applyTransformation: false }
+        );
+        
+        if (sourcePreview.data.length === 0) {
+          return { data: [], columns: [] };
+        }
+        
+        if (opts.applyTransformation && config) {
+          const { data: processedPreview, error: processError } = await supabase.functions.invoke('process-excel', {
+            body: {
+              previewMode: true,
+              data: sourcePreview.data,
+              configuration: config,
+              nodeId,
+              workflowId,
+              maxRows: opts.maxRows
+            }
+          });
+          
+          if (processError) {
+            throw new Error(`Error processing preview data: ${processError.message}`);
+          }
+          
+          if (processedPreview && processedPreview.result && processedPreview.result.processedData) {
+            previewResult = {
+              data: processedPreview.result.processedData.slice(0, opts.maxRows),
+              columns: processedPreview.result.columns || Object.keys(processedPreview.result.processedData[0] || {})
+            };
+          }
+        } else {
+          previewResult = sourcePreview;
+        }
+      }
+      
+      previewDataCache.set(cacheKey, {
+        data: previewResult.data,
+        columns: previewResult.columns,
+        timestamp: Date.now()
+      });
+      
+      setPreviewData(previewResult.data);
+      setPreviewColumns(previewResult.columns);
+      
+      return previewResult;
+    } catch (err) {
+      console.error('Error fetching preview data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setPreviewError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  }, []);
+
+  const validateNodeConfig = useCallback((
+    config: any, 
+    schema: SchemaColumn[]
+  ): { isValid: boolean, errors: string[] } => {
+    const errors: string[] = [];
+    
+    if (!config) {
+      return { isValid: true, errors: [] };
+    }
+    
+    if (config.column) {
+      const columnExists = schema.some(col => col.name === config.column);
+      if (!columnExists) {
+        errors.push(`Column "${config.column}" does not exist in the dataset`);
+      } else {
+        const column = schema.find(col => col.name === config.column);
+        
+        if (config.operator && column) {
+          const numericOperators = ['greater-than', 'less-than', 'between'];
+          const stringOperators = ['contains', 'starts-with', 'ends-with'];
+          
+          if (column.type === 'number' && stringOperators.includes(config.operator)) {
+            errors.push(`Operator "${config.operator}" cannot be used with numeric column "${config.column}"`);
+          }
+          
+          if (column.type === 'string' && numericOperators.includes(config.operator)) {
+            errors.push(`Operator "${config.operator}" cannot be used with text column "${config.column}"`);
+          }
+          
+          if (config.value) {
+            if (column.type === 'number' && isNaN(Number(config.value)) && config.operator !== 'equals') {
+              errors.push(`Value "${config.value}" is not a valid number for column "${config.column}"`);
+            }
+            
+            if (column.type === 'date' && isNaN(Date.parse(config.value)) && ['before', 'after', 'between'].includes(config.operator)) {
+              errors.push(`Value "${config.value}" is not a valid date for column "${config.column}"`);
+            }
+          }
+        }
+      }
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }, []);
+
   const fetchNodeSchema = useCallback(async (workflowId: string, nodeId: string, forceRefresh: boolean = false): Promise<SchemaColumn[]> => {
-    // Check cache first if not forcing refresh
     if (!forceRefresh && schemaCache.has(nodeId)) {
       console.log('Using cached schema for node:', nodeId);
       const cachedSchema = schemaCache.get(nodeId);
@@ -166,7 +362,6 @@ export function useDataProcessing() {
     try {
       console.log(`Fetching schema for node ${nodeId} in workflow ${workflowId}`);
       
-      // First, check for a file upload node
       const { data: fileNodeData, error: fileNodeError } = await supabase
         .from('workflow_files')
         .select('file_id')
@@ -177,7 +372,6 @@ export function useDataProcessing() {
       if (fileNodeData && fileNodeData.file_id) {
         console.log('Found file node with file_id:', fileNodeData.file_id);
         
-        // Fetch file metadata for schema
         const { data: fileMetadata, error: metadataError } = await supabase
           .from('file_metadata')
           .select('column_definitions')
@@ -197,7 +391,6 @@ export function useDataProcessing() {
         }
       }
       
-      // Fall back to workflow executions if file metadata not available
       const { data, error } = await supabase
         .from('workflow_executions')
         .select('node_states')
@@ -220,8 +413,7 @@ export function useDataProcessing() {
           return detectedSchema;
         }
       }
-
-      // If no direct data found, try looking at workflow step logs
+      
       const { data: logData, error: logError } = await supabase
         .from('workflow_step_logs')
         .select('output_data')
@@ -233,13 +425,11 @@ export function useDataProcessing() {
       if (logError) {
         console.error('Error fetching workflow step logs:', logError);
       } else if (logData && logData.length > 0) {
-        // Fix: Add type checking before accessing properties
         const outputData = logData[0].output_data;
         
         if (outputData) {
           let dataToCheck: any[] = [];
           
-          // Handle different output data structures with proper type checking
           if (typeof outputData === 'object' && outputData !== null) {
             if ('result' in outputData && typeof outputData.result === 'object' && outputData.result !== null) {
               if ('processedData' in outputData.result && Array.isArray(outputData.result.processedData)) {
@@ -270,7 +460,6 @@ export function useDataProcessing() {
     }
   }, [detectSchema]);
 
-  // Function to parse file metadata to schema
   const parseFileMetadataToSchema = (columnDefinitions: any): SchemaColumn[] => {
     if (Array.isArray(columnDefinitions)) {
       return columnDefinitions.map(col => {
@@ -303,7 +492,6 @@ export function useDataProcessing() {
     return [];
   };
 
-  // Helper function to map column types
   const mapColumnType = (type: string): SchemaColumn['type'] => {
     if (['numeric', 'integer', 'float', 'number'].includes(type.toLowerCase())) {
       return 'number';
@@ -319,10 +507,8 @@ export function useDataProcessing() {
     return 'string';
   };
 
-  // Function to fetch schema from a previous node
   const fetchPreviousNodeSchema = useCallback(async (workflowId: string, currentNodeId: string): Promise<SchemaColumn[]> => {
     try {
-      // Fetch edges to find the previous node
       const { data: workflowData, error: workflowError } = await supabase
         .from('workflows')
         .select('definition')
@@ -343,7 +529,6 @@ export function useDataProcessing() {
         return [];
       }
       
-      // Find edges where target is the current node
       const incomingEdges = definition.edges.filter((edge: any) => 
         edge.target === currentNodeId || 
         (edge.targetHandle && edge.targetNode === currentNodeId)
@@ -354,7 +539,6 @@ export function useDataProcessing() {
         return [];
       }
       
-      // Get the source node ID of the first incoming edge
       const previousNodeId = incomingEdges[0].source || 
         (incomingEdges[0].sourceHandle && incomingEdges[0].sourceNode);
       
@@ -365,7 +549,6 @@ export function useDataProcessing() {
       
       console.log('Found previous node:', previousNodeId);
       
-      // Fetch schema for the previous node
       return await fetchNodeSchema(workflowId, previousNodeId);
     } catch (err) {
       console.error('Error fetching previous node schema:', err);
@@ -373,7 +556,6 @@ export function useDataProcessing() {
     }
   }, [fetchNodeSchema]);
 
-  // Clear cache for specific node or workflow
   const clearSchemaCache = useCallback((nodeId?: string) => {
     if (nodeId) {
       schemaCache.delete(nodeId);
@@ -382,7 +564,20 @@ export function useDataProcessing() {
     }
   }, []);
 
-  // Expose the schema and related functions
+  const clearPreviewDataCache = useCallback((nodeId?: string) => {
+    if (nodeId) {
+      const keysToDelete: string[] = [];
+      previewDataCache.forEach((_, key) => {
+        if (key.includes(nodeId)) {
+          keysToDelete.push(key);
+        }
+      });
+      keysToDelete.forEach(key => previewDataCache.delete(key));
+    } else {
+      previewDataCache.clear();
+    }
+  }, []);
+
   return {
     processData,
     isProcessing,
@@ -394,6 +589,13 @@ export function useDataProcessing() {
     detectSchema,
     fetchNodeSchema,
     fetchPreviousNodeSchema,
-    clearSchemaCache
+    clearSchemaCache,
+    fetchNodePreviewData,
+    previewData,
+    previewColumns,
+    isLoadingPreview,
+    previewError,
+    clearPreviewDataCache,
+    validateNodeConfig
   };
 }

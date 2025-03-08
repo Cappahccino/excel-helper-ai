@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useDataProcessing } from '@/hooks/useDataProcessing';
 import { 
@@ -13,7 +13,11 @@ import {
   GitMerge, 
   Copy, 
   Loader2,
-  Info
+  Info,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { ProcessingNodeType } from '@/types/workflow';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +28,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import DataPreviewTable from '../ui/DataPreviewTable';
+import NodeProgress from '../ui/NodeProgress';
+import { toast } from 'sonner';
 
 function getNodeIcon(type: ProcessingNodeType) {
   switch (type) {
@@ -119,11 +126,12 @@ const getOperatorOptions = (columnType: string) => {
   }
 };
 
-function NodeConfigForm({ type, config, columns, onConfigChange }: { 
+function NodeConfigForm({ type, config, columns, onConfigChange, validationErrors }: { 
   type: ProcessingNodeType, 
   config: any, 
   columns: Array<{ name: string, type: string }>, 
-  onConfigChange: (newConfig: any) => void 
+  onConfigChange: (newConfig: any) => void,
+  validationErrors?: string[]
 }) {
   const [localConfig, setLocalConfig] = useState(config || {});
   
@@ -157,8 +165,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange }: {
                   <p className="text-yellow-500 mt-1">No compatible columns found</p>
                 )}
               </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+            </TooltipProvider>
         </div>
         <Select 
           value={localConfig[fieldName] || ''} 
@@ -468,12 +475,21 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [availableColumns, setAvailableColumns] = useState<Array<{ name: string, type: string }>>([]);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);
+  
   const { 
     isProcessing, 
     schema, 
     isLoadingSchema,
     fetchNodeSchema, 
-    fetchPreviousNodeSchema 
+    fetchPreviousNodeSchema,
+    fetchNodePreviewData,
+    previewData,
+    previewColumns,
+    isLoadingPreview,
+    validateNodeConfig
   } = useDataProcessing();
   
   const needsSecondInput = data.type === 'joinMerge';
@@ -486,29 +502,84 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [schema]);
   
+  // Enhanced schema loading with retry for pending file processing
   useEffect(() => {
     const loadSchemaFromPreviousNode = async () => {
       if (selected && data.workflowId) {
         console.log(`Node ${id} selected, fetching schema from previous node`);
-        const prevSchema = await fetchPreviousNodeSchema(data.workflowId, id);
-        if (prevSchema && prevSchema.length > 0) {
-          setAvailableColumns(prevSchema);
+        try {
+          const prevSchema = await fetchPreviousNodeSchema(data.workflowId, id);
+          if (prevSchema && prevSchema.length > 0) {
+            setAvailableColumns(prevSchema);
+            
+            // Validate the current configuration against the schema
+            if (data.config) {
+              const validation = validateNodeConfig(data.config, prevSchema);
+              setValidationErrors(validation.errors);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading previous node schema:', err);
+          
+          // If we failed, try again after a delay
+          // This helps with timing issues when file is still being processed
+          if (selected) {
+            setTimeout(() => {
+              console.log('Retrying schema load after delay');
+              loadSchemaFromPreviousNode();
+            }, 5000);
+          }
         }
       }
     };
     
     loadSchemaFromPreviousNode();
-  }, [selected, id, data.workflowId, fetchPreviousNodeSchema]);
+  }, [selected, id, data.workflowId, data.config, fetchPreviousNodeSchema, validateNodeConfig]);
   
   const handleConfigChange = useCallback((newConfig: any) => {
     if (onConfigChange) {
       if (JSON.stringify(data.config) !== JSON.stringify(newConfig)) {
         console.log(`Updating config for node ${id}:`, newConfig);
+        
+        // Validate the new configuration
+        const validation = validateNodeConfig(newConfig, availableColumns);
+        setValidationErrors(validation.errors);
+        
         onConfigChange(id, newConfig);
       }
     }
-  }, [id, data.config, onConfigChange]);
+  }, [id, data.config, onConfigChange, validateNodeConfig, availableColumns]);
 
+  // Data preview handling
+  const loadPreviewData = useCallback(async (forceRefresh = false) => {
+    if (!data.workflowId || !id) return;
+    
+    setIsRefreshingPreview(true);
+    try {
+      await fetchNodePreviewData(data.workflowId, id, data.config, { 
+        forceRefresh,
+        maxRows: 5,
+        applyTransformation: true
+      });
+      setPreviewVisible(true);
+    } catch (err) {
+      console.error('Error loading preview data:', err);
+      toast.error('Failed to load preview data');
+    } finally {
+      setIsRefreshingPreview(false);
+    }
+  }, [data.workflowId, id, data.config, fetchNodePreviewData]);
+
+  // Toggle preview visibility
+  const togglePreview = useCallback(() => {
+    if (!previewVisible) {
+      loadPreviewData(false);
+    } else {
+      setPreviewVisible(false);
+    }
+  }, [previewVisible, loadPreviewData]);
+
+  // Processing animation
   useEffect(() => {
     if (isProcessing) {
       setProcessing(true);
@@ -529,6 +600,51 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
     }
   }, [isProcessing]);
 
+  // Generate filter highlight config for preview based on current node configuration
+  const highlightFilters = useMemo(() => {
+    if (!data.config || !data.type) return [];
+    
+    const filters = [];
+    
+    if (data.type === 'filtering' && data.config.column && data.config.operator) {
+      filters.push({
+        column: data.config.column,
+        condition: data.config.operator,
+        value: data.config.value
+      });
+    }
+    
+    return filters;
+  }, [data.config, data.type]);
+
+  // Add validation error display
+  useEffect(() => {
+    if (validationErrors && validationErrors.length > 0) {
+      console.warn('Configuration validation errors:', validationErrors);
+    }
+  }, [validationErrors]);
+  
+  // Add validation error display component
+  const renderValidationErrors = () => {
+    if (!validationErrors || validationErrors.length === 0) return null;
+    
+    return (
+      <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
+        <div className="flex items-start gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+          <div className="text-xs text-amber-700">
+            <p className="font-medium">Configuration issues:</p>
+            <ul className="list-disc list-inside mt-1 space-y-1 ml-1">
+              {validationErrors.map((error, idx) => (
+                <li key={idx}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className="w-[300px] shadow-md">
       <CardHeader className="bg-blue-50 py-2 flex flex-row items-center">
@@ -536,12 +652,55 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
           {getNodeIcon(nodeType)}
         </div>
         <CardTitle className="text-sm font-medium ml-2">{nodeLabel}</CardTitle>
-        {isLoadingSchema && (
-          <Loader2 className="h-4 w-4 ml-auto animate-spin text-blue-500" />
-        )}
-        {processing && (
-          <Loader2 className="h-4 w-4 ml-auto animate-spin text-blue-500" />
-        )}
+        
+        <div className="ml-auto flex gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="h-6 w-6 p-0" 
+                  onClick={togglePreview}
+                  disabled={isLoadingPreview || isRefreshingPreview}
+                >
+                  {previewVisible ? 
+                    <EyeOff className="h-3.5 w-3.5 text-gray-500" /> : 
+                    <Eye className="h-3.5 w-3.5 text-gray-500" />
+                  }
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {previewVisible ? 'Hide preview' : 'Show preview'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {previewVisible && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => loadPreviewData(true)}
+                    disabled={isRefreshingPreview}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isRefreshingPreview ? 'animate-spin' : ''}`} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Refresh preview
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {(isLoadingSchema || processing) && (
+            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+          )}
+        </div>
       </CardHeader>
       
       <CardContent className="p-4">
@@ -560,8 +719,33 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
                 type={nodeType} 
                 config={data.config} 
                 columns={availableColumns} 
-                onConfigChange={handleConfigChange} 
+                onConfigChange={handleConfigChange}
+                validationErrors={validationErrors}
               />
+            </div>
+          )}
+          
+          {/* Preview section */}
+          {previewVisible && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-xs font-medium">Data Preview</h4>
+                {isLoadingPreview && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+              </div>
+              
+              <DataPreviewTable 
+                columns={previewColumns} 
+                data={previewData}
+                maxRows={5}
+                highlightFilters={highlightFilters}
+                className="text-[10px]"
+              />
+              
+              {previewData.length === 0 && !isLoadingPreview && (
+                <div className="p-2 bg-gray-50 border border-gray-200 rounded-md text-xs text-gray-500 italic text-center">
+                  No preview data available
+                </div>
+              )}
             </div>
           )}
           
@@ -574,7 +758,13 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
                 </Badge>
                 <span className="text-xs text-gray-500">{processingProgress}%</span>
               </div>
-              <Progress value={processingProgress} className="h-1 w-full" />
+              <NodeProgress 
+                value={processingProgress} 
+                status="default" 
+                showLabel={false}
+                processingStatus="processing"
+                animated={true}
+              />
             </div>
           )}
         </div>

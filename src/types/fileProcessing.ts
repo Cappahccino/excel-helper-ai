@@ -23,4 +23,7 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
+  previewData?: any[];
+  previewColumns?: string[];
+  validationErrors?: string[];
 }

@@ -1,4 +1,5 @@
-import { useEffect, useCallback } from 'react';
+
+import { useEffect, useCallback, useState } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,6 +14,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   const reactFlowInstance = useReactFlow();
   const { propagateFileSchema, isTemporaryId } = useWorkflow();
   const { convertToDbWorkflowId } = useWorkflow();
+  const [retryMap, setRetryMap] = useState<Record<string, { attempts: number, maxAttempts: number }>>({});
 
   // Save edges to the database
   const saveEdgesToDatabase = useCallback(async (edges: Edge[]) => {
@@ -20,7 +22,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     try {
       // Only attempt database operations if we have a workflow ID
-      // Note: We now allow saving with a temporary ID
       console.log(`Saving edges for workflow ${workflowId}, isTemporary: ${isTemporaryId}`);
       
       // Convert temporary ID to UUID for database operations if needed
@@ -35,10 +36,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       // Then insert all current edges
       if (edges.length > 0) {
         // Need to convert each edge to a format that matches the table schema
-        // and ensures metadata is JSON-serializable
         const edgesData = edges.map(edge => {
           // Create a safe metadata object by stringifying and parsing the edge properties
-          // This handles React elements and complex objects
           const safeMetadata: Record<string, Json> = {
             sourceHandle: edge.sourceHandle as Json,
             targetHandle: edge.targetHandle as Json,
@@ -89,14 +88,48 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     }
   }, [workflowId, isTemporaryId, convertToDbWorkflowId]);
 
+  // Smart schema propagation with retries
+  const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string) => {
+    // Generate a unique key for this edge
+    const edgeKey = `${sourceId}-${targetId}`;
+    
+    try {
+      console.log(`Attempting to propagate schema from ${sourceId} to ${targetId}`);
+      const result = await propagateFileSchema(sourceId, targetId);
+      
+      // If successful, reset the retry counter
+      if (result) {
+        setRetryMap(prev => ({
+          ...prev,
+          [edgeKey]: { attempts: 0, maxAttempts: 5 }
+        }));
+        return true;
+      } else {
+        // If not successful (schema not available yet), set up for retry
+        setRetryMap(prev => {
+          const currentRetry = prev[edgeKey] || { attempts: 0, maxAttempts: 5 };
+          return {
+            ...prev,
+            [edgeKey]: { 
+              attempts: currentRetry.attempts + 1, 
+              maxAttempts: currentRetry.maxAttempts
+            }
+          };
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error(`Error propagating schema for edge ${edgeKey}:`, error);
+      return false;
+    }
+  }, [propagateFileSchema]);
+
   // Handle edge changes
   useEffect(() => {
     if (!workflowId) return;
     
     const handleEdgeChanges = () => {
       const currentEdges = reactFlowInstance.getEdges();
-      
-      // We now save edges for both temp and permanent IDs
       saveEdgesToDatabase(currentEdges);
     };
     
@@ -109,29 +142,64 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     };
   }, [reactFlowInstance, workflowId, saveEdgesToDatabase]);
 
-  // Handle data propagation when connections change
+  // Handle data propagation when connections change with retry mechanism
   useEffect(() => {
     if (!workflowId) return;
     
-    // Process all edges to propagate file schemas
     const handleEdgeChanges = async () => {
-      // Get edges from the reactFlowInstance state using getEdges method
       const currentEdges = reactFlowInstance.getEdges();
       
       // Process each edge to propagate file schemas
       for (const edge of currentEdges) {
+        const edgeKey = `${edge.source}-${edge.target}`;
+        const retryInfo = retryMap[edgeKey] || { attempts: 0, maxAttempts: 5 };
+        
+        // Skip if we've exceeded max attempts
+        if (retryInfo.attempts >= retryInfo.maxAttempts) {
+          console.log(`Skipping schema propagation for ${edgeKey} after ${retryInfo.attempts} failed attempts`);
+          continue;
+        }
+        
         try {
-          console.log(`Propagating schema from ${edge.source} to ${edge.target}`);
-          await propagateFileSchema(edge.source, edge.target);
+          const success = await propagateSchemaWithRetry(edge.source, edge.target);
+          
+          if (!success && retryInfo.attempts < retryInfo.maxAttempts) {
+            // Schedule a retry with exponential backoff
+            const backoffTime = Math.min(1000 * Math.pow(2, retryInfo.attempts), 30000); // Max 30 seconds
+            console.log(`Scheduling retry for ${edgeKey} in ${backoffTime}ms (attempt ${retryInfo.attempts + 1})`);
+            
+            setTimeout(async () => {
+              console.log(`Retrying schema propagation for ${edgeKey}`);
+              await propagateSchemaWithRetry(edge.source, edge.target);
+            }, backoffTime);
+          }
         } catch (error) {
           console.error(`Error propagating schema for edge from ${edge.source} to ${edge.target}:`, error);
-          toast.error(`Failed to propagate data schema between nodes. Please check console for details.`);
         }
       }
     };
     
     handleEdgeChanges();
-  }, [reactFlowInstance, workflowId, propagateFileSchema]);
+    
+    // Set up a timer to check for pending schema propagations
+    const intervalId = setInterval(() => {
+      const currentEdges = reactFlowInstance.getEdges();
+      const edgesNeedingRetry = currentEdges.filter(edge => {
+        const edgeKey = `${edge.source}-${edge.target}`;
+        const retryInfo = retryMap[edgeKey];
+        return retryInfo && retryInfo.attempts > 0 && retryInfo.attempts < retryInfo.maxAttempts;
+      });
+      
+      if (edgesNeedingRetry.length > 0) {
+        console.log(`Rechecking schema propagation for ${edgesNeedingRetry.length} edges`);
+        handleEdgeChanges();
+      }
+    }, 10000); // Check every 10 seconds
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [reactFlowInstance, workflowId, propagateSchemaWithRetry, retryMap]);
 
   // No rendering needed, this is a utility component
   return null;

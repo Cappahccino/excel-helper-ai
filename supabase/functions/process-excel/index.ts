@@ -1,446 +1,579 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.37.0'
 
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.36.0";
-import { z } from "https://esm.sh/zod@3.22.4";
-
-// Set up CORS headers for browser requests
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Content-Type": "application/json",
-};
-
-// Define supported operations
-const operations = [
-  "filtering",
-  "sorting",
-  "aggregation",
-  "formulaCalculation",
-  "textTransformation",
-  "dataTypeConversion",
-  "dateFormatting",
-  "pivotTable",
-  "joinMerge",
-  "deduplication",
-] as const;
-
-// Validation schema for the request body
-const requestSchema = z.object({
-  operation: z.enum(operations),
-  data: z.any(),
-  configuration: z.record(z.any()).optional(),
-  previousNodeOutput: z.any().optional(),
-  nodeId: z.string(),
-  workflowId: z.string(),
-  executionId: z.string(),
-});
-
-// Initialize Supabase client
-const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-);
-
-// Helper to generate OpenAI prompts based on operation type
-function generatePrompt(operation: typeof operations[number], data: any, config: Record<string, any>) {
-  const basePrompt = `You are an expert data analyst. I have a dataset and I need to perform the following operation: ${operation}`;
-  
-  let specificPrompt = "";
-  switch (operation) {
-    case "filtering":
-      specificPrompt = `Filter the data where ${config.column} ${config.operator} ${config.value}.`;
-      break;
-    case "sorting":
-      specificPrompt = `Sort the data by ${config.column} in ${config.order} order.`;
-      break;
-    case "aggregation":
-      specificPrompt = `Perform ${config.function} on column ${config.column}${config.groupBy ? ` grouped by ${config.groupBy}` : ""}.`;
-      break;
-    case "formulaCalculation":
-      specificPrompt = `Create a formula that ${config.description}. The formula should be applicable to Excel.`;
-      break;
-    case "textTransformation":
-      specificPrompt = `Transform the text in column ${config.column} by ${config.transformation}${config.transformation === 'replace' ? ` replacing "${config.find}" with "${config.replace}"` : ''}.`;
-      break;
-    case "dataTypeConversion":
-      specificPrompt = `Convert column ${config.column} from ${config.fromType || 'its current type'} to ${config.toType}.`;
-      break;
-    case "dateFormatting":
-      specificPrompt = `Format dates in column ${config.column} to ${config.format}.`;
-      break;
-    case "pivotTable":
-      specificPrompt = `Create a pivot table with rows ${config.rows?.join(", ") || 'undefined'}, columns ${config.columns?.join(", ") || 'undefined'}, and values ${config.values?.join(", ") || 'undefined'}.`;
-      break;
-    case "joinMerge":
-      specificPrompt = `Merge these two datasets using a ${config.joinType} join on columns ${config.leftKey} from the first dataset and ${config.rightKey} from the second dataset.`;
-      break;
-    case "deduplication":
-      specificPrompt = `Remove duplicate entries based on columns ${config.columns?.join(", ") || 'all columns'}. ${config.caseSensitive ? "Consider case when comparing" : "Ignore case when comparing"}.`;
-      break;
-    default:
-      specificPrompt = `Analyze this data and ${config.customInstructions || "provide insights"}.`;
-  }
-  
-  return `${basePrompt}\n\n${specificPrompt}\n\nHere is the data:\n${JSON.stringify(data, null, 2)}\n\nProvide the processed data in JSON format and include an explanation of what you did.`;
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Process the data programmatically when possible, fallback to AI for complex cases
-async function processData(operation: typeof operations[number], data: any, config: Record<string, any>) {
-  // Simple implementation for basic operations
-  try {
-    switch (operation) {
-      case "filtering":
-        if (!config.column || !config.operator) {
-          throw new Error("Missing required configuration for filtering");
-        }
-        
-        const filteredData = data.filter((item: any) => {
-          const value = item[config.column];
-          switch(config.operator) {
-            case "equals":
-              return String(value) === String(config.value);
-            case "contains":
-              return String(value).includes(String(config.value));
-            case "startsWith":
-              return String(value).startsWith(String(config.value));
-            case "endsWith":
-              return String(value).endsWith(String(config.value));
-            case "greaterThan":
-              return Number(value) > Number(config.value);
-            case "lessThan":
-              return Number(value) < Number(config.value);
-            default:
-              return false;
-          }
-        });
-        
-        return {
-          success: true,
-          data: filteredData,
-          explanation: `Filtered data where ${config.column} ${config.operator} ${config.value}. Found ${filteredData.length} matching rows.`
-        };
-        
-      case "sorting":
-        if (!config.column) {
-          throw new Error("Missing required configuration for sorting");
-        }
-        
-        const sortedData = [...data].sort((a: any, b: any) => {
-          const valueA = a[config.column];
-          const valueB = b[config.column];
-          
-          // Handle different data types
-          if (typeof valueA === 'string' && typeof valueB === 'string') {
-            return config.order === 'ascending' 
-              ? valueA.localeCompare(valueB) 
-              : valueB.localeCompare(valueA);
-          } else {
-            return config.order === 'ascending' 
-              ? (valueA - valueB) 
-              : (valueB - valueA);
-          }
-        });
-        
-        return {
-          success: true,
-          data: sortedData,
-          explanation: `Sorted data by ${config.column} in ${config.order} order.`
-        };
-        
-      case "textTransformation":
-        if (!config.column || !config.transformation) {
-          throw new Error("Missing required configuration for text transformation");
-        }
-        
-        const transformedData = data.map((item: any) => {
-          const value = String(item[config.column]);
-          let transformed;
-          
-          switch (config.transformation) {
-            case "uppercase":
-              transformed = value.toUpperCase();
-              break;
-            case "lowercase":
-              transformed = value.toLowerCase();
-              break;
-            case "trim":
-              transformed = value.trim();
-              break;
-            case "replace":
-              if (config.find) {
-                transformed = value.split(config.find).join(config.replace || '');
-              } else {
-                transformed = value;
-              }
-              break;
-            default:
-              transformed = value;
-          }
-          
-          return { ...item, [config.column]: transformed };
-        });
-        
-        return {
-          success: true,
-          data: transformedData,
-          explanation: `Applied ${config.transformation} transformation to column ${config.column}.`
-        };
-        
-      case "deduplication":
-        if (!config.columns || !config.columns.length) {
-          // Deduplicate based on all fields
-          const seen = new Set();
-          const deduplicatedData = data.filter((item: any) => {
-            const key = JSON.stringify(item);
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          
-          return {
-            success: true,
-            data: deduplicatedData,
-            explanation: `Removed duplicates based on all columns. Reduced from ${data.length} to ${deduplicatedData.length} rows.`
-          };
-        } else {
-          // Deduplicate based on specific columns
-          const seen = new Set();
-          const deduplicatedData = data.filter((item: any) => {
-            const keyParts = config.columns.map((col: string) => {
-              let value = item[col];
-              if (typeof value === 'string' && !config.caseSensitive) {
-                value = value.toLowerCase();
-              }
-              return value;
-            });
-            
-            const key = JSON.stringify(keyParts);
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          
-          return {
-            success: true,
-            data: deduplicatedData,
-            explanation: `Removed duplicates based on columns: ${config.columns.join(', ')}. Reduced from ${data.length} to ${deduplicatedData.length} rows.`
-          };
-        }
-        
-      // For more complex operations, fallback to AI processing
-      default:
-        return null; // Fallback to AI processing
-    }
-  } catch (error) {
-    console.error(`Error in programmatic processing: ${error.message}`);
-    return null; // Fallback to AI processing
-  }
-}
+// Create a Supabase client with the admin key
+const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Process the data using OpenAI
-async function processWithAI(prompt: string) {
-  const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!openAIApiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-  
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openAIApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are an expert data analyst assistant specialized in Excel and data processing operations." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.2,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("OpenAI API error:", errorData);
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    return result.choices[0].message.content;
-  } catch (error) {
-    console.error("Error calling OpenAI:", error);
-    throw new Error(`Failed to process with AI: ${error.message}`);
-  }
-}
-
-// Parse AI response to extract processed data
-function parseAIResponse(aiResponse: string) {
-  try {
-    // Look for JSON blocks in the response
-    const jsonMatch = aiResponse.match(/```json\n([\s\S]*?)\n```/) || 
-                     aiResponse.match(/```\n([\s\S]*?)\n```/) ||
-                     aiResponse.match(/{[\s\S]*?}/);
-    
-    if (jsonMatch) {
-      const jsonStr = jsonMatch[0].replace(/```json\n|```\n|```/g, '');
-      return {
-        processedData: JSON.parse(jsonStr),
-        explanation: aiResponse.replace(jsonMatch[0], '').trim()
-      };
-    }
-    
-    // If no JSON block found, try to parse the whole response as JSON
-    try {
-      return {
-        processedData: JSON.parse(aiResponse),
-        explanation: "Data processed successfully."
-      };
-    } catch {
-      // If we can't parse JSON, return the raw response
-      return {
-        processedData: null,
-        explanation: aiResponse,
-        error: "Could not extract structured data from AI response"
-      };
-    }
-  } catch (error) {
-    console.error("Error parsing AI response:", error);
-    return {
-      processedData: null,
-      explanation: aiResponse,
-      error: `Failed to parse AI response: ${error.message}`
-    };
-  }
-}
-
-// Update workflow execution status
-async function updateWorkflowNodeState(executionId: string, nodeId: string, status: string, output: any) {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('workflow_executions')
-      .select('node_states')
-      .eq('id', executionId)
-      .single();
-    
-    if (error) throw error;
-    
-    let nodeStates = data.node_states || {};
-    nodeStates[nodeId] = {
-      ...nodeStates[nodeId],
-      status,
-      output,
-      updated_at: new Date().toISOString()
-    };
-    
-    const { error: updateError } = await supabaseAdmin
-      .from('workflow_executions')
-      .update({ node_states: nodeStates })
-      .eq('id', executionId);
-    
-    if (updateError) throw updateError;
-  } catch (error) {
-    console.error("Error updating workflow node state:", error);
-  }
-}
-
-// Main handler function
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-  
+
   try {
-    const reqBody = await req.json();
-    console.log("Request received:", JSON.stringify(reqBody, null, 2));
+    const {
+      operation,
+      data,
+      configuration,
+      previousNodeOutput,
+      nodeId,
+      workflowId,
+      executionId,
+      previewMode = false, // Add this new parameter
+      maxRows = 10 // Add this for preview mode
+    } = await req.json();
+
+    console.log(`Processing request for node ${nodeId} in workflow ${workflowId}`);
+    console.log(`Preview mode: ${previewMode ? 'enabled' : 'disabled'}`);
     
-    // Validate request body
-    const validationResult = requestSchema.safeParse(reqBody);
-    if (!validationResult.success) {
-      console.error("Validation error:", validationResult.error);
+    // Validate required parameters
+    if (!nodeId) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Invalid request format", 
-          details: validationResult.error.format() 
-        }),
-        { status: 400, headers: corsHeaders }
+        JSON.stringify({ error: 'Missing required parameter: nodeId' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
-    
-    const { operation, data, configuration, nodeId, workflowId, executionId } = validationResult.data;
-    
-    // Update node status to processing
-    await updateWorkflowNodeState(executionId, nodeId, "processing", null);
-    
-    // Try to process data programmatically first
-    const programmaticResult = await processData(operation, data, configuration || {});
-    
-    if (programmaticResult) {
-      // Update node status with programmatic results
-      await updateWorkflowNodeState(
-        executionId, 
-        nodeId, 
-        programmaticResult.error ? "error" : "completed", 
-        {
-          data: programmaticResult.data,
-          explanation: programmaticResult.explanation,
-          error: programmaticResult.error
-        }
+
+    if (!workflowId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameter: workflowId' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
+    }
+
+    // For preview mode, add this:
+    if (previewMode) {
+      console.log(`Preview mode: processing sample data with ${data?.length || 0} rows`);
+      
+      // Skip database operations and just return processed data
+      // Apply the processing based on the configuration
+      let processedData = [];
+      let resultColumns = [];
+      
+      // Sample implementation for filtering operation in preview mode
+      if (configuration.operation === 'filter' || (configuration.column && configuration.operator)) {
+        const column = configuration.column;
+        const operator = configuration.operator;
+        const value = configuration.value;
+        
+        console.log(`Filtering on column: ${column}, operator: ${operator}, value: ${value}`);
+        
+        if (!data || !Array.isArray(data)) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Invalid data format for filtering operation' 
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Apply the filter
+        switch (operator) {
+          case 'equals':
+            processedData = data.filter(row => row[column] == value);
+            break;
+          case 'not-equals':
+            processedData = data.filter(row => row[column] != value);
+            break;
+          case 'greater-than':
+            processedData = data.filter(row => {
+              const numVal = parseFloat(row[column]);
+              return !isNaN(numVal) && numVal > parseFloat(value);
+            });
+            break;
+          case 'less-than':
+            processedData = data.filter(row => {
+              const numVal = parseFloat(row[column]);
+              return !isNaN(numVal) && numVal < parseFloat(value);
+            });
+            break;
+          case 'contains':
+            processedData = data.filter(row => {
+              const rowVal = String(row[column] || '');
+              return rowVal.includes(value);
+            });
+            break;
+          case 'starts-with':
+            processedData = data.filter(row => {
+              const rowVal = String(row[column] || '');
+              return rowVal.startsWith(value);
+            });
+            break;
+          case 'ends-with':
+            processedData = data.filter(row => {
+              const rowVal = String(row[column] || '');
+              return rowVal.endsWith(value);
+            });
+            break;
+          default:
+            // Default to passing through all data
+            processedData = data;
+        }
+        
+        // Limit rows for preview
+        processedData = processedData.slice(0, maxRows);
+        
+        // Get columns from the first row
+        if (processedData.length > 0) {
+          resultColumns = Object.keys(processedData[0]);
+        } else if (data.length > 0) {
+          resultColumns = Object.keys(data[0]);
+        }
+      }
+      // Add similar preview handlers for other operations (sort, aggregate, etc.)
+      else if (configuration.operation === 'sort' || (configuration.column && configuration.order)) {
+        const column = configuration.column;
+        const order = configuration.order || 'ascending';
+        
+        console.log(`Sorting on column: ${column}, order: ${order}`);
+        
+        if (!data || !Array.isArray(data)) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Invalid data format for sorting operation' 
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Create a copy of the data to avoid modifying the original
+        processedData = [...data];
+        
+        // Apply the sort
+        processedData.sort((a, b) => {
+          let valA = a[column];
+          let valB = b[column];
+          
+          // Handle numeric values
+          if (!isNaN(Number(valA)) && !isNaN(Number(valB))) {
+            valA = Number(valA);
+            valB = Number(valB);
+          }
+          
+          // Handle string values
+          if (typeof valA === 'string' && typeof valB === 'string') {
+            return order === 'ascending' 
+              ? valA.localeCompare(valB) 
+              : valB.localeCompare(valA);
+          }
+          
+          // Handle other types
+          if (order === 'ascending') {
+            return valA < valB ? -1 : valA > valB ? 1 : 0;
+          } else {
+            return valA > valB ? -1 : valA < valB ? 1 : 0;
+          }
+        });
+        
+        // Limit rows for preview
+        processedData = processedData.slice(0, maxRows);
+        
+        // Get columns from the first row
+        if (processedData.length > 0) {
+          resultColumns = Object.keys(processedData[0]);
+        }
+      }
+      else if (configuration.operation === 'aggregate' || configuration.function) {
+        const aggFunction = configuration.function || 'sum';
+        const column = configuration.column;
+        const groupByColumn = configuration.groupBy;
+        
+        console.log(`Aggregating column: ${column}, function: ${aggFunction}, groupBy: ${groupByColumn}`);
+        
+        if (!data || !Array.isArray(data)) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Invalid data format for aggregation operation' 
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // If no groupBy, perform a simple aggregation
+        if (!groupByColumn) {
+          let result;
+          
+          switch (aggFunction) {
+            case 'sum':
+              result = data.reduce((sum, row) => sum + (Number(row[column]) || 0), 0);
+              break;
+            case 'avg':
+              result = data.reduce((sum, row) => sum + (Number(row[column]) || 0), 0) / (data.length || 1);
+              break;
+            case 'min':
+              result = Math.min(...data.map(row => Number(row[column]) || 0));
+              break;
+            case 'max':
+              result = Math.max(...data.map(row => Number(row[column]) || 0));
+              break;
+            case 'count':
+              result = data.length;
+              break;
+            default:
+              result = 0;
+          }
+          
+          processedData = [{ 
+            [aggFunction]: result,
+            column: column
+          }];
+        } 
+        // If groupBy is specified, perform grouped aggregation
+        else {
+          const groups = {};
+          
+          // Group the data
+          data.forEach(row => {
+            const groupValue = row[groupByColumn];
+            if (!groups[groupValue]) {
+              groups[groupValue] = [];
+            }
+            groups[groupValue].push(row);
+          });
+          
+          // Apply aggregation to each group
+          processedData = Object.entries(groups).map(([groupValue, groupRows]) => {
+            let result;
+            
+            switch (aggFunction) {
+              case 'sum':
+                result = groupRows.reduce((sum, row) => sum + (Number(row[column]) || 0), 0);
+                break;
+              case 'avg':
+                result = groupRows.reduce((sum, row) => sum + (Number(row[column]) || 0), 0) / (groupRows.length || 1);
+                break;
+              case 'min':
+                result = Math.min(...groupRows.map(row => Number(row[column]) || 0));
+                break;
+              case 'max':
+                result = Math.max(...groupRows.map(row => Number(row[column]) || 0));
+                break;
+              case 'count':
+                result = groupRows.length;
+                break;
+              default:
+                result = 0;
+            }
+            
+            return {
+              [groupByColumn]: groupValue,
+              [aggFunction]: result,
+              column: column
+            };
+          });
+        }
+        
+        // Limit rows for preview
+        processedData = processedData.slice(0, maxRows);
+        
+        // Get columns from the first row
+        if (processedData.length > 0) {
+          resultColumns = Object.keys(processedData[0]);
+        }
+      }
+      else if (configuration.operation === 'textTransformation' || configuration.transformation) {
+        const column = configuration.column;
+        const transformation = configuration.transformation || 'uppercase';
+        const findText = configuration.find || '';
+        const replaceText = configuration.replace || '';
+        
+        console.log(`Text transformation on column: ${column}, type: ${transformation}`);
+        
+        if (!data || !Array.isArray(data)) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Invalid data format for text transformation operation' 
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Create a copy of the data
+        processedData = data.map(row => {
+          const newRow = { ...row };
+          
+          if (newRow[column] && typeof newRow[column] === 'string') {
+            switch (transformation) {
+              case 'uppercase':
+                newRow[column] = newRow[column].toUpperCase();
+                break;
+              case 'lowercase':
+                newRow[column] = newRow[column].toLowerCase();
+                break;
+              case 'trim':
+                newRow[column] = newRow[column].trim();
+                break;
+              case 'replace':
+                newRow[column] = newRow[column].replace(new RegExp(findText, 'g'), replaceText);
+                break;
+              default:
+                // No transformation
+            }
+          }
+          
+          return newRow;
+        });
+        
+        // Limit rows for preview
+        processedData = processedData.slice(0, maxRows);
+        
+        // Get columns from the first row
+        if (processedData.length > 0) {
+          resultColumns = Object.keys(processedData[0]);
+        }
+      }
+      else {
+        // Default to passing through the data
+        processedData = data ? data.slice(0, maxRows) : [];
+        
+        if (processedData.length > 0) {
+          resultColumns = Object.keys(processedData[0]);
+        }
+      }
       
       return new Response(
         JSON.stringify({
-          success: true,
-          operation,
-          result: programmaticResult
+          result: {
+            processedData,
+            columns: resultColumns,
+            rowCount: processedData.length,
+            preview: true
+          }
         }),
-        { headers: corsHeaders }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    // If programmatic processing failed or not implemented, fallback to AI
-    // Generate prompt and process with AI
-    const prompt = generatePrompt(operation, data, configuration || {});
-    console.log("Generated prompt:", prompt);
+    // Non-preview mode processing
+    // Log the operation details
+    console.log(`Processing operation: ${operation || 'default'}`);
+    console.log(`Configuration:`, JSON.stringify(configuration));
+
+    // Create a log entry for this processing step
+    const logEntry = {
+      workflow_id: workflowId,
+      execution_id: executionId || null,
+      node_id: nodeId,
+      operation_type: operation || 'process',
+      input_data: data ? { summary: `${Array.isArray(data) ? data.length : 0} records` } : null,
+      configuration: configuration || {},
+      status: 'processing',
+      created_at: new Date().toISOString()
+    };
+
+    // Insert the log entry
+    const { data: logData, error: logError } = await supabase
+      .from('workflow_step_logs')
+      .insert(logEntry)
+      .select()
+      .single();
+
+    if (logError) {
+      console.error('Error creating log entry:', logError);
+    }
+
+    const logId = logData?.id;
+    console.log(`Created log entry with ID: ${logId}`);
+
+    // Process the data based on the operation type
+    let result;
+    let processedData = [];
+    let error = null;
+
+    try {
+      // Simple processing logic based on operation type
+      if (operation === 'filter' || (configuration?.column && configuration?.operator)) {
+        const column = configuration.column;
+        const operator = configuration.operator || 'equals';
+        const value = configuration.value;
+        
+        console.log(`Filtering data on column ${column} with operator ${operator} and value ${value}`);
+        
+        if (!data || !Array.isArray(data)) {
+          throw new Error('Invalid data format for filtering operation');
+        }
+        
+        // Apply the filter
+        switch (operator) {
+          case 'equals':
+            processedData = data.filter(row => row[column] == value);
+            break;
+          case 'not-equals':
+            processedData = data.filter(row => row[column] != value);
+            break;
+          case 'greater-than':
+            processedData = data.filter(row => {
+              const numVal = parseFloat(row[column]);
+              return !isNaN(numVal) && numVal > parseFloat(value);
+            });
+            break;
+          case 'less-than':
+            processedData = data.filter(row => {
+              const numVal = parseFloat(row[column]);
+              return !isNaN(numVal) && numVal < parseFloat(value);
+            });
+            break;
+          case 'contains':
+            processedData = data.filter(row => {
+              const rowVal = String(row[column] || '');
+              return rowVal.includes(value);
+            });
+            break;
+          case 'starts-with':
+            processedData = data.filter(row => {
+              const rowVal = String(row[column] || '');
+              return rowVal.startsWith(value);
+            });
+            break;
+          case 'ends-with':
+            processedData = data.filter(row => {
+              const rowVal = String(row[column] || '');
+              return rowVal.endsWith(value);
+            });
+            break;
+          default:
+            processedData = data;
+        }
+        
+        result = {
+          processedData,
+          rowCount: processedData.length,
+          operation: 'filter',
+          filterCriteria: { column, operator, value }
+        };
+      } 
+      else if (operation === 'sort' || (configuration?.column && configuration?.order)) {
+        const column = configuration.column;
+        const order = configuration.order || 'ascending';
+        
+        console.log(`Sorting data on column ${column} in ${order} order`);
+        
+        if (!data || !Array.isArray(data)) {
+          throw new Error('Invalid data format for sorting operation');
+        }
+        
+        // Create a copy of the data
+        processedData = [...data];
+        
+        // Apply the sort
+        processedData.sort((a, b) => {
+          let valA = a[column];
+          let valB = b[column];
+          
+          // Handle numeric values
+          if (!isNaN(Number(valA)) && !isNaN(Number(valB))) {
+            valA = Number(valA);
+            valB = Number(valB);
+          }
+          
+          // Handle string values
+          if (typeof valA === 'string' && typeof valB === 'string') {
+            return order === 'ascending' 
+              ? valA.localeCompare(valB) 
+              : valB.localeCompare(valA);
+          }
+          
+          // Handle other types
+          if (order === 'ascending') {
+            return valA < valB ? -1 : valA > valB ? 1 : 0;
+          } else {
+            return valA > valB ? -1 : valA < valB ? 1 : 0;
+          }
+        });
+        
+        result = {
+          processedData,
+          rowCount: processedData.length,
+          operation: 'sort',
+          sortCriteria: { column, order }
+        };
+      }
+      else {
+        // Default processing - pass through the data
+        console.log('No specific operation defined, passing data through');
+        processedData = data || [];
+        result = {
+          processedData,
+          rowCount: Array.isArray(processedData) ? processedData.length : 0,
+          operation: 'passthrough'
+        };
+      }
+      
+      // Update the log entry with the result
+      if (logId) {
+        const { error: updateError } = await supabase
+          .from('workflow_step_logs')
+          .update({
+            status: 'completed',
+            output_data: {
+              result: {
+                summary: `Processed ${result.rowCount} records`,
+                operation: result.operation
+              }
+            },
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', logId);
+          
+        if (updateError) {
+          console.error('Error updating log entry:', updateError);
+        }
+      }
+      
+      // Return the processed data
+      return new Response(
+        JSON.stringify({ result }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (processingError) {
+      console.error('Error processing data:', processingError);
+      
+      // Update the log entry with the error
+      if (logId) {
+        const { error: updateError } = await supabase
+          .from('workflow_step_logs')
+          .update({
+            status: 'failed',
+            error_message: processingError.message,
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', logId);
+          
+        if (updateError) {
+          console.error('Error updating log entry with error:', updateError);
+        }
+      }
+      
+      return new Response(
+        JSON.stringify({ 
+          error: `Processing error: ${processingError.message}`,
+          details: processingError.stack
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
+        }
+      );
+    }
+  } catch (error) {
+    console.error('Error processing request:', error);
     
-    const aiResponse = await processWithAI(prompt);
-    console.log("AI response:", aiResponse);
-    
-    const parsedResponse = parseAIResponse(aiResponse);
-    
-    // Update node status with results
-    await updateWorkflowNodeState(
-      executionId, 
-      nodeId, 
-      parsedResponse.error ? "error" : "completed", 
-      {
-        data: parsedResponse.processedData,
-        explanation: parsedResponse.explanation,
-        error: parsedResponse.error
+    return new Response(
+      JSON.stringify({ 
+        error: `Server error: ${error.message}`,
+        details: error.stack
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
       }
     );
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        operation,
-        result: parsedResponse
-      }),
-      { headers: corsHeaders }
-    );
-  } catch (error) {
-    console.error("Error in process-excel function:", error);
-    
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || "An unexpected error occurred",
-      }),
-      { status: 500, headers: corsHeaders }
-    );
   }
-});
+})

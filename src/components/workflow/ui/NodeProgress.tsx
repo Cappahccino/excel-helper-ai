@@ -2,13 +2,17 @@
 import React from 'react';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { FileProcessingStatus } from '@/types/fileProcessing';
 
 interface NodeProgressProps {
   value: number;
   status?: 'default' | 'success' | 'error' | 'warning' | 'info';
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   showLabel?: boolean;
+  showPercentage?: boolean;
   className?: string;
+  processingStatus?: FileProcessingStatus;
+  animated?: boolean;
 }
 
 const NodeProgress = ({
@@ -16,7 +20,10 @@ const NodeProgress = ({
   status = 'default',
   size = 'sm',
   showLabel = false,
-  className
+  showPercentage = true,
+  className,
+  processingStatus,
+  animated = false
 }: NodeProgressProps) => {
   // Color based on status
   const colorClasses = {
@@ -37,20 +44,42 @@ const NodeProgress = ({
   };
   
   // Height based on size
-  const heightClass = size === 'sm' ? 'h-1.5' : 'h-2';
+  const heightClass = {
+    sm: 'h-1.5',
+    md: 'h-2',
+    lg: 'h-3'
+  }[size];
+
+  // Status label mapping (optional)
+  const statusLabels: Record<FileProcessingStatus, string> = {
+    pending: 'Pending',
+    associating: 'Associating',
+    uploading: 'Uploading',
+    processing: 'Processing',
+    fetching_schema: 'Fetching Schema',
+    verifying: 'Verifying',
+    completed: 'Completed',
+    failed: 'Failed',
+    error: 'Error'
+  };
   
   return (
     <div className={cn('w-full', className)}>
       <Progress 
         value={value} 
-        className={cn(heightClass, bgClasses[status])}
-        indicatorClassName={colorClasses[status]}
+        className={cn(heightClass, bgClasses[status], animated ? 'animate-pulse' : '')}
+        indicatorClassName={cn(colorClasses[status], animated ? 'animate-pulse' : '')}
       />
-      {showLabel && (
-        <div className="flex justify-end mt-1">
-          <span className="text-xs text-gray-500">{Math.round(value)}%</span>
-        </div>
-      )}
+      
+      <div className="flex justify-between mt-1">
+        {showLabel && processingStatus && (
+          <span className="text-xs text-gray-600">{statusLabels[processingStatus]}</span>
+        )}
+        
+        {showPercentage && (
+          <span className="text-xs text-gray-500 ml-auto">{Math.round(value)}%</span>
+        )}
+      </div>
     </div>
   );
 };
