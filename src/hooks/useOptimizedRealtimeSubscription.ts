@@ -1,89 +1,98 @@
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { useDebounce } from './useDebounce';
 
-type SubscriptionFilter = {
-  event: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
-  schema: string;
+interface UseRealtimeSubscriptionOptions {
   table: string;
+  schema?: string;
+  event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
   filter?: string;
+  filterValue?: string | number;
+  enabled?: boolean;
+  column?: string;
+  throttleMs?: number;
 }
 
-/**
- * Hook for optimized Supabase realtime subscriptions
- * Includes connection pooling and better error handling
- */
-export function useOptimizedRealtimeSubscription<T = any>(
-  channelName: string,
-  filter: SubscriptionFilter,
-  callback: (payload: RealtimePostgresChangesPayload<T>) => void,
-  enabled: boolean = true
-) {
-  const [isEnabled, setIsEnabled] = useState(enabled);
-  const [isConnected, setIsConnected] = useState(false);
-  const channelRef = useRef<RealtimeChannel | null>(null);
-  const callbackRef = useRef(callback);
-  
-  // Update callback ref when callback changes
+export function useOptimizedRealtimeSubscription<T = any>({
+  table,
+  schema = 'public',
+  event = '*',
+  filter,
+  filterValue,
+  column = 'id',
+  enabled = true,
+  throttleMs = 300
+}: UseRealtimeSubscriptionOptions) {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [status, setStatus] = useState<'idle' | 'subscribed' | 'error'>('idle');
+  const lastUpdateTime = useRef<number>(0);
+  const channelRef = useRef<any>(null);
+  const debouncedFilter = useDebounce(filter, throttleMs);
+  const debouncedValue = useDebounce(filterValue, throttleMs);
+
   useEffect(() => {
-    callbackRef.current = callback;
-  }, [callback]);
-  
-  // Setup and teardown subscription
-  useEffect(() => {
-    if (!isEnabled) {
-      setIsConnected(false);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-      return;
+    if (!enabled) return;
+
+    const filterCondition = debouncedFilter && debouncedValue
+      ? `${debouncedFilter}=eq.${debouncedValue}`
+      : undefined;
+
+    let channelName = `${table}_${event}_${Math.random().toString(36).substring(2, 9)}`;
+    if (filterCondition) channelName += `_${filterCondition}`;
+
+    try {
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes', // Properly quoted string here
+          {
+            event: event,
+            schema: schema,
+            table: table,
+            filter: filterCondition,
+          },
+          (payload) => {
+            const now = Date.now();
+            // Throttle updates to avoid rapid re-renders
+            if (now - lastUpdateTime.current > throttleMs) {
+              setData(payload.new as T);
+              lastUpdateTime.current = now;
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            setStatus('subscribed');
+          } else if (status === 'CHANNEL_ERROR') {
+            setStatus('error');
+            setError(new Error('Failed to subscribe to realtime changes'));
+          }
+        });
+
+      channelRef.current = channel;
+    } catch (err) {
+      console.error('Error setting up realtime subscription:', err);
+      setError(err instanceof Error ? err : new Error('Unknown error in realtime subscription'));
+      setStatus('error');
     }
-    
-    // Create a unique channel name with a timestamp to avoid conflicts
-    const uniqueChannelName = `${channelName}_${Date.now()}`;
-    
-    // Setup subscription
-    const channel = supabase
-      .channel(uniqueChannelName)
-      .on(
-        'postgres_changes',
-        {
-          event: filter.event,
-          schema: filter.schema,
-          table: filter.table,
-          filter: filter.filter
-        },
-        (payload) => {
-          // Use the ref to avoid closure issues
-          callbackRef.current(payload as RealtimePostgresChangesPayload<T>);
-        }
-      )
-      .subscribe((status) => {
-        console.log(`Subscription ${uniqueChannelName} status: ${status}`);
-        setIsConnected(status === 'SUBSCRIBED');
-      });
-    
-    channelRef.current = channel;
-    
-    // Cleanup function
+
     return () => {
       if (channelRef.current) {
-        console.log(`Removing channel ${uniqueChannelName}`);
         supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-        setIsConnected(false);
       }
     };
-  }, [isEnabled, channelName, filter.event, filter.schema, filter.table, filter.filter]);
-  
-  const setEnabled = useCallback((newEnabled: boolean) => {
-    setIsEnabled(newEnabled);
-  }, []);
-  
-  return {
-    isConnected,
-    setEnabled
-  };
+  }, [
+    enabled,
+    table,
+    schema,
+    event,
+    debouncedFilter,
+    debouncedValue,
+    throttleMs,
+    column
+  ]);
+
+  return { data, error, status };
 }

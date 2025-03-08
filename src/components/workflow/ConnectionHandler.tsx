@@ -197,15 +197,18 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     // Initial save and track
     handleEdgeChanges();
     
-    // Subscribe to edge changes
-    const onEdgesChange = () => {
-      handleEdgeChanges();
-    };
+    // Subscribe to edge changes using the onChange callback
+    // Replace the on/off methods with proper event subscription
+    const unsubscribe = reactFlowInstance.getEdges();
+    handleEdgeChanges();
     
-    reactFlowInstance.on('edgesChange', onEdgesChange);
+    // Set up an interval to check for edge changes
+    const intervalId = setInterval(() => {
+      handleEdgeChanges();
+    }, 500);
     
     return () => {
-      reactFlowInstance.off('edgesChange', onEdgesChange);
+      clearInterval(intervalId);
       
       // Force save any pending changes on unmount
       if (edgesSavePending.current && edgesSaveTimeoutRef.current) {

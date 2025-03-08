@@ -1,3 +1,4 @@
+
 // We'll focus on the most performance-critical methods in the WorkflowContext
 // This is a partial update that optimizes key functions
 
@@ -68,13 +69,8 @@ export const WorkflowProvider: React.FC<{
       // Extract the UUID part of the temporary ID
       const tempUuid = convertToDbWorkflowId(tempId);
       
-      // Use a transaction for better atomicity
-      const { error: txError } = await supabase.rpc('begin_transaction');
-      if (txError) {
-        console.error('Error starting transaction:', txError);
-        // Fall back to non-transactional operation if RPC is not available
-      }
-      
+      // We'll skip using transactions since the RPC isn't available
+      // and handle each operation independently
       try {
         // 1. Migrate file schemas with a single query
         const { data: schemas, error: schemasError } = await supabase
@@ -200,11 +196,6 @@ export const WorkflowProvider: React.FC<{
           console.error('Error updating workflow temporary status:', workflowUpdateError);
         }
         
-        // Commit the transaction if we started one
-        await supabase.rpc('commit_transaction').catch(e => {
-          console.warn('Error committing transaction (this is expected if not using a transaction):', e);
-        });
-        
         setMigrationStatus('success');
         console.log(`Successfully migrated workflow from ${tempId} to ${permanentId}`);
         
@@ -213,10 +204,6 @@ export const WorkflowProvider: React.FC<{
         
         return true;
       } catch (innerError) {
-        // Rollback if transaction is active
-        await supabase.rpc('rollback_transaction').catch(e => {
-          console.warn('Error rolling back transaction (expected if not using a transaction):', e);
-        });
         throw innerError;
       }
     } catch (error) {

@@ -164,8 +164,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         updateProcessingState('completed', 100);
       } else if (selectedFile.processing_status === 'processing') {
         updateProcessingState('processing', 50, 'Processing file data...');
-      } else if (selectedFile.processing_status === 'failed' || selectedFile.processing_status === 'error') {
-        // Fixed: Handle both 'failed' and 'error' status values
+      } else if (selectedFile.processing_status === 'error') {
         updateProcessingState('error', 0, 'Error', selectedFile.error_message || 'File processing failed');
       }
     }
