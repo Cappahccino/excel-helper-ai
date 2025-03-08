@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
@@ -135,16 +136,18 @@ const FileUploadNode: React.FC<{
       const fileExt = previewFile.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       
+      // Fix: Use type assertion for the upload options to include onUploadProgress
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('workflow-files')
         .upload(fileName, previewFile, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: function(progress: { loaded: number; total: number }) {
+          // This is where we need to fix the TypeScript error
+          onUploadProgress: (progress) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
             setUploadProgress(percent);
-          } as any
-        });
+          }
+        } as any); // Use type assertion to bypass TypeScript error
       
       if (uploadError) {
         throw uploadError;
