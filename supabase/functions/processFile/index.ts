@@ -67,7 +67,7 @@ serve(async (req) => {
 
   try {
     // Parse the request body
-    const { fileId, workflowId, nodeId } = await req.json();
+    const { fileId, workflowId, nodeId, isTemporary } = await req.json();
     
     if (!fileId) {
       return new Response(
@@ -77,6 +77,7 @@ serve(async (req) => {
     }
 
     console.log(`Processing file ${fileId} for workflow ${workflowId || 'N/A'} and node ${nodeId || 'N/A'}`);
+    console.log(`Workflow is temporary: ${isTemporary ? 'yes' : 'no'}`);
 
     // Update file status to processing
     const { error: updateError } = await supabase
@@ -127,7 +128,7 @@ serve(async (req) => {
       const columns = Object.keys(sampleRows[0]);
       const dataTypes = detectDataTypes(sampleRows);
       
-      // Store file metadata
+      // Store file metadata regardless of whether the workflow is temporary
       const { error: metadataError } = await supabase
         .from('file_metadata')
         .upsert({
@@ -145,8 +146,11 @@ serve(async (req) => {
       }
       
       // If this is part of a workflow, create a file schema entry
+      // We do this for both permanent and temporary workflows
       if (workflowId && nodeId) {
-        const { error: schemaError } = await supabase
+        console.log(`Creating file schema for ${isTemporary ? 'temporary' : 'permanent'} workflow ${workflowId}`);
+        
+        const { data: schemaData, error: schemaError } = await supabase
           .from('workflow_file_schemas')
           .upsert({
             workflow_id: workflowId,
@@ -157,15 +161,20 @@ serve(async (req) => {
             sample_data: sampleRows.slice(0, 10),
             has_headers: true,
             total_rows: 100 // Mock row count
-          }, { onConflict: 'workflow_id,file_id,node_id' });
+          }, { 
+            onConflict: 'workflow_id,node_id,file_id',
+            returning: 'minimal'
+          });
         
         if (schemaError) {
           console.error("Error creating file schema:", schemaError);
+        } else {
+          console.log("Successfully created file schema");
         }
       }
       
       // Update file status to completed
-      await supabase
+      const { error: completedError } = await supabase
         .from('excel_files')
         .update({ 
           processing_status: 'completed',
@@ -173,9 +182,13 @@ serve(async (req) => {
         })
         .eq('id', fileId);
       
+      if (completedError) {
+        console.error("Error updating file status to completed:", completedError);
+      }
+      
       // Update workflow file status
       if (workflowId && nodeId) {
-        await supabase
+        const { error: workflowCompletedError } = await supabase
           .from('workflow_files')
           .update({
             status: 'completed',
@@ -190,6 +203,10 @@ serve(async (req) => {
           .eq('workflow_id', workflowId)
           .eq('file_id', fileId)
           .eq('node_id', nodeId);
+          
+        if (workflowCompletedError) {
+          console.error("Error updating workflow file status to completed:", workflowCompletedError);
+        }
       }
       
       return new Response(
@@ -199,6 +216,7 @@ serve(async (req) => {
           fileId,
           workflowId,
           nodeId,
+          isTemporary,
           schema: {
             columns,
             dataTypes,

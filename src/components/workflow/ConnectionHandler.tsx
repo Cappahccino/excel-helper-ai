@@ -19,20 +19,25 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     if (!workflowId) return;
     
     try {
-      // Only attempt database operations if we have a workflow ID and it's not a temporary one
+      // Only attempt database operations if we have a workflow ID
       if (isTemporaryId) {
-        console.log('Using temporary workflow ID, skipping permanent edge storage');
-        return;
+        console.log('Using temporary workflow ID, edges will still be saved to maintain associations');
       }
       
       // First, remove existing edges for this workflow to avoid duplicates
-      await supabase
+      const { error: deleteError } = await supabase
         .from('workflow_edges')
         .delete()
         .eq('workflow_id', workflowId);
+        
+      if (deleteError) {
+        console.error('Error deleting existing edges:', deleteError);
+      }
       
       // Then insert all current edges
       if (edges.length > 0) {
+        console.log(`Saving ${edges.length} edges for workflow ${workflowId}`);
+        
         // Need to convert each edge to a format that matches the table schema
         // and ensures metadata is JSON-serializable
         const edgesData = edges.map(edge => {
@@ -81,6 +86,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
             console.error('Error saving edges batch:', error);
           }
         }
+        
+        console.log('Successfully saved all edges');
       }
     } catch (error) {
       console.error('Error in saveEdgesToDatabase:', error);
@@ -93,13 +100,11 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     const handleEdgeChanges = () => {
       const currentEdges = reactFlowInstance.getEdges();
+      console.log(`Handling edge changes for workflow ${workflowId} (${isTemporaryId ? 'temporary' : 'permanent'})`);
       
-      if (!isTemporaryId) {
-        // Only save to database if we have a permanent ID
-        saveEdgesToDatabase(currentEdges);
-      } else {
-        console.log('Using temporary workflow ID, edges saved locally only');
-      }
+      // Save edges to database regardless of temporary status
+      // This ensures that the relationships are maintained
+      saveEdgesToDatabase(currentEdges);
     };
     
     // Initial save of edges
