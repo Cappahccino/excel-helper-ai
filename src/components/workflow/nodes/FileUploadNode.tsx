@@ -27,7 +27,7 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) => {
-  const { workflowId, convertToDbWorkflowId } = useWorkflow();
+  const { workflowId } = useWorkflow();
   const [selectedFileId, setSelectedFileId] = useState<string | undefined>(
     data.config?.fileId
   );
@@ -102,12 +102,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       if (workflowId) {
         console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
         
-        const dbWorkflowId = convertToDbWorkflowId(workflowId);
-        
+        // We don't need to convert temp IDs now that we have RLS policies that handle them
         const { error } = await supabase
           .from('workflow_files')
           .upsert({
-            workflow_id: dbWorkflowId,
+            workflow_id: workflowId,
             node_id: id,
             file_id: fileId,
             status: 'selected',
