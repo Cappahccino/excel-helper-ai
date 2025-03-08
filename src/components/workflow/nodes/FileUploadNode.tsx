@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
@@ -372,6 +371,9 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       setProcessingState('queuing');
       setProcessingProgress(5);
       
+      console.log(`Queueing file ${fileId} for workflow ${workflowId} (${typeof workflowId}), node ${nodeId}`);
+      console.log(`Is temporary workflow ID: ${workflowId.startsWith('temp-')}`);
+      
       const { data: existingRecord, error: checkError } = await supabase
         .from('workflow_files')
         .select('*')
@@ -381,6 +383,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         .maybeSingle();
       
       if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking existing workflow file:', checkError);
         throw checkError;
       }
       
@@ -395,7 +398,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
           })
           .eq('id', existingRecord.id);
           
-        if (updateError) throw updateError;
+        if (updateError) {
+          console.error('Error updating workflow file:', updateError);
+          throw updateError;
+        }
       } else {
         const { error: insertError } = await supabase
           .from('workflow_files')
@@ -407,7 +413,11 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
             processing_status: 'queued'
           });
           
-        if (insertError) throw insertError;
+        if (insertError) {
+          console.error('Error inserting workflow file:', insertError);
+          console.error('Insert error details:', JSON.stringify(insertError));
+          throw insertError;
+        }
       }
       
       const { error: fnError } = await supabase.functions.invoke('processFile', {
@@ -418,7 +428,10 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
         }
       });
       
-      if (fnError) throw fnError;
+      if (fnError) {
+        console.error('Error invoking processFile function:', fnError);
+        throw fnError;
+      }
       
       setProcessingState('queued');
       setProcessingProgress(10);
@@ -492,6 +505,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({ data, id }) =
       }
       
       if (data.workflowId) {
+        console.log(`Selected file for workflow ${data.workflowId}, node ${id}`);
         await queueFileForProcessing(file.id, data.workflowId, id);
         
         startFileProcessingPolling(file.id, data.workflowId, id);
