@@ -31,6 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import DataPreviewTable from '../ui/DataPreviewTable';
 import NodeProgress from '../ui/NodeProgress';
 import { toast } from 'sonner';
+import { SchemaColumn } from '@/hooks/useDataProcessing';
 
 function getNodeIcon(type: ProcessingNodeType) {
   switch (type) {
@@ -129,7 +130,7 @@ const getOperatorOptions = (columnType: string) => {
 function NodeConfigForm({ type, config, columns, onConfigChange, validationErrors }: { 
   type: ProcessingNodeType, 
   config: any, 
-  columns: Array<{ name: string, type: string }>, 
+  columns: SchemaColumn[], 
   onConfigChange: (newConfig: any) => void,
   validationErrors?: string[]
 }) {
@@ -147,7 +148,7 @@ function NodeConfigForm({ type, config, columns, onConfigChange, validationError
     }
   }, [config]);
 
-  const renderColumnSelect = (fieldName: string, label: string, filterFunc?: (col: { name: string, type: string }) => boolean) => {
+  const renderColumnSelect = (fieldName: string, label: string, filterFunc?: (col: SchemaColumn) => boolean) => {
     const filteredColumns = filterFunc ? columns.filter(filterFunc) : columns;
     
     return (
@@ -475,7 +476,7 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
 }) {
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
-  const [availableColumns, setAvailableColumns] = useState<Array<{ name: string, type: string }>>([]);
+  const [availableColumns, setAvailableColumns] = useState<SchemaColumn[]>([]);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isRefreshingPreview, setIsRefreshingPreview] = useState(false);

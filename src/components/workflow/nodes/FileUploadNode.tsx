@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -131,7 +132,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             refetch();
           } else if (updatedFile.processing_status === 'processing') {
             updateProcessingState('processing', 50, 'Processing file data...');
-          } else if (updatedFile.processing_status === 'failed') {
+          } else if (updatedFile.processing_status === 'failed' || updatedFile.processing_status === 'error') {
             const errorMessage = updatedFile.processing_error || 'File processing failed';
             updateProcessingState('error', 0, 'Error', errorMessage);
           }

@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -17,7 +18,8 @@ interface ProcessingOptions {
   executionId: string;
 }
 
-interface SchemaColumn {
+// Export the SchemaColumn type so it can be imported in other files
+export interface SchemaColumn {
   name: string;
   type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
 }
