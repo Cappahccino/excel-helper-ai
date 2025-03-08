@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
@@ -17,7 +16,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { useWorkflow } from '../context/WorkflowContext';
 
-// Helper component to show processing state
 const ProcessingIndicator: React.FC<{
   state: FileProcessingState;
   progress?: number;
@@ -47,7 +45,6 @@ const ProcessingIndicator: React.FC<{
   );
 };
 
-// Helper component to show file details
 const FileDetails: React.FC<{
   filename: string;
   fileSize?: number;
@@ -84,7 +81,6 @@ const FileDetails: React.FC<{
   );
 };
 
-// Main FileUploadNode component
 const FileUploadNode: React.FC<{
   id: string;
   selected: boolean;
@@ -105,7 +101,6 @@ const FileUploadNode: React.FC<{
   const [previewMode, setPreviewMode] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Set up file drop zone
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: handleFileDrop,
     accept: {
@@ -118,7 +113,6 @@ const FileUploadNode: React.FC<{
     disabled: isUploading || processingState === 'processing' || processingState === 'queued' || processingState === 'queuing',
   });
 
-  // Handle file drop
   function handleFileDrop(acceptedFiles: File[]) {
     if (acceptedFiles.length > 0) {
       const droppedFile = acceptedFiles[0];
@@ -127,7 +121,6 @@ const FileUploadNode: React.FC<{
     }
   }
 
-  // Handle file selection confirmation
   const confirmFileSelection = async () => {
     if (!previewFile) return;
     
@@ -139,31 +132,26 @@ const FileUploadNode: React.FC<{
       setIsUploading(true);
       setUploadProgress(0);
       
-      // Upload the file to storage
       const fileExt = previewFile.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       
-      // Fix for the onUploadProgress issue - use progress event handler
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('workflow-files')
         .upload(fileName, previewFile, {
           cacheControl: '3600',
           upsert: false,
-          // Use progress event as an option
-          onUploadProgress: (progress: { loaded: number; total: number }) => {
+          onUploadProgress: function(progress: { loaded: number; total: number }) {
             const percent = Math.round((progress.loaded / progress.total) * 100);
             setUploadProgress(percent);
-          } as any, // Type assertion to bypass the type check
+          } as any
         });
       
       if (uploadError) {
         throw uploadError;
       }
       
-      // Create a record in the files table
       const newFileId = crypto.randomUUID();
       
-      // Fix for the "files" table issue - use correct table name "excel_files"
       const { error: fileError } = await supabase
         .from('excel_files')
         .insert({
@@ -179,10 +167,8 @@ const FileUploadNode: React.FC<{
         throw fileError;
       }
       
-      // Update the node data
       setFileId(newFileId);
       
-      // Update the node config
       if (data.onChange) {
         data.onChange(id, {
           fileId: newFileId,
@@ -192,7 +178,6 @@ const FileUploadNode: React.FC<{
         });
       }
       
-      // Queue the file for processing
       if (workflowId) {
         await queueFileForProcessing(newFileId, workflowId, id);
       } else {
@@ -210,25 +195,21 @@ const FileUploadNode: React.FC<{
     }
   };
 
-  // Cancel file selection
   const cancelFileSelection = () => {
     setPreviewFile(null);
     setPreviewMode(false);
   };
 
-  // Remove the current file
   const removeFile = async () => {
     if (!fileId) return;
     
     try {
-      // Update the node data
       setFile(null);
       setFileId(null);
       setFilename('');
       setProcessingState('idle');
       setProcessingProgress(0);
       
-      // Update the node config
       if (data.onChange) {
         data.onChange(id, {
           fileId: null,
@@ -236,7 +217,6 @@ const FileUploadNode: React.FC<{
         });
       }
       
-      // We don't actually delete the file from storage, just remove the association
       toast.success('File removed from node');
     } catch (error) {
       console.error('Error removing file:', error);
@@ -244,7 +224,6 @@ const FileUploadNode: React.FC<{
     }
   };
 
-  // Queue file for processing in the workflow
   const queueFileForProcessing = async (fileId: string, workflowId: string, nodeId: string) => {
     try {
       setProcessingState('queuing');
@@ -253,9 +232,7 @@ const FileUploadNode: React.FC<{
       console.log(`Queueing file ${fileId} for workflow ${workflowId} (${typeof workflowId}), node ${nodeId}`);
       console.log(`Is temporary workflow ID: ${workflowId?.startsWith('temp-')}`);
       
-      // Convert temporary ID to UUID for database operations if needed
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      console.log(`Using database workflow ID: ${dbWorkflowId}`);
       
       const { data: existingRecord, error: checkError } = await supabase
         .from('workflow_files')
@@ -271,7 +248,6 @@ const FileUploadNode: React.FC<{
       }
       
       if (existingRecord) {
-        // Update existing record
         const { error: updateError } = await supabase
           .from('workflow_files')
           .update({
@@ -290,7 +266,7 @@ const FileUploadNode: React.FC<{
         const { error: insertError } = await supabase
           .from('workflow_files')
           .insert({
-            workflow_id: dbWorkflowId, // Use the UUID for database
+            workflow_id: dbWorkflowId,
             file_id: fileId,
             node_id: nodeId,
             is_active: true,
@@ -308,7 +284,7 @@ const FileUploadNode: React.FC<{
       const { error: fnError } = await supabase.functions.invoke('processFile', {
         body: {
           fileId,
-          workflowId: workflowId, // Send the original workflow ID, the function will handle temp IDs
+          workflowId: workflowId,
           nodeId
         }
       });
@@ -329,12 +305,10 @@ const FileUploadNode: React.FC<{
     }
   };
 
-  // Check file processing status
   const checkFileProcessingStatus = async () => {
     if (!fileId || !workflowId) return;
     
     try {
-      // Convert temporary ID to UUID for database operations if needed
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
       const { data, error } = await supabase
@@ -351,7 +325,6 @@ const FileUploadNode: React.FC<{
       }
       
       if (data) {
-        // Map the database status to our FileProcessingState
         const statusMap: Record<string, FileProcessingState> = {
           'selected': 'idle',
           'queued': 'queued',
@@ -364,7 +337,6 @@ const FileUploadNode: React.FC<{
         const newState = statusMap[data.processing_status] || 'idle';
         setProcessingState(newState);
         
-        // Set progress based on status
         if (newState === 'queued') {
           setProcessingProgress(10);
         } else if (newState === 'processing') {
@@ -378,7 +350,6 @@ const FileUploadNode: React.FC<{
     }
   };
 
-  // Set up polling for file processing status
   useEffect(() => {
     if (fileId && workflowId && (processingState === 'queued' || processingState === 'processing')) {
       const interval = setInterval(checkFileProcessingStatus, 3000);
@@ -386,19 +357,16 @@ const FileUploadNode: React.FC<{
     }
   }, [fileId, workflowId, processingState]);
 
-  // Initial check for file processing status
   useEffect(() => {
     if (fileId && workflowId) {
       checkFileProcessingStatus();
     }
   }, [fileId, workflowId]);
 
-  // Load file details if we have a fileId but no file
   useEffect(() => {
     const loadFileDetails = async () => {
       if (fileId && !file && !filename) {
         try {
-          // Fix for the "files" table issue - use correct table name "excel_files"
           const { data, error } = await supabase
             .from('excel_files')
             .select('*')
@@ -411,7 +379,6 @@ const FileUploadNode: React.FC<{
           }
           
           if (data) {
-            // Fix for the name property issue - use filename property instead
             setFilename(data.filename || '');
           }
         } catch (error) {
@@ -423,7 +390,6 @@ const FileUploadNode: React.FC<{
     loadFileDetails();
   }, [fileId, file, filename]);
 
-  // Update node data when config changes
   useEffect(() => {
     if (data.onChange && (
       data.config?.fileId !== fileId ||
@@ -449,7 +415,6 @@ const FileUploadNode: React.FC<{
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
-        {/* File Upload Area */}
         {!fileId && !previewMode && (
           <div 
             {...getRootProps()} 
@@ -468,7 +433,6 @@ const FileUploadNode: React.FC<{
           </div>
         )}
         
-        {/* File Preview Mode */}
         {previewMode && previewFile && (
           <div className="border rounded-md p-3">
             <h4 className="text-sm font-medium mb-2">Confirm file upload</h4>
@@ -543,7 +507,6 @@ const FileUploadNode: React.FC<{
           </div>
         )}
         
-        {/* Uploaded File */}
         {fileId && filename && (
           <div className="space-y-3">
             <FileDetails 
@@ -594,7 +557,6 @@ const FileUploadNode: React.FC<{
                   variant="outline" 
                   className="w-full text-xs h-8 flex items-center justify-center"
                   onClick={() => {
-                    // View data preview functionality would go here
                     toast.info('Data preview not implemented yet');
                   }}
                 >
@@ -631,7 +593,6 @@ const FileUploadNode: React.FC<{
         )}
       </CardContent>
       
-      {/* Input/Output Handles */}
       <Handle
         type="target"
         position={Position.Left}
