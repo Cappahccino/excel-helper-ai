@@ -19,11 +19,9 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     if (!workflowId) return;
     
     try {
-      // Only attempt database operations if we have a workflow ID and it's not a temporary one
-      if (isTemporaryId) {
-        console.log('Using temporary workflow ID, skipping permanent edge storage');
-        return;
-      }
+      // Only attempt database operations if we have a workflow ID
+      // Note: We now allow saving with a temporary ID
+      console.log(`Saving edges for workflow ${workflowId}, isTemporary: ${isTemporaryId}`);
       
       // First, remove existing edges for this workflow to avoid duplicates
       await supabase
@@ -61,7 +59,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
           }
           
           return {
-            workflow_id: workflowId,
+            workflow_id: workflowId, // This will now work with string IDs including temp IDs
             source_node_id: edge.source,
             target_node_id: edge.target,
             edge_id: edge.id,
@@ -79,6 +77,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
             
           if (error) {
             console.error('Error saving edges batch:', error);
+            console.error('Error details:', JSON.stringify(error));
           }
         }
       }
@@ -94,12 +93,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     const handleEdgeChanges = () => {
       const currentEdges = reactFlowInstance.getEdges();
       
-      if (!isTemporaryId) {
-        // Only save to database if we have a permanent ID
-        saveEdgesToDatabase(currentEdges);
-      } else {
-        console.log('Using temporary workflow ID, edges saved locally only');
-      }
+      // We now save edges for both temp and permanent IDs
+      saveEdgesToDatabase(currentEdges);
     };
     
     // Initial save of edges
@@ -109,7 +104,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     return () => {
       // No cleanup needed since we're not using a subscription
     };
-  }, [reactFlowInstance, workflowId, saveEdgesToDatabase, isTemporaryId]);
+  }, [reactFlowInstance, workflowId, saveEdgesToDatabase]);
 
   // Handle data propagation when connections change
   useEffect(() => {

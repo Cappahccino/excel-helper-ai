@@ -77,6 +77,7 @@ serve(async (req) => {
     }
 
     console.log(`Processing file ${fileId} for workflow ${workflowId || 'N/A'} and node ${nodeId || 'N/A'}`);
+    console.log(`Workflow ID type: ${typeof workflowId}, value: ${workflowId}`);
 
     // Update file status to processing
     const { error: updateError } = await supabase
@@ -94,10 +95,14 @@ serve(async (req) => {
 
     // If this is part of a workflow, mark the workflow file as processing
     if (workflowId && nodeId) {
+      // Check if the workflowId is a temporary ID (starts with 'temp-')
+      const isTemporaryId = typeof workflowId === 'string' && workflowId.startsWith('temp-');
+      console.log(`Is temporary workflow ID: ${isTemporaryId}`);
+      
       const { error: workflowFileError } = await supabase
         .from('workflow_files')
         .upsert({
-          workflow_id: workflowId,
+          workflow_id: workflowId,  // This will now accept string value including temp IDs
           file_id: fileId,
           node_id: nodeId,
           status: 'processing',
@@ -107,6 +112,7 @@ serve(async (req) => {
       
       if (workflowFileError) {
         console.error("Error updating workflow file status:", workflowFileError);
+        console.error("Error details:", JSON.stringify(workflowFileError));
       }
     }
 
@@ -149,7 +155,7 @@ serve(async (req) => {
         const { error: schemaError } = await supabase
           .from('workflow_file_schemas')
           .upsert({
-            workflow_id: workflowId,
+            workflow_id: workflowId,  // This will now accept string value including temp IDs
             node_id: nodeId,
             file_id: fileId,
             columns: columns,
@@ -161,6 +167,7 @@ serve(async (req) => {
         
         if (schemaError) {
           console.error("Error creating file schema:", schemaError);
+          console.error("Error details:", JSON.stringify(schemaError));
         }
       }
       

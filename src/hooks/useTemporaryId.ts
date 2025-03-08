@@ -42,7 +42,10 @@ export function useTemporaryId(
         sessionStorage.removeItem(`temp_${key}`);
       }
     } else {
-      setIdState(`temp-${uuidv4()}`);
+      // If null is passed, generate a new temporary ID
+      const newTempId = `temp-${uuidv4()}`;
+      setIdState(newTempId);
+      sessionStorage.setItem(`temp_${key}`, newTempId);
     }
   };
 
