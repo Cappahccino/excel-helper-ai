@@ -161,6 +161,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         }
         
         try {
+          // Fix: Don't test void expression for truthiness
           const success = await propagateSchemaWithRetry(edge.source, edge.target);
           
           if (!success && retryInfo.attempts < retryInfo.maxAttempts) {
