@@ -1,4 +1,3 @@
-
 import { useEffect, useCallback } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
@@ -13,6 +12,7 @@ interface ConnectionHandlerProps {
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
   const reactFlowInstance = useReactFlow();
   const { propagateFileSchema, isTemporaryId } = useWorkflow();
+  const { convertToDbWorkflowId } = useWorkflow();
 
   // Save edges to the database
   const saveEdgesToDatabase = useCallback(async (edges: Edge[]) => {
@@ -23,11 +23,14 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       // Note: We now allow saving with a temporary ID
       console.log(`Saving edges for workflow ${workflowId}, isTemporary: ${isTemporaryId}`);
       
+      // Convert temporary ID to UUID for database operations if needed
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
       // First, remove existing edges for this workflow to avoid duplicates
       await supabase
         .from('workflow_edges')
         .delete()
-        .eq('workflow_id', workflowId);
+        .eq('workflow_id', dbWorkflowId);
       
       // Then insert all current edges
       if (edges.length > 0) {
@@ -59,7 +62,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
           }
           
           return {
-            workflow_id: workflowId, // This will now work with string IDs including temp IDs
+            workflow_id: dbWorkflowId, // Use the UUID for database
             source_node_id: edge.source,
             target_node_id: edge.target,
             edge_id: edge.id,
@@ -84,7 +87,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     } catch (error) {
       console.error('Error in saveEdgesToDatabase:', error);
     }
-  }, [workflowId, isTemporaryId]);
+  }, [workflowId, isTemporaryId, convertToDbWorkflowId]);
 
   // Handle edge changes
   useEffect(() => {
