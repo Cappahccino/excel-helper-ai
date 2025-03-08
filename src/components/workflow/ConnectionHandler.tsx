@@ -161,7 +161,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         }
         
         try {
-          // Fix: Return a boolean value from propagateSchemaWithRetry and use it directly
+          // Now properly awaiting and using the boolean return value
           const success = await propagateSchemaWithRetry(edge.source, edge.target);
           
           if (!success && retryInfo.attempts < retryInfo.maxAttempts) {
