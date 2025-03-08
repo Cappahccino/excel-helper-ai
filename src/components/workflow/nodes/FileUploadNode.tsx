@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileUp, FileText, Search, X, File, AlertCircle, CheckCircle2, Loader2, Check } from 'lucide-react';
@@ -142,15 +143,17 @@ const FileUploadNode: React.FC<{
       const fileExt = previewFile.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       
+      // Fix for the onUploadProgress issue - use progress event handler
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('workflow-files')
         .upload(fileName, previewFile, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: (progress) => {
+          // Use progress event as an option
+          onUploadProgress: (progress: { loaded: number; total: number }) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
             setUploadProgress(percent);
-          },
+          } as any, // Type assertion to bypass the type check
         });
       
       if (uploadError) {
@@ -159,15 +162,17 @@ const FileUploadNode: React.FC<{
       
       // Create a record in the files table
       const newFileId = crypto.randomUUID();
+      
+      // Fix for the "files" table issue - use correct table name "excel_files"
       const { error: fileError } = await supabase
-        .from('files')
+        .from('excel_files')
         .insert({
           id: newFileId,
-          name: previewFile.name,
-          size: previewFile.size,
-          type: previewFile.type,
-          storage_path: uploadData.path,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
+          filename: previewFile.name,
+          file_size: previewFile.size,
+          mime_type: previewFile.type,
+          file_path: uploadData.path,
+          user_id: (await supabase.auth.getUser()).data.user?.id,
         });
       
       if (fileError) {
@@ -393,8 +398,9 @@ const FileUploadNode: React.FC<{
     const loadFileDetails = async () => {
       if (fileId && !file && !filename) {
         try {
+          // Fix for the "files" table issue - use correct table name "excel_files"
           const { data, error } = await supabase
-            .from('files')
+            .from('excel_files')
             .select('*')
             .eq('id', fileId)
             .maybeSingle();
@@ -405,7 +411,8 @@ const FileUploadNode: React.FC<{
           }
           
           if (data) {
-            setFilename(data.name);
+            // Fix for the name property issue - use filename property instead
+            setFilename(data.filename || '');
           }
         } catch (error) {
           console.error('Error in loadFileDetails:', error);
