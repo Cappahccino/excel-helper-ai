@@ -80,6 +80,60 @@ const isTemporaryWorkflow = (workflowId: string): boolean => {
   return workflowId ? workflowId.startsWith('temp-') : false;
 };
 
+/**
+ * Update workflow file status with progress information
+ */
+const updateWorkflowFileStatus = async (
+  workflowId: string, 
+  fileId: string, 
+  nodeId: string, 
+  status: string, 
+  progress?: number,
+  result?: any,
+  error?: string
+) => {
+  try {
+    console.log(`Updating workflow file status: ${status}, progress: ${progress}`);
+    const updateData: any = {
+      status,
+      processing_status: status,
+      updated_at: new Date().toISOString()
+    };
+
+    if (progress !== undefined) {
+      updateData.metadata = {
+        ...updateData.metadata,
+        progress
+      };
+    }
+
+    if (result) {
+      updateData.processing_result = result;
+    }
+
+    if (error) {
+      updateData.processing_error = error;
+    }
+
+    if (status === 'completed') {
+      updateData.completed_at = new Date().toISOString();
+    }
+
+    const { error: updateError } = await supabase
+      .from('workflow_files')
+      .update(updateData)
+      .eq('workflow_id', workflowId)
+      .eq('file_id', fileId)
+      .eq('node_id', nodeId);
+
+    if (updateError) {
+      console.error('Error updating workflow file status:', updateError);
+    }
+  } catch (error) {
+    console.error('Failed to update workflow file status:', error);
+  }
+};
+
 // Handle requests
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -135,7 +189,8 @@ serve(async (req) => {
             status: 'processing',
             processing_status: 'processing',
             is_temporary: isTemporary,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            metadata: { progress: 10 }
           }, { onConflict: 'workflow_id,file_id,node_id' });
         
         if (workflowFileError) {
@@ -154,8 +209,18 @@ serve(async (req) => {
 
     // Process the file (in a real implementation, you'd read the file from storage)
     try {
+      // Update progress to 20%
+      if (workflowId && nodeId) {
+        await updateWorkflowFileStatus(normalizedId, fileId, nodeId, 'processing', 20);
+      }
+      
       // Simulate file processing
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update progress to 30%
+      if (workflowId && nodeId) {
+        await updateWorkflowFileStatus(normalizedId, fileId, nodeId, 'processing', 30);
+      }
       
       // Generate mock sample data for demonstration
       // In a real implementation, this data would be read from the actual file
@@ -168,6 +233,11 @@ serve(async (req) => {
       // Extract column names and detect data types
       const columns = Object.keys(sampleRows[0]);
       const dataTypes = detectDataTypes(sampleRows);
+      
+      // Update progress to 50%
+      if (workflowId && nodeId) {
+        await updateWorkflowFileStatus(normalizedId, fileId, nodeId, 'processing', 50);
+      }
       
       // Store file metadata
       const { error: metadataError } = await supabase
@@ -185,6 +255,11 @@ serve(async (req) => {
       if (metadataError) {
         console.error("Error storing file metadata:", metadataError);
         throw new Error(`Metadata storage failed: ${metadataError.message}`);
+      }
+      
+      // Update progress to 70%
+      if (workflowId && nodeId) {
+        await updateWorkflowFileStatus(normalizedId, fileId, nodeId, 'processing', 70);
       }
       
       // If this is part of a workflow, create a file schema entry
@@ -216,6 +291,11 @@ serve(async (req) => {
         }
       }
       
+      // Update progress to 90%
+      if (workflowId && nodeId) {
+        await updateWorkflowFileStatus(normalizedId, fileId, nodeId, 'processing', 90);
+      }
+      
       // Update file status to completed
       const { error: completeError } = await supabase
         .from('excel_files')
@@ -232,31 +312,20 @@ serve(async (req) => {
       
       // Update workflow file status
       if (workflowId && nodeId) {
-        try {
-          const { error: workflowUpdateError } = await supabase
-            .from('workflow_files')
-            .update({
-              status: 'completed',
-              processing_status: 'completed',
-              processing_result: {
-                columns: columns,
-                row_count: 100,
-                data_types: dataTypes
-              },
-              completed_at: new Date().toISOString()
-            })
-            .eq('workflow_id', normalizedId)
-            .eq('file_id', fileId)
-            .eq('node_id', nodeId);
-            
-          if (workflowUpdateError) {
-            console.error("Error updating workflow file completion:", workflowUpdateError);
-            // Continue despite the error - the main file processing is done
-          }
-        } catch (workflowUpdateError) {
-          console.error("Exception in workflow file status update:", workflowUpdateError);
-          // Continue despite the error
-        }
+        const processingResult = {
+          columns: columns,
+          row_count: 100,
+          data_types: dataTypes
+        };
+        
+        await updateWorkflowFileStatus(
+          normalizedId, 
+          fileId, 
+          nodeId, 
+          'completed', 
+          100, 
+          processingResult
+        );
       }
       
       return new Response(
@@ -291,20 +360,15 @@ serve(async (req) => {
       
       // Update workflow file status if applicable
       if (workflowId && nodeId) {
-        try {
-          await supabase
-            .from('workflow_files')
-            .update({ 
-              status: 'failed',
-              processing_status: 'failed',
-              processing_error: error.message || "Unknown error during processing"
-            })
-            .eq('workflow_id', normalizedId)
-            .eq('file_id', fileId)
-            .eq('node_id', nodeId);
-        } catch (updateError) {
-          console.error("Failed to update workflow file error status:", updateError);
-        }
+        await updateWorkflowFileStatus(
+          normalizedId,
+          fileId,
+          nodeId,
+          'failed',
+          0,
+          null,
+          error.message || "Unknown error during processing"
+        );
       }
       
       return new Response(
