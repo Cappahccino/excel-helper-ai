@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, MouseEvent } from 'react';
+import { useState, useEffect, useCallback, MouseEvent, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +15,8 @@ import {
   Connection,
   NodeTypes,
   Node,
-  Edge as ReactFlowEdge
+  Edge as ReactFlowEdge,
+  BackgroundVariant
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -222,6 +223,8 @@ const Canvas = () => {
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const [optimisticSave, setOptimisticSave] = useState<boolean>(false);
   const [workflowInitialized, setWorkflowInitialized] = useState<boolean>(false);
+  
+  const saveWorkflowTimeoutRef = useRef<number | null>(null);
   
   const [savingWorkflowId, setSavingWorkflowId, isWorkflowIdInitialized] = useTemporaryId('workflow', 
     workflowId === 'new' ? null : workflowId,
@@ -532,11 +535,11 @@ const Canvas = () => {
       });
     });
 
-    if (window.saveWorkflowTimeout) {
-      clearTimeout(window.saveWorkflowTimeout);
+    if (saveWorkflowTimeoutRef.current) {
+      clearTimeout(saveWorkflowTimeoutRef.current);
     }
     
-    window.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000) as unknown as number;
+    saveWorkflowTimeoutRef.current = window.setTimeout(() => saveWorkflow(), 1000);
   };
 
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
@@ -775,7 +778,7 @@ const Canvas = () => {
                 {isSaving ? 'Saving...' : 'Save'}
               </Button>
               <Button
-                variant="primary"
+                variant="default"
                 disabled={isRunning}
                 onClick={runWorkflow}
               >
@@ -794,7 +797,7 @@ const Canvas = () => {
             onNodeClick={onNodeClick}
             fitView
           >
-            <Background variant="dots" gap={12} size={1} />
+            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
             <Controls />
             <MiniMap />
             <Panel position="bottom-right">
