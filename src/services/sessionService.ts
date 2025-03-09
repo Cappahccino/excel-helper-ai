@@ -11,6 +11,11 @@ export async function createSession(userId: string) {
   try {
     console.log('Creating new session for user:', userId);
     
+    if (!userId) {
+      console.error('No user ID provided to createSession');
+      throw new Error('User ID is required to create a session');
+    }
+    
     const { data: session, error } = await supabase
       .from('chat_sessions')
       .insert({

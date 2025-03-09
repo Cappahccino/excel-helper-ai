@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { supabase, isTemporaryWorkflowId } from '@/integrations/supabase/client';
+import { supabase, isTemporaryWorkflowId, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 /**
@@ -15,8 +15,10 @@ export function useTemporaryId(
 ): [string, (id: string | null) => void] {
   // Track initialization status
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [isDbSynced, setIsDbSynced] = useState<boolean>(false);
   const initAttempts = useRef<number>(0);
   const maxInitAttempts = 3;
+  const syncInProgress = useRef<boolean>(false);
   
   // Initialize state from session storage or generate a new ID
   const [id, setIdState] = useState<string>(() => {
@@ -61,21 +63,46 @@ export function useTemporaryId(
     }
   });
 
-  // For workflows, ensure the temp ID exists in the database
+  // For workflows, ensure the temp ID exists in the database immediately
   useEffect(() => {
+    // Function to sync temporary ID with the database
     const syncTempIdWithDatabase = async () => {
       // Only sync workflow IDs and only temp IDs
-      if (key !== 'workflow' || !id.startsWith('temp-') || !isTemporaryWorkflowId(id)) {
+      if (key !== 'workflow' || !id.startsWith('temp-') || !isTemporaryWorkflowId(id) || syncInProgress.current || isDbSynced) {
         setIsInitialized(true);
         return;
       }
 
       try {
+        // Mark sync as in progress to prevent multiple simultaneous attempts
+        syncInProgress.current = true;
         initAttempts.current += 1;
         console.log(`Syncing temporary workflow ID with database (attempt ${initAttempts.current}): ${id}`);
         
+        // Get current user ID
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          console.error('No authenticated user found when creating temporary workflow:', userError);
+          
+          // Only retry if we haven't exceeded max attempts
+          if (initAttempts.current < maxInitAttempts) {
+            setTimeout(() => {
+              syncInProgress.current = false;
+              syncTempIdWithDatabase();
+            }, 1000 * initAttempts.current);
+            return;
+          } else {
+            console.error('Max initialization attempts reached. Marking as initialized anyway.');
+            setIsInitialized(true);
+            syncInProgress.current = false;
+            return;
+          }
+        }
+        
         // Check if this temp ID already exists in the database
-        const tempUuid = id.substring(5); // Remove 'temp-' prefix
+        const tempUuid = convertToDbWorkflowId(id);
+        console.log(`Checking for existing workflow with ID: ${tempUuid}`);
+        
         const { data: existingWorkflow, error: checkError } = await supabase
           .from('workflows')
           .select('id')
@@ -88,25 +115,21 @@ export function useTemporaryId(
           
           // Only retry if we haven't exceeded max attempts
           if (initAttempts.current < maxInitAttempts) {
-            setTimeout(syncTempIdWithDatabase, 1000 * initAttempts.current);
+            setTimeout(() => {
+              syncInProgress.current = false;
+              syncTempIdWithDatabase();
+            }, 1000 * initAttempts.current);
             return;
           } else {
             console.error('Max initialization attempts reached. Marking as initialized anyway.');
             setIsInitialized(true);
+            syncInProgress.current = false;
             return;
           }
         }
         
         if (!existingWorkflow) {
           console.log(`Creating new temporary workflow in database: ${id}`);
-          
-          // Get current user ID
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) {
-            console.error('No authenticated user found when creating temporary workflow');
-            setIsInitialized(true);
-            return;
-          }
           
           // Create the temporary workflow entry
           const { error: createError } = await supabase
@@ -126,27 +149,33 @@ export function useTemporaryId(
             
             // Only retry if we haven't exceeded max attempts
             if (initAttempts.current < maxInitAttempts) {
-              setTimeout(syncTempIdWithDatabase, 1000 * initAttempts.current);
+              setTimeout(() => {
+                syncInProgress.current = false;
+                syncTempIdWithDatabase();
+              }, 1000 * initAttempts.current);
               return;
             }
           } else {
             console.log(`Successfully created temporary workflow in database: ${id}`);
+            setIsDbSynced(true);
           }
         } else {
           console.log(`Found existing temporary workflow in database: ${id}`);
+          setIsDbSynced(true);
         }
         
         setIsInitialized(true);
+        syncInProgress.current = false;
       } catch (error) {
         console.error('Error in syncTempIdWithDatabase:', error);
+        syncInProgress.current = false;
         setIsInitialized(true);
       }
     };
 
-    if (!isInitialized) {
-      syncTempIdWithDatabase();
-    }
-  }, [id, key, isInitialized]);
+    // Run the sync operation immediately when the hook is initialized
+    syncTempIdWithDatabase();
+  }, [id, key, isDbSynced]);
 
   // Custom setter that updates both state and session storage
   const setId = useCallback((newId: string | null) => {
@@ -177,6 +206,13 @@ export function useTemporaryId(
           sessionStorage.setItem(`temp_${key}`, newTempId);
           console.log(`Generated and stored new temporary ID: ${newTempId}`);
         }
+      }
+
+      // Reset initialization state to trigger DB sync for new ID
+      if (key === 'workflow') {
+        setIsDbSynced(false);
+        setIsInitialized(false);
+        initAttempts.current = 0;
       }
     } catch (error) {
       console.error('Error in setId:', error);

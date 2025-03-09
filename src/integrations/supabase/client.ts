@@ -58,6 +58,22 @@ export function isTemporaryWorkflowId(workflowId: string): boolean {
   return workflowId.indexOf('temp-') === 0;
 }
 
+/**
+ * Ensures a workflow ID has the temporary prefix if it's flagged as temporary
+ * @param workflowId The workflow ID to format
+ * @param isTemporary Whether the ID should be temporary
+ * @returns Properly formatted workflow ID
+ */
+export function formatWorkflowId(workflowId: string, isTemporary: boolean = false): string {
+  if (!workflowId) return workflowId;
+  
+  if (isTemporary && !workflowId.startsWith('temp-')) {
+    return `temp-${workflowId}`;
+  }
+  
+  return workflowId;
+}
+
 // Initialize auth change listener to handle session state
 supabase.auth.onAuthStateChange((event, session) => {
   console.log('Auth state changed:', event, session ? 'User authenticated' : 'No session');

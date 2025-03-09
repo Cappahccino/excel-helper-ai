@@ -16,7 +16,14 @@ import Pricing from "./pages/Pricing";
 import Workflows from "./pages/Workflows";
 import Canvas from "./pages/Canvas";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 30000,
+    },
+  },
+});
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<boolean | null>(null);
