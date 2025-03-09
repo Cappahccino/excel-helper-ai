@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,23 +20,63 @@ const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<boolean | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(!!session);
-    });
+    const checkSession = async () => {
+      try {
+        setLoadingAuth(true);
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error("Error checking auth session:", error);
+          setAuthError(error.message);
+          setSession(false);
+        } else {
+          setSession(!!data.session);
+        }
+      } catch (err) {
+        console.error("Unexpected error in auth check:", err);
+        setAuthError("Authentication check failed");
+        setSession(false);
+      } finally {
+        setLoadingAuth(false);
+      }
+    };
+
+    checkSession();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("Auth state changed:", _event);
       setSession(!!session);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  if (session === null) {
-    return null; // Loading state
+  if (loadingAuth) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center flex-col">
+        <div className="text-red-500 mb-4">Authentication Error: {authError}</div>
+        <button 
+          onClick={() => window.location.href = '/auth'}
+          className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
+        >
+          Go to Login
+        </button>
+      </div>
+    );
   }
 
   if (!session) {

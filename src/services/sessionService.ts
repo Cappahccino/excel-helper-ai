@@ -1,33 +1,49 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
+/**
+ * Creates a new chat session
+ * @param userId User ID to associate with the session
+ * @returns The created session object
+ */
 export async function createSession(userId: string) {
-  const { data: session, error } = await supabase
-    .from('chat_sessions')
-    .insert({
-      user_id: userId,
-      status: 'active',
-      chat_name: 'Untitled Chat',
-      thread_level: 0,
-      thread_position: 0,
-      thread_metadata: {
-        title: null,
-        summary: null
-      }
-    })
-    .select('session_id')
-    .single();
+  try {
+    console.log('Creating new session for user:', userId);
+    
+    const { data: session, error } = await supabase
+      .from('chat_sessions')
+      .insert({
+        user_id: userId,
+        status: 'active',
+        chat_name: 'Untitled Chat',
+        thread_level: 0,
+        thread_position: 0,
+        thread_metadata: {
+          title: null,
+          summary: null
+        }
+      })
+      .select('session_id')
+      .single();
 
-  if (error) {
-    console.error('Error creating session:', error);
+    if (error) {
+      console.error('Error creating session:', error);
+      throw error;
+    }
+
+    if (!session) {
+      console.error('No session returned after creation');
+      throw new Error('Failed to create session');
+    }
+
+    console.log('Successfully created session:', session.session_id);
+    return session;
+  } catch (error) {
+    console.error('Fatal error in createSession:', error);
+    toast.error('Failed to create chat session');
     throw error;
   }
-
-  if (!session) {
-    throw new Error('Failed to create session');
-  }
-
-  return session;
 }
 
 /**
@@ -35,6 +51,11 @@ export async function createSession(userId: string) {
  */
 async function verifyFileStatus(fileIds: string[]): Promise<void> {
   try {
+    if (!fileIds || fileIds.length === 0) {
+      console.log('No files to verify');
+      return;
+    }
+    
     console.log('Checking file status for:', fileIds);
     
     const { data: files, error } = await supabase
@@ -68,15 +89,35 @@ async function verifyFileStatus(fileIds: string[]): Promise<void> {
   }
 }
 
+/**
+ * Ensures files are associated with a session
+ * @param sessionId Session ID to associate files with
+ * @param fileIds Array of file IDs to associate
+ */
 export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
   try {
+    if (!sessionId) {
+      console.error('No session ID provided to ensureSessionFiles');
+      return;
+    }
+    
+    if (!fileIds || fileIds.length === 0) {
+      console.log('No files to associate with session:', sessionId);
+      return;
+    }
+    
     console.log('Ensuring session files:', { sessionId, fileIds });
 
     // Get existing session files
-    const { data: existingFiles } = await supabase
+    const { data: existingFiles, error: fetchError } = await supabase
       .from('session_files')
       .select('file_id')
       .eq('session_id', sessionId);
+      
+    if (fetchError) {
+      console.error('Error fetching existing session files:', fetchError);
+      throw fetchError;
+    }
 
     const existingFileIds = new Set(existingFiles?.map(f => f.file_id) || []);
 
@@ -125,6 +166,7 @@ export async function ensureSessionFiles(sessionId: string, fileIds: string[]) {
     console.log('Successfully ensured session files');
   } catch (error) {
     console.error('Error in ensureSessionFiles:', error);
+    toast.error('Failed to associate files with session');
     throw error;
   }
 }

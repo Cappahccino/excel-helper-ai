@@ -6,10 +6,18 @@ import type { Database } from './types';
 const SUPABASE_URL = "https://saxnxtumstrsqowuwwbt.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNheG54dHVtc3Ryc3Fvd3V3d2J0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc5MDkxODgsImV4cCI6MjA1MzQ4NTE4OH0.ltOp920tiFP9EQab5lJG2_UVRYE0_JIOJ_GMtaGrLxc";
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
-
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+// Create Supabase client with session persistence enabled
+export const supabase = createClient<Database>(
+  SUPABASE_URL, 
+  SUPABASE_PUBLISHABLE_KEY,
+  {
+    auth: {
+      persistSession: true,
+      storageKey: 'supabase.auth.token',
+      autoRefreshToken: true,
+    }
+  }
+);
 
 // Cache for ID conversions to avoid repeated string operations on the same IDs
 const idConversionCache = new Map<string, string>();
@@ -49,3 +57,28 @@ export function isTemporaryWorkflowId(workflowId: string): boolean {
   // Using indexOf instead of startsWith for better performance in hot paths
   return workflowId.indexOf('temp-') === 0;
 }
+
+// Initialize auth change listener to handle session state
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('Auth state changed:', event, session ? 'User authenticated' : 'No session');
+  
+  if (event === 'SIGNED_OUT') {
+    // Clear any temporary IDs from session storage
+    if (typeof window !== 'undefined') {
+      const keysToRemove = [];
+      
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('temp_')) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      // Remove all temporary IDs
+      keysToRemove.forEach(key => {
+        sessionStorage.removeItem(key);
+        console.log(`Removed temporary ID on signout: ${key}`);
+      });
+    }
+  }
+});
