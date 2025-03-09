@@ -1,7 +1,8 @@
+
 // We'll focus on the most performance-critical methods in the WorkflowContext
 // This is a partial update that optimizes key functions
 
-import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { Json } from '@/types/workflow';
 import { toast } from 'sonner';
@@ -52,13 +53,6 @@ export const WorkflowProvider: React.FC<{
   // Cache for file schemas to reduce database reads
   const schemaCache = useRef<Map<string, Map<string, WorkflowFileSchema>>>(new Map());
   const isTemporaryId = useMemo(() => workflowId ? isTemporaryWorkflowId(workflowId) : false, [workflowId]);
-  
-  // Log workflow id changes
-  useEffect(() => {
-    if (workflowId) {
-      console.log(`WorkflowContext initialized with ID: ${workflowId}, isTemporary: ${isTemporaryId}`);
-    }
-  }, [workflowId, isTemporaryId]);
   
   // Optimized migration function with batched operations
   const migrateTemporaryWorkflow = useCallback(async (tempId: string, permanentId: string): Promise<boolean> => {

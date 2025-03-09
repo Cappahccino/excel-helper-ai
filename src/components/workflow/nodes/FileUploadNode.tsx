@@ -29,7 +29,7 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) => {
-  const { workflowId, isTemporaryId } = useWorkflow();
+  const { workflowId } = useWorkflow();
   const [selectedFileId, setSelectedFileId] = useState<string | undefined>(
     data.config?.fileId
   );
@@ -108,7 +108,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     if (!workflowId || !selectedFileId || !id) return;
     
     console.log('Setting up realtime subscription for workflow file updates');
-    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+    const dbWorkflowId = convertToDbWorkflowId(workflowId);
     
     const channel = supabase
       .channel(`workflow_file_updates_${id}`)
@@ -199,10 +199,10 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       }
       
       // Log the workflow ID for debugging
-      console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId} (isTemporary: ${isTemporaryId})`);
+      console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
       
       // Get the database-compatible workflow ID
-      const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
       // Determine if this is a temporary workflow
       const isTemporary = workflowId.startsWith('temp-');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, MouseEvent, useRef } from 'react';
+import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,8 +15,7 @@ import {
   Connection,
   NodeTypes,
   Node,
-  Edge as ReactFlowEdge,
-  BackgroundVariant
+  Edge as ReactFlowEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -222,21 +221,11 @@ const Canvas = () => {
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const [optimisticSave, setOptimisticSave] = useState<boolean>(false);
-  const [workflowInitialized, setWorkflowInitialized] = useState<boolean>(false);
   
-  const saveWorkflowTimeoutRef = useRef<number | null>(null);
-  
-  const [savingWorkflowId, setSavingWorkflowId, isWorkflowIdInitialized] = useTemporaryId('workflow', 
+  const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
     workflowId === 'new' ? null : workflowId,
     workflowId === 'new' || (workflowId && workflowId.startsWith('temp-'))
   );
-  
-  useEffect(() => {
-    if (isWorkflowIdInitialized) {
-      setWorkflowInitialized(true);
-      console.log('Workflow initialized with ID:', savingWorkflowId);
-    }
-  }, [isWorkflowIdInitialized, savingWorkflowId]);
   
   const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
     executionId,
@@ -251,14 +240,14 @@ const Canvas = () => {
   }, [setEdges]);
 
   useEffect(() => {
-    if (workflowId && workflowId !== 'new' && workflowInitialized) {
+    if (workflowId && workflowId !== 'new') {
       if (workflowId.startsWith('temp-')) {
         console.log('Loading workflow with temporary ID:', workflowId);
       } else {
         loadWorkflow();
       }
     }
-  }, [workflowId, workflowInitialized]);
+  }, [workflowId]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
@@ -535,11 +524,11 @@ const Canvas = () => {
       });
     });
 
-    if (saveWorkflowTimeoutRef.current) {
-      clearTimeout(saveWorkflowTimeoutRef.current);
+    if (window.saveWorkflowTimeout) {
+      clearTimeout(window.saveWorkflowTimeout);
     }
     
-    saveWorkflowTimeoutRef.current = window.setTimeout(() => saveWorkflow(), 1000);
+    window.saveWorkflowTimeout = setTimeout(() => saveWorkflow(), 1000) as unknown as number;
   };
 
   const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
@@ -735,89 +724,209 @@ const Canvas = () => {
 
   return (
     <WorkflowProvider workflowId={savingWorkflowId || undefined}>
-      {!workflowInitialized ? (
-        <div className="h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin h-8 w-8 border-t-2 border-b-2 border-primary rounded-full mx-auto mb-4"></div>
-            <p className="text-gray-600">Initializing workflow...</p>
+      <div className="h-screen flex flex-col">
+        <div className="border-b p-4 flex justify-between items-center">
+          <div className="flex-1 mr-4">
+            <Input
+              value={workflowName}
+              onChange={(e) => setWorkflowName(e.target.value)}
+              className="text-xl font-bold mb-2"
+              placeholder="Workflow Name"
+            />
+            <Textarea
+              value={workflowDescription}
+              onChange={(e) => setWorkflowDescription(e.target.value)}
+              className="text-sm resize-none"
+              placeholder="Describe your workflow..."
+              rows={2}
+            />
           </div>
-        </div>
-      ) : (
-        <div className="h-screen flex flex-col">
-          <div className="border-b p-4 flex justify-between items-center">
-            <div className="flex-1 mr-4">
-              <div className="flex items-center">
-                <Button variant="ghost" onClick={() => navigate('/workflows')}>
-                  Back to Workflows
-                </Button>
-                <Input
-                  type="text"
-                  placeholder="Workflow Name"
-                  value={workflowName}
-                  onChange={(e) => setWorkflowName(e.target.value)}
-                  className="ml-4"
-                />
-                <Button
-                  variant="outline"
-                  className="ml-4"
-                  onClick={() => setIsAddingNode(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Node
-                </Button>
+          <div className="flex space-x-2 items-center">
+            {migrationError && (
+              <div className="px-3 py-1 text-sm rounded-full bg-yellow-100 text-yellow-800 flex items-center">
+                Warning: {migrationError}
               </div>
-            </div>
-            <div className="flex items-center">
-              <Button
-                variant="secondary"
-                disabled={isSaving || optimisticSave}
-                onClick={saveWorkflow}
-                className="mr-4"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {isSaving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                variant="default"
-                disabled={isRunning}
-                onClick={runWorkflow}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                {isRunning ? 'Running...' : 'Run'}
-              </Button>
-            </div>
+            )}
+            
+            {executionStatus && (
+              <div className={`px-3 py-1 text-sm rounded-full flex items-center ${
+                executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                executionStatus === 'running' ? 'bg-blue-100 text-blue-800' :
+                executionStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {subscriptionStatus === 'subscribing' && (
+                  <span className="mr-2 h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                )}
+                {executionStatus === 'completed' ? 'Completed' :
+                 executionStatus === 'failed' ? 'Failed' :
+                 executionStatus === 'pending' ? 'Pending' :
+                 executionStatus === 'running' ? 'Running...' :
+                 executionStatus}
+              </div>
+            )}
+            
+            {savingWorkflowId?.startsWith('temp-') && (
+              <div className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800 flex items-center">
+                <span className="mr-2 h-2 w-2 rounded-full bg-blue-500"></span>
+                Temporary ID
+              </div>
+            )}
+            
+            <Button 
+              onClick={saveWorkflow} 
+              disabled={isSaving}
+              className={`flex items-center ${optimisticSave ? 'bg-green-500 hover:bg-green-600' : ''}`}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {isSaving ? 'Saving...' : optimisticSave ? 'Saved!' : 'Save'}
+            </Button>
+            <Button 
+              onClick={runWorkflow} 
+              variant="outline"
+              disabled={isRunning || executionStatus === 'running'}
+              className="flex items-center"
+            >
+              <Play className="mr-2 h-4 w-4" />
+              {isRunning ? 'Starting...' : executionStatus === 'running' ? 'Running...' : 'Run'}
+            </Button>
           </div>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            nodeTypes={getNodeTypes()}
-            onNodeClick={onNodeClick}
-            fitView
-          >
-            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-            <Controls />
-            <MiniMap />
-            <Panel position="bottom-right">
-              {executionStatus && (
-                <div>
-                  Execution Status: {executionStatus}
-                </div>
-              )}
-              {subscriptionStatus && (
-                <div>
-                  Subscription Status: {subscriptionStatus}
-                </div>
-              )}
-            </Panel>
-            <ConnectionHandler />
-          </ReactFlow>
         </div>
-      )}
+        
+        <div className="flex-1 flex">
+          <Tabs defaultValue="canvas" className="w-full">
+            <TabsList className="px-4 pt-2">
+              <TabsTrigger value="canvas">Canvas</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="canvas" className="flex-1 h-full">
+              <div className="h-full">
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onNodeClick={onNodeClick}
+                  nodeTypes={getNodeTypes()}
+                  fitView
+                  attributionPosition="top-right"
+                  style={{ backgroundColor: "#F7F9FB" }}
+                >
+                  <ConnectionHandler workflowId={savingWorkflowId || undefined} />
+                  
+                  <Controls />
+                  <MiniMap nodeClassName={node => node.type} />
+                  <Background />
+                  <Panel position="top-right">
+                    <Button 
+                      onClick={(e: MouseEvent) => {
+                        e.preventDefault();
+                        setIsAddingNode(true);
+                      }} 
+                      className="flex items-center"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Node
+                    </Button>
+                    {executionId && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowLogPanel(!showLogPanel)}
+                        className="ml-2 flex items-center"
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        {showLogPanel ? 'Hide Logs' : 'Show Logs'}
+                      </Button>
+                    )}
+                  </Panel>
+                </ReactFlow>
+              </div>
+
+              {showLogPanel && (
+                <StepLogPanel
+                  nodeId={selectedNodeId}
+                  executionId={executionId}
+                  workflowId={savingWorkflowId}
+                  onClose={() => setShowLogPanel(false)}
+                />
+              )}
+            </TabsContent>
+            
+            <TabsContent value="settings">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Workflow Settings</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {executionStatus && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold mb-2">Execution Status</h3>
+                      <div className={`px-3 py-2 rounded ${
+                        executionStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                        executionStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}>
+                        {executionStatus === 'completed' ? 'Workflow completed successfully' :
+                         executionStatus === 'failed' ? 'Workflow execution failed' :
+                         executionStatus === 'pending' ? 'Workflow is queued and waiting to be processed' :
+                         executionStatus === 'running' ? 'Workflow is currently running...' :
+                         `Workflow status: ${executionStatus}`}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2">Workflow ID</h3>
+                    <div className="text-sm bg-gray-100 p-2 rounded">
+                      {savingWorkflowId || 'Not saved yet'}
+                    </div>
+                  </div>
+                  
+                  {executionId && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold mb-2">Current Execution ID</h3>
+                      <div className="text-sm bg-gray-100 p-2 rounded">
+                        {executionId}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2">Node Count</h3>
+                    <div className="text-sm">{nodes.length} nodes in this workflow</div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">Edge Count</h3>
+                    <div className="text-sm">{edges.length} connections between nodes</div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <NodeLibrary
+          isOpen={isAddingNode}
+          onClose={() => setIsAddingNode(false)}
+          onAddNode={(nodeType, nodeCategory, nodeLabel) => {
+            handleAddNode(nodeType, nodeCategory, nodeLabel);
+          }}
+          nodeCategories={nodeCategories}
+        />
+      </div>
     </WorkflowProvider>
   );
 };
 
+declare global {
+  interface Window {
+    saveWorkflowTimeout?: number;
+  }
+}
+
 export default Canvas;
+
