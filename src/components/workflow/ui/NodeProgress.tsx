@@ -8,6 +8,9 @@ interface NodeProgressProps {
   status?: 'default' | 'success' | 'error' | 'warning' | 'info';
   showLabel?: boolean;
   className?: string;
+  processingStatus?: string;
+  animated?: boolean;
+  size?: 'sm' | 'md' | 'lg';
 }
 
 const NodeProgress: React.FC<NodeProgressProps> = ({
@@ -15,6 +18,9 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
   status = 'default',
   showLabel = false,
   className,
+  processingStatus,
+  animated = false,
+  size = 'sm',
 }) => {
   // Map status to color classes
   const statusClasses = {
@@ -25,17 +31,29 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
     info: 'bg-sky-500',
   };
 
+  // Height based on size
+  const heightClass = {
+    sm: 'h-1.5',
+    md: 'h-2',
+    lg: 'h-3'
+  }[size];
+
   return (
     <div className={cn("w-full", className)}>
       <div className="relative">
         <Progress 
           value={value} 
-          className="h-1.5 bg-gray-100"
-          indicatorClassName={statusClasses[status]}
+          className={cn("bg-gray-100", heightClass, animated ? 'animate-pulse' : '')}
+          indicatorClassName={cn(statusClasses[status], animated ? 'animate-pulse' : '')}
         />
         {showLabel && (
           <div className="text-[10px] text-gray-500 mt-0.5 text-right">
             {Math.round(value)}%
+          </div>
+        )}
+        {processingStatus && (
+          <div className="text-[10px] text-gray-500 mt-0.5">
+            {processingStatus}
           </div>
         )}
       </div>
