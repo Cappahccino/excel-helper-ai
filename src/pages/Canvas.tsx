@@ -743,5 +743,78 @@ const Canvas = () => {
         <div className="h-screen flex flex-col">
           <div className="border-b p-4 flex justify-between items-center">
             <div className="flex-1 mr-4">
-             
+              <div className="flex items-center">
+                <Button variant="ghost" onClick={() => navigate('/workflows')}>
+                  Back to Workflows
+                </Button>
+                <Input
+                  type="text"
+                  placeholder="Workflow Name"
+                  value={workflowName}
+                  onChange={(e) => setWorkflowName(e.target.value)}
+                  className="ml-4"
+                />
+                <Button
+                  variant="outline"
+                  className="ml-4"
+                  onClick={() => setIsAddingNode(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Node
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center">
+              <Button
+                variant="secondary"
+                disabled={isSaving || optimisticSave}
+                onClick={saveWorkflow}
+                className="mr-4"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {isSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={isRunning}
+                onClick={runWorkflow}
+              >
+                <Play className="h-4 w-4 mr-2" />
+                {isRunning ? 'Running...' : 'Run'}
+              </Button>
+            </div>
+          </div>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={getNodeTypes()}
+            onNodeClick={onNodeClick}
+            fitView
+          >
+            <Background variant="dots" gap={12} size={1} />
+            <Controls />
+            <MiniMap />
+            <Panel position="bottom-right">
+              {executionStatus && (
+                <div>
+                  Execution Status: {executionStatus}
+                </div>
+              )}
+              {subscriptionStatus && (
+                <div>
+                  Subscription Status: {subscriptionStatus}
+                </div>
+              )}
+            </Panel>
+            <ConnectionHandler />
+          </ReactFlow>
+        </div>
+      )}
+    </WorkflowProvider>
+  );
+};
 
+export default Canvas;
