@@ -1,5 +1,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.27.0'
+import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
 
 // Define response headers with CORS support
 const corsHeaders = {
@@ -20,6 +21,46 @@ function normalizeWorkflowId(workflowId: string): string {
     return workflowId.substring(5);
   }
   return workflowId;
+}
+
+// Helper function to detect column type from sample values
+function detectColumnType(sampleValues: any[]): string {
+  // If no samples, default to string
+  if (!sampleValues || sampleValues.length === 0) {
+    return 'string';
+  }
+  
+  // Check if all values are numbers
+  const allNumbers = sampleValues.every(val => {
+    if (val === null || val === undefined || val === '') return true;
+    const num = Number(val);
+    return !isNaN(num);
+  });
+  
+  if (allNumbers) return 'number';
+  
+  // Check if all values are dates
+  const allDates = sampleValues.every(val => {
+    if (val === null || val === undefined || val === '') return true;
+    const date = new Date(val);
+    return !isNaN(date.getTime()) && 
+           // Additional check to filter false positives
+           (String(val).includes('-') || String(val).includes('/'));
+  });
+  
+  if (allDates) return 'date';
+  
+  // Check if all values are boolean
+  const boolValues = ['true', 'false', 'yes', 'no', '0', '1'];
+  const allBooleans = sampleValues.every(val => {
+    if (val === null || val === undefined || val === '') return true;
+    return boolValues.includes(String(val).toLowerCase());
+  });
+  
+  if (allBooleans) return 'boolean';
+  
+  // Default to string
+  return 'string';
 }
 
 // Server function to handle file processing
@@ -47,66 +88,120 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
       throw updateError;
     }
     
-    // Get file metadata (or create if it doesn't exist)
+    // Get file information
+    const { data: fileInfo, error: fileError } = await supabaseAdmin
+      .from('excel_files')
+      .select('file_path, filename, mime_type, file_size')
+      .eq('id', fileId)
+      .single();
+      
+    if (fileError) {
+      console.error('Error fetching file info:', fileError);
+      throw fileError;
+    }
+    
+    // Download file from storage
+    const { data: fileData, error: downloadError } = await supabaseAdmin
+      .storage
+      .from('excel_files')
+      .download(fileInfo.file_path);
+      
+    if (downloadError) {
+      console.error('Error downloading file:', downloadError);
+      throw downloadError;
+    }
+    
+    // Process file based on mime type
+    let columnDefinitions = {};
+    let dataSummary = {
+      numSheets: 0,
+      totalRows: 0,
+      sheetNames: []
+    };
+    
+    // Convert ArrayBuffer to appropriate format for XLSX
+    const buffer = await fileData.arrayBuffer();
+    
+    try {
+      // Read the workbook using XLSX
+      const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+      
+      // Store sheet information
+      dataSummary.numSheets = workbook.SheetNames.length;
+      dataSummary.sheetNames = workbook.SheetNames;
+      
+      // Process the first sheet
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Convert worksheet to JSON
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      // Get total rows
+      dataSummary.totalRows = data.length;
+      
+      if (data.length > 0) {
+        const headers = data[0];
+        
+        // Analyze column types
+        for (let colIndex = 0; colIndex < headers.length; colIndex++) {
+          const header = headers[colIndex];
+          
+          // Get sample values from first 10 rows (or all rows if fewer)
+          const sampleValues = [];
+          for (let rowIndex = 1; rowIndex < Math.min(data.length, 11); rowIndex++) {
+            if (data[rowIndex] && data[rowIndex][colIndex] !== undefined) {
+              sampleValues.push(data[rowIndex][colIndex]);
+            }
+          }
+          
+          // Detect column type
+          const type = detectColumnType(sampleValues);
+          columnDefinitions[header.toString()] = type;
+        }
+      }
+    } catch (processingError) {
+      console.error('Error processing file content:', processingError);
+      throw new Error(`Failed to process file content: ${processingError.message}`);
+    }
+    
+    // Create or update file metadata
     const { data: metadata, error: metadataError } = await supabaseAdmin
       .from('file_metadata')
-      .select('*')
-      .eq('file_id', fileId)
-      .maybeSingle();
+      .upsert({
+        file_id: fileId,
+        row_count: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0, // Subtract header row
+        column_definitions: columnDefinitions,
+        data_summary: dataSummary,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'file_id'
+      });
     
     if (metadataError) {
-      console.error('Error fetching file metadata:', metadataError);
+      console.error('Error updating file metadata:', metadataError);
       throw metadataError;
     }
     
-    // If metadata doesn't exist, create it
-    if (!metadata) {
-      console.log(`Creating new metadata for file ${fileId}`);
-      const { error: createError } = await supabaseAdmin
-        .from('file_metadata')
-        .insert({
-          file_id: fileId,
-          row_count: 0,
-          column_definitions: {},
-          data_summary: {}
-        });
+    // Ensure workflow_file_schemas exists
+    const { error: schemaError } = await supabaseAdmin
+      .from('workflow_file_schemas')
+      .upsert({
+        workflow_id: dbWorkflowId,
+        node_id: nodeId,
+        file_id: fileId,
+        columns: Object.keys(columnDefinitions),
+        data_types: columnDefinitions,
+        total_rows: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0,
+        has_headers: true,
+        is_temporary: isTemporary
+      }, {
+        onConflict: 'workflow_id,node_id'
+      });
       
-      if (createError) {
-        console.error('Error creating file metadata:', createError);
-        throw createError;
-      }
-    }
-    
-    // For this example, we'll simulate processing by just setting status to completed
-    // In a real implementation, you would process the file and extract schema information
-    
-    // Short delay to simulate processing
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Update file metadata with simulated data if it doesn't exist
-    if (!metadata || !metadata.column_definitions || Object.keys(metadata.column_definitions).length === 0) {
-      const { error: updateMetaError } = await supabaseAdmin
-        .from('file_metadata')
-        .update({
-          row_count: 100,
-          column_definitions: {
-            "id": "string",
-            "name": "string",
-            "value": "number",
-            "date": "date"
-          },
-          data_summary: {
-            "numSheets": 1,
-            "totalRows": 100,
-            "sheetNames": ["Sheet1"]
-          }
-        })
-        .eq('file_id', fileId);
-      
-      if (updateMetaError) {
-        console.error('Error updating file metadata:', updateMetaError);
-        throw updateMetaError;
-      }
+    if (schemaError) {
+      console.error('Error creating workflow file schema:', schemaError);
+      throw schemaError;
     }
     
     // Mark workflow file as processed
@@ -116,7 +211,9 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
         processing_status: 'completed',
         processing_result: {
           success: true,
-          processed_at: new Date().toISOString()
+          processed_at: new Date().toISOString(),
+          column_count: Object.keys(columnDefinitions).length,
+          row_count: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0
         }
       })
       .eq('workflow_id', dbWorkflowId)
@@ -128,7 +225,13 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
       throw completeError;
     }
     
-    return { success: true, fileId };
+    return { 
+      success: true, 
+      fileId,
+      filename: fileInfo.filename,
+      columnDefinitions,
+      dataSummary
+    };
   } catch (error) {
     console.error('Error in processFile function:', error);
     

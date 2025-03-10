@@ -1,4 +1,3 @@
-
 import { retryOperation } from "@/utils/retryUtils";
 import { getActiveSessionFiles } from "./sessionFileService";
 import { supabase } from "@/integrations/supabase/client";
@@ -213,3 +212,39 @@ export const triggerVerification = async (fileIds: string[]): Promise<boolean> =
     return false;
   }
 };
+
+// Process file for workflow usage
+export const processWorkflowFile = async (
+  fileId: string,
+  workflowId: string,
+  nodeId: string
+): Promise<boolean> => {
+  try {
+    console.log(`Processing file ${fileId} for workflow ${workflowId}, node ${nodeId}`);
+    
+    // Call the processFile edge function
+    const { data, error } = await supabase.functions.invoke('processFile', {
+      body: { 
+        fileId, 
+        workflowId, 
+        nodeId 
+      }
+    });
+    
+    if (error) {
+      console.error('Error invoking processFile function:', error);
+      return false;
+    }
+    
+    if (!data.success) {
+      console.error('File processing failed:', data.error);
+      return false;
+    }
+    
+    console.log('File processed successfully:', data);
+    return true;
+  } catch (error) {
+    console.error('Error in processWorkflowFile:', error);
+    return false;
+  }
+}
