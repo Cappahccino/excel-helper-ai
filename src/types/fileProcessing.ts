@@ -1,3 +1,4 @@
+
 export type FileProcessingStatus = 
   | 'pending' 
   | 'associating'
@@ -35,4 +36,10 @@ export type FileUploadRPCFunction = {
     p_user_id: string;
     p_is_temporary?: boolean;
   }) => Promise<{ data: WorkflowUploadResponse; error: any }>;
+  
+  associate_file_with_workflow_node: (args: {
+    p_file_id: string;
+    p_workflow_id: string;
+    p_node_id: string;
+  }) => Promise<{ data: boolean; error: any }>;
 }

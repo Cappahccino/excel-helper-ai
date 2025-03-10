@@ -1263,6 +1263,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      associate_file_with_workflow_node: {
+        Args: {
+          p_file_id: string
+          p_workflow_id: string
+          p_node_id: string
+        }
+        Returns: boolean
+      }
       check_node_logs: {
         Args: {
           node_id_param: string

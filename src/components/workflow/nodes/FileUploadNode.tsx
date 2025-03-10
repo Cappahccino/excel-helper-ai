@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -176,12 +177,121 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`;
     return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+  
+  // Helper function to explicitly associate the file with the workflow
+  const associateFileWithWorkflow = async (fileId: string): Promise<boolean> => {
+    // Debug logging
+    console.log('Associating file with workflow - Started');
+    console.log('File ID:', fileId);
+    console.log('Workflow ID:', workflowId);
+    console.log('Node ID:', id);
+    
+    // Ensure we're using the correct format for the workflow ID
+    const dbWorkflowId = convertToDbWorkflowId(workflowId);
+    
+    console.log('DB Workflow ID:', dbWorkflowId);
+    
+    try {
+      // First check if the workflow exists
+      const { data: workflowExists, error: workflowError } = await supabase
+        .from('workflows')
+        .select('id')
+        .eq('id', dbWorkflowId)
+        .maybeSingle();
+      
+      if (workflowError) {
+        console.error('Error checking workflow:', workflowError);
+        throw workflowError;
+      }
+      
+      if (!workflowExists) {
+        console.error('Workflow does not exist in database:', dbWorkflowId);
+        
+        // Get user for the file operation
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
+        
+        // Try to create the workflow
+        const { error: createError } = await supabase
+          .from('workflows')
+          .insert({
+            id: dbWorkflowId,
+            name: 'New Workflow',
+            is_temporary: workflowId.startsWith('temp-'),
+            created_by: user.id,
+            definition: JSON.stringify({ nodes: [], edges: [] })
+          });
+          
+        if (createError) {
+          console.error('Failed to create workflow:', createError);
+          throw createError;
+        }
+        
+        console.log('Created workflow record successfully');
+      } else {
+        console.log('Workflow exists in database');
+      }
+      
+      // Now create/update the association using our new RPC function
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('associate_file_with_workflow_node', {
+        p_file_id: fileId,
+        p_workflow_id: dbWorkflowId,
+        p_node_id: id
+      });
+      
+      if (rpcError) {
+        console.error('Error associating file with RPC:', rpcError);
+        
+        // Fallback to direct database operation
+        console.log('Falling back to direct database operation');
+        const { data: assocData, error: assocError } = await supabase
+          .from('workflow_files')
+          .upsert({
+            workflow_id: dbWorkflowId,
+            node_id: id,
+            file_id: fileId,
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'workflow_id,node_id'
+          });
+          
+        if (assocError) {
+          console.error('Error associating file with direct operation:', assocError);
+          throw assocError;
+        }
+      } else {
+        console.log('RPC association successful, result:', rpcResult);
+      }
+      
+      console.log('File association successful');
+      return true;
+    } catch (error) {
+      console.error('File association failed:', error);
+      throw error;
+    }
+  };
 
   // Handle file selection using transaction approach
   const handleFileSelection = async (fileId: string) => {
     if (!fileId) return;
     
     try {
+      // Debug logging
+      console.log('Debug - Current workflowId:', workflowId);
+      if (workflowId.startsWith('temp-')) {
+        console.log('Debug - This is a temporary workflow ID');
+        console.log('Debug - Formatted for DB:', workflowId.substring(5));
+      } else {
+        console.log('Debug - This is a permanent workflow ID');
+      }
+      
+      console.log('Debug - Current nodeId:', id);
+      console.log('Debug - Node component props:', { id, data, selected });
+      
       // Skip processing if this file is already selected and processed
       if (fileId === selectedFileId && fileInfo && fileInfo.processing_status === 'completed') {
         return;
@@ -232,26 +342,24 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Update processing state to indicate file association
       updateProcessingState('associating', 30, 'Creating database association...');
       
-      // Explicitly type the supabase.rpc call
-      const { data: result, error } = await supabase.rpc<WorkflowUploadResponse>('workflow_upload_file', {
-        p_workflow_id: dbWorkflowId,
-        p_node_id: id,
-        p_file_path: fileData.file_path,
-        p_file_name: fileData.filename,
-        p_file_size: fileData.file_size,
-        p_mime_type: fileData.mime_type,
-        p_user_id: user.id,
-        p_is_temporary: isTemporary
-      });
-      
-      if (error || !result?.success) {
-        console.error('Error in transaction:', error || result?.error);
-        updateProcessingState('error', 0, 'Error', `Transaction error: ${error?.message || result?.error || 'Unknown error'}`);
+      // Try to use our new association function
+      console.log('Attempting to associate file with workflow node using RPC function');
+      try {
+        const result = await associateFileWithWorkflow(fileId);
+        if (!result) {
+          console.error('File association failed');
+          updateProcessingState('error', 0, 'Error', 'File association failed');
+          toast.error('Failed to associate file with workflow node');
+          return;
+        }
+        
+        console.log('File association successful');
+      } catch (assocError) {
+        console.error('Error in association:', assocError);
+        updateProcessingState('error', 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
         toast.error('Failed to associate file with workflow node');
         return;
       }
-      
-      console.log('Transaction successful:', result);
       
       // Queue the file for processing
       updateProcessingState('processing', 40, 'Submitting for processing...');
