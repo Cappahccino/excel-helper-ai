@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 
 import { FileUploadNodeData } from '@/types/workflow';
-import { FileProcessingStatus, FileProcessingState, WorkflowUploadResponse } from '@/types/fileProcessing';
+import { FileProcessingStatus, FileProcessingState } from '@/types/fileProcessing';
 import { useWorkflow } from '../context/WorkflowContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import NodeProgress from '../ui/NodeProgress';
@@ -30,7 +30,7 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) => {
-  const { workflowId } = useWorkflow();
+  const { workflowId, propagateFileSchema } = useWorkflow();
   const [selectedFileId, setSelectedFileId] = useState<string | undefined>(
     data.config?.fileId
   );
