@@ -313,7 +313,7 @@ export type Database = {
           {
             foreignKeyName: "file_metadata_file_id_fkey"
             columns: ["file_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "excel_files"
             referencedColumns: ["id"]
           },

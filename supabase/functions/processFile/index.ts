@@ -165,7 +165,7 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
       throw new Error(`Failed to process file content: ${processingError.message}`);
     }
     
-    // Create or update file metadata
+    // Create or update file metadata - using proper upsert with the new constraint
     const { data: metadata, error: metadataError } = await supabaseAdmin
       .from('file_metadata')
       .upsert({
@@ -176,14 +176,15 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'file_id'
-      });
+      })
+      .select();
     
     if (metadataError) {
       console.error('Error updating file metadata:', metadataError);
       throw metadataError;
     }
     
-    // Ensure workflow_file_schemas exists
+    // Create or update workflow_file_schemas with proper upsert
     const { error: schemaError } = await supabaseAdmin
       .from('workflow_file_schemas')
       .upsert({
