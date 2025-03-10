@@ -178,7 +178,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Handle file selection
+  // Handle file selection using transaction approach
   const handleFileSelection = async (fileId: string) => {
     if (!fileId) return;
     
@@ -208,29 +208,61 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Determine if this is a temporary workflow
       const isTemporary = workflowId.startsWith('temp-');
       
-      // Associate the file with this node in the workflow
-      updateProcessingState('associating', 20, 'Creating database association...');
-      const { error } = await supabase
-        .from('workflow_files')
-        .upsert({
-          workflow_id: dbWorkflowId,
-          node_id: id,
-          file_id: fileId,
-          status: 'selected',
-          is_active: true,
-          processing_status: 'queued',
-          is_temporary: isTemporary
-        });
+      // Get the file info before processing
+      const { data: fileData, error: fileError } = await supabase
+        .from('excel_files')
+        .select('id, filename, file_path, file_size, mime_type')
+        .eq('id', fileId)
+        .single();
+        
+      if (fileError) {
+        console.error('Error fetching file data:', fileError);
+        updateProcessingState('error', 0, 'Error', `File data error: ${fileError.message}`);
+        toast.error('Failed to get file information');
+        throw fileError;
+      }
+      
+      // Get current user for the file operation
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        updateProcessingState('error', 0, 'Error', 'User not authenticated');
+        toast.error('You must be logged in to use this feature');
+        throw new Error('User not authenticated');
+      }
+      
+      // Update processing state to indicate file association
+      updateProcessingState('associating', 30, 'Creating database association...');
+      
+      // Directly call the RPC function to handle the transaction
+      const { data: result, error } = await supabase.rpc('workflow_upload_file', {
+        p_workflow_id: dbWorkflowId,
+        p_node_id: id,
+        p_file_path: fileData.file_path,
+        p_file_name: fileData.filename,
+        p_file_size: fileData.file_size,
+        p_mime_type: fileData.mime_type,
+        p_user_id: user.id,
+        p_is_temporary: isTemporary
+      });
       
       if (error) {
-        console.error('Error creating workflow file association:', error);
-        updateProcessingState('error', 0, 'Error', `Database error: ${error.message}`);
+        console.error('Error in transaction:', error);
+        updateProcessingState('error', 0, 'Error', `Transaction error: ${error.message}`);
         toast.error('Failed to associate file with workflow node');
         throw error;
       }
       
+      if (!result.success) {
+        console.error('Transaction failed:', result.error);
+        updateProcessingState('error', 0, 'Error', `Transaction failed: ${result.error}`);
+        toast.error('Failed to associate file with workflow');
+        return;
+      }
+      
+      console.log('Transaction successful:', result);
+      
       // Queue the file for processing
-      updateProcessingState('processing', 30, 'Submitting for processing...');
+      updateProcessingState('processing', 40, 'Submitting for processing...');
       try {
         const response = await supabase.functions.invoke('processFile', {
           body: {

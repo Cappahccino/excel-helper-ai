@@ -1,21 +1,15 @@
 
-/**
- * Possible processing states for workflow file uploads
- */
 export type FileProcessingStatus = 
-  | 'pending'
-  | 'associating' 
-  | 'uploading'
-  | 'processing'
+  | 'pending' 
+  | 'associating'
+  | 'uploading' 
+  | 'processing' 
   | 'fetching_schema'
   | 'verifying'
-  | 'completed'
-  | 'failed'  // Explicitly include 'failed' status
+  | 'completed' 
+  | 'failed'
   | 'error';
 
-/**
- * Processing state information with metadata
- */
 export interface FileProcessingState {
   status: FileProcessingStatus;
   progress: number;
@@ -23,7 +17,4 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
-  previewData?: any[];
-  previewColumns?: string[];
-  validationErrors?: string[];
 }
