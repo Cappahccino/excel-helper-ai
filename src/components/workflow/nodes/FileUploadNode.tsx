@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -18,7 +17,7 @@ import {
 } from '@/components/ui/select';
 
 import { FileUploadNodeData } from '@/types/workflow';
-import { FileProcessingStatus, FileProcessingState } from '@/types/fileProcessing';
+import { FileProcessingStatus, FileProcessingState, WorkflowUploadResponse } from '@/types/fileProcessing';
 import { useWorkflow } from '../context/WorkflowContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import NodeProgress from '../ui/NodeProgress';
@@ -233,8 +232,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Update processing state to indicate file association
       updateProcessingState('associating', 30, 'Creating database association...');
       
-      // Directly call the RPC function to handle the transaction
-      const { data: result, error } = await supabase.rpc('workflow_upload_file', {
+      // Explicitly type the supabase.rpc call
+      const { data: result, error } = await supabase.rpc<WorkflowUploadResponse>('workflow_upload_file', {
         p_workflow_id: dbWorkflowId,
         p_node_id: id,
         p_file_path: fileData.file_path,
@@ -245,17 +244,10 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         p_is_temporary: isTemporary
       });
       
-      if (error) {
-        console.error('Error in transaction:', error);
-        updateProcessingState('error', 0, 'Error', `Transaction error: ${error.message}`);
+      if (error || !result?.success) {
+        console.error('Error in transaction:', error || result?.error);
+        updateProcessingState('error', 0, 'Error', `Transaction error: ${error?.message || result?.error || 'Unknown error'}`);
         toast.error('Failed to associate file with workflow node');
-        throw error;
-      }
-      
-      if (!result.success) {
-        console.error('Transaction failed:', result.error);
-        updateProcessingState('error', 0, 'Error', `Transaction failed: ${result.error}`);
-        toast.error('Failed to associate file with workflow');
         return;
       }
       

@@ -1,4 +1,3 @@
-
 export type FileProcessingStatus = 
   | 'pending' 
   | 'associating'
@@ -17,4 +16,23 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
+}
+
+export interface WorkflowUploadResponse {
+  success: boolean;
+  file_id?: string;
+  error?: string;
+}
+
+export type FileUploadRPCFunction = {
+  workflow_upload_file: (args: {
+    p_workflow_id: string;
+    p_node_id: string;
+    p_file_path: string;
+    p_file_name: string;
+    p_file_size: number;
+    p_mime_type: string;
+    p_user_id: string;
+    p_is_temporary?: boolean;
+  }) => Promise<{ data: WorkflowUploadResponse; error: any }>;
 }
