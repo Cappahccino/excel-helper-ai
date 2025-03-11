@@ -391,8 +391,13 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         updateProcessingState('fetching_schema', 60, 'Retrieving file schema...');
         
         // Update node configuration
-        if (data.onConfigChange?.({ ...data.config, ...newConfig })) {
-          data.onConfigChange?.({ ...data.config, ...newConfig });
+        const newConfig = {
+          fileId: fileId,
+          fileName: fileData.filename
+        };
+        
+        if (data.onConfigChange) {
+          data.onConfigChange(newConfig);
         }
         
         toast.success('File processing started');

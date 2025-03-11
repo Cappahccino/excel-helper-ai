@@ -1,315 +1,225 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  ReactFlow,
-  Controls,
-  MiniMap,
-  Background,
-  useNodesState,
-  useEdgesState,
-  addEdge,
-  Connection,
-  NodeTypes,
-  Panel,
-} from '@xyflow/react';
+import { useParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useNodesState, useEdgesState, addEdge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { v4 as uuidv4 } from 'uuid';
 
-import {
-  WorkflowNode,
-  Edge,
-  NodeType,
-  WorkflowNodeData,
-  NodeComponentType,
-  InputNodeType,
-  ProcessingNodeType,
-  AINodeType,
-  OutputNodeType,
-  IntegrationNodeType,
-  ControlNodeType,
-  UtilityNodeType
-} from '@/types/workflow';
+import { WorkflowProvider } from '@/components/workflow/context/WorkflowContext';
+import { useTemporaryId } from '@/hooks/useTemporaryId';
+import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
+import { useWorkflowDatabase } from '@/hooks/useWorkflowDatabase';
+import { useNodeManagement } from '@/hooks/useNodeManagement';
 
-import AINode from './nodes/AINode';
-import DataInputNode from './nodes/DataInputNode';
-import DataProcessingNode from './nodes/DataProcessingNode';
-import OutputNode from './nodes/OutputNode';
-import AskAINode from './nodes/AskAINode';
-import IntegrationNode from './nodes/IntegrationNode';
-import ControlNode from './nodes/ControlNode';
-import SpreadsheetGeneratorNode from './nodes/SpreadsheetGeneratorNode';
-import UtilityNode from './nodes/UtilityNode';
-import FileUploadNode from './nodes/FileUploadNode';
+import NodeLibrary from '@/components/workflow/NodeLibrary';
+import StepLogPanel from '@/components/workflow/StepLogPanel';
+import WorkflowHeader from '@/components/canvas/WorkflowHeader';
+import WorkflowSettings from '@/components/canvas/WorkflowSettings';
+import CanvasFlow from '@/components/canvas/CanvasFlow';
+import { nodeCategories } from '@/components/canvas/NodeCategories';
+import NodeConfigPanel from '@/components/workflow/NodeConfigPanel';
 
-import NodeConfigPanel from './NodeConfigPanel';
-import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-const nodeTypes: NodeTypes = {
-  aiNode: AINode,
-  dataInput: DataInputNode,
-  dataProcessing: DataProcessingNode,
-  outputNode: OutputNode,
-  askAI: AskAINode,
-  integrationNode: IntegrationNode,
-  controlNode: ControlNode,
-  spreadsheetGenerator: SpreadsheetGeneratorNode,
-  utilityNode: UtilityNode,
-  fileUpload: FileUploadNode,
-};
-
-interface WorkflowBuilderProps {
-  initialNodes?: WorkflowNode[];
-  initialEdges?: Edge[];
-  onChange?: (nodes: WorkflowNode[], edges: Edge[]) => void;
-  onSave?: (nodes: WorkflowNode[], edges: Edge[]) => void;
-  readOnly?: boolean;
+declare global {
+  interface Window {
+    saveWorkflowTimeout?: number;
+  }
 }
 
-const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
-  initialNodes = [],
-  initialEdges = [],
-  onChange,
-  onSave,
-  readOnly = false,
-}) => {
-  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initialEdges);
-  const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
-  const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
+const WorkflowBuilder = () => {
+  const { workflowId } = useParams<{ workflowId: string }>();
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  
+  const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
+    workflowId === 'new' ? null : workflowId,
+    workflowId === 'new' || (workflowId && workflowId.startsWith('temp-'))
+  );
+  
+  const {
+    workflowName,
+    setWorkflowName,
+    workflowDescription,
+    setWorkflowDescription,
+    isLoading,
+    isSaving,
+    optimisticSave,
+    migrationError,
+    loadWorkflow,
+    saveWorkflow: saveWorkflowToDb,
+    runWorkflow
+  } = useWorkflowDatabase(savingWorkflowId, setSavingWorkflowId);
+
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    handleNodeConfigUpdate,
+    handleAddNode
+  } = useNodeManagement(setNodes, () => saveWorkflowToDb(nodes, edges));
+
+  const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
+    executionId,
+    workflowId: savingWorkflowId,
+    onStatusChange: (status) => {
+      console.log(`Workflow status changed to: ${status}`);
+    }
+  });
+
+  const onConnect = useCallback((params: Connection) => {
+    setEdges((eds) => addEdge(params, eds));
+  }, [setEdges]);
+
+  const saveWorkflow = useCallback(() => {
+    return saveWorkflowToDb(nodes, edges);
+  }, [saveWorkflowToDb, nodes, edges]);
 
   useEffect(() => {
-    if (onChange) {
-      onChange(nodes, edges);
+    if (workflowId && workflowId !== 'new') {
+      if (workflowId.startsWith('temp-')) {
+        console.log('Loading workflow with temporary ID:', workflowId);
+      } else {
+        loadWorkflow(workflowId, setNodes, setEdges);
+      }
     }
-  }, [nodes, edges, onChange]);
+  }, [workflowId, loadWorkflow]);
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: WorkflowNode) => {
+  const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
+    setSelectedNodeId(node.id);
     setSelectedNode(node);
-    setIsConfigPanelOpen(true);
+    setShowLogPanel(true);
   }, []);
 
-  const onConnect = useCallback(
-    (params: Connection) => {
-      setEdges((eds) => addEdge(params, eds));
-    },
-    [setEdges]
-  );
+  const handleRunWorkflow = useCallback(() => {
+    runWorkflow(savingWorkflowId, nodes, edges, setIsRunning, setExecutionId);
+  }, [savingWorkflowId, nodes, edges, runWorkflow]);
 
-  const handleUpdateNodeConfig = useCallback(
-    (updatedConfig: any) => {
-      if (!selectedNode) return;
-      
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === selectedNode.id) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                config: updatedConfig,
-              },
-            };
-          }
-          return node;
-        })
-      );
-    },
-    [selectedNode, setNodes]
-  );
+  const handleAddNodeClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsAddingNode(true);
+  }, []);
 
-  const handleDeleteNode = useCallback(() => {
-    if (!selectedNode) return;
-    
-    setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
-    setEdges((eds) =>
-      eds.filter(
-        (edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id
-      )
-    );
-    
-    setSelectedNode(null);
-    setIsConfigPanelOpen(false);
-  }, [selectedNode, setNodes, setEdges]);
+  const handleDeleteNode = () => {
+    if (selectedNode) {
+      setNodes(nodes.filter(node => node.id !== selectedNode.id));
+      setSelectedNode(null);
+    }
+  };
 
-  const handleDuplicateNode = useCallback(() => {
-    if (!selectedNode) return;
-    
-    const newNodeId = `node-${uuidv4()}`;
-    const newNode: WorkflowNode = {
-      ...selectedNode,
-      id: newNodeId,
-      position: {
-        x: selectedNode.position.x + 50,
-        y: selectedNode.position.y + 50,
-      },
-    };
-    
-    setNodes((nds) => [...nds, newNode]);
-  }, [selectedNode, setNodes]);
-
-  const addNode = (type: NodeComponentType) => {
-    const nodeId = `node-${uuidv4()}`;
-    
-    const createNodeData = (): WorkflowNodeData => {
-      switch (type) {
-        case 'fileUpload':
-          return {
-            label: 'File Upload',
-            type: 'fileUpload' as const,
-            config: {},
-          };
-        case 'spreadsheetGenerator':
-          return {
-            label: 'Spreadsheet Generator',
-            type: 'spreadsheetGenerator' as const,
-            config: {},
-          };
-        case 'dataInput':
-          return {
-            label: 'Data Input',
-            type: 'dataInput' as InputNodeType,
-            config: {},
-          };
-        case 'dataProcessing':
-          return {
-            label: 'Data Processing',
-            type: 'dataProcessing' as ProcessingNodeType,
-            config: {},
-          };
-        case 'aiNode':
-          return {
-            label: 'AI Analysis',
-            type: 'aiNode' as AINodeType,
-            config: {},
-          };
-        case 'askAI':
-          return {
-            label: 'Ask AI',
-            type: 'askAI' as AINodeType,
-            config: {
-              aiProvider: 'openai',
-              modelName: 'gpt-4o-mini',
-              prompt: '',
-              systemMessage: '',
-            },
-          };
-        case 'outputNode':
-          return {
-            label: 'Output',
-            type: 'outputNode' as OutputNodeType,
-            config: {},
-          };
-        case 'integrationNode':
-          return {
-            label: 'Integration',
-            type: 'integrationNode' as IntegrationNodeType,
-            config: {},
-          };
-        case 'controlNode':
-          return {
-            label: 'Control Flow',
-            type: 'controlNode' as ControlNodeType,
-            config: {},
-          };
-        case 'utilityNode':
-          return {
-            label: 'Utility',
-            type: 'utilityNode' as UtilityNodeType,
-            config: {},
-          };
-        default:
-          return {
-            label: 'Node',
-            type: 'dataInput' as InputNodeType,
-            config: {},
-          };
-      }
-    };
-    
-    const newNode: WorkflowNode = {
-      id: nodeId,
-      type,
-      position: { x: 100, y: 100 },
-      data: createNodeData(),
-    };
-    
-    setNodes((nds) => [...nds, newNode]);
+  const handleDuplicateNode = () => {
+    if (selectedNode) {
+      const newNodeId = `node-${Date.now()}`;
+      const newNode = {
+        ...selectedNode,
+        id: newNodeId,
+        position: {
+          x: selectedNode.position.x + 50,
+          y: selectedNode.position.y + 50
+        }
+      };
+      setNodes([...nodes, newNode]);
+    }
   };
 
   return (
-    <div className="w-full h-full flex">
-      <div className="flex-1 relative">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={onNodeClick}
-          nodeTypes={nodeTypes}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          minZoom={0.2}
-          maxZoom={4}
-          fitView
-          proOptions={{ hideAttribution: true }}
-          nodesDraggable={!readOnly}
-          nodesConnectable={!readOnly}
-          elementsSelectable={!readOnly}
-          style={{ backgroundColor: "#f7f9fc" }}
-        >
-          <Background />
-          <Controls />
-          <MiniMap />
-          
-          {!readOnly && (
-            <Panel position="top-right" className="mt-10">
-              <div className="bg-white p-2 rounded shadow-md">
-                <Button
-                  size="sm"
-                  onClick={() => addNode('dataInput')}
-                  className="mb-2 w-full"
-                >
-                  <Plus className="mr-1 h-4 w-4" /> Data Input
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => addNode('dataProcessing')}
-                  className="mb-2 w-full"
-                >
-                  <Plus className="mr-1 h-4 w-4" /> Processing
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => addNode('aiNode')}
-                  className="mb-2 w-full"
-                >
-                  <Plus className="mr-1 h-4 w-4" /> AI Node
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => addNode('outputNode')}
-                  className="w-full"
-                >
-                  <Plus className="mr-1 h-4 w-4" /> Output
-                </Button>
-              </div>
-            </Panel>
-          )}
-        </ReactFlow>
-      </div>
-
-      {selectedNode && (
-        <NodeConfigPanel
-          node={selectedNode}
-          onConfigChange={handleNodeConfigUpdate}
-          onUpdateConfig={handleNodeConfigUpdate}
-          onDelete={() => handleDeleteNode(selectedNode.id)}
-          onDuplicate={() => handleDuplicateNode(selectedNode.id)}
-          onClose={() => setSelectedNode(null)}
-          readOnly={false}
+    <WorkflowProvider workflowId={savingWorkflowId || undefined}>
+      <div className="h-screen flex flex-col">
+        <WorkflowHeader 
+          workflowName={workflowName}
+          workflowDescription={workflowDescription}
+          onWorkflowNameChange={(e) => setWorkflowName(e.target.value)}
+          onWorkflowDescriptionChange={(e) => setWorkflowDescription(e.target.value)}
+          onSave={saveWorkflow}
+          onRun={handleRunWorkflow}
+          isSaving={isSaving}
+          isRunning={isRunning}
+          executionStatus={executionStatus}
+          savingWorkflowId={savingWorkflowId}
+          migrationError={migrationError}
+          optimisticSave={optimisticSave}
+          subscriptionStatus={subscriptionStatus}
         />
-      )}
-    </div>
+        
+        <div className="flex-1 flex">
+          <Tabs defaultValue="canvas" className="w-full">
+            <TabsList className="px-4 pt-2">
+              <TabsTrigger value="canvas">Canvas</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="canvas" className="flex-1 h-full">
+              <div className="h-full flex">
+                <div className="flex-1">
+                  <CanvasFlow 
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={onConnect}
+                    onNodeClick={onNodeClick}
+                    handleNodeConfigUpdate={handleNodeConfigUpdate}
+                    workflowId={savingWorkflowId}
+                    executionId={executionId}
+                    onAddNodeClick={handleAddNodeClick}
+                    showLogPanel={showLogPanel}
+                    setShowLogPanel={setShowLogPanel}
+                  />
+                </div>
+                
+                {selectedNode && (
+                  <div className="w-80 border-l border-gray-200">
+                    <NodeConfigPanel
+                      node={selectedNode}
+                      onConfigChange={(updatedConfig) => handleNodeConfigUpdate(selectedNode.id, updatedConfig)}
+                      onUpdateConfig={(updatedConfig) => handleNodeConfigUpdate(selectedNode.id, updatedConfig)}
+                      onDelete={handleDeleteNode}
+                      onDuplicate={handleDuplicateNode}
+                      onClose={() => setSelectedNode(null)}
+                      readOnly={false}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {showLogPanel && (
+                <StepLogPanel
+                  nodeId={selectedNodeId}
+                  executionId={executionId}
+                  workflowId={savingWorkflowId}
+                  onClose={() => setShowLogPanel(false)}
+                />
+              )}
+            </TabsContent>
+            
+            <TabsContent value="settings">
+              <WorkflowSettings 
+                executionStatus={executionStatus}
+                savingWorkflowId={savingWorkflowId}
+                executionId={executionId}
+                nodesCount={nodes.length}
+                edgesCount={edges.length}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <NodeLibrary
+          isOpen={isAddingNode}
+          onClose={() => setIsAddingNode(false)}
+          onAddNode={(nodeType, nodeCategory, nodeLabel) => {
+            handleAddNode(nodeType, nodeCategory, nodeLabel);
+            toast.success(`Added ${nodeLabel} node to canvas`);
+          }}
+          nodeCategories={nodeCategories}
+        />
+      </div>
+    </WorkflowProvider>
   );
 };
 

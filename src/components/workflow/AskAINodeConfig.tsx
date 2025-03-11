@@ -1,112 +1,150 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { AINodeData } from '@/types/workflow';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Save, Brain, MessageSquare } from 'lucide-react';
 
-interface AskAINodeConfigProps {
-  node: AINodeData;
+// Define prop types for the AskAINodeConfig component
+export interface AskAINodeConfigProps {
+  config: AINodeData['config'];
   onConfigChange: (config: Partial<AINodeData['config']>) => void;
 }
 
-// Provider options with their models
-const providerOptions = {
-  openai: [
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-    { id: 'gpt-4o', name: 'GPT-4o' }
-  ],
-  anthropic: [
-    { id: 'claude-3-haiku-20240307', name: 'Claude 3.5 Haiku' },
-    { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' }
-  ],
-  deepseek: [
-    { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-    { id: 'deepseek-coder', name: 'DeepSeek Coder' }
-  ]
-};
+const AskAINodeConfig: React.FC<AskAINodeConfigProps> = ({ config, onConfigChange }) => {
+  // Provider options with their respective models
+  const providerOptions = {
+    openai: [
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+      { id: 'gpt-4o', name: 'GPT-4o' }
+    ],
+    anthropic: [
+      { id: 'claude-3-haiku-20240307', name: 'Claude 3.5 Haiku' },
+      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' }
+    ],
+    deepseek: [
+      { id: 'deepseek-chat', name: 'DeepSeek Chat' },
+      { id: 'deepseek-coder', name: 'DeepSeek Coder' }
+    ]
+  };
 
-const AskAINodeConfig: React.FC<AskAINodeConfigProps> = ({ node, onConfigChange }) => {
-  const { config = {} } = node;
-  
-  // Extract config values with defaults
-  const selectedProvider = config.provider || 'openai';
-  const selectedModel = config.modelName || providerOptions.openai[0].id;
-  const currentPrompt = config.prompt || '';
-  const currentSystemMessage = config.systemMessage || '';
-  
-  // State for form values
-  const [provider, setProvider] = useState<string>(selectedProvider);
-  const [model, setModel] = useState<string>(selectedModel);
-  const [prompt, setPrompt] = useState<string>(currentPrompt);
-  const [systemMessage, setSystemMessage] = useState<string>(currentSystemMessage);
-  
-  // Get available models for current provider
-  const availableModels = providerOptions[provider as keyof typeof providerOptions] || [];
-  
-  const handleSave = () => {
+  // Set up state from props
+  const [provider, setProvider] = useState(config.provider || 'openai');
+  const [model, setModel] = useState(config.modelName || 'gpt-4o-mini');
+  const [prompt, setPrompt] = useState(config.prompt || '');
+  const [systemMessage, setSystemMessage] = useState(config.systemMessage || '');
+
+  // Update the config when inputs change
+  const handleUpdateConfig = () => {
     onConfigChange({
       provider: provider,
       modelName: model,
-      prompt,
-      systemMessage
+      prompt: prompt,
+      systemMessage: systemMessage
     });
-    
-    toast.success('Settings saved');
   };
-  
+
+  // Update model options when provider changes
+  useEffect(() => {
+    // If current model isn't available in the new provider, select the first model
+    const isModelAvailable = providerOptions[provider as keyof typeof providerOptions]
+      .some(modelOption => modelOption.id === model);
+    
+    if (!isModelAvailable) {
+      setModel(providerOptions[provider as keyof typeof providerOptions][0].id);
+    }
+  }, [provider, model]);
+
   return (
     <div className="space-y-4">
-      <div>
-        <Label htmlFor="provider">Provider</Label>
-        <Select value={provider} onValueChange={setProvider}>
-          <SelectTrigger id="provider">
-            <SelectValue placeholder="Select provider" />
+      <div className="space-y-2">
+        <label className="text-sm font-medium">AI Provider</label>
+        <Select 
+          value={provider} 
+          onValueChange={(value) => setProvider(value)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select AI provider" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="openai">OpenAI</SelectItem>
-            <SelectItem value="anthropic">Anthropic</SelectItem>
-            <SelectItem value="deepseek">DeepSeek</SelectItem>
+            <SelectItem value="openai">
+              <div className="flex items-center gap-2">
+                <Brain className="h-4 w-4" />
+                <span>OpenAI</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="anthropic">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                <span>Anthropic</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="deepseek">
+              <div className="flex items-center gap-2">
+                <Brain className="h-4 w-4" />
+                <span>DeepSeek</span>
+              </div>
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
       
-      <div>
-        <Label htmlFor="model">Model</Label>
-        <Select value={model} onValueChange={setModel}>
-          <SelectTrigger id="model">
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Model</label>
+        <Select 
+          value={model} 
+          onValueChange={(value) => setModel(value)}
+        >
+          <SelectTrigger>
             <SelectValue placeholder="Select model" />
           </SelectTrigger>
           <SelectContent>
-            {availableModels.map((m) => (
-              <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+            {providerOptions[provider as keyof typeof providerOptions].map((modelOption) => (
+              <SelectItem key={modelOption.id} value={modelOption.id}>
+                {modelOption.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
       
-      <div>
-        <Label htmlFor="systemMessage">System Message</Label>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">System Message</label>
         <Textarea 
-          id="systemMessage"
           value={systemMessage}
           onChange={(e) => setSystemMessage(e.target.value)}
-          placeholder="Enter system message..."
+          placeholder="Enter system instructions for the AI..."
+          className="min-h-[80px] resize-none"
         />
       </div>
       
-      <div>
-        <Label htmlFor="prompt">Prompt</Label>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Prompt</label>
         <Textarea 
-          id="prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Enter your query to the AI..."
+          placeholder="Enter your prompt for the AI..."
+          className="min-h-[100px] resize-none"
         />
       </div>
       
-      <Button onClick={handleSave}>Save Settings</Button>
+      <Button 
+        className="w-full" 
+        onClick={handleUpdateConfig}
+      >
+        <Save className="h-4 w-4 mr-2" />
+        Save Configuration
+      </Button>
+      
+      {config.lastResponse && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+          <h4 className="text-sm font-medium mb-1">Last Response</h4>
+          <p className="text-xs text-gray-600 line-clamp-3">
+            {config.lastResponse}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

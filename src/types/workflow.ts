@@ -1,4 +1,3 @@
-
 import { Node, Edge as FlowEdge } from '@xyflow/react';
 
 export type Json =
@@ -80,7 +79,7 @@ export interface FileUploadNodeData extends BaseNodeData {
     fileName?: string;
     uploadStatus?: string;
   };
-  onChange?: (config: any) => void;
+  onConfigChange?: (config: any) => void;
 }
 
 export interface SpreadsheetGeneratorNodeData extends BaseNodeData {

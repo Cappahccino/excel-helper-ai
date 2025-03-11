@@ -1,139 +1,103 @@
 
 import React from 'react';
-import { X, Trash, Copy, ChevronRight } from 'lucide-react';
-import { NodeConfigPanelProps, WorkflowNode, AINodeData, SpreadsheetGeneratorNodeData, ProcessingNodeType } from '@/types/workflow';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import AskAINodeConfig from './AskAINodeConfig';
+import { NodeConfigPanelProps, ProcessingNodeType } from '@/types/workflow';
 import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
-import { DataProcessingNodeConfig } from './DataProcessingNodeConfig';
+import AskAINodeConfig from './AskAINodeConfig';
+import DataProcessingNodeConfig from './DataProcessingNodeConfig';
 
-const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({
-  node,
+const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ 
+  node, 
+  onConfigChange,
   onUpdateConfig,
   onDelete,
   onDuplicate,
   onClose,
-  readOnly = false,
+  readOnly 
 }) => {
-  const isAskAINode = node.type === 'askAI';
-  const isSpreadsheetGeneratorNode = node.type === 'spreadsheetGenerator';
-  
-  const handleUpdate = (updatedData: any) => {
-    if (!node) return;
+  if (!node) {
+    return null;
+  }
+
+  const renderNodeConfig = () => {
+    const { type } = node.data;
     
-    if (isAskAINode) {
-      const aiNodeData = node.data as AINodeData;
-      
-      const updatedConfig = {
-        ...aiNodeData.config,
-        ...(updatedData || {})
-      };
-      
-      onUpdateConfig(updatedConfig);
-    } else {
-      onUpdateConfig({
-        ...node.data.config,
-        ...(updatedData || {})
-      });
-    }
-  };
-  
-  const renderConfig = () => {
-    switch (node.type) {
+    switch (type) {
       case 'askAI':
         return (
-          <AskAINodeConfig
-            data={node.data as AINodeData}
-            onUpdate={handleUpdate}
+          <AskAINodeConfig 
+            config={node.data.config}
+            onConfigChange={(updatedConfig) => onConfigChange(updatedConfig)}
           />
         );
       
       case 'spreadsheetGenerator':
         return (
-          <SpreadsheetGeneratorNodeConfig
-            node={{
-              id: node.id as string,
-              data: node.data as SpreadsheetGeneratorNodeData
-            }}
-            onConfigChange={(nodeId, config) => onUpdateConfig(config)}
+          <SpreadsheetGeneratorNodeConfig 
+            config={node.data.config}
+            onConfigChange={(updatedConfig) => onConfigChange(updatedConfig)}
+          />
+        );
+        
+      case 'dataProcessing':
+      case 'filtering':
+      case 'sorting':
+      case 'transformation':
+      case 'aggregation' as ProcessingNodeType:
+      case 'formulaCalculation' as ProcessingNodeType:
+      case 'textTransformation' as ProcessingNodeType:
+      case 'dataTypeConversion' as ProcessingNodeType:
+      case 'dateFormatting' as ProcessingNodeType:
+      case 'pivotTable' as ProcessingNodeType:
+      case 'joinMerge' as ProcessingNodeType:
+      case 'deduplication' as ProcessingNodeType:
+        return (
+          <DataProcessingNodeConfig 
+            config={node.data.config}
+            onConfigChange={(updatedConfig) => onConfigChange(updatedConfig)}
           />
         );
       
       default:
         return (
           <div className="p-4">
-            <p className="text-center text-gray-500">
-              Configuration options for {node.data.label || node.type} will appear here.
-            </p>
+            <p>No configuration panel available for this node type: {type}</p>
           </div>
         );
     }
   };
 
-  const renderConfigPanel = () => {
-    const processingNodeTypes: ProcessingNodeType[] = [
-      'filtering', 'sorting', 'aggregation', 'formulaCalculation', 
-      'textTransformation', 'dataTypeConversion', 'dateFormatting', 
-      'pivotTable', 'joinMerge', 'deduplication'
-    ];
-    
-    if (processingNodeTypes.includes(node.data.type as ProcessingNodeType)) {
-      return (
-        <DataProcessingNodeConfig
-          nodeId={node.id}
-          config={node.data.config}
-          type={node.data.type as ProcessingNodeType}
-          onConfigChange={handleUpdate}
-        />
-      );
-    }
-
-    return renderConfig();
-  };
-
   return (
-    <div className="w-80 min-w-80 border-l border-gray-200 bg-white flex flex-col h-full">
-      <div className="flex items-center justify-between border-b border-gray-200 p-4">
-        <div className="flex items-center">
-          <span className="font-medium">Node Configuration</span>
-        </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+    <div className="p-4 border-l border-gray-200 bg-white h-full overflow-y-auto">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold">{node.data.label} Configuration</h2>
+        {onClose && (
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            &times;
+          </button>
+        )}
       </div>
       
-      <div className="p-4 border-b border-gray-200">
-        <div className="text-sm font-medium">{node.data?.label || 'Unnamed Node'}</div>
-        <div className="text-xs text-gray-500">Type: {node.type}</div>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto">
-        {renderConfigPanel()}
-      </div>
+      {renderNodeConfig()}
       
       {!readOnly && (
-        <div className="border-t border-gray-200 p-4 space-y-2">
-          <div className="flex space-x-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="flex-1"
-              onClick={onDuplicate}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Duplicate
-            </Button>
-            <Button 
-              variant="destructive" 
-              size="sm"
-              className="flex-1"
+        <div className="mt-6 flex space-x-2">
+          {onDelete && (
+            <button 
               onClick={onDelete}
+              className="px-3 py-1 bg-red-50 text-red-600 text-sm rounded hover:bg-red-100"
             >
-              <Trash className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
-          </div>
+              Delete Node
+            </button>
+          )}
+          
+          {onDuplicate && (
+            <button 
+              onClick={onDuplicate}
+              className="px-3 py-1 bg-blue-50 text-blue-600 text-sm rounded hover:bg-blue-100"
+            >
+              Duplicate
+            </button>
+          )}
         </div>
       )}
     </div>
