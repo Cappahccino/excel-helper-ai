@@ -1,200 +1,108 @@
-import { 
-  FileInput,
-  Layers, 
-  LayoutDashboard, 
-  Text, 
-  Search, 
-  Filter 
-} from 'lucide-react';
 
+import { FileText, Database, CircleHelp, Bot, Download, Cpu, SendToBack, Binary, Filter, SortAsc } from 'lucide-react';
+
+// Node categories, items, and nodeTypes must match!
 export const nodeCategories = [
   {
-    name: 'Input',
-    icon: <FileInput className="h-5 w-5" />,
-    nodes: [
+    id: 'input',
+    name: 'Data Input',
+    items: [
       {
         type: 'dataInput',
-        label: 'Data Input',
-        description: 'Manually input data',
-        category: 'input',
-        icon: <Text className="h-5 w-5" />,
+        label: 'Input Field',
+        description: 'Add an input field to your workflow',
+        icon: CircleHelp,
       },
       {
         type: 'fileUpload',
         label: 'File Upload',
-        description: 'Upload a file to process',
-        category: 'input',
-        icon: <LayoutDashboard className="h-5 w-5" />,
+        description: 'Upload and process a file',
+        icon: FileText,
+      },
+    ],
+  },
+  {
+    id: 'processing',
+    name: 'Data Processing',
+    items: [
+      {
+        type: 'dataProcessing',
+        label: 'Data Processing',
+        description: 'Process and transform data',
+        icon: Database,
+      },
+      {
+        type: 'filtering',
+        label: 'Filter Data',
+        description: 'Filter data based on criteria',
+        icon: Filter,
       },
       {
         type: 'spreadsheetGenerator',
         label: 'Spreadsheet Generator',
-        description: 'Generate a spreadsheet with sample data',
-        category: 'input',
-        icon: <LayoutDashboard className="h-5 w-5" />,
+        description: 'Generate spreadsheet from template',
+        icon: FileText,
       },
-    ]
+    ],
   },
   {
-    name: 'Processing',
-    icon: <Layers className="h-5 w-5" />,
-    nodes: [
-      {
-        type: 'filtering',
-        label: 'Filter',
-        description: 'Filter data based on conditions',
-        category: 'processing',
-        icon: <Filter className="h-5 w-5" />,
-      },
-      {
-        type: 'sorting',
-        label: 'Sort',
-        description: 'Sort data based on a column',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'aggregation',
-        label: 'Aggregate',
-        description: 'Aggregate data based on a column',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'formulaCalculation',
-        label: 'Formula Calculation',
-        description: 'Calculate a new column based on a formula',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'textTransformation',
-        label: 'Text Transformation',
-        description: 'Transform text in a column',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'dataTypeConversion',
-        label: 'Data Type Conversion',
-        description: 'Convert data type of a column',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'dateFormatting',
-        label: 'Date Formatting',
-        description: 'Format date in a column',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'pivotTable',
-        label: 'Pivot Table',
-        description: 'Create a pivot table',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'joinMerge',
-        label: 'Join/Merge',
-        description: 'Join/Merge two data sets',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-      {
-        type: 'deduplication',
-        label: 'Deduplication',
-        description: 'Remove duplicate rows',
-        category: 'processing',
-        icon: <Search className="h-5 w-5" />,
-      },
-    ]
-  },
-  {
+    id: 'ai',
     name: 'AI',
-    icon: <Layers className="h-5 w-5" />,
-    nodes: [
+    items: [
+      {
+        type: 'aiNode',
+        label: 'AI',
+        description: 'Generate content with AI',
+        icon: Bot,
+      },
       {
         type: 'askAI',
         label: 'Ask AI',
-        description: 'Ask AI a question about the data',
-        category: 'ai',
-        icon: <Search className="h-5 w-5" />,
+        description: 'Ask AI questions about your data',
+        icon: CircleHelp,
       },
-    ]
+    ],
   },
   {
+    id: 'output',
     name: 'Output',
-    icon: <Layers className="h-5 w-5" />,
-    nodes: [
+    items: [
       {
-        type: 'jsonOutput',
-        label: 'JSON Output',
-        description: 'Output data as JSON',
-        category: 'output',
-        icon: <Search className="h-5 w-5" />,
+        type: 'outputNode',
+        label: 'Output',
+        description: 'Send data to output',
+        icon: Download,
       },
-      {
-        type: 'tableOutput',
-        label: 'Table Output',
-        description: 'Output data as Table',
-        category: 'output',
-        icon: <Search className="h-5 w-5" />,
-      },
-    ]
+    ],
   },
   {
-    name: 'Integration',
-    icon: <Layers className="h-5 w-5" />,
-    nodes: [
-      {
-        type: 'httpIntegration',
-        label: 'HTTP Integration',
-        description: 'Send data to an HTTP endpoint',
-        category: 'integration',
-        icon: <Search className="h-5 w-5" />,
-      },
-    ]
-  },
-  {
+    id: 'control',
     name: 'Control',
-    icon: <Layers className="h-5 w-5" />,
-    nodes: [
+    items: [
       {
-        type: 'conditionalSplit',
-        label: 'Conditional Split',
-        description: 'Split data based on a condition',
-        category: 'control',
-        icon: <Search className="h-5 w-5" />,
+        type: 'controlNode',
+        label: 'Control',
+        description: 'Control the flow of your workflow',
+        icon: Cpu,
       },
-      {
-        type: 'looping',
-        label: 'Looping',
-        description: 'Loop through data',
-        category: 'control',
-        icon: <Search className="h-5 w-5" />,
-      },
-    ]
+    ],
   },
   {
+    id: 'utility',
     name: 'Utility',
-    icon: <Layers className="h-5 w-5" />,
-    nodes: [
+    items: [
       {
-        type: 'dataValidation',
-        label: 'Data Validation',
-        description: 'Validate data',
-        category: 'utility',
-        icon: <Search className="h-5 w-5" />,
+        type: 'utilityNode',
+        label: 'Utility',
+        description: 'Utility functions',
+        icon: SendToBack,
       },
       {
-        type: 'dataEnrichment',
-        label: 'Data Enrichment',
-        description: 'Enrich data',
-        category: 'utility',
-        icon: <Search className="h-5 w-5" />,
+        type: 'expandable',
+        label: 'Expandable',
+        description: 'Collapsible node for organization',
+        icon: Binary,
       },
-    ]
+    ],
   },
 ];

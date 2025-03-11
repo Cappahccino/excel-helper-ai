@@ -20,7 +20,8 @@ export type NodeComponentType =
   | 'controlNode'
   | 'utilityNode'
   | 'fileUpload'
-  | 'spreadsheetGenerator';
+  | 'spreadsheetGenerator'
+  | 'filtering';
 
 // Reexport Edge type
 export type Edge = FlowEdge;
@@ -113,7 +114,29 @@ export type NodeType =
   | ControlNodeType
   | UtilityNodeType
   | 'fileUpload'
-  | 'spreadsheetGenerator';
+  | 'spreadsheetGenerator'
+  | 'filtering';
+
+// Input Node Types
+export type InputNodeType = 'dataInput' | 'fileInput' | 'apiInput';
+
+// Processing Node Types  
+export type ProcessingNodeType = 'dataProcessing' | 'sorting' | 'filtering' | 'transformation';
+
+// AI Node Types
+export type AINodeType = 'aiNode' | 'askAI' | 'aiCompletion' | 'aiClassification';
+
+// Output Node Types
+export type OutputNodeType = 'outputNode' | 'fileOutput' | 'apiOutput' | 'visualizationOutput';
+
+// Integration Node Types
+export type IntegrationNodeType = 'integrationNode' | 'apiConnector' | 'databaseConnector';
+
+// Control Node Types
+export type ControlNodeType = 'controlNode' | 'conditionalNode' | 'loopNode';
+
+// Utility Node Types
+export type UtilityNodeType = 'utilityNode' | 'formatterNode' | 'validatorNode';
 
 // Workflow Related Interfaces
 export interface WorkflowDefinition {
@@ -188,15 +211,3 @@ export interface WorkflowContextType {
   migrateTemporaryWorkflow: (oldId: string, newId: string) => Promise<boolean>;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
 }
-
-// Re-export all previously defined types
-export type {
-  InputNodeType,
-  ProcessingNodeType,
-  AINodeType,
-  OutputNodeType,
-  IntegrationNodeType,
-  ControlNodeType,
-  UtilityNodeType
-} from './workflow';
-
