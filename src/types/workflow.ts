@@ -21,15 +21,17 @@ export type NodeComponentType =
   | 'utilityNode'
   | 'fileUpload'
   | 'spreadsheetGenerator'
-  | 'filtering';
+  | 'filtering'
+  | 'expandable';
 
 // Reexport Edge type
 export type Edge = FlowEdge;
 
 // Node Props Interface
-export interface NodeProps {
+export interface NodeProps<T = any> {
   id: string;
-  data: WorkflowNodeData;
+  data: T;
+  selected?: boolean;
 }
 
 // Base Node Data
@@ -46,6 +48,14 @@ export interface AINodeData extends BaseNodeData {
     prompt?: string;
     model?: string;
     provider?: string;
+    systemMessage?: string;
+    modelName?: string;
+    lastResponse?: string;
+    analysisType?: string;
+    analysisOptions?: any;
+    classificationOptions?: {
+      categories?: string[];
+    };
   };
 }
 
@@ -54,6 +64,12 @@ export interface DataInputNodeData extends BaseNodeData {
   config: {
     fieldType?: string;
     defaultValue?: any;
+    fileId?: string;
+    fileName?: string;
+    hasHeaders?: boolean;
+    delimiter?: string;
+    endpoint?: string;
+    fields?: any[];
   };
 }
 
@@ -64,6 +80,7 @@ export interface FileUploadNodeData extends BaseNodeData {
     fileName?: string;
     uploadStatus?: string;
   };
+  onChange?: (config: any) => void;
 }
 
 export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
@@ -71,6 +88,15 @@ export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
   config: {
     template?: string;
     rowCount?: number;
+    filename?: string;
+    fileExtension?: string;
+    sheets?: Array<{
+      name: string;
+      columns: Array<{
+        name: string;
+        type: string;
+      }>;
+    }>;
   };
 }
 
@@ -79,6 +105,9 @@ export interface ControlNodeData extends BaseNodeData {
   config: {
     condition?: string;
     iterations?: number;
+    conditions?: any[];
+    loopType?: string;
+    mergeStrategy?: string;
   };
 }
 
@@ -87,6 +116,9 @@ export interface IntegrationNodeData extends BaseNodeData {
   config: {
     endpoint?: string;
     method?: string;
+    operation?: string;
+    credentials?: any;
+    spreadsheetId?: string;
   };
 }
 
@@ -94,6 +126,9 @@ export interface UtilityNodeData extends BaseNodeData {
   type: UtilityNodeType;
   config: {
     operation?: string;
+    logLevel?: string;
+    variableKey?: string;
+    performanceThreshold?: number;
   };
 }
 
@@ -101,6 +136,9 @@ export interface OutputNodeData extends BaseNodeData {
   type: OutputNodeType;
   config: {
     format?: string;
+    filename?: string;
+    visualizations?: any[];
+    recipients?: string[];
   };
 }
 
@@ -115,28 +153,80 @@ export type NodeType =
   | UtilityNodeType
   | 'fileUpload'
   | 'spreadsheetGenerator'
-  | 'filtering';
+  | 'filtering'
+  | 'expandable';
 
 // Input Node Types
-export type InputNodeType = 'dataInput' | 'fileInput' | 'apiInput';
+export type InputNodeType = 'dataInput' | 'fileInput' | 'apiInput' | 'excelInput' | 'csvInput' | 'apiSource' | 'userInput';
 
 // Processing Node Types  
-export type ProcessingNodeType = 'dataProcessing' | 'sorting' | 'filtering' | 'transformation';
+export type ProcessingNodeType = 
+  | 'dataProcessing' 
+  | 'sorting' 
+  | 'filtering' 
+  | 'transformation'
+  | 'aggregation'
+  | 'formulaCalculation'
+  | 'textTransformation'
+  | 'dataTypeConversion'
+  | 'dateFormatting'
+  | 'pivotTable'
+  | 'joinMerge'
+  | 'deduplication'
+  | 'dataTransform'
+  | 'dataCleaning'
+  | 'formulaNode'
+  | 'filterNode';
 
 // AI Node Types
-export type AINodeType = 'aiNode' | 'askAI' | 'aiCompletion' | 'aiClassification';
+export type AINodeType = 
+  | 'aiNode' 
+  | 'askAI' 
+  | 'aiCompletion' 
+  | 'aiClassification'
+  | 'aiAnalyze'
+  | 'aiClassify'
+  | 'aiSummarize';
 
 // Output Node Types
-export type OutputNodeType = 'outputNode' | 'fileOutput' | 'apiOutput' | 'visualizationOutput';
+export type OutputNodeType = 
+  | 'outputNode' 
+  | 'fileOutput' 
+  | 'apiOutput' 
+  | 'visualizationOutput'
+  | 'excelOutput'
+  | 'dashboardOutput'
+  | 'emailNotify';
 
 // Integration Node Types
-export type IntegrationNodeType = 'integrationNode' | 'apiConnector' | 'databaseConnector';
+export type IntegrationNodeType = 
+  | 'integrationNode' 
+  | 'apiConnector' 
+  | 'databaseConnector'
+  | 'xeroConnect'
+  | 'salesforceConnect'
+  | 'googleSheetsConnect';
 
 // Control Node Types
-export type ControlNodeType = 'controlNode' | 'conditionalNode' | 'loopNode';
+export type ControlNodeType = 
+  | 'controlNode' 
+  | 'conditionalNode' 
+  | 'loopNode'
+  | 'conditionalBranch'
+  | 'mergeNode';
 
 // Utility Node Types
-export type UtilityNodeType = 'utilityNode' | 'formatterNode' | 'validatorNode';
+export type UtilityNodeType = 
+  | 'utilityNode' 
+  | 'formatterNode' 
+  | 'validatorNode'
+  | 'logToConsole'
+  | 'executionTimestamp'
+  | 'sessionManagement'
+  | 'variableStorage'
+  | 'aiStepRecommendation'
+  | 'workflowVersionControl'
+  | 'performanceMetrics';
 
 // Workflow Related Interfaces
 export interface WorkflowDefinition {
@@ -146,6 +236,7 @@ export interface WorkflowDefinition {
 
 export interface WorkflowExecution {
   id: string;
+  workflow_id?: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startedAt?: string;
   completedAt?: string;
@@ -175,6 +266,11 @@ export interface AIRequestData {
 export interface NodeConfigPanelProps {
   node: WorkflowNode;
   onConfigChange: (config: any) => void;
+  onUpdateConfig?: (config: any) => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  onClose?: () => void;
+  readOnly?: boolean;
 }
 
 export interface NodeLibraryProps {
@@ -193,13 +289,14 @@ export interface NodeLibraryProps {
 }
 
 // Workflow Node Interface
-export interface WorkflowNodeData extends BaseNodeData {
+export interface WorkflowNodeData extends BaseNodeData, Record<string, unknown> {
   onConfigChange?: (config: any) => void;
   onShowLogs?: (nodeId: string) => void;
 }
 
-export interface WorkflowNode extends Node<WorkflowNodeData> {
+export interface WorkflowNode extends Omit<Node, 'data' | 'type'> {
   type: NodeComponentType;
+  data: WorkflowNodeData;
 }
 
 // Workflow Context Interface
@@ -210,4 +307,27 @@ export interface WorkflowContextType {
   formatWorkflowId: (id: string, temporary: boolean) => string;
   migrateTemporaryWorkflow: (oldId: string, newId: string) => Promise<boolean>;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
+}
+
+// File Schema Interface
+export interface WorkflowFileSchema {
+  id: string;
+  workflow_id: string;
+  node_id: string;
+  schema: {
+    columns: Array<{
+      name: string;
+      type: string;
+      nullable?: boolean;
+    }>;
+  };
+  created_at?: string;
+  updated_at?: string;
+  is_temporary?: boolean;
+}
+
+export interface SchemaColumn {
+  name: string;
+  type: string;
+  nullable?: boolean;
 }

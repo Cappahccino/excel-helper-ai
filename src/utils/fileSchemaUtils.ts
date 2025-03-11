@@ -1,220 +1,81 @@
-
 import { supabase } from '@/integrations/supabase/client';
-import { WorkflowFileSchema } from '@/components/workflow/context/WorkflowContext';
-import { toast } from 'sonner';
-import { Json } from '@/types/workflow';
+import { SchemaColumn, WorkflowFileSchema } from '@/types/workflow';
 
-// Function to extract data types from sample data
-export const detectDataTypes = (sampleData: any[]): Record<string, string> => {
-  if (!sampleData || sampleData.length === 0) return {};
-
-  const firstRow = sampleData[0];
-  const dataTypes: Record<string, string> = {};
-
-  // Process all keys in the first row
-  for (const key in firstRow) {
-    const value = firstRow[key];
-    
-    if (value === null || value === undefined) {
-      dataTypes[key] = 'unknown';
-      continue;
-    }
-
-    const type = typeof value;
-    
-    if (type === 'number') {
-      dataTypes[key] = 'number';
-    } else if (type === 'boolean') {
-      dataTypes[key] = 'boolean';
-    } else if (type === 'object') {
-      if (Array.isArray(value)) {
-        dataTypes[key] = 'array';
-      } else {
-        dataTypes[key] = 'object';
+export const fileSchemaUtils = {
+  async getSchema(workflowId: string, nodeId: string): Promise<SchemaColumn[]> {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_file_schemas')
+        .select('schema')
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
+        
+      if (error) {
+        console.error('Error fetching schema:', error);
+        return [];
       }
-    } else if (type === 'string') {
-      // Try to detect dates
-      if (!isNaN(Date.parse(value)) && 
-          (value.includes('-') || value.includes('/')) && 
-          (value.split('-').length === 3 || value.split('/').length === 3)) {
-        dataTypes[key] = 'date';
-      } else {
-        dataTypes[key] = 'string';
+      
+      if (data && data.schema && data.schema.columns) {
+        return data.schema.columns;
       }
-    } else {
-      dataTypes[key] = type;
+      
+      return [];
+    } catch (error) {
+      console.error('Error in getSchema:', error);
+      return [];
     }
-  }
-
-  return dataTypes;
-};
-
-// Function to get columns from sample data
-export const extractColumns = (sampleData: any[]): string[] => {
-  if (!sampleData || sampleData.length === 0) return [];
+  },
   
-  // Use the keys from the first row
-  return Object.keys(sampleData[0]);
-};
-
-// Function to create a new file schema in the database
-export const createFileSchema = async (
-  workflowId: string,
-  nodeId: string,
-  fileId: string,
-  sampleData: any[] = [],
-  sheetName?: string,
-  hasHeaders: boolean = true
-): Promise<WorkflowFileSchema | null> => {
-  try {
-    // If no sample data, try to get it from file metadata
-    let columns: string[] = [];
-    let dataTypes: Record<string, any> = {};
-
-    if (sampleData.length === 0) {
-      // Try to get from file_metadata
-      const { data: metaData, error: metaError } = await supabase
-        .from('file_metadata')
-        .select('column_definitions, data_summary')
-        .eq('file_id', fileId)
-        .single();
+  async saveSchema(workflowId: string, nodeId: string, columns: SchemaColumn[]): Promise<boolean> {
+    try {
+      const schema = { columns };
+      
+      // Check if schema already exists
+      const { data: existingSchema, error: checkError } = await supabase
+        .from('workflow_file_schemas')
+        .select('id')
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
         
-      if (metaError) {
-        console.error('Could not fetch metadata:', metaError);
-      } else if (metaData) {
-        if (metaData.column_definitions) {
-          dataTypes = metaData.column_definitions as Record<string, any>;
-          columns = Object.keys(dataTypes);
+      if (checkError) {
+        console.error('Error checking for existing schema:', checkError);
+        return false;
+      }
+      
+      if (existingSchema) {
+        // Update existing schema
+        const { error: updateError } = await supabase
+          .from('workflow_file_schemas')
+          .update({ schema })
+          .eq('workflow_id', workflowId)
+          .eq('node_id', nodeId);
+          
+        if (updateError) {
+          console.error('Error updating schema:', updateError);
+          return false;
         }
-        
-        if (metaData.data_summary && typeof metaData.data_summary === 'object' && 'sample_data' in metaData.data_summary) {
-          sampleData = metaData.data_summary.sample_data as any[];
+      } else {
+        // Insert new schema
+        const { error: insertError } = await supabase
+          .from('workflow_file_schemas')
+          .insert({
+            workflow_id: workflowId,
+            node_id: nodeId,
+            schema
+          });
+          
+        if (insertError) {
+          console.error('Error inserting schema:', insertError);
+          return false;
         }
       }
-    } else {
-      columns = extractColumns(sampleData);
-      dataTypes = detectDataTypes(sampleData);
+      
+      return true;
+    } catch (error) {
+      console.error('Error in saveSchema:', error);
+      return false;
     }
-    
-    const schema: WorkflowFileSchema = {
-      workflow_id: workflowId,
-      node_id: nodeId,
-      file_id: fileId,
-      columns,
-      data_types: dataTypes as Json,
-      sample_data: sampleData.slice(0, 10) as Json[],
-      has_headers: hasHeaders,
-      sheet_name: sheetName || null
-    };
-
-    const { data, error } = await supabase
-      .from('workflow_file_schemas')
-      .upsert(schema, {
-        onConflict: 'workflow_id,node_id,file_id'
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('Error creating file schema:', error);
-      toast.error('Failed to save file schema');
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error in createFileSchema:', error);
-    toast.error('An error occurred while saving file schema');
-    return null;
   }
-};
-
-// Function to update an existing file schema
-export const updateFileSchema = async (
-  schemaId: string,
-  updates: Partial<WorkflowFileSchema>
-): Promise<WorkflowFileSchema | null> => {
-  try {
-    const { data, error } = await supabase
-      .from('workflow_file_schemas')
-      .update(updates)
-      .eq('id', schemaId)
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('Error updating file schema:', error);
-      toast.error('Failed to update file schema');
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error in updateFileSchema:', error);
-    toast.error('An error occurred while updating file schema');
-    return null;
-  }
-};
-
-// Function to fetch a file schema by node ID
-export const getFileSchemaByNodeId = async (
-  workflowId: string, 
-  nodeId: string
-): Promise<WorkflowFileSchema | null> => {
-  try {
-    const { data, error } = await supabase
-      .from('workflow_file_schemas')
-      .select('*')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', nodeId)
-      .single();
-
-    if (error) {
-      if (error.code !== 'PGRST116') { // Not found error
-        console.error('Error fetching file schema:', error);
-      }
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error in getFileSchemaByNodeId:', error);
-    return null;
-  }
-};
-
-// Function to parse Excel/CSV columns from file metadata
-export const getColumnsFromFileMetadata = async (fileId: string): Promise<string[] | null> => {
-  try {
-    const { data, error } = await supabase
-      .from('file_metadata')
-      .select('column_definitions')
-      .eq('file_id', fileId)
-      .single();
-
-    if (error) {
-      console.error('Error fetching file metadata:', error);
-      return null;
-    }
-
-    if (data && data.column_definitions) {
-      // Extract column names from column_definitions
-      return Object.keys(data.column_definitions);
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error in getColumnsFromFileMetadata:', error);
-    return null;
-  }
-};
-
-// Function to convert a database schema to a form that the frontend can use
-export const convertSchemaForFrontend = (schema: WorkflowFileSchema): Record<string, any> => {
-  return {
-    headers: schema.columns,
-    preview_data: schema.sample_data,
-    selected_sheet: schema.sheet_name,
-    row_count: schema.total_rows
-  };
 };
