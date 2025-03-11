@@ -1,9 +1,16 @@
-import { Input, Layers, LayoutDashboard, Text, Search, Filter } from 'lucide-react';
+import { 
+  FileInput,
+  Layers, 
+  LayoutDashboard, 
+  Text, 
+  Search, 
+  Filter 
+} from 'lucide-react';
 
 export const nodeCategories = [
   {
     name: 'Input',
-    icon: <Input className="h-5 w-5" />,
+    icon: <FileInput className="h-5 w-5" />,
     nodes: [
       {
         type: 'dataInput',
