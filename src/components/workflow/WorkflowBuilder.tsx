@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ReactFlow,
@@ -45,7 +44,6 @@ import NodeConfigPanel from './NodeConfigPanel';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 
-// Define the node types for ReactFlow
 const nodeTypes: NodeTypes = {
   aiNode: AINode,
   dataInput: DataInputNode,
@@ -74,27 +72,22 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
   onSave,
   readOnly = false,
 }) => {
-  // Fixed useNodesState and useEdgesState generics
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initialEdges);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
   const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
 
-  // When nodes or edges change, notify the parent component
   useEffect(() => {
     if (onChange) {
       onChange(nodes, edges);
     }
   }, [nodes, edges, onChange]);
 
-  // Handle node selection
   const onNodeClick = useCallback((event: React.MouseEvent, node: WorkflowNode) => {
     setSelectedNode(node);
     setIsConfigPanelOpen(true);
   }, []);
 
-  // Handle edge connections
-  // Fixed onConnect type
   const onConnect = useCallback(
     (params: Connection) => {
       setEdges((eds) => addEdge(params, eds));
@@ -102,12 +95,10 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     [setEdges]
   );
 
-  // Update node configuration
   const handleUpdateNodeConfig = useCallback(
     (updatedConfig: any) => {
       if (!selectedNode) return;
       
-      // Fixed setNodes callback to handle single nodes properly
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === selectedNode.id) {
@@ -126,11 +117,9 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     [selectedNode, setNodes]
   );
 
-  // Delete a node
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return;
     
-    // Fixed setNodes and setEdges to handle single nodes/edges
     setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
     setEdges((eds) =>
       eds.filter(
@@ -142,7 +131,6 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
     setIsConfigPanelOpen(false);
   }, [selectedNode, setNodes, setEdges]);
 
-  // Duplicate a node
   const handleDuplicateNode = useCallback(() => {
     if (!selectedNode) return;
     
@@ -156,15 +144,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       },
     };
     
-    // Fixed setNodes to handle single nodes
     setNodes((nds) => [...nds, newNode]);
   }, [selectedNode, setNodes]);
 
-  // Add a new node to the workflow
   const addNode = (type: NodeComponentType) => {
     const nodeId = `node-${uuidv4()}`;
     
-    // Create node data with correct type based on the component type
     const createNodeData = (): WorkflowNodeData => {
       switch (type) {
         case 'fileUpload':
@@ -248,14 +233,12 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
       data: createNodeData(),
     };
     
-    // Fixed setNodes to handle single nodes
     setNodes((nds) => [...nds, newNode]);
   };
 
   return (
     <div className="w-full h-full flex">
       <div className="flex-1 relative">
-        {/* Fixed ReactFlow types */}
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -315,17 +298,15 @@ const WorkflowBuilder: React.FC<WorkflowBuilderProps> = ({
         </ReactFlow>
       </div>
 
-      {isConfigPanelOpen && selectedNode && (
+      {selectedNode && (
         <NodeConfigPanel
           node={selectedNode}
-          onUpdateConfig={handleUpdateNodeConfig}
-          onDelete={handleDeleteNode}
-          onDuplicate={handleDuplicateNode}
-          onClose={() => {
-            setIsConfigPanelOpen(false);
-            setSelectedNode(null);
-          }}
-          readOnly={readOnly}
+          onConfigChange={handleNodeConfigUpdate}
+          onUpdateConfig={handleNodeConfigUpdate}
+          onDelete={() => handleDeleteNode(selectedNode.id)}
+          onDuplicate={() => handleDuplicateNode(selectedNode.id)}
+          onClose={() => setSelectedNode(null)}
+          readOnly={false}
         />
       )}
     </div>

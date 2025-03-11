@@ -1,6 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { SchemaColumn } from '@/types/workflow';
+import { Json } from '@/types/workflow';
+
+export interface SchemaColumn {
+  name: string;
+  type: string;
+  nullable?: boolean;
+}
 
 export const schemaUtils = {
   async getNodeSchema(workflowId: string, nodeId: string): Promise<SchemaColumn[]> {
@@ -15,7 +21,7 @@ export const schemaUtils = {
       // Check if this node has a direct schema (e.g., file upload node)
       const { data: directSchema, error: schemaError } = await supabase
         .from('workflow_file_schemas')
-        .select('schema')
+        .select('data_types, columns')
         .eq('workflow_id', dbWorkflowId)
         .eq('node_id', nodeId)
         .maybeSingle();
@@ -24,9 +30,21 @@ export const schemaUtils = {
         console.error('Error fetching direct schema:', schemaError);
       }
       
-      if (directSchema && directSchema.schema && typeof directSchema.schema === 'object' && 'columns' in directSchema.schema) {
-        console.log('Found direct schema for node:', directSchema.schema.columns);
-        return directSchema.schema.columns;
+      if (directSchema && directSchema.data_types) {
+        try {
+          // Convert data_types to SchemaColumn[]
+          const columnsData = directSchema.data_types;
+          if (typeof columnsData === 'object' && columnsData !== null) {
+            const schemaColumns: SchemaColumn[] = Object.entries(columnsData).map(([name, type]) => ({
+              name,
+              type: typeof type === 'string' ? type : 'string'
+            }));
+            console.log('Found direct schema for node:', schemaColumns);
+            return schemaColumns;
+          }
+        } catch (e) {
+          console.error('Error parsing schema data_types:', e);
+        }
       }
       
       // If no direct schema, look for incoming connections
@@ -51,12 +69,13 @@ export const schemaUtils = {
       for (const edge of edges) {
         if (edge.metadata && 
             typeof edge.metadata === 'object' && 
+            edge.metadata !== null &&
             'schema' in edge.metadata && 
             edge.metadata.schema && 
             typeof edge.metadata.schema === 'object' && 
             'columns' in edge.metadata.schema) {
           console.log('Found schema in edge metadata:', edge.metadata.schema.columns);
-          return edge.metadata.schema.columns;
+          return edge.metadata.schema.columns as SchemaColumn[];
         }
       }
       

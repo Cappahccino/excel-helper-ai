@@ -1,4 +1,3 @@
-
 import { WorkflowDefinition, WorkflowNode, Edge, WorkflowExecution, NodeExecutionContext, NodeType } from '@/types/workflow';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -41,25 +40,31 @@ export class WorkflowEngine {
       this.executionStatus = 'completed';
       
       // Create the execution result
-      return {
-        workflow_id: '', // This would be set by the caller
-        status: this.executionStatus,
+      const execution: WorkflowExecution = {
+        id: this.executionId,
+        status: 'completed',
+        startedAt: new Date().toISOString(),
         inputs,
         outputs: this.collectOutputs(),
         node_states: this.nodeStates,
       };
+      
+      return execution;
     } catch (error) {
       this.executionStatus = 'failed';
       
       console.error('Workflow execution failed:', error);
       
-      return {
-        workflow_id: '', // This would be set by the caller
-        status: this.executionStatus,
+      const execution: WorkflowExecution = {
+        id: this.executionId,
+        status: 'failed',
+        startedAt: new Date().toISOString(),
         inputs,
         error: error instanceof Error ? error.message : 'Unknown error',
         node_states: this.nodeStates,
       };
+      
+      return execution;
     }
   }
   

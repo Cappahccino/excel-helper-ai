@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -392,11 +391,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         updateProcessingState('fetching_schema', 60, 'Retrieving file schema...');
         
         // Update node configuration
-        if (data.onChange) {
-          data.onChange(id, { 
-            fileId, 
-            filename: files?.find(f => f.id === fileId)?.filename 
-          });
+        if (data.onConfigChange?.({ ...data.config, ...newConfig })) {
+          data.onConfigChange?.({ ...data.config, ...newConfig });
         }
         
         toast.success('File processing started');

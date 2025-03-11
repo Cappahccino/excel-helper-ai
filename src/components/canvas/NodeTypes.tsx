@@ -1,6 +1,6 @@
 
+import { FilterNode } from '@/components/workflow/nodes/FilterNode';
 import ExpandableNode from '@/components/workflow/nodes/ExpandableNode';
-import FilterNode from '@/components/workflow/nodes/FilterNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 import AINode from '@/components/workflow/nodes/AINode';
 import AskAINode from '@/components/workflow/nodes/AskAINode';
