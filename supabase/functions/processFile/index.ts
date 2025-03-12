@@ -9,6 +9,15 @@ const corsHeaders = {
   'Content-Type': 'application/json'
 }
 
+// Define status constants to prevent typos
+const FILE_STATUS = {
+  QUEUED: 'queued',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  ERROR: 'error',
+  FAILED: 'failed'
+}
+
 // Initialize Supabase client with service role key for admin access
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') || '',
@@ -72,20 +81,27 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
     const dbWorkflowId = normalizeWorkflowId(workflowId);
     const isTemporary = workflowId.startsWith('temp-');
     
-    // Update workflow_files status to processing
-    const { error: updateError } = await supabaseAdmin
+    // First, ensure the workflow_files record exists with the processing status
+    // This uses UPSERT to create or update the record, avoiding the constraint violation issue
+    const { data: workflowFile, error: workflowFileError } = await supabaseAdmin
       .from('workflow_files')
-      .update({
-        processing_status: 'processing',
-        is_temporary: isTemporary
+      .upsert({
+        workflow_id: dbWorkflowId,
+        node_id: nodeId,
+        file_id: fileId,
+        processing_status: FILE_STATUS.PROCESSING,
+        status: FILE_STATUS.QUEUED, // Use valid status value
+        is_temporary: isTemporary,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'workflow_id,node_id'
       })
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId)
-      .eq('file_id', fileId);
+      .select()
+      .single();
     
-    if (updateError) {
-      console.error('Error updating workflow file status:', updateError);
-      throw updateError;
+    if (workflowFileError) {
+      console.error('Error updating workflow file record:', workflowFileError);
+      throw workflowFileError;
     }
     
     // Get file information
@@ -209,7 +225,8 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
     const { error: completeError } = await supabaseAdmin
       .from('workflow_files')
       .update({
-        processing_status: 'completed',
+        processing_status: FILE_STATUS.COMPLETED,
+        status: FILE_STATUS.COMPLETED,
         processing_result: {
           success: true,
           processed_at: new Date().toISOString(),
@@ -242,7 +259,8 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
       await supabaseAdmin
         .from('workflow_files')
         .update({
-          processing_status: 'error',
+          processing_status: FILE_STATUS.ERROR,
+          status: FILE_STATUS.FAILED,
           processing_result: {
             success: false,
             error: error.message || 'Unknown error',

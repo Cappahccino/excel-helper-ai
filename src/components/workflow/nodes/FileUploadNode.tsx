@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -18,7 +17,7 @@ import {
 } from '@/components/ui/select';
 
 import { FileUploadNodeData } from '@/types/workflow';
-import { FileProcessingStatus, FileProcessingState } from '@/types/fileProcessing';
+import { FileProcessingState, WorkflowFileStatus } from '@/types/workflowStatus';
 import { useWorkflow } from '../context/WorkflowContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import NodeProgress from '../ui/NodeProgress';
@@ -37,8 +36,15 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
   const debouncedFileId = useDebounce(selectedFileId, 300); // Debounce file ID to prevent flickering
   
   // Enhanced processing state
-  const [processingState, setProcessingState] = useState<FileProcessingState>({
-    status: 'pending',
+  const [processingState, setProcessingState] = useState<{
+    status: FileProcessingState;
+    progress: number;
+    message?: string;
+    error?: string;
+    startTime?: number;
+    endTime?: number;
+  }>({
+    status: FileProcessingState.Pending,
     progress: 0
   });
   
@@ -47,7 +53,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
 
   // Function to update processing state
   const updateProcessingState = useCallback((
-    status: FileProcessingStatus, 
+    status: FileProcessingState, 
     progress: number = 0, 
     message?: string,
     error?: string
@@ -55,11 +61,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     setProcessingState(prev => ({
       ...prev,
       status,
-      progress: status === 'completed' ? 100 : progress,
+      progress: status === FileProcessingState.Completed ? 100 : progress,
       message,
       error,
-      ...(status === 'completed' ? { endTime: Date.now() } : {}),
-      ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
+      ...(status === FileProcessingState.Completed ? { endTime: Date.now() } : {}),
+      ...(status === FileProcessingState.Associating && !prev.startTime ? { startTime: Date.now() } : {})
     }));
   }, []);
   
@@ -126,15 +132,15 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           const updatedFile = payload.new;
           
           // Update processing status based on the realtime update
-          if (updatedFile.processing_status === 'completed') {
-            updateProcessingState('completed', 100, 'File processed successfully');
+          if (updatedFile.processing_status === WorkflowFileStatus.Completed) {
+            updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
             // Refresh file info
             refetch();
-          } else if (updatedFile.processing_status === 'processing') {
-            updateProcessingState('processing', 50, 'Processing file data...');
-          } else if (updatedFile.processing_status === 'failed' || updatedFile.processing_status === 'error') {
+          } else if (updatedFile.processing_status === WorkflowFileStatus.Processing) {
+            updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
+          } else if (updatedFile.processing_status === WorkflowFileStatus.Failed || updatedFile.processing_status === WorkflowFileStatus.Error) {
             const errorMessage = updatedFile.processing_error || 'File processing failed';
-            updateProcessingState('error', 0, 'Error', errorMessage);
+            updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
           }
         }
       )
@@ -161,12 +167,12 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       setFileInfo(selectedFile);
       
       // Update processing state based on file status
-      if (selectedFile.processing_status === 'completed') {
-        updateProcessingState('completed', 100);
-      } else if (selectedFile.processing_status === 'processing') {
-        updateProcessingState('processing', 50, 'Processing file data...');
-      } else if (selectedFile.processing_status === 'error') {
-        updateProcessingState('error', 0, 'Error', selectedFile.error_message || 'File processing failed');
+      if (selectedFile.processing_status === WorkflowFileStatus.Completed) {
+        updateProcessingState(FileProcessingState.Completed, 100);
+      } else if (selectedFile.processing_status === WorkflowFileStatus.Processing) {
+        updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
+      } else if (selectedFile.processing_status === WorkflowFileStatus.Failed || selectedFile.processing_status === WorkflowFileStatus.Error) {
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', selectedFile.error_message || 'File processing failed');
       }
     }
   }, [selectedFile, updateProcessingState]);
@@ -252,7 +258,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             workflow_id: dbWorkflowId,
             node_id: id,
             file_id: fileId,
-            status: 'active',
+            status: WorkflowFileStatus.Queued, // Use the correct status value
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }, {
@@ -293,17 +299,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       console.log('Debug - Node component props:', { id, data, selected });
       
       // Skip processing if this file is already selected and processed
-      if (fileId === selectedFileId && fileInfo && fileInfo.processing_status === 'completed') {
+      if (fileId === selectedFileId && fileInfo && fileInfo.processing_status === WorkflowFileStatus.Completed) {
         return;
       }
       
       // Update UI state immediately
-      updateProcessingState('associating', 10, 'Associating file with workflow...');
+      updateProcessingState(FileProcessingState.Associating, 10, 'Associating file with workflow...');
       setSelectedFileId(fileId);
       
       // Validate workflow ID availability
       if (!workflowId) {
-        updateProcessingState('error', 0, 'Error', 'No workflow ID available. Please save the workflow first.');
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', 'No workflow ID available. Please save the workflow first.');
         toast.error('Cannot associate file with workflow yet. Please save the workflow.');
         return;
       }
@@ -326,7 +332,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         
       if (fileError) {
         console.error('Error fetching file data:', fileError);
-        updateProcessingState('error', 0, 'Error', `File data error: ${fileError.message}`);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', `File data error: ${fileError.message}`);
         toast.error('Failed to get file information');
         throw fileError;
       }
@@ -334,21 +340,21 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Get current user for the file operation
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        updateProcessingState('error', 0, 'Error', 'User not authenticated');
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', 'User not authenticated');
         toast.error('You must be logged in to use this feature');
         throw new Error('User not authenticated');
       }
       
       // Update processing state to indicate file association
-      updateProcessingState('associating', 30, 'Creating database association...');
+      updateProcessingState(FileProcessingState.Associating, 30, 'Creating database association...');
       
-      // Try to use our new association function
+      // Try to use our association function
       console.log('Attempting to associate file with workflow node using RPC function');
       try {
         const result = await associateFileWithWorkflow(fileId);
         if (!result) {
           console.error('File association failed');
-          updateProcessingState('error', 0, 'Error', 'File association failed');
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', 'File association failed');
           toast.error('Failed to associate file with workflow node');
           return;
         }
@@ -356,13 +362,13 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         console.log('File association successful');
       } catch (assocError) {
         console.error('Error in association:', assocError);
-        updateProcessingState('error', 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
         toast.error('Failed to associate file with workflow node');
         return;
       }
       
       // Queue the file for processing
-      updateProcessingState('processing', 40, 'Submitting for processing...');
+      updateProcessingState(FileProcessingState.Queuing, 40, 'Submitting for processing...');
       try {
         const response = await supabase.functions.invoke('processFile', {
           body: {
@@ -374,7 +380,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         
         if (response.error) {
           console.error('Error invoking processFile function:', response.error);
-          updateProcessingState('error', 0, 'Error', `Processing error: ${response.error.message}`);
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', `Processing error: ${response.error.message}`);
           toast.error('Failed to queue file for processing');
           throw response.error;
         }
@@ -383,13 +389,13 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         const responseData = response.data;
         if (responseData && responseData.error) {
           console.error('Process file returned error:', responseData.error);
-          updateProcessingState('error', 0, 'Error', `Process error: ${responseData.error}`);
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', `Process error: ${responseData.error}`);
           toast.error(responseData.error);
           return;
         }
         
         // Update processing state to fetching schema
-        updateProcessingState('fetching_schema', 60, 'Retrieving file schema...');
+        updateProcessingState(FileProcessingState.FetchingSchema, 60, 'Retrieving file schema...');
         
         // Update node configuration
         if (data.onChange) {
@@ -403,26 +409,26 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         
         // Delay to fetch schema data (realtime subscription will update status)
         setTimeout(() => {
-          if (processingState.status !== 'completed' && processingState.status !== 'error') {
-            updateProcessingState('verifying', 80, 'Verifying data...');
+          if (processingState.status !== FileProcessingState.Completed && processingState.status !== FileProcessingState.Error) {
+            updateProcessingState(FileProcessingState.Verifying, 80, 'Verifying data...');
           }
         }, 2000);
       } catch (fnError) {
         console.error('Function call failed:', fnError);
-        updateProcessingState('error', 0, 'Error', `API error: ${fnError.message}`);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', `API error: ${fnError.message}`);
         toast.error('Error processing file. Please try again.');
       }
     } catch (error) {
       console.error('Error associating file with workflow node:', error);
       toast.error('Failed to associate file with workflow');
-      updateProcessingState('error', 0, 'Error', `Error: ${error.message}`);
+      updateProcessingState(FileProcessingState.Error, 0, 'Error', `Error: ${error.message}`);
     }
   };
 
   // Function to retry failed processing
   const handleRetry = async () => {
     if (!selectedFileId) return;
-    updateProcessingState('associating', 10, 'Retrying file processing...');
+    updateProcessingState(FileProcessingState.Associating, 10, 'Retrying file processing...');
     await handleFileSelection(selectedFileId);
   };
 
@@ -463,7 +469,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     const { status, progress, message, error } = processingState;
     
     // Status-specific colors for progress
-    const statusMap: Record<FileProcessingStatus, {
+    const statusMap: Record<FileProcessingState, {
       statusComponent: React.ReactNode,
       progressStatus: 'default' | 'success' | 'error' | 'warning' | 'info'
     }> = {
@@ -480,11 +486,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         ),
         progressStatus: 'default'
       },
-      uploading: {
+      queuing: {
         statusComponent: (
           <div className="flex items-center gap-2 text-xs text-blue-600">
             <Upload className="h-3 w-3 animate-pulse" />
-            <span>{message || 'Uploading file...'}</span>
+            <span>{message || 'Queuing file...'}</span>
           </div>
         ),
         progressStatus: 'default'
@@ -554,7 +560,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     return (
       <>
         {statusComponent}
-        {status !== 'pending' && status !== 'completed' && status !== 'error' && status !== 'failed' && (
+        {status !== FileProcessingState.Pending && status !== FileProcessingState.Completed && 
+         status !== FileProcessingState.Error && status !== FileProcessingState.Failed && (
           <NodeProgress 
             value={progress} 
             status={progressStatus} 
@@ -562,7 +569,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             className="mt-2" 
           />
         )}
-        {(status === 'error' || status === 'failed') && (
+        {(status === FileProcessingState.Error || status === FileProcessingState.Failed) && (
           <Button 
             size="sm" 
             variant="outline" 
@@ -603,7 +610,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             size="sm" 
             className="h-6 w-6 p-0" 
             onClick={() => refetch()}
-            disabled={processingState.status !== 'pending' && processingState.status !== 'completed' && processingState.status !== 'error'}
+            disabled={processingState.status !== FileProcessingState.Pending && processingState.status !== FileProcessingState.Completed && processingState.status !== FileProcessingState.Error}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
           </Button>
@@ -622,7 +629,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             <Select 
               value={selectedFileId} 
               onValueChange={handleFileSelection}
-              disabled={processingState.status !== 'pending' && processingState.status !== 'completed' && processingState.status !== 'error'}
+              disabled={processingState.status !== FileProcessingState.Pending && processingState.status !== FileProcessingState.Completed && processingState.status !== FileProcessingState.Error}
             >
               <SelectTrigger id="fileSelect" className="mt-1">
                 <SelectValue placeholder="Choose a file..." />
@@ -650,7 +657,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         
         {renderProcessingStatus()}
         
-        {selectedFileId && fileInfo && processingState.status === 'completed' && !isLoadingSelectedFile && (
+        {selectedFileId && fileInfo && processingState.status === FileProcessingState.Completed && !isLoadingSelectedFile && (
           <div className="bg-gray-50 p-2 rounded-md border border-gray-100">
             <div className="flex items-center gap-2 mb-1">
               <FileText className="h-4 w-4 text-gray-500" />

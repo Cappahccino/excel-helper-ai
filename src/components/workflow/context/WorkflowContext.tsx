@@ -3,6 +3,7 @@ import React, { createContext, useContext, ReactNode, useState, useCallback } fr
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
+import { WorkflowFileStatus } from '@/types/workflowStatus';
 
 // Define the schema for file data with correct types
 export interface WorkflowFileSchema {
