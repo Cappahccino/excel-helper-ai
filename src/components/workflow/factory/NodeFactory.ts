@@ -235,3 +235,54 @@ export function calculateNodePosition(existingNodes: WorkflowNode[]): { x: numbe
     return { x: maxX + 200, y: maxY };
   }
 }
+
+// Determine if a node requires schema information
+export function nodeRequiresSchema(nodeType: NodeComponentType): boolean {
+  return ['dataProcessing', 'askAI', 'spreadsheetGenerator'].includes(nodeType);
+}
+
+// Determine if a node provides schema information
+export function nodeProvidesPossibleSchema(nodeType: NodeComponentType): boolean {
+  return ['fileUpload', 'dataInput', 'dataProcessing'].includes(nodeType);
+}
+
+// Get default operators for a filter based on column type
+export function getOperatorsForColumnType(columnType: string): { value: string, label: string }[] {
+  switch (columnType) {
+    case 'number':
+      return [
+        { value: 'equals', label: 'Equals' },
+        { value: 'not-equals', label: 'Not Equals' },
+        { value: 'greater-than', label: 'Greater Than' },
+        { value: 'less-than', label: 'Less Than' },
+        { value: 'between', label: 'Between' },
+        { value: 'is-empty', label: 'Is Empty' },
+        { value: 'is-not-empty', label: 'Is Not Empty' }
+      ];
+    case 'date':
+      return [
+        { value: 'equals', label: 'Equals' },
+        { value: 'not-equals', label: 'Not Equals' },
+        { value: 'after', label: 'After' },
+        { value: 'before', label: 'Before' },
+        { value: 'between', label: 'Between' },
+        { value: 'is-empty', label: 'Is Empty' },
+        { value: 'is-not-empty', label: 'Is Not Empty' }
+      ];
+    case 'boolean':
+      return [
+        { value: 'equals', label: 'Equals' },
+        { value: 'not-equals', label: 'Not Equals' },
+      ];
+    default: // string or other types
+      return [
+        { value: 'equals', label: 'Equals' },
+        { value: 'not-equals', label: 'Not Equals' },
+        { value: 'contains', label: 'Contains' },
+        { value: 'starts-with', label: 'Starts With' },
+        { value: 'ends-with', label: 'Ends With' },
+        { value: 'is-empty', label: 'Is Empty' },
+        { value: 'is-not-empty', label: 'Is Not Empty' }
+      ];
+  }
+}
