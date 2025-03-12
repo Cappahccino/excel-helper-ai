@@ -30,6 +30,10 @@ export function useSchemaManagement() {
   const [isLoading, setIsLoading] = useState<Record<string, boolean>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, SchemaValidationError[]>>({});
 
+  const isTextType = (type: string): boolean => {
+    return type === 'string' || type === 'text';
+  };
+
   /**
    * Fetch schema from the database for a specific node
    */
@@ -267,7 +271,6 @@ export function useSchemaManagement() {
         if (config.operator) {
           const numericOperators = ['greater-than', 'less-than', 'between'];
           const stringOperators = ['contains', 'starts-with', 'ends-with'];
-          const isTextType = column.type === 'string' || column.type === 'text';
           
           if (column.type === 'number' && stringOperators.includes(config.operator)) {
             errors.push({
@@ -278,7 +281,7 @@ export function useSchemaManagement() {
             });
           }
           
-          if (isTextType && numericOperators.includes(config.operator)) {
+          if (isTextType(column.type) && numericOperators.includes(config.operator)) {
             errors.push({
               code: 'incompatible_operator',
               message: `Operator "${config.operator}" cannot be used with text column "${config.column}"`,
