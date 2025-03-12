@@ -1,14 +1,12 @@
 
 import React from 'react';
-import { NodeConfigPanelProps, AINodeData, ProcessingNodeType, SpreadsheetGeneratorNodeData } from '@/types/workflow';
+import { NodeConfigPanelProps, ProcessingNodeType } from '@/types/workflow';
 import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
 import AskAINodeConfig from './AskAINodeConfig';
 import { DataProcessingNodeConfig } from './DataProcessingNodeConfig';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange }) => {
-  if (!node) {
-    return null;
-  }
+  if (!node) return null;
 
   const renderNodeConfig = () => {
     const { type } = node.data;
@@ -17,19 +15,19 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange 
       case 'askAI':
         return (
           <AskAINodeConfig 
-            aiConfig={node.data.config}
-            onUpdate={(updatedConfig) => onConfigChange(updatedConfig)}
+            config={node.data.config}
+            onUpdate={onConfigChange}
           />
         );
       
       case 'spreadsheetGenerator':
         return (
           <SpreadsheetGeneratorNodeConfig 
-            spreadsheetConfig={node.data.config as SpreadsheetGeneratorNodeData['config']}
-            onUpdate={(updatedConfig) => onConfigChange(updatedConfig)}
+            config={node.data.config}
+            onUpdate={onConfigChange}
           />
         );
-        
+      
       case 'dataProcessing':
       case 'filtering':
       case 'sorting':
@@ -45,7 +43,9 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange 
         return (
           <DataProcessingNodeConfig 
             config={node.data.config}
-            onConfigChange={(updatedConfig) => onConfigChange(updatedConfig)}
+            onConfigChange={onConfigChange}
+            nodeId={node.id}
+            type={node.data.type as ProcessingNodeType}
           />
         );
       
@@ -63,7 +63,6 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange 
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold">{node.data.label} Configuration</h2>
       </div>
-      
       {renderNodeConfig()}
     </div>
   );

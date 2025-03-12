@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { Json } from '@/types/workflow';
 
@@ -7,19 +8,27 @@ export interface SchemaColumn {
   nullable?: boolean;
 }
 
-// Type guard to check if a value is a valid SchemaColumn array
+// Type guard to check if a value is a SchemaColumn
+function isSchemaColumn(value: any): value is SchemaColumn {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof value.name === 'string' &&
+    typeof value.type === 'string'
+  );
+}
+
+// Type guard to check if a value is a SchemaColumn array
 function isSchemaColumnArray(value: any): value is SchemaColumn[] {
-  return Array.isArray(value) && 
-    value.every(item => 
-      typeof item === 'object' && 
-      item !== null && 
-      typeof item.name === 'string' && 
-      typeof item.type === 'string'
-    );
+  return Array.isArray(value) && value.every(isSchemaColumn);
 }
 
 // Helper to convert Json to SchemaColumn
 function convertToSchemaColumns(data: Json): SchemaColumn[] {
+  if (isSchemaColumnArray(data)) {
+    return data;
+  }
+  
   if (Array.isArray(data)) {
     return data.map(item => {
       if (typeof item === 'object' && item !== null) {

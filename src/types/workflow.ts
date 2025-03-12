@@ -269,19 +269,21 @@ export interface NodeConfigPanelProps {
   onConfigChange: (config: any) => void;
 }
 
-export interface SpreadsheetGeneratorNodeConfigProps {
-  spreadsheetConfig: SpreadsheetGeneratorNodeData['config'];
-  onUpdate: (updatedConfig: any) => void;
-}
-
-export interface AskAINodeConfigProps {
-  aiConfig: AINodeData['config'];
-  onUpdate: (updatedConfig: any) => void;
-}
-
 export interface DataProcessingNodeConfigProps {
   config: Record<string, any>;
   onConfigChange: (updatedConfig: any) => void;
+  nodeId: string;
+  type: ProcessingNodeType;
+}
+
+export interface AskAINodeConfigProps {
+  config: Record<string, any>;
+  onUpdate: (updatedConfig: any) => void;
+}
+
+export interface SpreadsheetGeneratorNodeConfigProps {
+  config: SpreadsheetGeneratorNodeData['config'];
+  onUpdate: (updatedConfig: any) => void;
 }
 
 export interface NodeLibraryProps {
