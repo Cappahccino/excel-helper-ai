@@ -41,17 +41,22 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({
       
       const fileId = `file-${userId}-${Date.now()}-${file.name}`;
       
-      const { data: uploadData, error: uploadError } = await supabase
-        .storage
+      const uploadTask = supabase.storage
         .from('workflow-files')
         .upload(`${userId}/${fileId}`, file, {
           cacheControl: '3600',
-          upsert: false,
-          onUploadProgress: (progress) => {
-            const percentComplete = Math.round((progress.loaded / progress.total) * 100);
-            setUploadProgress(percentComplete);
-          }
+          upsert: false
         });
+
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percentComplete);
+        }
+      });
+
+      const { data: uploadData, error: uploadError } = await uploadTask;
       
       if (uploadError) {
         console.error('File upload error:', uploadError);
@@ -70,7 +75,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({
         description: `${file.name} uploaded successfully!`,
       });
       
-      // After the file is uploaded successfully, update the node config
       const updatedConfig = {
         ...data.config,
         fileId: fileId,
@@ -78,14 +82,12 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({
         uploadStatus: 'completed'
       };
       
-      // Use the onConfigChange handler if it exists, otherwise handle locally
       if (data.onConfigChange) {
         data.onConfigChange(updatedConfig);
       } else {
         console.log('No onConfigChange handler provided for node:', id);
       }
       
-      // If we have a workflow context and IDs, propagate the schema
       if (workflow.workflowId) {
         try {
           const workflowId = workflow.workflowId;

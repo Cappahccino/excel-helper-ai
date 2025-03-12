@@ -1,8 +1,8 @@
 
 import React from 'react';
 import { NodeConfigPanelProps, AINodeData, ProcessingNodeType, SpreadsheetGeneratorNodeData } from '@/types/workflow';
-import { SpreadsheetGeneratorNodeConfig } from './SpreadsheetGeneratorNodeConfig';
-import { AskAINodeConfig } from './AskAINodeConfig';
+import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
+import AskAINodeConfig from './AskAINodeConfig';
 import { DataProcessingNodeConfig } from './DataProcessingNodeConfig';
 
 const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange }) => {
@@ -44,8 +44,8 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange 
       case 'deduplication':
         return (
           <DataProcessingNodeConfig 
-            processingConfig={node.data.config}
-            onUpdate={(updatedConfig) => onConfigChange(updatedConfig)}
+            config={node.data.config}
+            onConfigChange={(updatedConfig) => onConfigChange(updatedConfig)}
           />
         );
       

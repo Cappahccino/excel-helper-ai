@@ -1,4 +1,3 @@
-
 import { Node, Edge as FlowEdge } from '@xyflow/react';
 
 export type Json =
@@ -281,8 +280,8 @@ export interface AskAINodeConfigProps {
 }
 
 export interface DataProcessingNodeConfigProps {
-  processingConfig: Record<string, any>;
-  onUpdate: (updatedConfig: any) => void;
+  config: Record<string, any>;
+  onConfigChange: (updatedConfig: any) => void;
 }
 
 export interface NodeLibraryProps {
