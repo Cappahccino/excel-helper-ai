@@ -196,7 +196,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
         source: edge.source_node_id,
         target: edge.target_node_id,
-        ...(edge.metadata || {})
+        // Use a type assertion here to ensure it's an object before spreading
+        ...(edge.metadata ? edge.metadata as object : {})
       }));
     } catch (err) {
       console.error('Error getting workflow edges:', err);

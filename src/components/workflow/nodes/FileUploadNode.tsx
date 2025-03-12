@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -138,7 +139,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             refetch();
           } else if (updatedFile.processing_status === WorkflowFileStatus.Processing) {
             updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
-          } else if (updatedFile.processing_status === WorkflowFileStatus.Failed || updatedFile.processing_status === WorkflowFileStatus.Error) {
+          } else if (updatedFile.processing_status === WorkflowFileStatus.Failed || 
+                    updatedFile.processing_status === WorkflowFileStatus.Error) {
             const errorMessage = updatedFile.processing_error || 'File processing failed';
             updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
           }
@@ -171,7 +173,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         updateProcessingState(FileProcessingState.Completed, 100);
       } else if (selectedFile.processing_status === WorkflowFileStatus.Processing) {
         updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
-      } else if (selectedFile.processing_status === WorkflowFileStatus.Failed || selectedFile.processing_status === WorkflowFileStatus.Error) {
+      } else if (selectedFile.processing_status === WorkflowFileStatus.Failed || 
+                selectedFile.processing_status === WorkflowFileStatus.Error) {
         updateProcessingState(FileProcessingState.Error, 0, 'Error', selectedFile.error_message || 'File processing failed');
       }
     }
