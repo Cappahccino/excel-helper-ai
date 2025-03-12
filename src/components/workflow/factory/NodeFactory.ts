@@ -1,4 +1,5 @@
-import { NodeType, WorkflowNode, NodeComponentType } from '@/types/workflow';
+
+import { NodeType, WorkflowNode, NodeComponentType, WorkflowNodeData } from '@/types/workflow';
 
 // Map of node type to visual component type
 const nodeTypeComponentMap: Record<string, NodeComponentType> = {

@@ -176,7 +176,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
-  const isTextType = (type: string) => type === 'string' || type === 'text';
+  const isTextType = (type: string): boolean => {
+    return type === 'string' || type === 'text';
+  };
   
   const selectedColumnType = data.config.column 
     ? columns.find(col => col.name === data.config.column)?.type || 'unknown'
@@ -297,7 +299,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           />
         </div>
         
-        {(selectedColumnType === 'string' || selectedColumnType === 'text' || selectedColumnType === 'unknown') && (
+        {showCaseSensitiveOption && (
           <div className="flex items-center justify-between pt-1">
             <Label htmlFor="caseSensitive" className="text-xs">Case Sensitive</Label>
             <Switch
