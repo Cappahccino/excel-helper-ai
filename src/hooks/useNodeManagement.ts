@@ -63,24 +63,23 @@ export function useNodeManagement(
   
   // Update schema cache for a node
   const updateNodeSchema = useCallback((nodeId: string, schema: SchemaColumn[]) => {
-    if (!Array.isArray(schema)) {
-      console.error('Invalid schema format:', schema);
-      return;
-    }
-
     setSchemaCache(prev => ({
       ...prev,
       [nodeId]: schema
     }));
-
-    // Clear any pending updates for this node
-    setPendingSchemaUpdates(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(nodeId);
-      return newSet;
-    });
-  }, []);
-
+    
+    // Trigger schema updates for dependent nodes
+    const mapping = schemaPropagationMap[nodeId];
+    if (mapping && mapping.targetNodes.length > 0) {
+      // Mark all dependent nodes as needing updates
+      setPendingSchemaUpdates(prev => {
+        const newSet = new Set(prev);
+        mapping.targetNodes.forEach(targetId => newSet.add(targetId));
+        return newSet;
+      });
+    }
+  }, [schemaPropagationMap]);
+  
   const handleNodeConfigUpdate = useCallback((nodeId: string, config: any) => {
     setNodes((prevNodes) => {
       return prevNodes.map((node) => {
@@ -192,7 +191,7 @@ export function useNodeManagement(
     
     return { isCompatible: errors.length === 0, errors };
   }, []);
-
+  
   const triggerSchemaUpdate = useCallback((sourceNodeId: string) => {
     // Get all dependent nodes for the source node
     const mapping = schemaPropagationMap[sourceNodeId];
