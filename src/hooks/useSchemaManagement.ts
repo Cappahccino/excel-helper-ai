@@ -267,6 +267,7 @@ export function useSchemaManagement() {
         if (config.operator) {
           const numericOperators = ['greater-than', 'less-than', 'between'];
           const stringOperators = ['contains', 'starts-with', 'ends-with'];
+          const isTextType = column.type === 'string' || column.type === 'text';
           
           if (column.type === 'number' && stringOperators.includes(config.operator)) {
             errors.push({
@@ -277,7 +278,7 @@ export function useSchemaManagement() {
             });
           }
           
-          if ((column.type === 'string' || column.type === 'text' || column.type === 'unknown') && numericOperators.includes(config.operator)) {
+          if (isTextType && numericOperators.includes(config.operator)) {
             errors.push({
               code: 'incompatible_operator',
               message: `Operator "${config.operator}" cannot be used with text column "${config.column}"`,

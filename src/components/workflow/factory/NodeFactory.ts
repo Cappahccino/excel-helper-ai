@@ -73,6 +73,6 @@ export function createNode(
       type: nodeType as NodeType,
       category: nodeCategory,
       config: { ...defaultConfig }
-    }
+    } as WorkflowNodeData
   };
 }

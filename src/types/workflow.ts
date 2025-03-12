@@ -192,7 +192,7 @@ export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
       columns?: Array<{
         header: string;
         field: string;
-        type?: 'string' | 'number' | 'date' | 'boolean';
+        type?: 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
       }>;
     }>;
     [key: string]: any;
@@ -497,4 +497,10 @@ export function mapDatabaseEdgeToReactFlowEdge(dbEdge: WorkflowEdge): Edge {
     style: dbEdge.metadata?.style,
     data: dbEdge.metadata?.data
   };
+}
+
+// Update SchemaColumn type to include 'text' 
+export interface SchemaColumn {
+  name: string;
+  type: 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
 }

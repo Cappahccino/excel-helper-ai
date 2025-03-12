@@ -176,10 +176,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
+  const isTextType = (type: string) => type === 'string' || type === 'text';
+  
   const selectedColumnType = data.config.column 
     ? columns.find(col => col.name === data.config.column)?.type || 'unknown'
     : 'unknown';
-  
+
+  const showCaseSensitiveOption = isTextType(selectedColumnType);
+
   const getValuePlaceholder = () => {
     const type = selectedColumnType;
     const operator = data.config.operator;
