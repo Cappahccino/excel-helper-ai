@@ -23,7 +23,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange,
       case 'spreadsheetGenerator':
         return (
           <SpreadsheetGeneratorNodeConfig 
-            config={node.data.config}
+            spreadsheetConfig={node.data.config}
             onConfigChange={onConfigChange}
           />
         );

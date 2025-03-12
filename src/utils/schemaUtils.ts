@@ -1,9 +1,8 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { Json, SchemaColumn } from '@/types/workflow';
 
-// Export SchemaColumn for use in other files
-export { SchemaColumn };
+// Export SchemaColumn type for use in other files
+export type { SchemaColumn };
 
 // Type guard to check if a value is a SchemaColumn
 function isSchemaColumn(value: any): value is SchemaColumn {
