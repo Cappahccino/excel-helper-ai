@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { Json } from '@/types/workflow';
 
@@ -5,6 +6,43 @@ export interface SchemaColumn {
   name: string;
   type: string;
   nullable?: boolean;
+}
+
+// Type guard to check if a value is a valid SchemaColumn array
+function isSchemaColumnArray(value: any): value is SchemaColumn[] {
+  return Array.isArray(value) && 
+    value.every(item => 
+      typeof item === 'object' && 
+      item !== null && 
+      typeof item.name === 'string' && 
+      typeof item.type === 'string'
+    );
+}
+
+// Helper to convert Json to SchemaColumn
+function convertToSchemaColumns(data: Json): SchemaColumn[] {
+  if (Array.isArray(data)) {
+    return data.map(item => {
+      if (typeof item === 'object' && item !== null) {
+        return {
+          name: typeof item.name === 'string' ? item.name : String(item.name || 'column'),
+          type: typeof item.type === 'string' ? item.type : 'string',
+          nullable: typeof item.nullable === 'boolean' ? item.nullable : true
+        };
+      }
+      return { name: 'unknown', type: 'string', nullable: true };
+    });
+  }
+  
+  if (typeof data === 'object' && data !== null) {
+    return Object.entries(data).map(([key, value]) => ({
+      name: key,
+      type: typeof value === 'string' ? value : 'string',
+      nullable: true
+    }));
+  }
+  
+  return [];
 }
 
 export const schemaUtils = {
@@ -34,10 +72,11 @@ export const schemaUtils = {
           // Convert data_types to SchemaColumn[]
           const columnsData = directSchema.data_types;
           if (typeof columnsData === 'object' && columnsData !== null) {
-            const schemaColumns: SchemaColumn[] = Object.entries(columnsData).map(([name, type]) => ({
-              name,
-              type: typeof type === 'string' ? type : 'string'
-            }));
+            const schemaColumns = Object.entries(columnsData as Record<string, string>)
+              .map(([name, type]) => ({
+                name,
+                type: typeof type === 'string' ? type : 'string'
+              }));
             console.log('Found direct schema for node:', schemaColumns);
             return schemaColumns;
           }
@@ -66,15 +105,18 @@ export const schemaUtils = {
       
       // First try to get schema from edge metadata
       for (const edge of edges) {
-        if (edge.metadata && 
-            typeof edge.metadata === 'object' && 
-            edge.metadata !== null &&
-            'schema' in edge.metadata && 
-            edge.metadata.schema && 
-            typeof edge.metadata.schema === 'object' && 
-            'columns' in edge.metadata.schema) {
-          console.log('Found schema in edge metadata:', edge.metadata.schema.columns);
-          return edge.metadata.schema.columns as SchemaColumn[];
+        if (edge.metadata) {
+          // Type guard for edge.metadata
+          const metadata = edge.metadata as Record<string, any>;
+          
+          if (metadata.schema && metadata.schema.columns) {
+            const columns = metadata.schema.columns as Json;
+            const schemaColumns = convertToSchemaColumns(columns);
+            if (schemaColumns.length > 0) {
+              console.log('Found schema in edge metadata:', schemaColumns);
+              return schemaColumns;
+            }
+          }
         }
       }
       
@@ -121,9 +163,9 @@ export const schemaUtils = {
       }
       
       // Merge with existing metadata or create new
-      let metadata = {};
+      let metadata: Record<string, any> = {};
       if (existingEdge && existingEdge.metadata && typeof existingEdge.metadata === 'object') {
-        metadata = existingEdge.metadata;
+        metadata = existingEdge.metadata as Record<string, any>;
       }
       
       const updatedMetadata = {
