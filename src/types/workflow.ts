@@ -1,3 +1,4 @@
+
 import { Node, Edge as FlowEdge } from '@xyflow/react';
 
 export type Json =
@@ -239,8 +240,8 @@ export interface WorkflowExecution {
   status: 'pending' | 'running' | 'completed' | 'failed';
   startedAt?: string;
   completedAt?: string;
-  inputs?: Record<string, any>; // Added inputs property
-  outputs?: Record<string, any>; // Added outputs property
+  inputs?: Record<string, any>;
+  outputs?: Record<string, any>;
 }
 
 export interface NodeExecutionContext {
@@ -267,6 +268,10 @@ export interface AIRequestData {
 export interface NodeConfigPanelProps {
   node: WorkflowNode;
   onConfigChange: (config: any) => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  onClose?: () => void;
+  readOnly?: boolean;
 }
 
 export interface DataProcessingNodeConfigProps {
@@ -278,12 +283,12 @@ export interface DataProcessingNodeConfigProps {
 
 export interface AskAINodeConfigProps {
   config: Record<string, any>;
-  onUpdate: (updatedConfig: any) => void;
+  onConfigChange: (updatedConfig: any) => void;
 }
 
 export interface SpreadsheetGeneratorNodeConfigProps {
   config: SpreadsheetGeneratorNodeData['config'];
-  onUpdate: (updatedConfig: any) => void;
+  onConfigChange: (updatedConfig: any) => void;
 }
 
 export interface NodeLibraryProps {

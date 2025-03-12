@@ -5,7 +5,7 @@ import SpreadsheetGeneratorNodeConfig from './SpreadsheetGeneratorNodeConfig';
 import AskAINodeConfig from './AskAINodeConfig';
 import { DataProcessingNodeConfig } from './DataProcessingNodeConfig';
 
-const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange }) => {
+const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange, onDelete, onDuplicate, onClose, readOnly }) => {
   if (!node) return null;
 
   const renderNodeConfig = () => {
@@ -16,7 +16,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange 
         return (
           <AskAINodeConfig 
             config={node.data.config}
-            onUpdate={onConfigChange}
+            onConfigChange={onConfigChange}
           />
         );
       
@@ -24,7 +24,7 @@ const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onConfigChange 
         return (
           <SpreadsheetGeneratorNodeConfig 
             config={node.data.config}
-            onUpdate={onConfigChange}
+            onConfigChange={onConfigChange}
           />
         );
       

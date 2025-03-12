@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -41,13 +42,7 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({
       
       const fileId = `file-${userId}-${Date.now()}-${file.name}`;
       
-      const uploadTask = supabase.storage
-        .from('workflow-files')
-        .upload(`${userId}/${fileId}`, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
+      // Create XHR for upload progress tracking
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
@@ -56,7 +51,13 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({
         }
       });
 
-      const { data: uploadData, error: uploadError } = await uploadTask;
+      // Upload file using Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('workflow-files')
+        .upload(`${userId}/${fileId}`, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
       
       if (uploadError) {
         console.error('File upload error:', uploadError);
@@ -90,7 +91,6 @@ const FileUploadNode: React.FC<NodeProps<FileUploadNodeData>> = ({
       
       if (workflow.workflowId) {
         try {
-          const workflowId = workflow.workflowId;
           await workflow.propagateFileSchema(id, '');
         } catch (error) {
           console.error('Failed to propagate schema:', error);

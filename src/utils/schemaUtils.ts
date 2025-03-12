@@ -1,12 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import { Json } from '@/types/workflow';
-
-export interface SchemaColumn {
-  name: string;
-  type: string;
-  nullable?: boolean;
-}
+import { Json, SchemaColumn } from '@/types/workflow';
 
 // Type guard to check if a value is a SchemaColumn
 function isSchemaColumn(value: any): value is SchemaColumn {
@@ -32,17 +26,18 @@ function convertToSchemaColumns(data: Json): SchemaColumn[] {
   if (Array.isArray(data)) {
     return data.map(item => {
       if (typeof item === 'object' && item !== null) {
+        const itemObj = item as Record<string, Json>;
         return {
-          name: typeof item.name === 'string' ? item.name : String(item.name || 'column'),
-          type: typeof item.type === 'string' ? item.type : 'string',
-          nullable: typeof item.nullable === 'boolean' ? item.nullable : true
+          name: typeof itemObj.name === 'string' ? itemObj.name : String(itemObj.name || 'column'),
+          type: typeof itemObj.type === 'string' ? itemObj.type : 'string',
+          nullable: typeof itemObj.nullable === 'boolean' ? itemObj.nullable : true
         };
       }
       return { name: 'unknown', type: 'string', nullable: true };
     });
   }
   
-  if (typeof data === 'object' && data !== null) {
+  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
     return Object.entries(data).map(([key, value]) => ({
       name: key,
       type: typeof value === 'string' ? value : 'string',
