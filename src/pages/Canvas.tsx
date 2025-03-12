@@ -59,7 +59,12 @@ const Canvas = () => {
     selectedNodeId,
     setSelectedNodeId,
     handleNodeConfigUpdate,
-    handleAddNode
+    handleAddNode,
+    updateSchemaPropagationMap,
+    triggerSchemaUpdate,
+    getNodeSchema,
+    updateNodeSchema,
+    checkSchemaCompatibility
   } = useNodeManagement(setNodes, () => saveWorkflowToDb(nodes, edges));
 
   const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
@@ -71,8 +76,20 @@ const Canvas = () => {
   });
 
   const onConnect = useCallback((params: Connection) => {
-    setEdges((eds) => addEdge(params, eds));
-  }, [setEdges]);
+    setEdges((eds) => {
+      const newEdges = addEdge(params, eds);
+      
+      if (params.source && params.target) {
+        updateSchemaPropagationMap(params.source, params.target);
+        
+        setTimeout(() => {
+          triggerSchemaUpdate(params.source);
+        }, 500);
+      }
+      
+      return newEdges;
+    });
+  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate]);
 
   const saveWorkflow = useCallback(() => {
     return saveWorkflowToDb(nodes, edges);
@@ -103,7 +120,14 @@ const Canvas = () => {
   }, []);
 
   return (
-    <WorkflowProvider workflowId={savingWorkflowId || undefined}>
+    <WorkflowProvider 
+      workflowId={savingWorkflowId || undefined}
+      schemaProviderValue={{
+        getNodeSchema,
+        updateNodeSchema,
+        checkSchemaCompatibility,
+      }}
+    >
       <div className="h-screen flex flex-col">
         <WorkflowHeader 
           workflowName={workflowName}

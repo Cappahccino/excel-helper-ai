@@ -1,451 +1,236 @@
 
-// We'll focus on the most performance-critical methods in the WorkflowContext
-// This is a partial update that optimizes key functions
-
-import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
-import { Json } from '@/types/workflow';
-import { toast } from 'sonner';
-import { useDebounce } from '@/hooks/useDebounce';
+import { SchemaColumn } from '@/hooks/useNodeManagement';
 
-// Define the file schema interface
-export interface WorkflowFileSchema {
-  id?: string;
-  workflow_id: string;
-  node_id: string;
-  file_id: string;
-  columns: string[];
-  data_types: Json;
-  sample_data?: Json[];
-  has_headers: boolean;
-  sheet_name?: string | null;
-  total_rows?: number;
-  is_temporary?: boolean;
+interface SchemaContextValue {
+  getNodeSchema?: (nodeId: string) => SchemaColumn[];
+  updateNodeSchema?: (nodeId: string, schema: SchemaColumn[]) => void;
+  checkSchemaCompatibility?: (sourceSchema: SchemaColumn[], targetConfig: any) => { 
+    isCompatible: boolean;
+    errors: string[];
+  };
 }
 
-interface WorkflowContextType {
+interface WorkflowContextValue {
   workflowId?: string;
-  isTemporaryId: boolean;
-  propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
-  getFileSchema: (nodeId: string) => Promise<WorkflowFileSchema | null>;
-  saveFileSchema: (schema: WorkflowFileSchema) => Promise<boolean>;
-  migrateTemporaryWorkflow: (tempId: string, permanentId: string) => Promise<boolean>;
+  isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
+  propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
+  getEdges: (workflowId: string) => Promise<any[]>;
+  schema?: SchemaContextValue;
 }
 
-const WorkflowContext = createContext<WorkflowContextType>({
-  isTemporaryId: false,
-  propagateFileSchema: async () => false,
-  getFileSchema: async () => null,
-  saveFileSchema: async () => false,
-  migrateTemporaryWorkflow: async () => false,
+const WorkflowContext = createContext<WorkflowContextValue>({
+  isTemporaryId: () => false,
   convertToDbWorkflowId: (id) => id,
+  propagateFileSchema: async () => false,
+  getEdges: async () => [],
 });
 
-export const WorkflowProvider: React.FC<{
-  children: React.ReactNode;
+interface WorkflowProviderProps {
+  children: ReactNode;
   workflowId?: string;
-}> = ({ children, workflowId }) => {
-  const [migrationInProgress, setMigrationInProgress] = useState<boolean>(false);
-  const [migrationStatus, setMigrationStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
-  const debouncedMigrationStatus = useDebounce(migrationStatus, 300);
-  
-  // Cache for file schemas to reduce database reads
-  const schemaCache = useRef<Map<string, Map<string, WorkflowFileSchema>>>(new Map());
-  const isTemporaryId = useMemo(() => workflowId ? isTemporaryWorkflowId(workflowId) : false, [workflowId]);
-  
-  // Optimized migration function with batched operations
-  const migrateTemporaryWorkflow = useCallback(async (tempId: string, permanentId: string): Promise<boolean> => {
-    if (!tempId || !permanentId || !isTemporaryWorkflowId(tempId)) {
-      console.error('Invalid migration: Source must be temporary ID and target must be permanent');
-      return false;
-    }
-    
-    try {
-      setMigrationInProgress(true);
-      setMigrationStatus('pending');
-      console.log(`Migrating workflow data from ${tempId} to ${permanentId}`);
-      
-      // Extract the UUID part of the temporary ID
-      const tempUuid = convertToDbWorkflowId(tempId);
-      
-      // We'll skip using transactions since the RPC isn't available
-      // and handle each operation independently
+  schemaProviderValue?: SchemaContextValue;
+}
+
+export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({ 
+  children, 
+  workflowId,
+  schemaProviderValue
+}) => {
+  // Cache for retrieved file schemas
+  const [schemaCache, setSchemaCache] = useState<Record<string, { 
+    schema: any, 
+    timestamp: number 
+  }>>({});
+
+  // Function to check if a node is related to file operations
+  const isFileNode = useCallback((nodeId: string): Promise<boolean> => {
+    return new Promise(async (resolve) => {
       try {
-        // 1. Migrate file schemas with a single query
-        const { data: schemas, error: schemasError } = await supabase
-          .from('workflow_file_schemas')
-          .select('*')
-          .eq('workflow_id', tempUuid)
-          .eq('is_temporary', true);
-          
-        if (schemasError) {
-          console.error('Error fetching schemas to migrate:', schemasError);
-          throw new Error(`Schema fetch failed: ${schemasError.message}`);
-        }
+        if (!workflowId) return resolve(false);
         
-        if (schemas && schemas.length > 0) {
-          // Process in efficient batches
-          const batchSize = 50; // Adjust based on your DB performance
-          for (let i = 0; i < schemas.length; i += batchSize) {
-            const batchSchemas = schemas.slice(i, i + batchSize);
-            
-            // Update workflow_id in all schemas
-            const updates = batchSchemas.map(schema => ({
-              ...schema,
-              workflow_id: permanentId,
-              is_temporary: false,
-              id: undefined // Let the database generate new IDs
-            }));
-            
-            const { error: updateError } = await supabase
-              .from('workflow_file_schemas')
-              .upsert(updates, { 
-                onConflict: 'workflow_id,node_id,file_id',
-                ignoreDuplicates: false
-              });
-              
-            if (updateError) {
-              console.error('Error migrating schemas:', updateError);
-              throw new Error(`Schema migration failed: ${updateError.message}`);
-            }
-          }
-        }
+        const dbWorkflowId = convertToDbWorkflowId(workflowId);
         
-        // 2. Migrate workflow files with efficient batching
-        const { data: files, error: filesError } = await supabase
+        const { data, error } = await supabase
           .from('workflow_files')
-          .select('*')
-          .eq('workflow_id', tempUuid)
-          .eq('is_temporary', true);
-          
-        if (filesError) {
-          console.error('Error fetching files to migrate:', filesError);
-          throw new Error(`Files fetch failed: ${filesError.message}`);
-        }
-        
-        if (files && files.length > 0) {
-          const batchSize = 50;
-          for (let i = 0; i < files.length; i += batchSize) {
-            const batchFiles = files.slice(i, i + batchSize);
-            
-            const fileUpdates = batchFiles.map(file => ({
-              ...file,
-              workflow_id: permanentId,
-              is_temporary: false,
-              id: undefined // Let the database generate new IDs
-            }));
-            
-            const { error: fileUpdateError } = await supabase
-              .from('workflow_files')
-              .upsert(fileUpdates, {
-                onConflict: 'workflow_id,file_id,node_id',
-                ignoreDuplicates: false
-              });
-              
-            if (fileUpdateError) {
-              console.error('Error migrating workflow files:', fileUpdateError);
-              throw new Error(`File migration failed: ${fileUpdateError.message}`);
-            }
-          }
-        }
-        
-        // 3. Migrate workflow edges with efficient batching
-        const { data: edges, error: edgesError } = await supabase
-          .from('workflow_edges')
-          .select('*')
-          .eq('workflow_id', tempUuid);
-          
-        if (edgesError) {
-          console.error('Error fetching edges to migrate:', edgesError);
-          throw new Error(`Edges fetch failed: ${edgesError.message}`);
-        }
-        
-        if (edges && edges.length > 0) {
-          const batchSize = 50;
-          for (let i = 0; i < edges.length; i += batchSize) {
-            const batchEdges = edges.slice(i, i + batchSize);
-            
-            const edgeUpdates = batchEdges.map(edge => ({
-              ...edge,
-              workflow_id: permanentId,
-              id: undefined // Let the database generate new IDs
-            }));
-            
-            const { error: edgeUpdateError } = await supabase
-              .from('workflow_edges')
-              .upsert(edgeUpdates, {
-                onConflict: 'workflow_id,source_node_id,target_node_id',
-                ignoreDuplicates: false
-              });
-              
-            if (edgeUpdateError) {
-              console.error('Error migrating workflow edges:', edgeUpdateError);
-              throw new Error(`Edge migration failed: ${edgeUpdateError.message}`);
-            }
-          }
-        }
-        
-        // 4. Update the workflow itself
-        const { error: workflowUpdateError } = await supabase
-          .from('workflows')
-          .update({ is_temporary: false })
-          .eq('id', permanentId);
-          
-        if (workflowUpdateError) {
-          console.error('Error updating workflow temporary status:', workflowUpdateError);
-        }
-        
-        setMigrationStatus('success');
-        console.log(`Successfully migrated workflow from ${tempId} to ${permanentId}`);
-        
-        // Clear any cached data for the old workflow ID
-        clearCachedWorkflowData(tempId);
-        
-        return true;
-      } catch (innerError) {
-        throw innerError;
-      }
-    } catch (error) {
-      console.error('Error during workflow migration:', error);
-      setMigrationStatus('error');
-      
-      // Attempt recovery - could implement reassociation here
-      toast.error('Failed to migrate workflow data. Your work is still saved under a temporary ID.');
-      return false;
-    } finally {
-      setMigrationInProgress(false);
-    }
-  }, []);
-  
-  // Helper to clear cached data when needed
-  const clearCachedWorkflowData = useCallback((workflowId: string) => {
-    schemaCache.current.delete(workflowId);
-  }, []);
-  
-  // Optimized propagateFileSchema with caching
-  const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
-    if (!workflowId) return false;
-    
-    try {
-      console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}`);
-      
-      // Convert temporary ID to UUID for database operations if needed
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      const isTemporary = isTemporaryWorkflowId(workflowId);
-      
-      // Check cache first for the source node's schemas
-      let sourceSchemas;
-      const workflowCache = schemaCache.current.get(dbWorkflowId);
-      
-      if (workflowCache && workflowCache.has(sourceNodeId)) {
-        // Use cached schema
-        sourceSchemas = [workflowCache.get(sourceNodeId)!];
-      } else {
-        // Find schema associated with source node
-        const { data, error: sourceError } = await supabase
-          .from('workflow_file_schemas')
-          .select('*')
+          .select('file_id')
           .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', sourceNodeId);
-        
-        if (sourceError) {
-          console.error('Error fetching source schemas:', sourceError);
-          return false;
-        }
-        
-        sourceSchemas = data;
-        
-        // Cache the result if we found something
-        if (data && data.length > 0) {
-          if (!schemaCache.current.has(dbWorkflowId)) {
-            schemaCache.current.set(dbWorkflowId, new Map());
-          }
-          schemaCache.current.get(dbWorkflowId)!.set(sourceNodeId, data[0]);
-        }
-      }
-      
-      // If no schemas found for source node, nothing to propagate
-      if (!sourceSchemas || sourceSchemas.length === 0) {
-        console.log(`No schemas found for source node ${sourceNodeId}`);
-        return false;
-      }
-      
-      console.log(`Found ${sourceSchemas.length} schemas for source node ${sourceNodeId}`);
-      
-      let propagatedAny = false;
-      
-      // For each file schema in the source node
-      for (const schema of sourceSchemas) {
-        // Check if target node already has this schema
-        const { data: existingSchema, error: existingError } = await supabase
-          .from('workflow_file_schemas')
-          .select('id')
-          .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', targetNodeId)
-          .eq('file_id', schema.file_id)
+          .eq('node_id', nodeId)
           .maybeSingle();
           
-        if (existingError) {
-          console.error('Error checking existing schema:', existingError);
-          continue;
-        }
-        
-        // If target node doesn't have this schema, propagate it
-        if (!existingSchema) {
-          console.log(`Propagating schema for file ${schema.file_id} to node ${targetNodeId}`);
-          
-          const newSchema = {
-            workflow_id: dbWorkflowId,
-            file_id: schema.file_id,
-            node_id: targetNodeId,
-            columns: schema.columns,
-            data_types: schema.data_types,
-            sample_data: schema.sample_data,
-            has_headers: schema.has_headers,
-            sheet_name: schema.sheet_name,
-            total_rows: schema.total_rows,
-            is_temporary: isTemporary
-          };
-          
-          const { error: insertError } = await supabase
-            .from('workflow_file_schemas')
-            .insert(newSchema);
-            
-          if (insertError) {
-            console.error('Error propagating schema:', insertError);
-            toast.error(`Failed to propagate data schema to node ${targetNodeId}`);
-          } else {
-            propagatedAny = true;
-            
-            // Cache the new schema
-            if (!schemaCache.current.has(dbWorkflowId)) {
-              schemaCache.current.set(dbWorkflowId, new Map());
-            }
-            schemaCache.current.get(dbWorkflowId)!.set(targetNodeId, newSchema as WorkflowFileSchema);
-            
-            // Also add an entry in workflow_files table to maintain file associations
-            const { error: fileAssocError } = await supabase
-              .from('workflow_files')
-              .insert({
-                workflow_id: dbWorkflowId,
-                file_id: schema.file_id,
-                node_id: targetNodeId,
-                status: 'queued', // Initially mark as queued, will be processed later
-                is_temporary: isTemporary
-              });
-              
-            if (fileAssocError) {
-              console.error('Error creating file association:', fileAssocError);
-            } else {
-              console.log(`Created file association for file ${schema.file_id} and node ${targetNodeId}`);
-            }
-          }
-        } else {
-          console.log(`Node ${targetNodeId} already has schema for file ${schema.file_id}`);
-          propagatedAny = true; // Consider it successful if schema already exists
-        }
+        resolve(!!data?.file_id);
+      } catch (err) {
+        console.error('Error checking if node is file node:', err);
+        resolve(false);
       }
-      
-      return propagatedAny;
-    } catch (error) {
-      console.error('Error in propagateFileSchema:', error);
-      toast.error('Failed to propagate file schema between nodes');
-      return false;
-    }
+    });
   }, [workflowId]);
 
-  // Get file schema for a specific node in the workflow
-  const getFileSchema = useCallback(async (nodeId: string): Promise<WorkflowFileSchema | null> => {
-    if (!workflowId) return null;
-    
+  // Function to get file schema from a node
+  const getFileSchema = useCallback(async (nodeId: string): Promise<any> => {
     try {
-      console.log(`Getting file schema for node ${nodeId}`);
-      
-      // Convert temporary ID to UUID for database operations if needed
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      if (!workflowId) return null;
       
       // Check cache first
-      const workflowCache = schemaCache.current.get(dbWorkflowId);
-      if (workflowCache && workflowCache.has(nodeId)) {
-        return workflowCache.get(nodeId)!;
+      const cacheKey = `${workflowId}-${nodeId}`;
+      const cachedSchema = schemaCache[cacheKey];
+      
+      // Use cache if available and less than 5 minutes old
+      if (cachedSchema && (Date.now() - cachedSchema.timestamp < 5 * 60 * 1000)) {
+        return cachedSchema.schema;
       }
       
-      const { data, error } = await supabase
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      // Try to get schema from workflow_file_schemas table
+      const { data: schemaData, error: schemaError } = await supabase
         .from('workflow_file_schemas')
-        .select('*')
+        .select('columns, data_types')
         .eq('workflow_id', dbWorkflowId)
         .eq('node_id', nodeId)
         .maybeSingle();
         
-      if (error) {
-        console.error('Error fetching file schema:', error);
+      if (schemaError) {
+        console.error('Error fetching schema:', schemaError);
         return null;
       }
       
-      // Cache the result if we got data
-      if (data) {
-        if (!schemaCache.current.has(dbWorkflowId)) {
-          schemaCache.current.set(dbWorkflowId, new Map());
-        }
-        schemaCache.current.get(dbWorkflowId)!.set(nodeId, data);
+      if (schemaData) {
+        const schema = {
+          columns: schemaData.columns || [],
+          types: schemaData.data_types || {}
+        };
+        
+        // Update cache
+        setSchemaCache(prev => ({
+          ...prev,
+          [cacheKey]: {
+            schema,
+            timestamp: Date.now()
+          }
+        }));
+        
+        return schema;
       }
       
-      return data;
-    } catch (error) {
-      console.error('Error in getFileSchema:', error);
+      // If no schema found, try to get it from the file metadata
+      const { data: fileData, error: fileError } = await supabase
+        .from('workflow_files')
+        .select('file_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
+        
+      if (fileError || !fileData?.file_id) {
+        return null;
+      }
+      
+      const { data: metaData, error: metaError } = await supabase
+        .from('file_metadata')
+        .select('column_definitions')
+        .eq('file_id', fileData.file_id)
+        .maybeSingle();
+        
+      if (metaError || !metaData?.column_definitions) {
+        return null;
+      }
+      
+      const schema = {
+        columns: Object.keys(metaData.column_definitions),
+        types: metaData.column_definitions
+      };
+      
+      // Update cache
+      setSchemaCache(prev => ({
+        ...prev,
+        [cacheKey]: {
+          schema,
+          timestamp: Date.now()
+        }
+      }));
+      
+      return schema;
+    } catch (err) {
+      console.error('Error getting file schema:', err);
       return null;
     }
-  }, [workflowId]);
+  }, [workflowId, schemaCache]);
 
-  // Save or update file schema
-  const saveFileSchema = useCallback(async (schema: WorkflowFileSchema): Promise<boolean> => {
+  // Function to propagate schema from source to target
+  const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
     try {
-      console.log(`Saving file schema for node ${schema.node_id}`);
+      console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}`);
       
-      // Use the provided workflow_id or convert the current one
-      const dbWorkflowId = schema.workflow_id || (workflowId ? convertToDbWorkflowId(workflowId) : null);
-      const isTemporary = workflowId ? isTemporaryWorkflowId(workflowId) : false;
+      // Check if source is a file node
+      const isSource = await isFileNode(sourceNodeId);
       
-      if (!dbWorkflowId) {
-        console.error('No workflow ID available for saving schema');
+      if (!isSource) {
+        console.log(`Source node ${sourceNodeId} is not a file node`);
         return false;
       }
       
-      const { error } = await supabase
-        .from('workflow_file_schemas')
-        .upsert({
-          ...schema,
-          workflow_id: dbWorkflowId,
-          is_temporary: isTemporary
-        }, {
-          onConflict: 'workflow_id,file_id,node_id'
-        });
-        
-      if (error) {
-        console.error('Error saving file schema:', error);
-        toast.error('Failed to save file schema');
+      // Get source schema
+      const sourceSchema = await getFileSchema(sourceNodeId);
+      
+      if (!sourceSchema) {
+        console.log(`No schema found for source node ${sourceNodeId}`);
         return false;
       }
+      
+      console.log(`Found schema for source node ${sourceNodeId}:`, sourceSchema);
+      
+      // No need to directly update target node - the schema will be retrieved
+      // when needed through the schema context
       
       return true;
-    } catch (error) {
-      console.error('Error in saveFileSchema:', error);
-      toast.error('Error saving file schema');
+    } catch (err) {
+      console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [workflowId]);
+  }, [isFileNode, getFileSchema]);
+
+  // Function to get edges for a workflow
+  const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
+    try {
+      if (!workflowId) return [];
+      
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      const { data, error } = await supabase
+        .from('workflow_edges')
+        .select('*')
+        .eq('workflow_id', dbWorkflowId);
+        
+      if (error) {
+        console.error('Error fetching workflow edges:', error);
+        return [];
+      }
+      
+      return data.map(edge => ({
+        id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
+        source: edge.source_node_id,
+        target: edge.target_node_id,
+        ...edge.metadata
+      }));
+    } catch (err) {
+      console.error('Error getting workflow edges:', err);
+      return [];
+    }
+  }, []);
+
+  const value: WorkflowContextValue = {
+    workflowId,
+    isTemporaryId: isTemporaryWorkflowId,
+    convertToDbWorkflowId,
+    propagateFileSchema,
+    getEdges,
+    schema: schemaProviderValue
+  };
 
   return (
-    <WorkflowContext.Provider value={{
-      workflowId,
-      isTemporaryId,
-      propagateFileSchema,
-      getFileSchema,
-      saveFileSchema,
-      migrateTemporaryWorkflow,
-      convertToDbWorkflowId,
-    }}>
+    <WorkflowContext.Provider value={value}>
       {children}
     </WorkflowContext.Provider>
   );

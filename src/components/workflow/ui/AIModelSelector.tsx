@@ -10,15 +10,18 @@ import {
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
+import { AIProvider } from './AIProviderSelector';
 
 interface AIModelSelectorProps {
-  provider: 'openai' | 'anthropic' | 'deepseek';
+  provider: AIProvider;
   value: string;
   onChange: (value: string) => void;
   className?: string;
   label?: string;
   description?: string;
   disabled?: boolean;
+  required?: boolean;
+  error?: string;
 }
 
 // Provider options with their respective models
@@ -44,13 +47,18 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
   className = "h-8 text-xs border-indigo-200",
   label = "AI Model",
   description,
-  disabled = false
+  disabled = false,
+  required = false,
+  error
 }) => {
   return (
     <div className="space-y-1.5">
       {label && (
         <div className="flex items-center gap-1.5">
-          <Label htmlFor="ai-model" className="text-xs font-medium">{label}</Label>
+          <Label htmlFor="ai-model" className="text-xs font-medium">
+            {label}
+            {required && <span className="text-red-500 ml-0.5">*</span>}
+          </Label>
           {description && (
             <TooltipProvider>
               <Tooltip>
@@ -70,7 +78,10 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
         onValueChange={(value) => onChange(value)}
         disabled={disabled}
       >
-        <SelectTrigger className={className}>
+        <SelectTrigger 
+          className={`${className} ${error ? 'border-red-400 border-2' : ''}`}
+          aria-invalid={!!error}
+        >
           <SelectValue placeholder="Select model" />
         </SelectTrigger>
         <SelectContent>
@@ -79,6 +90,9 @@ export const AIModelSelector: React.FC<AIModelSelectorProps> = ({
           ))}
         </SelectContent>
       </Select>
+      {error && (
+        <p className="text-xs text-red-500 mt-1">{error}</p>
+      )}
     </div>
   );
 };

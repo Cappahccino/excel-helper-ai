@@ -1,4 +1,3 @@
-
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
@@ -17,30 +16,29 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   const { convertToDbWorkflowId } = useWorkflow();
   const [retryMap, setRetryMap] = useState<Record<string, { attempts: number, maxAttempts: number, lastAttempt: number }>>({});
   
-  // Use a ref for edge changes to avoid unnecessary effect triggers
   const edgesRef = useRef<Edge[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const debouncedEdges = useDebounce(edges, 500);
   
-  // We'll batch save operations with a 1 second debounce 
+  const [schemaPropagationStatus, setSchemaPropagationStatus] = useState<Record<string, {
+    status: 'pending' | 'in_progress' | 'completed' | 'error';
+    message?: string;
+    lastAttempt: number;
+  }>>({});
+  
   const edgesSavePending = useRef(false);
   const edgesSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Optimized edge saving with debounce and batching
   const saveEdgesToDatabase = useCallback(async (edgesToSave: Edge[], immediate = false) => {
     if (!workflowId) return;
     
-    // If we're already planning to save, don't schedule another save
-    // unless we're forcing an immediate save
     if (edgesSavePending.current && !immediate) return;
     
     const scheduleSave = () => {
-      // Clear any existing timeout
       if (edgesSaveTimeoutRef.current) {
         clearTimeout(edgesSaveTimeoutRef.current);
       }
       
-      // Set up a new save operation
       edgesSavePending.current = true;
       edgesSaveTimeoutRef.current = setTimeout(async () => {
         try {
@@ -84,7 +82,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
               };
             });
             
-            // Increase batch size for fewer round trips
             for (let i = 0; i < edgesData.length; i += 50) {
               const batch = edgesData.slice(i, i + 50);
               const { error } = await supabase
@@ -103,24 +100,21 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
           edgesSavePending.current = false;
           edgesSaveTimeoutRef.current = null;
         }
-      }, immediate ? 0 : 1000); // 1 second debounce, 0 if immediate
+      }, immediate ? 0 : 1000);
     };
     
     scheduleSave();
   }, [workflowId, convertToDbWorkflowId]);
 
-  // More efficient schema propagation with prioritized retries
   const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string): Promise<boolean> => {
     const edgeKey = `${sourceId}-${targetId}`;
     const now = Date.now();
     
-    // Check if we should skip this attempt due to recent failure
     const retryInfo = retryMap[edgeKey];
     if (retryInfo) {
       const backoffTime = Math.min(1000 * Math.pow(2, retryInfo.attempts), 30000);
       const timeSinceLastAttempt = now - retryInfo.lastAttempt;
       
-      // If we've tried recently and failed, skip this attempt
       if (retryInfo.attempts > 0 && timeSinceLastAttempt < backoffTime) {
         console.log(`Skipping propagation for ${edgeKey}, attempted too recently (${timeSinceLastAttempt}ms ago, backoff is ${backoffTime}ms)`);
         return false;
@@ -130,7 +124,14 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     try {
       console.log(`Attempting to propagate schema from ${sourceId} to ${targetId}`);
       
-      // Update retry info before attempting
+      setSchemaPropagationStatus(prev => ({
+        ...prev,
+        [edgeKey]: {
+          status: 'in_progress',
+          lastAttempt: now
+        }
+      }));
+      
       setRetryMap(prev => ({
         ...prev,
         [edgeKey]: { 
@@ -143,14 +144,21 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       const result = await propagateFileSchema(sourceId, targetId);
       
       if (result) {
-        // Success - reset retry data
         setRetryMap(prev => ({
           ...prev,
           [edgeKey]: { attempts: 0, maxAttempts: 5, lastAttempt: now }
         }));
+        
+        setSchemaPropagationStatus(prev => ({
+          ...prev,
+          [edgeKey]: {
+            status: 'completed',
+            lastAttempt: now
+          }
+        }));
+        
         return true;
       } else {
-        // Failure - increment attempts
         setRetryMap(prev => {
           const currentRetry = prev[edgeKey] || { attempts: 0, maxAttempts: 5, lastAttempt: now };
           return {
@@ -162,12 +170,21 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
             }
           };
         });
+        
+        setSchemaPropagationStatus(prev => ({
+          ...prev,
+          [edgeKey]: {
+            status: 'error',
+            message: 'Failed to propagate schema',
+            lastAttempt: now
+          }
+        }));
+        
         return false;
       }
     } catch (error) {
       console.error(`Error propagating schema for edge ${edgeKey}:`, error);
       
-      // Update retry tracking on error
       setRetryMap(prev => {
         const currentRetry = prev[edgeKey] || { attempts: 0, maxAttempts: 5, lastAttempt: 0 };
         return {
@@ -180,11 +197,19 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         };
       });
       
+      setSchemaPropagationStatus(prev => ({
+        ...prev,
+        [edgeKey]: {
+          status: 'error',
+          message: error.message || 'Unknown error',
+          lastAttempt: now
+        }
+      }));
+      
       return false;
     }
   }, [propagateFileSchema]);
 
-  // Track edges efficiently
   useEffect(() => {
     if (!workflowId) return;
     
@@ -194,15 +219,11 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       setEdges(currentEdges);
     };
     
-    // Initial save and track
     handleEdgeChanges();
     
-    // Subscribe to edge changes using the onChange callback
-    // Replace the on/off methods with proper event subscription
     const unsubscribe = reactFlowInstance.getEdges();
     handleEdgeChanges();
     
-    // Set up an interval to check for edge changes
     const intervalId = setInterval(() => {
       handleEdgeChanges();
     }, 500);
@@ -210,7 +231,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     return () => {
       clearInterval(intervalId);
       
-      // Force save any pending changes on unmount
       if (edgesSavePending.current && edgesSaveTimeoutRef.current) {
         clearTimeout(edgesSaveTimeoutRef.current);
         saveEdgesToDatabase(edgesRef.current, true);
@@ -218,20 +238,17 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     };
   }, [reactFlowInstance, workflowId, saveEdgesToDatabase]);
 
-  // Debounced edge saving
   useEffect(() => {
     if (!workflowId || debouncedEdges.length === 0) return;
     saveEdgesToDatabase(debouncedEdges);
   }, [debouncedEdges, workflowId, saveEdgesToDatabase]);
 
-  // Optimized schema propagation with prioritization
   useEffect(() => {
     if (!workflowId) return;
     
     const propagateSchemas = async () => {
       const currentEdges = edgesRef.current;
       
-      // Sort edges by retry attempts (prioritize ones that haven't failed)
       const sortedEdges = [...currentEdges].sort((a, b) => {
         const keyA = `${a.source}-${a.target}`;
         const keyB = `${b.source}-${b.target}`;
@@ -240,17 +257,34 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         return attemptsA - attemptsB;
       });
       
-      // Process each edge
       for (const edge of sortedEdges) {
         const edgeKey = `${edge.source}-${edge.target}`;
         const retryInfo = retryMap[edgeKey] || { attempts: 0, maxAttempts: 5, lastAttempt: 0 };
+        const statusInfo = schemaPropagationStatus[edgeKey];
         
         if (retryInfo.attempts >= retryInfo.maxAttempts) {
           console.log(`Skipping schema propagation for ${edgeKey} after ${retryInfo.attempts} failed attempts`);
           continue;
         }
         
+        if (statusInfo && statusInfo.status === 'in_progress') {
+          console.log(`Skipping schema propagation for ${edgeKey} - already in progress`);
+          continue;
+        }
+        
+        if (statusInfo && statusInfo.status === 'completed' && (Date.now() - statusInfo.lastAttempt < 10000)) {
+          continue;
+        }
+        
         try {
+          setSchemaPropagationStatus(prev => ({
+            ...prev,
+            [edgeKey]: {
+              status: 'pending',
+              lastAttempt: Date.now()
+            }
+          }));
+          
           await propagateSchemaWithRetry(edge.source, edge.target);
         } catch (error) {
           console.error(`Error propagating schema for edge from ${edge.source} to ${edge.target}:`, error);
@@ -260,15 +294,19 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     propagateSchemas();
     
-    // Set up interval for retry logic - but make it smarter
     const intervalId = setInterval(() => {
-      // Only process if there are edges that need retrying
       const now = Date.now();
       const edgesNeedingRetry = edgesRef.current.filter(edge => {
         const edgeKey = `${edge.source}-${edge.target}`;
         const retryInfo = retryMap[edgeKey];
+        const statusInfo = schemaPropagationStatus[edgeKey];
         
-        // Check if this edge needs a retry based on backoff strategy
+        if (statusInfo && statusInfo.status === 'error') {
+          const backoffTime = Math.min(1000 * Math.pow(2, retryInfo?.attempts || 0), 30000);
+          const timeSinceLastAttempt = now - (statusInfo.lastAttempt || 0);
+          return timeSinceLastAttempt >= backoffTime;
+        }
+        
         if (retryInfo && retryInfo.attempts > 0 && retryInfo.attempts < retryInfo.maxAttempts) {
           const backoffTime = Math.min(1000 * Math.pow(2, retryInfo.attempts), 30000);
           const timeSinceLastAttempt = now - retryInfo.lastAttempt;
@@ -287,7 +325,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     return () => {
       clearInterval(intervalId);
     };
-  }, [reactFlowInstance, workflowId, propagateSchemaWithRetry, retryMap]);
+  }, [reactFlowInstance, workflowId, propagateSchemaWithRetry, retryMap, schemaPropagationStatus]);
 
   return null;
 };
