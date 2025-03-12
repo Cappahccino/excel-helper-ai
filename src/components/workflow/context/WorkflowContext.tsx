@@ -1,9 +1,9 @@
-
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { Json } from '@/types/workflow';
 
-// Define the schema for file data
+// Define the schema for file data with correct types
 export interface WorkflowFileSchema {
   columns: string[];
   types: Record<string, string>;
@@ -81,18 +81,9 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     try {
       if (!workflowId) return null;
       
-      // Check cache first
-      const cacheKey = `${workflowId}-${nodeId}`;
-      const cachedSchema = schemaCache[cacheKey];
-      
-      // Use cache if available and less than 5 minutes old
-      if (cachedSchema && (Date.now() - cachedSchema.timestamp < 5 * 60 * 1000)) {
-        return cachedSchema.schema;
-      }
-      
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // Try to get schema from workflow_file_schemas table
+      // Try to get schema from workflow_file_schemas table first
       const { data: schemaData, error: schemaError } = await supabase
         .from('workflow_file_schemas')
         .select('columns, data_types')
@@ -106,65 +97,46 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       }
       
       if (schemaData) {
-        const schema = {
+        const schema: WorkflowFileSchema = {
           columns: schemaData.columns || [],
-          types: schemaData.data_types || {}
+          types: schemaData.data_types as Record<string, string> || {}
         };
-        
-        // Update cache
-        setSchemaCache(prev => ({
-          ...prev,
-          [cacheKey]: {
-            schema,
-            timestamp: Date.now()
-          }
-        }));
-        
         return schema;
       }
       
       // If no schema found, try to get it from the file metadata
-      const { data: fileData, error: fileError } = await supabase
+      const { data: fileData } = await supabase
         .from('workflow_files')
         .select('file_id')
         .eq('workflow_id', dbWorkflowId)
         .eq('node_id', nodeId)
         .maybeSingle();
         
-      if (fileError || !fileData?.file_id) {
+      if (!fileData?.file_id) {
         return null;
       }
       
-      const { data: metaData, error: metaError } = await supabase
+      const { data: metaData } = await supabase
         .from('file_metadata')
         .select('column_definitions')
         .eq('file_id', fileData.file_id)
         .maybeSingle();
         
-      if (metaError || !metaData?.column_definitions) {
+      if (!metaData?.column_definitions) {
         return null;
       }
       
-      const schema = {
+      const schema: WorkflowFileSchema = {
         columns: Object.keys(metaData.column_definitions),
-        types: metaData.column_definitions
+        types: metaData.column_definitions as Record<string, string>
       };
-      
-      // Update cache
-      setSchemaCache(prev => ({
-        ...prev,
-        [cacheKey]: {
-          schema,
-          timestamp: Date.now()
-        }
-      }));
       
       return schema;
     } catch (err) {
       console.error('Error getting file schema:', err);
       return null;
     }
-  }, [workflowId, schemaCache]);
+  }, [workflowId]);
 
   // Function to propagate schema from source to target
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
@@ -233,12 +205,12 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     try {
       console.log(`Migrating data from temporary workflow ${temporaryId} to permanent workflow ${permanentId}`);
       
-      // Example migration tasks - update this based on your actual needs
+      // Instead of using RPC, use direct table operations
       // Migrate workflow_files
-      const { error: filesMigrationError } = await supabase.rpc('migrate_workflow_files', {
-        source_id: temporaryId,
-        target_id: permanentId
-      });
+      const { error: filesMigrationError } = await supabase
+        .from('workflow_files')
+        .update({ workflow_id: permanentId })
+        .eq('workflow_id', temporaryId);
       
       if (filesMigrationError) {
         console.error('Error migrating workflow files:', filesMigrationError);
@@ -246,10 +218,10 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       }
       
       // Migrate workflow_file_schemas
-      const { error: schemasMigrationError } = await supabase.rpc('migrate_workflow_schemas', {
-        source_id: temporaryId,
-        target_id: permanentId
-      });
+      const { error: schemasMigrationError } = await supabase
+        .from('workflow_file_schemas')
+        .update({ workflow_id: permanentId })
+        .eq('workflow_id', temporaryId);
       
       if (schemasMigrationError) {
         console.error('Error migrating workflow schemas:', schemasMigrationError);
