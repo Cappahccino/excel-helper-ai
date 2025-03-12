@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 
 import { FileUploadNodeData } from '@/types/workflow';
-import { WorkflowFileStatus, FileProcessingState } from '@/types/workflowStatus';
+import { WorkflowFileStatus, FileProcessingState, mapWorkflowStatusToProcessingState } from '@/types/workflowStatus';
 import { useWorkflow } from '../context/WorkflowContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import NodeProgress from '../ui/NodeProgress';
@@ -132,14 +132,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           const updatedFile = payload.new;
           
           // Update processing status based on the realtime update
-          if (updatedFile.processing_status === WorkflowFileStatus.Completed) {
+          // Convert string status to enum for comparison
+          const processingStatus = updatedFile.processing_status as string;
+          
+          if (processingStatus === WorkflowFileStatus.Completed) {
             updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
             // Refresh file info
             refetch();
-          } else if (updatedFile.processing_status === WorkflowFileStatus.Processing) {
+          } else if (processingStatus === WorkflowFileStatus.Processing) {
             updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
-          } else if (updatedFile.processing_status === WorkflowFileStatus.Failed || 
-                    updatedFile.processing_status === WorkflowFileStatus.Error) {
+          } else if (processingStatus === WorkflowFileStatus.Failed || 
+                    processingStatus === WorkflowFileStatus.Error) {
             const errorMessage = updatedFile.processing_error || 'File processing failed';
             updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
           }
@@ -168,13 +171,16 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       setFileInfo(selectedFile);
       
       // Update processing state based on file status
-      if (selectedFile.processing_status === WorkflowFileStatus.Completed) {
+      // Compare with string values from the enum
+      const processingStatus = selectedFile.processing_status as string;
+      
+      if (processingStatus === WorkflowFileStatus.Completed) {
         updateProcessingState(FileProcessingState.Completed, 100);
-      } else if (selectedFile.processing_status === WorkflowFileStatus.Processing) {
+      } else if (processingStatus === WorkflowFileStatus.Processing) {
         updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
       } else if (
-        selectedFile.processing_status === WorkflowFileStatus.Failed || 
-        selectedFile.processing_status === WorkflowFileStatus.Error
+        processingStatus === WorkflowFileStatus.Failed || 
+        processingStatus === WorkflowFileStatus.Error
       ) {
         updateProcessingState(
           FileProcessingState.Error, 
