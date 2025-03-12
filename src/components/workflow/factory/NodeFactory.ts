@@ -1,11 +1,10 @@
-
 import { NodeType, WorkflowNode, NodeComponentType } from '@/types/workflow';
 
 // Map of node type to visual component type
 const nodeTypeComponentMap: Record<string, NodeComponentType> = {
   'fileUpload': 'fileUpload',
-  'filtering': 'filtering' as NodeComponentType, // Type assertion to handle the error
-  'aggregation': 'aggregation' as NodeComponentType, // Type assertion to handle the error
+  'filtering': 'filtering',
+  'aggregation': 'aggregation',
   'dataProcessing': 'dataProcessing',
   'aiNode': 'aiNode',
   'askAI': 'askAI',
@@ -53,7 +52,7 @@ export function calculateNodePosition(existingNodes: WorkflowNode[]) {
   };
 }
 
-// Create a new node
+// Create a new node with fixed typing
 export function createNode(
   nodeType: string, 
   nodeCategory: string, 
@@ -71,7 +70,7 @@ export function createNode(
     position,
     data: {
       label: nodeLabel,
-      type: nodeType as NodeType, // Type assertion to handle the error
+      type: nodeType as NodeType,
       category: nodeCategory,
       config: { ...defaultConfig }
     }

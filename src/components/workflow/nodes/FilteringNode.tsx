@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -81,7 +80,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     setLoadingError(null);
     
     try {
-      // Find connected input nodes by checking edges
       const edges = await workflow.getEdges(workflow.workflowId);
       const inputNodeIds = edges
         .filter(edge => edge.target === id)
@@ -93,7 +91,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return;
       }
       
-      // Use the first connected input node to get schema
       const sourceNodeId = inputNodeIds[0];
       const schema = await getNodeSchema(workflow.workflowId, sourceNodeId);
       
@@ -104,10 +101,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       setColumns(schema);
       
-      // Update operators based on selected column type
       updateOperatorsForColumn(data.config.column, schema);
       
-      // Validate current configuration
       validateConfiguration(data.config, schema);
     } catch (error) {
       console.error('Error loading schema for filtering node:', error);
@@ -171,24 +166,20 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     if (data.onChange) {
       const newConfig = { ...data.config, [key]: value };
       
-      // If column changes, update the available operators
       if (key === 'column') {
         updateOperatorsForColumn(value, columns);
       }
       
-      // Validate the new configuration
       validateConfiguration(newConfig, columns);
       
       data.onChange(id, newConfig);
     }
   };
 
-  // Get the currently selected column's type (for input placeholder)
   const selectedColumnType = data.config.column 
     ? columns.find(col => col.name === data.config.column)?.type || 'unknown'
     : 'unknown';
   
-  // Determine placeholder text based on column type and operator
   const getValuePlaceholder = () => {
     const type = selectedColumnType;
     const operator = data.config.operator;

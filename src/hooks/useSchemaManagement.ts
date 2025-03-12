@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -151,9 +150,7 @@ export function useSchemaManagement() {
       
       // Update database if requested
       if (updateDb) {
-        if (!fileId) {
-          console.warn('No fileId provided for schema update. Using an empty placeholder.');
-        }
+        const fileIdToUse = fileId || '00000000-0000-0000-0000-000000000000'; // Placeholder UUID
         
         const columns = schema.map(col => col.name);
         const dataTypes = schema.reduce((acc, col) => {
@@ -169,9 +166,9 @@ export function useSchemaManagement() {
             node_id: nodeId,
             columns,
             data_types: dataTypes,
-            updated_at: new Date().toISOString(),
-            file_id: fileId || '00000000-0000-0000-0000-000000000000', // Placeholder UUID
-            has_headers: true
+            file_id: fileIdToUse,
+            has_headers: true,
+            updated_at: new Date().toISOString()
           }, {
             onConflict: 'workflow_id,node_id'
           });

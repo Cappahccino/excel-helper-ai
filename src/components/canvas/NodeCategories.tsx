@@ -1,5 +1,5 @@
 
-import { Upload, Filter, PlusCircle, Brain, FileSpreadsheet, SortDesc, Calculator } from 'lucide-react';
+import { Upload, Filter, PlusCircle, Brain, FileSpreadsheet, Calculator } from 'lucide-react';
 
 export const nodeCategories = [
   {

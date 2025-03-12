@@ -346,7 +346,7 @@ export interface NodeLibraryProps {
       type: string;
       label: string;
       description?: string;
-      icon?: string;
+      icon?: any;
     }>;
   }>;
 }

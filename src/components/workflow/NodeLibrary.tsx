@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -107,26 +106,32 @@ const NodeLibrary: React.FC<NodeLibraryProps> = ({
                       {category.name}
                     </h3>
                     <div className="grid grid-cols-2 gap-2">
-                      {category.items.map((item) => (
-                        <Button
-                          key={item.type}
-                          variant="outline"
-                          className="justify-start h-auto py-3 px-4"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            onAddNode?.(item.type, category.id, item.label);
-                            onClose();
-                          }}
-                          type="button"
-                        >
-                          <div className="text-left">
-                            <div className="font-medium">{item.label}</div>
-                            {item.description && (
-                              <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
-                            )}
-                          </div>
-                        </Button>
-                      ))}
+                      {category.items.map((item) => {
+                        const IconComponent = item.icon;
+                        return (
+                          <Button
+                            key={item.type}
+                            variant="outline"
+                            className="justify-start h-auto py-3 px-4"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onAddNode?.(item.type, category.id, item.label);
+                              onClose();
+                            }}
+                            type="button"
+                          >
+                            <div className="flex items-center text-left">
+                              {IconComponent && <IconComponent className="w-4 h-4 mr-2" />}
+                              <div>
+                                <div className="font-medium">{item.label}</div>
+                                {item.description && (
+                                  <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                                )}
+                              </div>
+                            </div>
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
