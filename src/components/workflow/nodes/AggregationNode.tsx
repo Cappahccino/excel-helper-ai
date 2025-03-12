@@ -16,7 +16,7 @@ interface AggregationNodeProps {
   data: {
     label: string;
     config: {
-      function?: "sum" | "avg" | "min" | "max" | "count";
+      function?: 'sum' | 'avg' | 'min' | 'max' | 'count';
       column?: string;
       groupBy?: string;
     };
@@ -27,11 +27,11 @@ interface AggregationNodeProps {
 }
 
 const AGGREGATION_FUNCTIONS = [
-  { value: 'sum', label: 'Sum', description: 'Calculate the sum of values' },
-  { value: 'avg', label: 'Average', description: 'Calculate the average of values' },
-  { value: 'min', label: 'Minimum', description: 'Find the minimum value' },
-  { value: 'max', label: 'Maximum', description: 'Find the maximum value' },
-  { value: 'count', label: 'Count', description: 'Count the number of rows' }
+  { value: 'sum', label: 'Sum' },
+  { value: 'avg', label: 'Average' },
+  { value: 'min', label: 'Minimum' },
+  { value: 'max', label: 'Maximum' },
+  { value: 'count', label: 'Count' }
 ];
 
 const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected }) => {
@@ -92,7 +92,7 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
       loadSchema();
     }
   }, [loadSchema, selected]);
-  
+
   const validateConfiguration = (config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
       setValidationErrors([]);
@@ -101,23 +101,11 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
     
     const errors: string[] = [];
     
-    if (config.function && ['sum', 'avg', 'min', 'max'].includes(config.function)) {
-      if (!config.column) {
-        errors.push(`A column must be selected for ${config.function} function`);
-      } else {
-        const column = schema.find(col => col.name === config.column);
-        if (!column) {
-          errors.push(`Column "${config.column}" does not exist in the data`);
-        } else if (column.type !== 'number') {
-          errors.push(`Function "${config.function}" requires a numeric column. "${config.column}" is type "${column.type}"`);
-        }
-      }
-    }
-    
-    if (config.groupBy) {
-      const column = schema.find(col => col.name === config.groupBy);
-      if (!column) {
-        errors.push(`Column "${config.groupBy}" does not exist in the data`);
+    // For numeric functions, validate that the column is numeric
+    if (config.function && config.function !== 'count' && config.column) {
+      const column = schema.find(col => col.name === config.column);
+      if (column && column.type !== 'number') {
+        errors.push(`Function "${config.function}" can only be used with numeric columns.`);
       }
     }
     
@@ -135,24 +123,13 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
     }
   };
 
-  // Filter columns by type based on aggregation function
-  const getEligibleColumns = (func?: string) => {
-    if (!func || func === 'count') {
-      // All columns can be used for count or if no function selected
-      return columns;
-    }
-    
-    // For sum, avg, min, max - only numeric columns
-    return columns.filter(col => col.type === 'number');
-  };
-
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>
-      <CardHeader className="bg-green-50 p-3 flex flex-row items-center">
-        <Calculator className="w-4 h-4 mr-2 text-green-600" />
+      <CardHeader className="bg-blue-50 p-3 flex flex-row items-center">
+        <Calculator className="w-4 h-4 mr-2 text-blue-600" />
         <CardTitle className="text-sm font-medium">{data.label || 'Aggregate Data'}</CardTitle>
         {(isLoading || schemaLoading[id]) && (
-          <Loader2 className="w-4 h-4 ml-auto animate-spin text-green-600" />
+          <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
         )}
       </CardHeader>
       <CardContent className="p-3 space-y-3">
@@ -166,9 +143,9 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
         )}
         
         <div className="space-y-1.5">
-          <Label htmlFor="function" className="text-xs">Aggregation Function</Label>
+          <Label htmlFor="function" className="text-xs">Function</Label>
           <Select
-            value={data.config.function || ''}
+            value={data.config.function || 'sum'}
             onValueChange={(value) => handleConfigChange('function', value)}
             disabled={isLoading || columns.length === 0}
           >
@@ -178,16 +155,7 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
             <SelectContent>
               {AGGREGATION_FUNCTIONS.map((func) => (
                 <SelectItem key={func.value} value={func.value}>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger className="flex items-center">
-                        {func.label}
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p>{func.description}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  {func.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -195,27 +163,22 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
         </div>
         
         <div className="space-y-1.5">
-          <Label htmlFor="column" className="text-xs">
-            Column to Aggregate
-            {data.config.function && data.config.function !== 'count' && (
-              <span className="text-gray-500 ml-1">(numeric only)</span>
-            )}
-          </Label>
+          <Label htmlFor="column" className="text-xs">Column</Label>
           <Select
             value={data.config.column || ''}
             onValueChange={(value) => handleConfigChange('column', value)}
-            disabled={!data.config.function || isLoading || columns.length === 0}
+            disabled={isLoading || columns.length === 0}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue placeholder="Select column" />
             </SelectTrigger>
             <SelectContent>
-              {getEligibleColumns(data.config.function).length === 0 ? (
+              {columns.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-gray-500">
-                  No suitable columns available
+                  No columns available
                 </div>
               ) : (
-                getEligibleColumns(data.config.function).map((column) => (
+                columns.map((column) => (
                   <SelectItem key={column.name} value={column.name}>
                     <div className="flex items-center">
                       {column.name}
@@ -238,7 +201,7 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
             disabled={isLoading || columns.length === 0}
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select column (optional)" />
+              <SelectValue placeholder="No grouping" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="">No grouping</SelectItem>
@@ -272,17 +235,28 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
           </div>
         )}
 
-        <div className="mt-2 rounded-md bg-green-50 p-2 text-xs text-green-700 border border-green-100">
-          <div className="flex flex-col">
-            <span className="font-semibold">Aggregation:</span>
-            <span className="ml-1">
-              {data.config.function && data.config.column
-                ? `${data.config.function} of ${data.config.column}`
-                : 'No aggregation configured'}
-              {data.config.groupBy && ` grouped by ${data.config.groupBy}`}
-            </span>
-          </div>
-        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="mt-2 rounded-md bg-blue-50 p-2 text-xs text-blue-700 border border-blue-100">
+                <div className="flex">
+                  <span className="font-semibold">Aggregation:</span>
+                  <span className="ml-1">
+                    {data.config.function 
+                      ? `${data.config.function.toUpperCase()} of ${data.config.column || 'column'}`
+                      : 'No aggregation configured'}
+                    {data.config.groupBy ? ` grouped by ${data.config.groupBy}` : ''}
+                  </span>
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              {data.config.function
+                ? `Calculates the ${data.config.function} of ${data.config.column || 'selected column'}${data.config.groupBy ? ` for each unique value of ${data.config.groupBy}` : ''}`
+                : 'Configure the aggregation to process data'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />

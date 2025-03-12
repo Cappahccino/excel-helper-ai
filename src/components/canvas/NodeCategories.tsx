@@ -1,5 +1,5 @@
 
-import { FileUpload, Filter, PlusCircle, Brain, FileSpreadsheet, SortDesc, Calculator } from 'lucide-react';
+import { Upload, Filter, PlusCircle, Brain, FileSpreadsheet, SortDesc, Calculator } from 'lucide-react';
 
 export const nodeCategories = [
   {
@@ -10,7 +10,7 @@ export const nodeCategories = [
         type: 'fileUpload',
         label: 'File Upload',
         description: 'Upload and process Excel, CSV or other file formats',
-        icon: FileUpload
+        icon: Upload
       }
     ]
   },

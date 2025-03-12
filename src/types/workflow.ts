@@ -69,7 +69,9 @@ export type NodeComponentType =
   | 'controlNode'
   | 'spreadsheetGenerator'
   | 'utilityNode'
-  | 'fileUpload';
+  | 'fileUpload'
+  | 'filtering'
+  | 'aggregation';
 
 // Define FileProcessingState type for FileUploadNode
 export type FileProcessingState = 

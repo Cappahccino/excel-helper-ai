@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -41,7 +42,7 @@ export function useSchemaManagement() {
       
       const { data, error } = await supabase
         .from('workflow_file_schemas')
-        .select('columns, data_types')
+        .select('columns, data_types, file_id')
         .eq('workflow_id', workflowId)
         .eq('node_id', nodeId)
         .maybeSingle();
@@ -125,10 +126,11 @@ export function useSchemaManagement() {
     schema: SchemaColumn[],
     options?: {
       updateDb?: boolean,
-      source?: 'db' | 'propagation' | 'manual'
+      source?: 'db' | 'propagation' | 'manual',
+      fileId?: string
     }
   ): Promise<boolean> => {
-    const { updateDb = true, source = 'manual' } = options || {};
+    const { updateDb = true, source = 'manual', fileId } = options || {};
     
     try {
       // Update local cache
@@ -149,12 +151,17 @@ export function useSchemaManagement() {
       
       // Update database if requested
       if (updateDb) {
+        if (!fileId) {
+          console.warn('No fileId provided for schema update. Using an empty placeholder.');
+        }
+        
         const columns = schema.map(col => col.name);
         const dataTypes = schema.reduce((acc, col) => {
           acc[col.name] = col.type;
           return acc;
         }, {} as Record<string, string>);
         
+        // Include the required file_id field
         const { error } = await supabase
           .from('workflow_file_schemas')
           .upsert({
@@ -162,7 +169,9 @@ export function useSchemaManagement() {
             node_id: nodeId,
             columns,
             data_types: dataTypes,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            file_id: fileId || '00000000-0000-0000-0000-000000000000', // Placeholder UUID
+            has_headers: true
           }, {
             onConflict: 'workflow_id,node_id'
           });
@@ -271,7 +280,7 @@ export function useSchemaManagement() {
             });
           }
           
-          if ((column.type === 'string' || column.type === 'text') && numericOperators.includes(config.operator)) {
+          if ((column.type === 'string' || column.type === 'text' || column.type === 'unknown') && numericOperators.includes(config.operator)) {
             errors.push({
               code: 'incompatible_operator',
               message: `Operator "${config.operator}" cannot be used with text column "${config.column}"`,

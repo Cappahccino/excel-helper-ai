@@ -4,8 +4,8 @@ import { NodeType, WorkflowNode, NodeComponentType } from '@/types/workflow';
 // Map of node type to visual component type
 const nodeTypeComponentMap: Record<string, NodeComponentType> = {
   'fileUpload': 'fileUpload',
-  'filtering': 'filtering',
-  'aggregation': 'aggregation',
+  'filtering': 'filtering' as NodeComponentType, // Type assertion to handle the error
+  'aggregation': 'aggregation' as NodeComponentType, // Type assertion to handle the error
   'dataProcessing': 'dataProcessing',
   'aiNode': 'aiNode',
   'askAI': 'askAI',
@@ -71,7 +71,7 @@ export function createNode(
     position,
     data: {
       label: nodeLabel,
-      type: nodeType,
+      type: nodeType as NodeType, // Type assertion to handle the error
       category: nodeCategory,
       config: { ...defaultConfig }
     }

@@ -302,7 +302,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           />
         </div>
         
-        {(selectedColumnType === 'string' || selectedColumnType === 'text') && (
+        {(selectedColumnType === 'string' || selectedColumnType === 'text' || selectedColumnType === 'unknown') && (
           <div className="flex items-center justify-between pt-1">
             <Label htmlFor="caseSensitive" className="text-xs">Case Sensitive</Label>
             <Switch
