@@ -6,7 +6,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Json } from '@/types/workflow';
 import { useDebounce } from '@/hooks/useDebounce';
-import { schemaUtils } from '@/utils/schemaUtils';
 
 interface ConnectionHandlerProps {
   workflowId?: string;
@@ -14,7 +13,7 @@ interface ConnectionHandlerProps {
 
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
   const reactFlowInstance = useReactFlow();
-  const { isTemporaryId } = useWorkflow();
+  const { propagateFileSchema, isTemporaryId } = useWorkflow();
   const { convertToDbWorkflowId } = useWorkflow();
   const [retryMap, setRetryMap] = useState<Record<string, { attempts: number, maxAttempts: number, lastAttempt: number }>>({});
   
@@ -141,8 +140,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         }
       }));
       
-      // Use schemaUtils for propagation
-      const result = await schemaUtils.propagateSchema(workflowId, sourceId, targetId);
+      const result = await propagateFileSchema(sourceId, targetId);
       
       if (result) {
         // Success - reset retry data
@@ -184,7 +182,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       
       return false;
     }
-  }, [workflowId, retryMap]);
+  }, [propagateFileSchema]);
 
   // Track edges efficiently
   useEffect(() => {
@@ -197,6 +195,11 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     };
     
     // Initial save and track
+    handleEdgeChanges();
+    
+    // Subscribe to edge changes using the onChange callback
+    // Replace the on/off methods with proper event subscription
+    const unsubscribe = reactFlowInstance.getEdges();
     handleEdgeChanges();
     
     // Set up an interval to check for edge changes

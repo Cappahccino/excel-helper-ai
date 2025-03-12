@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, MiniMap, Panel, Node } from '@xyflow/r
 import { Button } from '@/components/ui/button';
 import { Plus, FileText } from 'lucide-react';
 import ConnectionHandler from '@/components/workflow/ConnectionHandler';
-import { nodeTypes } from './NodeTypes';
+import { getNodeTypes } from './NodeTypes';
 
 interface CanvasFlowProps {
   nodes: any[];
@@ -43,7 +43,7 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onNodeClick={onNodeClick}
-      nodeTypes={nodeTypes}
+      nodeTypes={getNodeTypes(handleNodeConfigUpdate, workflowId)}
       fitView
       attributionPosition="top-right"
       style={{ backgroundColor: "#F7F9FB" }}

@@ -20,15 +20,18 @@ import { SpreadsheetGeneratorNodeData } from '@/types/workflow';
 import { PlusCircle, Trash2 } from 'lucide-react';
 
 interface SpreadsheetGeneratorNodeConfigProps {
-  spreadsheetConfig: SpreadsheetGeneratorNodeData['config'];
-  onConfigChange: (updatedConfig: any) => void;
+  node: {
+    id: string;
+    data: SpreadsheetGeneratorNodeData;
+  };
+  onConfigChange: (nodeId: string, config: any) => void;
 }
 
 const SpreadsheetGeneratorNodeConfig: React.FC<SpreadsheetGeneratorNodeConfigProps> = ({
-  spreadsheetConfig,
+  node,
   onConfigChange,
 }) => {
-  const [config, setConfig] = useState(spreadsheetConfig || {});
+  const [config, setConfig] = useState(node.data.config || {});
 
   // Initialize with default values
   useEffect(() => {
@@ -36,15 +39,15 @@ const SpreadsheetGeneratorNodeConfig: React.FC<SpreadsheetGeneratorNodeConfigPro
       filename: 'generated',
       fileExtension: 'xlsx' as 'xlsx' | 'csv' | 'xls',
       sheets: [{ name: 'Sheet1', columns: [] }],
-      ...spreadsheetConfig
+      ...node.data.config
     };
     setConfig(defaultConfig);
-  }, [spreadsheetConfig]);
+  }, [node.data.config]);
 
   const handleChange = (key: string, value: any) => {
     const updatedConfig = { ...config, [key]: value };
     setConfig(updatedConfig);
-    onConfigChange(updatedConfig);
+    onConfigChange(node.id, updatedConfig);
   };
 
   const handleAddSheet = () => {

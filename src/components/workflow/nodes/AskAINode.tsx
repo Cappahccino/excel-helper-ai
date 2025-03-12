@@ -1,4 +1,3 @@
-
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Brain, MessageSquare, GripVertical, Save, FileText } from 'lucide-react';
@@ -18,7 +17,7 @@ const defaultData: AINodeData = {
   type: 'askAI',
   label: 'Ask AI',
   config: {
-    provider: 'openai',
+    aiProvider: 'openai',
     modelName: 'gpt-4o-mini',
     prompt: '',
     systemMessage: ''
@@ -60,7 +59,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
   } : defaultData;
 
   const [provider, setProvider] = useState<AIProvider>(
-    (nodeData.config?.provider as AIProvider) || 'openai'
+    (nodeData.config?.aiProvider as AIProvider) || 'openai'
   );
   const [model, setModel] = useState(nodeData.config?.modelName || providerOptions[provider][0].id);
   const [prompt, setPrompt] = useState(nodeData.config?.prompt || '');
@@ -110,7 +109,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     setIsSaving(true);
     
     const updatedConfig = {
-      provider: provider,
+      aiProvider: provider,
       modelName: model,
       prompt: prompt,
       systemMessage: systemMessage

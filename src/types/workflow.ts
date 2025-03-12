@@ -1,14 +1,64 @@
-import { Node, Edge as FlowEdge } from '@xyflow/react';
+import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNodeProps } from '@xyflow/react';
 
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [property: string]: Json }
-  | Json[];
+// Define our own Json type since we can't import it from supabase
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
-// Node Component Types
+// Expanded Node Types
+export type InputNodeType = 
+  | 'dataInput' | 'fileUpload' | 'databaseQuery' | 'manualEntry'
+  | 'apiFetch' | 'webhookListener' | 'ftpImport' | 'emailAttachment'
+  | 'formSubmission' | 'scheduledFetch' | 'spreadsheetImport' | 'crmDataPull'
+  | 'erpDataFetch' | 'spreadsheetGenerator'
+  | 'excelInput' | 'csvInput' | 'apiSource' | 'userInput';
+
+export type ProcessingNodeType = 
+  | 'dataProcessing' | 'columnMapping' | 'filtering' | 'sorting'
+  | 'aggregation' | 'formulaCalculation' | 'currencyConversion' | 'textTransformation'
+  | 'dataTypeConversion' | 'deduplication' | 'joinMerge' | 'pivotTable'
+  | 'conditionalLogic' | 'dateFormatting' | 'dataMasking' | 'normalization'
+  | 'dataTransform' | 'dataCleaning' | 'formulaNode' | 'filterNode';
+
+export type AINodeType = 
+  | 'aiNode' | 'aiSummarization' | 'sentimentAnalysis' | 'namedEntityRecognition'
+  | 'anomalyDetection' | 'forecasting' | 'documentParsing' | 'clustering'
+  | 'mlModelExecution' | 'featureEngineering' | 'aiDataCleaning'
+  | 'aiAnalyze' | 'aiClassify' | 'aiSummarize' | 'askAI';
+
+export type OutputNodeType = 
+  | 'outputNode' | 'downloadFile' | 'sendEmail' | 'exportToDatabase'
+  | 'webhookTrigger' | 'pushNotification' | 'excelExport' | 'pdfGeneration'
+  | 'googleSheetsUpdate' | 'ftpUpload' | 'crmUpdate' | 'erpDataSync'
+  | 'slackNotification' | 'webhookResponse' | 'apiResponse' | 'smsAlert'
+  | 'excelOutput' | 'dashboardOutput' | 'emailNotify';
+
+export type IntegrationNodeType = 
+  | 'integrationNode' | 'salesforceConnector' | 'xeroConnector' | 'hubspotConnector'
+  | 'googleSheetsConnector' | 'stripeConnector' | 'quickbooksConnector' | 'zendeskConnector'
+  | 'shopifyConnector' | 's3Connector' | 'zapierConnector' | 'googleDriveConnector'
+  | 'customApiConnector' | 'erpConnector' | 'twilioConnector' | 'powerBiConnector'
+  | 'xeroConnect' | 'salesforceConnect' | 'googleSheetsConnect';
+
+export type ControlNodeType = 
+  | 'controlNode' | 'ifElseCondition' | 'loopForEach' | 'parallelProcessing'
+  | 'errorHandling' | 'waitPause' | 'webhookWait' | 'retryMechanism'
+  | 'switchCase'
+  | 'conditionalBranch' | 'loopNode' | 'mergeNode';
+
+export type UtilityNodeType = 
+  | 'utilityNode' | 'logToConsole' | 'executionTimestamp' | 'sessionManagement' | 'variableStorage'
+  | 'aiStepRecommendation' | 'workflowVersionControl' | 'performanceMetrics';
+
+// Combined NodeType that includes all possible node types
+export type NodeType = 
+  | InputNodeType
+  | ProcessingNodeType
+  | AINodeType
+  | OutputNodeType
+  | IntegrationNodeType
+  | ControlNodeType
+  | UtilityNodeType;
+
+// NodeComponentType represents the visual node component to be used
 export type NodeComponentType =
   | 'dataInput'
   | 'dataProcessing'
@@ -17,58 +67,144 @@ export type NodeComponentType =
   | 'outputNode'
   | 'integrationNode'
   | 'controlNode'
-  | 'utilityNode'
-  | 'fileUpload'
   | 'spreadsheetGenerator'
-  | 'filtering'
-  | 'expandable';
+  | 'utilityNode'
+  | 'fileUpload';
 
-// Reexport Edge type
-export type Edge = FlowEdge;
+// Define FileProcessingState type for FileUploadNode
+export type FileProcessingState = 
+  | 'idle'
+  | 'pending'
+  | 'queuing'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'error';
 
-// Node Props Interface
-export interface NodeProps<T = any> {
-  id: string;
-  data: T;
-  selected?: boolean;
-}
+// Define display labels for FileProcessingState
+export const FileProcessingStateLabels: Record<FileProcessingState, string> = {
+  idle: 'Idle',
+  pending: 'Initializing',
+  queuing: 'Queuing',
+  queued: 'Queued',
+  processing: 'Processing',
+  completed: 'Processed',
+  failed: 'Failed',
+  error: 'Error'
+};
 
-// Base Node Data
+// Base node data types
 export interface BaseNodeData {
   label: string;
-  type: string;
+  type: NodeType;
   config: Record<string, any>;
+  [key: string]: any;
 }
 
-// Node Type Interfaces
-export interface AINodeData extends BaseNodeData {
-  type: AINodeType;
-  config: {
-    prompt?: string;
-    model?: string;
-    provider?: string;
-    systemMessage?: string;
-    modelName?: string;
-    lastResponse?: string;
-    analysisType?: string;
-    analysisOptions?: any;
-    classificationOptions?: {
-      categories?: string[];
-    };
-  };
-}
-
+// Node data types
 export interface DataInputNodeData extends BaseNodeData {
   type: InputNodeType;
   config: {
-    fieldType?: string;
-    defaultValue?: any;
-    fileId?: string;
-    fileName?: string;
+    fileId?: string | null;
     hasHeaders?: boolean;
     delimiter?: string;
     endpoint?: string;
     fields?: any[];
+    [key: string]: any;
+  };
+}
+
+export interface DataProcessingNodeData extends BaseNodeData {
+  type: ProcessingNodeType;
+  config: {
+    operations?: any[];
+    rules?: any[];
+    formula?: string;
+    conditions?: any[];
+    [key: string]: any;
+  };
+}
+
+export interface AINodeData extends BaseNodeData {
+  type: AINodeType;
+  config: {
+    analysisOptions?: {
+      detectOutliers?: boolean;
+      findPatterns?: boolean;
+      [key: string]: any;
+    };
+    analysisType?: string;
+    classificationOptions?: {
+      categories?: string[];
+      [key: string]: any;
+    };
+    prompt?: string;
+    systemMessage?: string;
+    aiProvider?: 'openai' | 'anthropic' | 'deepseek';
+    modelName?: string;
+    lastResponse?: string;
+    lastResponseTime?: string;
+    [key: string]: any;
+  };
+}
+
+export interface OutputNodeData extends BaseNodeData {
+  type: OutputNodeType;
+  config: {
+    filename?: string;
+    format?: string;
+    visualizations?: any[];
+    recipients?: string[];
+    [key: string]: any;
+  };
+}
+
+export interface IntegrationNodeData extends BaseNodeData {
+  type: IntegrationNodeType;
+  config: {
+    operation?: string;
+    credentials?: any;
+    spreadsheetId?: string;
+    [key: string]: any;
+  };
+}
+
+export interface ControlNodeData extends BaseNodeData {
+  type: ControlNodeType;
+  config: {
+    conditions?: any[];
+    loopType?: string;
+    mergeStrategy?: string;
+    [key: string]: any;
+  };
+}
+
+export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
+  type: 'spreadsheetGenerator';
+  config: {
+    filename?: string;
+    fileExtension?: 'xlsx' | 'csv' | 'xls';
+    sheets?: Array<{
+      name: string;
+      columns?: Array<{
+        header: string;
+        field: string;
+        type?: 'string' | 'number' | 'date' | 'boolean';
+      }>;
+    }>;
+    [key: string]: any;
+  };
+}
+
+export interface UtilityNodeData extends BaseNodeData {
+  type: UtilityNodeType;
+  config: {
+    logLevel?: string;
+    variableKey?: string;
+    variableValue?: any;
+    performanceThreshold?: number;
+    [key: string]: any;
   };
 }
 
@@ -76,224 +212,131 @@ export interface FileUploadNodeData extends BaseNodeData {
   type: 'fileUpload';
   config: {
     fileId?: string;
-    fileName?: string;
-    uploadStatus?: string;
-  };
-  onConfigChange?: (config: any) => void;
-}
-
-export interface SpreadsheetGeneratorNodeData extends BaseNodeData {
-  type: 'spreadsheetGenerator';
-  config: {
-    template?: string;
-    rowCount?: number;
     filename?: string;
-    fileExtension?: string;
-    sheets?: Array<{
-      name: string;
-      columns: Array<{
-        name: string;
-        type: string;
-      }>;
-    }>;
+    hasHeaders?: boolean;
+    delimiter?: string;
   };
+  onChange?: (nodeId: string, config: any) => void;
+  workflowId?: string;
 }
 
-export interface ControlNodeData extends BaseNodeData {
-  type: ControlNodeType;
+export interface FilteringNodeData extends BaseNodeData {
+  type: 'filtering';
   config: {
-    condition?: string;
-    iterations?: number;
-    conditions?: any[];
-    loopType?: string;
-    mergeStrategy?: string;
+    column?: string;
+    operator?: "equals" | "contains" | "not-equals" | "greater-than" | "less-than" | "starts-with" | "ends-with";
+    value?: string;
+    isCaseSensitive?: boolean;
   };
+  onChange?: (nodeId: string, config: any) => void;
 }
 
-export interface IntegrationNodeData extends BaseNodeData {
-  type: IntegrationNodeType;
-  config: {
-    endpoint?: string;
-    method?: string;
-    operation?: string;
-    credentials?: any;
-    spreadsheetId?: string;
-  };
+// A union of all possible node data types
+export type WorkflowNodeData = 
+  | DataInputNodeData 
+  | DataProcessingNodeData 
+  | AINodeData 
+  | OutputNodeData 
+  | IntegrationNodeData 
+  | ControlNodeData 
+  | SpreadsheetGeneratorNodeData
+  | UtilityNodeData
+  | FileUploadNodeData;
+
+// Define our WorkflowNode type that extends ReactFlow's Node type
+export interface WorkflowNode extends Omit<ReactFlowNode, 'data'> {
+  type: NodeComponentType;
+  data: WorkflowNodeData;
 }
 
-export interface UtilityNodeData extends BaseNodeData {
-  type: UtilityNodeType;
-  config: {
-    operation?: string;
-    logLevel?: string;
-    variableKey?: string;
-    performanceThreshold?: number;
-  };
-}
+// Use a simplified NodeProps type that works with our component structure
+export type NodeProps<T extends BaseNodeData = BaseNodeData> = {
+  data?: T;
+  selected?: boolean;
+  id?: string;
+};
 
-export interface OutputNodeData extends BaseNodeData {
-  type: OutputNodeType;
-  config: {
-    format?: string;
-    filename?: string;
-    visualizations?: any[];
-    recipients?: string[];
-  };
-}
+// Define handlers for node drag events
+export type NodeDragHandler = (event: React.MouseEvent, node: ReactFlowNode, nodes: ReactFlowNode[]) => void;
 
-// Node Types
-export type NodeType =
-  | InputNodeType
-  | ProcessingNodeType
-  | AINodeType
-  | OutputNodeType
-  | IntegrationNodeType
-  | ControlNodeType
-  | UtilityNodeType
-  | 'fileUpload'
-  | 'spreadsheetGenerator'
-  | 'filtering'
-  | 'expandable';
+// Export Edge type directly using the ReactFlow Edge type
+export type Edge = ReactFlowEdge;
 
-// Input Node Types
-export type InputNodeType = 'dataInput' | 'fileInput' | 'apiInput' | 'excelInput' | 'csvInput' | 'apiSource' | 'userInput';
-
-// Processing Node Types  
-export type ProcessingNodeType = 
-  | 'dataProcessing' 
-  | 'sorting' 
-  | 'filtering' 
-  | 'transformation'
-  | 'aggregation'
-  | 'formulaCalculation'
-  | 'textTransformation'
-  | 'dataTypeConversion'
-  | 'dateFormatting'
-  | 'pivotTable'
-  | 'joinMerge'
-  | 'deduplication'
-  | 'dataTransform'
-  | 'dataCleaning'
-  | 'formulaNode'
-  | 'filterNode';
-
-// AI Node Types
-export type AINodeType = 
-  | 'aiNode' 
-  | 'askAI' 
-  | 'aiCompletion' 
-  | 'aiClassification'
-  | 'aiAnalyze'
-  | 'aiClassify'
-  | 'aiSummarize';
-
-// Output Node Types
-export type OutputNodeType = 
-  | 'outputNode' 
-  | 'fileOutput' 
-  | 'apiOutput' 
-  | 'visualizationOutput'
-  | 'excelOutput'
-  | 'dashboardOutput'
-  | 'emailNotify';
-
-// Integration Node Types
-export type IntegrationNodeType = 
-  | 'integrationNode' 
-  | 'apiConnector' 
-  | 'databaseConnector'
-  | 'xeroConnect'
-  | 'salesforceConnect'
-  | 'googleSheetsConnect';
-
-// Control Node Types
-export type ControlNodeType = 
-  | 'controlNode' 
-  | 'conditionalNode' 
-  | 'loopNode'
-  | 'conditionalBranch'
-  | 'mergeNode';
-
-// Utility Node Types
-export type UtilityNodeType = 
-  | 'utilityNode' 
-  | 'formatterNode' 
-  | 'validatorNode'
-  | 'logToConsole'
-  | 'executionTimestamp'
-  | 'sessionManagement'
-  | 'variableStorage'
-  | 'aiStepRecommendation'
-  | 'workflowVersionControl'
-  | 'performanceMetrics';
-
-// Workflow Related Interfaces
+// Workflow definition types
 export interface WorkflowDefinition {
   nodes: WorkflowNode[];
   edges: Edge[];
 }
 
-export interface WorkflowExecution {
+// Node handler interfaces
+export interface NodeInputs {
+  [key: string]: any;
+}
+
+export interface NodeOutputs {
+  [key: string]: any;
+}
+
+// Node definition types
+export interface NodeTypeDefinition {
+  type: string;
+  name: string;
+  category: string;
+  description: string;
+  icon: string;
+  defaultConfig: Record<string, any>;
+  inputs: Array<{
+    name: string;
+    type: string;
+    dataType?: string;
+  }>;
+  outputs: Array<{
+    name: string;
+    type: string;
+    dataType?: string;
+  }>;
+}
+
+// Node execution types
+export interface NodeExecutionContext {
+  nodeId: string;
+  inputs: NodeInputs;
+  outputs: NodeOutputs;
+  config: Record<string, any>;
+}
+
+export interface Workflow {
   id: string;
-  workflow_id?: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  startedAt?: string;
-  completedAt?: string;
+  name: string;
+  description?: string;
+  definition: WorkflowDefinition;
+  created_at?: string;
+  updated_at?: string;
+  user_id?: string;
+  is_template?: boolean;
+  tags?: string[];
+}
+
+// WorkflowExecution interface update to allow string status for database compatibility
+export interface WorkflowExecution {
+  id?: string;
+  workflow_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | string;
   inputs?: Record<string, any>;
   outputs?: Record<string, any>;
+  node_states?: Record<string, any>;
+  started_at?: string;
+  completed_at?: string;
+  error?: string;
+  initiated_by?: string;
+  logs?: any[];
 }
 
-export interface NodeExecutionContext {
-  executionId: string;
-  nodeId: string;
-  workflowId: string;
-}
-
-// AI Request Interface
-export interface AIRequestData {
-  id: string;
-  workflow_id: string;
-  node_id: string;
-  execution_id: string;
-  ai_provider: 'openai' | 'anthropic' | 'deepseek';
-  user_query: string;
-  status: string;
-  created_at: string;
-  model_name: string;
-  system_message?: string;
-}
-
-// Component Props Interfaces
-export interface NodeConfigPanelProps {
-  node: WorkflowNode;
-  onConfigChange: (config: any) => void;
-  onDelete?: () => void;
-  onDuplicate?: () => void;
-  onClose?: () => void;
-  readOnly?: boolean;
-}
-
-export interface DataProcessingNodeConfigProps {
-  config: Record<string, any>;
-  onConfigChange: (updatedConfig: any) => void;
-  nodeId: string;
-  type: ProcessingNodeType;
-}
-
-export interface AskAINodeConfigProps {
-  config: Record<string, any>;
-  onConfigChange: (updatedConfig: any) => void;
-}
-
-export interface SpreadsheetGeneratorNodeConfigProps {
-  spreadsheetConfig: SpreadsheetGeneratorNodeData['config'];
-  onConfigChange: (updatedConfig: any) => void;
-}
-
+// Define NodeLibraryProps interface for NodeLibrary component
 export interface NodeLibraryProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddNode?: (type: string, category: string, label: string) => void;
+  onAddNode?: (nodeType: string, nodeCategory: string, nodeLabel: string) => void;
   nodeCategories?: Array<{
     id: string;
     name: string;
@@ -301,46 +344,155 @@ export interface NodeLibraryProps {
       type: string;
       label: string;
       description?: string;
+      icon?: string;
     }>;
   }>;
 }
 
-// Workflow Node Interface
-export interface WorkflowNodeData extends BaseNodeData, Record<string, unknown> {
-  onConfigChange?: (config: any) => void;
-  onShowLogs?: (nodeId: string) => void;
+// Define NodeConfigPanelProps interface for NodeConfigPanel component
+export interface NodeConfigPanelProps {
+  node: WorkflowNode;
+  onUpdateConfig: (updatedConfig: any) => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onClose: () => void;
+  readOnly?: boolean;
 }
 
-export interface WorkflowNode extends Omit<Node, 'data' | 'type'> {
-  type: NodeComponentType;
-  data: WorkflowNodeData;
+// Helper functions for database mappings
+export function mapDatabaseWorkflowToWorkflow(dbWorkflow: any): Workflow {
+  let definition: WorkflowDefinition;
+  
+  if (typeof dbWorkflow.definition === 'string') {
+    try {
+      definition = JSON.parse(dbWorkflow.definition);
+    } catch (e) {
+      console.error('Error parsing workflow definition:', e);
+      definition = { nodes: [], edges: [] };
+    }
+  } else if (dbWorkflow.definition && typeof dbWorkflow.definition === 'object') {
+    definition = {
+      nodes: Array.isArray(dbWorkflow.definition.nodes) ? dbWorkflow.definition.nodes : [],
+      edges: Array.isArray(dbWorkflow.definition.edges) ? dbWorkflow.definition.edges : []
+    };
+  } else {
+    definition = { nodes: [], edges: [] };
+  }
+  
+  return {
+    id: dbWorkflow.id,
+    name: dbWorkflow.name || 'Untitled Workflow',
+    description: dbWorkflow.description,
+    definition,
+    created_at: dbWorkflow.created_at,
+    updated_at: dbWorkflow.updated_at,
+    user_id: dbWorkflow.user_id,
+    is_template: dbWorkflow.is_template,
+    tags: dbWorkflow.tags
+  };
 }
 
-// Workflow Context Interface
-export interface WorkflowContextType {
-  workflowId?: string;
-  isTemporaryId: (id: string) => boolean;
-  convertToDbWorkflowId: (id: string) => string;
-  formatWorkflowId: (id: string, temporary: boolean) => string;
-  migrateTemporaryWorkflow: (oldId: string, newId: string) => Promise<boolean>;
-  propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
+export function mapWorkflowToDatabaseWorkflow(workflow: Workflow): any {
+  return {
+    id: workflow.id,
+    name: workflow.name,
+    description: workflow.description,
+    definition: JSON.stringify(workflow.definition),
+    user_id: workflow.user_id,
+    is_template: workflow.is_template,
+    tags: workflow.tags
+  };
 }
 
-// File Schema Interface
-export interface WorkflowFileSchema {
+export function mapDatabaseExecutionToWorkflowExecution(dbExecution: any): WorkflowExecution {
+  return {
+    id: dbExecution.id,
+    workflow_id: dbExecution.workflow_id,
+    status: dbExecution.status,
+    inputs: dbExecution.inputs,
+    outputs: dbExecution.outputs,
+    node_states: dbExecution.node_states,
+    started_at: dbExecution.started_at,
+    completed_at: dbExecution.completed_at,
+    error: dbExecution.error,
+    initiated_by: dbExecution.initiated_by,
+    logs: dbExecution.logs
+  };
+}
+
+export function mapWorkflowExecutionToDatabaseExecution(execution: WorkflowExecution): any {
+  return {
+    id: execution.id,
+    workflow_id: execution.workflow_id,
+    status: execution.status,
+    inputs: execution.inputs,
+    outputs: execution.outputs,
+    node_states: execution.node_states,
+    started_at: execution.started_at,
+    completed_at: execution.completed_at,
+    error: execution.error,
+    initiated_by: execution.initiated_by,
+    logs: execution.logs
+  };
+}
+
+// Add a new interface for AI request data
+export interface AIRequestData {
   id: string;
   workflow_id: string;
   node_id: string;
-  schema: {
-    columns: SchemaColumn[];
-  };
-  created_at?: string;
-  updated_at?: string;
-  is_temporary?: boolean;
+  execution_id: string;
+  ai_provider: 'openai' | 'anthropic' | 'deepseek';
+  user_query: string;
+  ai_response?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+  model_name?: string;
+  token_usage?: Record<string, number>;
+  metadata?: Record<string, any>;
+  system_message?: string;
 }
 
-export interface SchemaColumn {
-  name: string;
-  type: string;
-  nullable?: boolean;
+// Type guard function to validate if an object is an AIRequestData
+export function isAIRequestData(obj: any): obj is AIRequestData {
+  return (
+    obj &&
+    typeof obj.id === 'string' &&
+    typeof obj.workflow_id === 'string' &&
+    typeof obj.node_id === 'string' &&
+    typeof obj.execution_id === 'string' &&
+    (obj.ai_provider === 'openai' || obj.ai_provider === 'anthropic' || obj.ai_provider === 'deepseek') &&
+    typeof obj.user_query === 'string'
+  );
+}
+
+// Add new interface for the workflow_edges table
+export interface WorkflowEdge {
+  id?: string;
+  workflow_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  edge_id?: string;
+  edge_type: string;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Map database edge to ReactFlow edge
+export function mapDatabaseEdgeToReactFlowEdge(dbEdge: WorkflowEdge): Edge {
+  return {
+    id: dbEdge.edge_id || `${dbEdge.source_node_id}-${dbEdge.target_node_id}`,
+    source: dbEdge.source_node_id,
+    target: dbEdge.target_node_id,
+    type: dbEdge.edge_type !== 'default' ? dbEdge.edge_type : undefined,
+    sourceHandle: dbEdge.metadata?.sourceHandle,
+    targetHandle: dbEdge.metadata?.targetHandle,
+    label: dbEdge.metadata?.label,
+    animated: dbEdge.metadata?.animated,
+    style: dbEdge.metadata?.style,
+    data: dbEdge.metadata?.data
+  };
 }
