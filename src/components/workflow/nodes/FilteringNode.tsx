@@ -175,11 +175,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       data.onChange(id, newConfig);
     }
   };
-
+  
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
-  
+
   const selectedColumnType = data.config.column 
     ? columns.find(col => col.name === data.config.column)?.type || 'unknown'
     : 'unknown';

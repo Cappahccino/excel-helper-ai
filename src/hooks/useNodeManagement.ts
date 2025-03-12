@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { WorkflowNode } from '@/types/workflow';
 import { 
@@ -12,7 +11,7 @@ import { toast } from 'sonner';
  */
 export interface SchemaColumn {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
+  type: 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown';
 }
 
 /**
