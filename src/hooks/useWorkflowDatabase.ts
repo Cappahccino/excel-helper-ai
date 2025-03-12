@@ -1,9 +1,7 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
 import { WorkflowNode, Edge } from '@/types/workflow';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
 
@@ -18,6 +16,7 @@ export function useWorkflowDatabase(
   const [optimisticSave, setOptimisticSave] = useState<boolean>(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const workflow = useWorkflow();
   
   const loadWorkflow = async (workflowId: string, setNodes: (nodes: WorkflowNode[]) => void, setEdges: (edges: any[]) => void) => {
     if (!workflowId || workflowId === 'new' || workflowId.startsWith('temp-')) return;
@@ -158,7 +157,7 @@ export function useWorkflowDatabase(
         toast.info(`Name updated to "${uniqueName}" to ensure uniqueness`);
       }
       
-      const workflow = {
+      const workflowData = {
         name: uniqueName,
         description: workflowDescription,
         definition: JSON.stringify({
@@ -178,7 +177,7 @@ export function useWorkflowDatabase(
       if (workflowId && !workflowId.startsWith('temp-')) {
         response = await supabase
           .from('workflows')
-          .update(workflow)
+          .update(workflowData)
           .eq('id', workflowId)
           .select('id');
         
@@ -186,15 +185,14 @@ export function useWorkflowDatabase(
       } else {
         response = await supabase
           .from('workflows')
-          .insert(workflow)
+          .insert(workflowData)
           .select('id');
         
         if (response.data && response.data[0]) {
           savedWorkflowId = response.data[0].id;
           
-          if (isTemporaryWorkflow && savedWorkflowId) {
+          if (isTemporaryWorkflow && savedWorkflowId && workflow.migrateTemporaryWorkflow) {
             try {
-              const workflow = useWorkflow();
               const migrationSuccess = await workflow.migrateTemporaryWorkflow(
                 workflowId!, 
                 savedWorkflowId

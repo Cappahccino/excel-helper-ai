@@ -3,6 +3,12 @@ import React, { createContext, useContext, ReactNode, useState, useCallback } fr
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
+// Define the schema for file data
+export interface WorkflowFileSchema {
+  columns: string[];
+  types: Record<string, string>;
+}
+
 interface SchemaContextValue {
   getNodeSchema?: (nodeId: string) => SchemaColumn[];
   updateNodeSchema?: (nodeId: string, schema: SchemaColumn[]) => void;
@@ -19,6 +25,8 @@ interface WorkflowContextValue {
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
   getEdges: (workflowId: string) => Promise<any[]>;
   schema?: SchemaContextValue;
+  getFileSchema?: (nodeId: string) => Promise<WorkflowFileSchema | null>;
+  migrateTemporaryWorkflow?: (temporaryId: string, permanentId: string) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextValue>({
@@ -69,7 +77,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   }, [workflowId]);
 
   // Function to get file schema from a node
-  const getFileSchema = useCallback(async (nodeId: string): Promise<any> => {
+  const getFileSchema = useCallback(async (nodeId: string): Promise<WorkflowFileSchema | null> => {
     try {
       if (!workflowId) return null;
       
@@ -220,12 +228,50 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, []);
 
+  // Function to migrate data from temporary workflow to permanent workflow
+  const migrateTemporaryWorkflow = useCallback(async (temporaryId: string, permanentId: string): Promise<boolean> => {
+    try {
+      console.log(`Migrating data from temporary workflow ${temporaryId} to permanent workflow ${permanentId}`);
+      
+      // Example migration tasks - update this based on your actual needs
+      // Migrate workflow_files
+      const { error: filesMigrationError } = await supabase.rpc('migrate_workflow_files', {
+        source_id: temporaryId,
+        target_id: permanentId
+      });
+      
+      if (filesMigrationError) {
+        console.error('Error migrating workflow files:', filesMigrationError);
+        return false;
+      }
+      
+      // Migrate workflow_file_schemas
+      const { error: schemasMigrationError } = await supabase.rpc('migrate_workflow_schemas', {
+        source_id: temporaryId,
+        target_id: permanentId
+      });
+      
+      if (schemasMigrationError) {
+        console.error('Error migrating workflow schemas:', schemasMigrationError);
+        return false;
+      }
+      
+      console.log('Temporary workflow data migration completed successfully');
+      return true;
+    } catch (err) {
+      console.error('Error during workflow migration:', err);
+      return false;
+    }
+  }, []);
+
   const value: WorkflowContextValue = {
     workflowId,
     isTemporaryId: isTemporaryWorkflowId,
     convertToDbWorkflowId,
     propagateFileSchema,
     getEdges,
+    getFileSchema,
+    migrateTemporaryWorkflow,
     schema: schemaProviderValue
   };
 

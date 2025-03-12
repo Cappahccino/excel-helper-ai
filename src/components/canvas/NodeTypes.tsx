@@ -9,6 +9,7 @@ import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
+import FilteringNode from '@/components/workflow/nodes/FilteringNode';
 import { NodeTypes } from '@xyflow/react';
 
 export const nodeTypes: NodeTypes = {
@@ -22,6 +23,7 @@ export const nodeTypes: NodeTypes = {
   spreadsheetGenerator: SpreadsheetGeneratorNode,
   utilityNode: UtilityNode,
   fileUpload: FileUploadNode,
+  filtering: FilteringNode,
 };
 
 export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: any) => void, workflowId: string | null) => ({
@@ -43,5 +45,12 @@ export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: an
         onChange: handleNodeConfigUpdate
       }
     }} 
+  />,
+  filtering: (props: any) => <FilteringNode 
+    {...props}
+    data={{
+      ...props.data,
+      onChange: handleNodeConfigUpdate
+    }}
   />,
 });
