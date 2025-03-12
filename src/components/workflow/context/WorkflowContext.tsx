@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -194,7 +195,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
         source: edge.source_node_id,
         target: edge.target_node_id,
-        ...(edge.metadata && typeof edge.metadata === 'object' ? edge.metadata : {})
+        ...(edge.metadata || {})
       }));
     } catch (err) {
       console.error('Error getting workflow edges:', err);
