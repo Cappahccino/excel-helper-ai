@@ -1,15 +1,13 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { FilterIcon, AlertTriangle, Loader2 } from 'lucide-react';
-import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { FilterIcon, AlertTriangle } from 'lucide-react';
 import { useSchemaManagement } from '@/hooks/useSchemaManagement';
+import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 
 interface FilteringNodeProps {
@@ -44,8 +42,7 @@ const OPERATORS = {
   ],
   date: [
     { value: 'equals', label: 'Equals' },
-    { value: 'not-equals', label: 'Not Equals' },
-    { value: 'greater-than', label: 'After' },
+    { value: 'not-equals', label: 'After' },
     { value: 'less-than', label: 'Before' }
   ],
   boolean: [
@@ -60,135 +57,65 @@ const OPERATORS = {
 
 const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => {
   const [columns, setColumns] = useState<SchemaColumn[]>([]);
-  const [operators, setOperators] = useState<{ value: string; label: string }[]>(OPERATORS.default);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  
-  const workflow = useWorkflow();
-  const { 
-    getNodeSchema, 
-    validateNodeConfig,
-    isLoading: schemaLoading,
-    validationErrors: schemaValidationErrors
-  } = useSchemaManagement();
-
-  const loadSchema = useCallback(async () => {
-    if (!workflow.workflowId || !id) return;
-    
-    setIsLoading(true);
-    setLoadingError(null);
-    
-    try {
-      const edges = await workflow.getEdges(workflow.workflowId);
-      const inputNodeIds = edges
-        .filter(edge => edge.target === id)
-        .map(edge => edge.source);
-      
-      if (inputNodeIds.length === 0) {
-        setLoadingError('No input connection found. Connect a data source to this node.');
-        setColumns([]);
-        return;
-      }
-      
-      const sourceNodeId = inputNodeIds[0];
-      const schema = await getNodeSchema(workflow.workflowId, sourceNodeId);
-      
-      if (!schema || schema.length === 0) {
-        setLoadingError('No schema available from the connected node.');
-        return;
-      }
-      
-      setColumns(schema);
-      
-      updateOperatorsForColumn(data.config.column, schema);
-      
-      validateConfiguration(data.config, schema);
-    } catch (error) {
-      console.error('Error loading schema for filtering node:', error);
-      setLoadingError('Failed to load schema information. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id, workflow, data.config.column, getNodeSchema]);
+  const [error, setError] = useState<string | null>(null);
+  const [localConfig, setLocalConfig] = useState(data.config || {});
+  const { getNodeSchema } = useSchemaManagement();
 
   useEffect(() => {
-    if (selected) {
-      loadSchema();
+    if (data.config) {
+      setLocalConfig(data.config);
     }
-  }, [loadSchema, selected]);
+  }, [data.config]);
 
-  const updateOperatorsForColumn = (columnName?: string, schemaColumns?: SchemaColumn[]) => {
-    if (!columnName || !schemaColumns) {
-      setOperators(OPERATORS.default);
-      return;
-    }
-    
-    const column = schemaColumns.find(col => col.name === columnName);
-    
-    if (column) {
-      switch(column.type) {
-        case 'number':
-          setOperators(OPERATORS.number);
-          break;
-        case 'date':
-          setOperators(OPERATORS.date);
-          break;
-        case 'boolean':
-          setOperators(OPERATORS.boolean);
-          break;
-        case 'string':
-        case 'text':
-          setOperators(OPERATORS.string);
-          break;
-        default:
-          setOperators(OPERATORS.default);
+  useEffect(() => {
+    const loadSchema = async () => {
+      if (!data.workflowId || !id) return;
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const schema = await getNodeSchema(data.workflowId, id);
+        if (schema) {
+          setColumns(schema);
+        } else {
+          setError('No schema available');
+          setColumns([]);
+        }
+      } catch (err) {
+        console.error('Error loading schema:', err);
+        setError('Failed to load schema');
+      } finally {
+        setIsLoading(false);
       }
-    }
-  };
-  
-  const validateConfiguration = (config: any, schema: SchemaColumn[]) => {
-    if (!config || !schema || schema.length === 0) {
-      setValidationErrors([]);
-      return;
-    }
-    
-    const { isValid, errors } = validateNodeConfig(config, schema);
-    
-    if (!isValid) {
-      setValidationErrors(errors.map(err => err.message));
-    } else {
-      setValidationErrors([]);
-    }
-  };
+    };
 
-  const handleConfigChange = (key: string, value: any) => {
+    loadSchema();
+  }, [id, data.workflowId, getNodeSchema]);
+
+  const handleConfigChange = useCallback((key: string, value: any) => {
+    const newConfig = { ...localConfig, [key]: value };
+    setLocalConfig(newConfig);
+    
     if (data.onChange) {
-      const newConfig = { ...data.config, [key]: value };
-      
-      if (key === 'column') {
-        updateOperatorsForColumn(value, columns);
-      }
-      
-      validateConfiguration(newConfig, columns);
-      
       data.onChange(id, newConfig);
     }
-  };
-  
+  }, [id, localConfig, data.onChange]);
+
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
 
-  const selectedColumnType = data.config.column 
-    ? columns.find(col => col.name === data.config.column)?.type || 'unknown'
+  const selectedColumnType = localConfig.column 
+    ? columns.find(col => col.name === localConfig.column)?.type || 'unknown'
     : 'unknown';
 
   const showCaseSensitiveOption = isTextType(selectedColumnType);
 
   const getValuePlaceholder = () => {
     const type = selectedColumnType;
-    const operator = data.config.operator;
+    const operator = localConfig.operator;
     
     if (type === 'date') {
       return 'YYYY-MM-DD';
@@ -222,24 +149,22 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       <CardHeader className="bg-blue-50 p-3 flex flex-row items-center">
         <FilterIcon className="w-4 h-4 mr-2 text-blue-600" />
         <CardTitle className="text-sm font-medium">{data.label || 'Filter Data'}</CardTitle>
-        {(isLoading || schemaLoading[id]) && (
-          <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
-        )}
       </CardHeader>
+      
       <CardContent className="p-3 space-y-3">
-        {loadingError && (
+        {error && (
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
-            <div className="flex">
-              <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 flex-shrink-0" />
-              {loadingError}
+            <div className="flex items-center">
+              <AlertTriangle className="h-4 w-4 mr-1 text-amber-500" />
+              {error}
             </div>
           </div>
         )}
-        
+
         <div className="space-y-1.5">
-          <Label htmlFor="column" className="text-xs">Column</Label>
+          <Label htmlFor="column">Column</Label>
           <Select
-            value={data.config.column || ''}
+            value={localConfig.column || ''}
             onValueChange={(value) => handleConfigChange('column', value)}
             disabled={isLoading || columns.length === 0}
           >
@@ -249,7 +174,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             <SelectContent>
               {columns.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-gray-500">
-                  No columns available
+                  {isLoading ? 'Loading columns...' : 'No columns available'}
                 </div>
               ) : (
                 columns.map((column) => (
@@ -266,87 +191,52 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             </SelectContent>
           </Select>
         </div>
-        
-        <div className="space-y-1.5">
-          <Label htmlFor="operator" className="text-xs">Operator</Label>
-          <Select
-            value={data.config.operator || 'equals'}
-            onValueChange={(value) => handleConfigChange('operator', value as any)}
-            disabled={!data.config.column}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select operator" />
-            </SelectTrigger>
-            <SelectContent>
-              {operators.map((op) => (
-                <SelectItem key={op.value} value={op.value}>
-                  {op.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div className="space-y-1.5">
-          <Label htmlFor="value" className="text-xs">Value</Label>
-          <Input
-            id="value"
-            value={data.config.value || ''}
-            onChange={(e) => handleConfigChange('value', e.target.value)}
-            placeholder={getValuePlaceholder()}
-            className="h-8 text-xs"
-            type={selectedColumnType === 'number' ? 'number' : 'text'}
-          />
-        </div>
-        
-        {showCaseSensitiveOption && (
-          <div className="flex items-center justify-between pt-1">
-            <Label htmlFor="caseSensitive" className="text-xs">Case Sensitive</Label>
-            <Switch
-              id="caseSensitive"
-              checked={data.config.isCaseSensitive ?? true}
-              onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
-            />
-          </div>
-        )}
-        
-        {validationErrors.length > 0 && (
-          <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
-            <div className="flex items-start">
-              <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-semibold">Configuration issues:</p>
-                <ul className="list-disc pl-4 mt-1 space-y-1">
-                  {validationErrors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="mt-2 rounded-md bg-blue-50 p-2 text-xs text-blue-700 border border-blue-100">
-                <div className="flex">
-                  <span className="font-semibold">Filter:</span>
-                  <span className="ml-1">
-                    {data.config.column 
-                      ? `${data.config.column} ${data.config.operator || 'equals'} ${data.config.value || '(empty)'}`
-                      : 'No filter configured'}
-                  </span>
-                </div>
+        {localConfig.column && (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="operator">Operator</Label>
+              <Select
+                value={localConfig.operator || 'equals'}
+                onValueChange={(value) => handleConfigChange('operator', value)}
+                disabled={!localConfig.column}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select operator" />
+                </SelectTrigger>
+                <SelectContent>
+                  {OPERATORS[columns.find(col => col.name === localConfig.column)?.type || 'default'].map((op) => (
+                    <SelectItem key={op.value} value={op.value}>
+                      {op.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="value">Value</Label>
+              <Input
+                id="value"
+                value={localConfig.value || ''}
+                onChange={(e) => handleConfigChange('value', e.target.value)}
+                placeholder={getValuePlaceholder()}
+                className="h-8 text-xs"
+              />
+            </div>
+
+            {showCaseSensitiveOption && (
+              <div className="flex items-center justify-between">
+                <Label htmlFor="caseSensitive" className="text-xs">Case Sensitive</Label>
+                <Switch
+                  id="caseSensitive"
+                  checked={localConfig.isCaseSensitive ?? true}
+                  onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
+                />
               </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              {data.config.column
-                ? `Rows where ${data.config.column} ${data.config.operator || 'equals'} "${data.config.value || ''}" will be kept`
-                : 'Configure the filter to process data'}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+            )}
+          </>
+        )}
 
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
