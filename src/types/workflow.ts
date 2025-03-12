@@ -1,4 +1,3 @@
-
 import { Node, Edge as FlowEdge } from '@xyflow/react';
 
 export type Json =
@@ -287,7 +286,7 @@ export interface AskAINodeConfigProps {
 }
 
 export interface SpreadsheetGeneratorNodeConfigProps {
-  config: SpreadsheetGeneratorNodeData['config'];
+  spreadsheetConfig: SpreadsheetGeneratorNodeData['config'];
   onConfigChange: (updatedConfig: any) => void;
 }
 
