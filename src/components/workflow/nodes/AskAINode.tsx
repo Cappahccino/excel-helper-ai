@@ -1,16 +1,22 @@
+
 import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Brain, MessageSquare, GripVertical, Save, FileText } from 'lucide-react';
 import { AINodeData } from '@/types/workflow';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-
-// Define the AIProvider type
-type AIProvider = 'openai' | 'anthropic' | 'deepseek';
+import { AIProviderSelector } from '../ui/AIProviderSelector';
+import { AIModelSelector } from '../ui/AIModelSelector';
 
 // Default data if none is provided
 const defaultData: AINodeData = {
@@ -22,22 +28,6 @@ const defaultData: AINodeData = {
     prompt: '',
     systemMessage: ''
   }
-};
-
-// Provider options with their respective models
-const providerOptions: Record<AIProvider, Array<{id: string, name: string}>> = {
-  openai: [
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-    { id: 'gpt-4o', name: 'GPT-4o' }
-  ],
-  anthropic: [
-    { id: 'claude-3-haiku-20240307', name: 'Claude 3.5 Haiku' },
-    { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' }
-  ],
-  deepseek: [
-    { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-    { id: 'deepseek-coder', name: 'DeepSeek Coder' }
-  ]
 };
 
 interface AskAINodeProps {
@@ -58,19 +48,14 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
     }
   } : defaultData;
 
-  const [provider, setProvider] = useState<AIProvider>(
-    (nodeData.config?.aiProvider as AIProvider) || 'openai'
+  const [provider, setProvider] = useState<'openai' | 'anthropic' | 'deepseek'>(
+    (nodeData.config?.aiProvider as any) || 'openai'
   );
-  const [model, setModel] = useState(nodeData.config?.modelName || providerOptions[provider][0].id);
+  const [model, setModel] = useState(nodeData.config?.modelName || '');
   const [prompt, setPrompt] = useState(nodeData.config?.prompt || '');
   const [systemMessage, setSystemMessage] = useState(nodeData.config?.systemMessage || '');
   const [isSaving, setIsSaving] = useState(false);
   const [hasLogs, setHasLogs] = useState(false);
-
-  // Update model options when provider changes
-  useEffect(() => {
-    setModel(providerOptions[provider][0].id);
-  }, [provider]);
 
   // Check if this node has execution logs
   useEffect(() => {
@@ -162,7 +147,7 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
             <label className="text-xs font-medium text-indigo-700">Provider</label>
             <Select 
               value={provider} 
-              onValueChange={(value: AIProvider) => setProvider(value)}
+              onValueChange={(value: any) => setProvider(value)}
             >
               <SelectTrigger className="h-8 text-xs border-indigo-200">
                 <SelectValue placeholder="Select provider" />
@@ -185,9 +170,24 @@ const AskAINode = ({ data, selected, id, onConfigChange }: AskAINodeProps) => {
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
-                {providerOptions[provider].map((model) => (
-                  <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
-                ))}
+                {provider === 'openai' && (
+                  <>
+                    <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                  </>
+                )}
+                {provider === 'anthropic' && (
+                  <>
+                    <SelectItem value="claude-3-haiku-20240307">Claude 3.5 Haiku</SelectItem>
+                    <SelectItem value="claude-3-sonnet-20240229">Claude 3 Sonnet</SelectItem>
+                  </>
+                )}
+                {provider === 'deepseek' && (
+                  <>
+                    <SelectItem value="deepseek-chat">DeepSeek Chat</SelectItem>
+                    <SelectItem value="deepseek-coder">DeepSeek Coder</SelectItem>
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
