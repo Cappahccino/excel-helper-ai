@@ -1,4 +1,5 @@
 
+// Follow Deno and Supabase Edge Function conventions
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.27.0'
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
 
@@ -72,20 +73,41 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
     const dbWorkflowId = normalizeWorkflowId(workflowId);
     const isTemporary = workflowId.startsWith('temp-');
     
-    // Update workflow_files status to processing
-    const { error: updateError } = await supabaseAdmin
+    // First check if the workflow file record exists
+    const { data: existingFile, error: lookupError } = await supabaseAdmin
       .from('workflow_files')
-      .update({
-        processing_status: 'processing',
-        is_temporary: isTemporary
-      })
+      .select('id')
       .eq('workflow_id', dbWorkflowId)
       .eq('node_id', nodeId)
-      .eq('file_id', fileId);
+      .eq('file_id', fileId)
+      .maybeSingle();
+      
+    if (lookupError) {
+      console.error('Error checking for existing workflow file:', lookupError);
+    }
     
-    if (updateError) {
-      console.error('Error updating workflow file status:', updateError);
-      throw updateError;
+    // Use upsert instead of update to create the record if it doesn't exist
+    const { error: upsertError } = await supabaseAdmin
+      .from('workflow_files')
+      .upsert({
+        workflow_id: dbWorkflowId,
+        node_id: nodeId,
+        file_id: fileId,
+        processing_status: 'processing',
+        is_temporary: isTemporary,
+        is_active: true,
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'workflow_id,node_id,file_id'
+      });
+    
+    if (upsertError) {
+      console.error('Error upserting workflow file:', upsertError);
+      throw upsertError;
+    } else {
+      console.log(`Successfully upserted workflow_files record for node ${nodeId}, file ${fileId}`);
     }
     
     // Get file information
@@ -205,7 +227,7 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
       throw schemaError;
     }
     
-    // Mark workflow file as processed
+    // Mark workflow file as processed - using upsert again to ensure record exists
     const { error: completeError } = await supabaseAdmin
       .from('workflow_files')
       .update({
@@ -215,7 +237,8 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
           processed_at: new Date().toISOString(),
           column_count: Object.keys(columnDefinitions).length,
           row_count: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0
-        }
+        },
+        updated_at: new Date().toISOString()
       })
       .eq('workflow_id', dbWorkflowId)
       .eq('node_id', nodeId)
@@ -241,17 +264,20 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
       const dbWorkflowId = normalizeWorkflowId(workflowId);
       await supabaseAdmin
         .from('workflow_files')
-        .update({
+        .upsert({
+          workflow_id: dbWorkflowId,
+          node_id: nodeId,
+          file_id: fileId,
           processing_status: 'error',
           processing_result: {
             success: false,
             error: error.message || 'Unknown error',
             error_at: new Date().toISOString()
-          }
-        })
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId)
-        .eq('file_id', fileId);
+          },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'workflow_id,node_id,file_id'
+        });
     } catch (updateError) {
       console.error('Error updating error status:', updateError);
     }

@@ -22,6 +22,7 @@ import { FileProcessingStatus, FileProcessingState } from '@/types/fileProcessin
 import { useWorkflow } from '../context/WorkflowContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import NodeProgress from '../ui/NodeProgress';
+import { retryOperation } from '@/utils/retryUtils';
 
 interface FileUploadNodeProps {
   id: string;
@@ -44,6 +45,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
   
   const [fileInfo, setFileInfo] = useState<any>(null);
   const [realtimeEnabled, setRealtimeEnabled] = useState(false);
+  const [associationAttempt, setAssociationAttempt] = useState(0);
 
   // Function to update processing state
   const updateProcessingState = useCallback((
@@ -62,6 +64,40 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
     }));
   }, []);
+
+  // Query to check if file is already associated with workflow
+  const { data: existingAssociation, refetch: refetchAssociation } = useQuery({
+    queryKey: ['workflow-file-association', workflowId, id, debouncedFileId],
+    queryFn: async () => {
+      if (!workflowId || !debouncedFileId) return null;
+      
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      console.log(`Checking if file ${debouncedFileId} is associated with workflow ${dbWorkflowId}, node ${id}`);
+      
+      try {
+        const { data, error } = await supabase
+          .from('workflow_files')
+          .select('*')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', id)
+          .eq('file_id', debouncedFileId)
+          .maybeSingle();
+          
+        if (error) {
+          console.error('Error checking file association:', error);
+          return null;
+        }
+        
+        console.log('File association check result:', data);
+        return data;
+      } catch (err) {
+        console.error('Error in file association check:', err);
+        return null;
+      }
+    },
+    enabled: !!workflowId && !!debouncedFileId,
+  });
   
   // Query to fetch available files
   const { data: files, isLoading: isLoadingFiles, refetch } = useQuery({
@@ -104,6 +140,72 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     enabled: !!debouncedFileId,
   });
 
+  // Function to check workflow file processing status
+  const checkWorkflowFileStatus = useCallback(async (fileId: string): Promise<string | null> => {
+    if (!workflowId || !fileId) return null;
+    
+    const dbWorkflowId = convertToDbWorkflowId(workflowId);
+    
+    try {
+      const { data, error } = await supabase
+        .from('workflow_files')
+        .select('processing_status')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', id)
+        .eq('file_id', fileId)
+        .maybeSingle();
+        
+      if (error) {
+        console.error('Error checking workflow file status:', error);
+        return null;
+      }
+      
+      return data?.processing_status || null;
+    } catch (err) {
+      console.error('Error in workflow file status check:', err);
+      return null;
+    }
+  }, [workflowId, id]);
+
+  // Effect to verify file association and update processing state based on DB status
+  useEffect(() => {
+    const checkAndUpdateStatus = async () => {
+      if (!selectedFileId || !workflowId) return;
+      
+      // Only run this check if we're not in an active processing state
+      if (['pending', 'completed', 'error', 'failed'].includes(processingState.status)) {
+        const currentStatus = await checkWorkflowFileStatus(selectedFileId);
+        console.log(`Current workflow file status from DB: ${currentStatus}`);
+        
+        if (currentStatus === 'completed' && processingState.status !== 'completed') {
+          console.log('File is already processed, updating state to completed');
+          updateProcessingState('completed', 100, 'File processed successfully');
+          refetch(); // Refresh file info
+        } else if (currentStatus === 'processing' && processingState.status !== 'processing') {
+          console.log('File is being processed, updating state to processing');
+          updateProcessingState('processing', 50, 'Processing file data...');
+        } else if ((currentStatus === 'error' || currentStatus === 'failed') && 
+                  processingState.status !== 'error' && processingState.status !== 'failed') {
+          console.log('File processing failed, updating state to error');
+          updateProcessingState('error', 0, 'Error', 'File processing failed');
+        } else if (!currentStatus && processingState.status !== 'pending' && existingAssociation === null) {
+          // No record found, and we're not in pending state
+          console.log('No workflow file record found, setting to pending');
+          updateProcessingState('pending', 0);
+        }
+      }
+    };
+    
+    // Run the check immediately and then set up an interval for periodic checks
+    checkAndUpdateStatus();
+    
+    // Only set up interval for active processing states
+    if (['processing', 'associating', 'uploading', 'fetching_schema', 'verifying'].includes(processingState.status)) {
+      const intervalId = setInterval(checkAndUpdateStatus, 3000);
+      return () => clearInterval(intervalId);
+    }
+  }, [workflowId, selectedFileId, processingState.status, existingAssociation, updateProcessingState, checkWorkflowFileStatus, refetch]);
+
   // Setup realtime subscription for workflow file updates
   useEffect(() => {
     if (!workflowId || !selectedFileId || !id) return;
@@ -130,6 +232,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             updateProcessingState('completed', 100, 'File processed successfully');
             // Refresh file info
             refetch();
+            refetchAssociation();
           } else if (updatedFile.processing_status === 'processing') {
             updateProcessingState('processing', 50, 'Processing file data...');
           } else if (updatedFile.processing_status === 'failed' || updatedFile.processing_status === 'error') {
@@ -153,7 +256,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       console.log('Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
-  }, [workflowId, selectedFileId, id, updateProcessingState, refetch]);
+  }, [workflowId, selectedFileId, id, updateProcessingState, refetch, refetchAssociation]);
 
   // Update file info when selected file changes
   useEffect(() => {
@@ -180,6 +283,9 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
   
   // Helper function to explicitly associate the file with the workflow
   const associateFileWithWorkflow = async (fileId: string): Promise<boolean> => {
+    // Set association attempt counter to track retries
+    setAssociationAttempt(prev => prev + 1);
+    
     // Debug logging
     console.log('Associating file with workflow - Started');
     console.log('File ID:', fileId);
@@ -234,7 +340,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         console.log('Workflow exists in database');
       }
       
-      // Now create/update the association using our new RPC function
+      // Now create/update the association using our DB function
       const { data: rpcResult, error: rpcError } = await supabase.rpc('associate_file_with_workflow_node', {
         p_file_id: fileId,
         p_workflow_id: dbWorkflowId,
@@ -253,6 +359,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             node_id: id,
             file_id: fileId,
             status: 'active',
+            is_active: true,
+            processing_status: 'pending',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }, {
@@ -267,7 +375,28 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         console.log('RPC association successful, result:', rpcResult);
       }
       
+      // Verify the association was created
+      const { data: verifyAssoc, error: verifyError } = await supabase
+        .from('workflow_files')
+        .select('id, file_id, node_id, workflow_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', id)
+        .eq('file_id', fileId)
+        .maybeSingle();
+        
+      if (verifyError) {
+        console.error('Error verifying file association:', verifyError);
+      } else if (!verifyAssoc) {
+        console.warn('Association appears to be missing after creation attempt');
+      } else {
+        console.log('Verified association exists:', verifyAssoc);
+      }
+      
       console.log('File association successful');
+      
+      // Refresh the association data
+      refetchAssociation();
+      
       return true;
     } catch (error) {
       console.error('File association failed:', error);
@@ -275,7 +404,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     }
   };
 
-  // Handle file selection using transaction approach
+  // Handle file selection using transaction approach with retries
   const handleFileSelection = async (fileId: string) => {
     if (!fileId) return;
     
@@ -311,54 +440,55 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       // Log the workflow ID for debugging
       console.log(`Associating file ${fileId} with node ${id} in workflow ${workflowId}`);
       
-      // Get the database-compatible workflow ID
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      // Determine if this is a temporary workflow
-      const isTemporary = workflowId.startsWith('temp-');
-      
-      // Get the file info before processing
-      const { data: fileData, error: fileError } = await supabase
-        .from('excel_files')
-        .select('id, filename, file_path, file_size, mime_type')
-        .eq('id', fileId)
-        .single();
+      // First, check if this association already exists
+      if (existingAssociation) {
+        console.log('File is already associated with this node:', existingAssociation);
         
-      if (fileError) {
-        console.error('Error fetching file data:', fileError);
-        updateProcessingState('error', 0, 'Error', `File data error: ${fileError.message}`);
-        toast.error('Failed to get file information');
-        throw fileError;
-      }
-      
-      // Get current user for the file operation
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        updateProcessingState('error', 0, 'Error', 'User not authenticated');
-        toast.error('You must be logged in to use this feature');
-        throw new Error('User not authenticated');
-      }
-      
-      // Update processing state to indicate file association
-      updateProcessingState('associating', 30, 'Creating database association...');
-      
-      // Try to use our new association function
-      console.log('Attempting to associate file with workflow node using RPC function');
-      try {
-        const result = await associateFileWithWorkflow(fileId);
-        if (!result) {
-          console.error('File association failed');
-          updateProcessingState('error', 0, 'Error', 'File association failed');
+        // If the association exists but isn't processed, continue with processing
+        if (existingAssociation.processing_status !== 'completed') {
+          console.log('File association exists but processing is not complete, will reprocess');
+        } else {
+          console.log('File is already processed, skipping association step');
+          updateProcessingState('completed', 100, 'File already processed');
+          
+          // Update node configuration
+          if (data.onChange) {
+            data.onChange(id, { 
+              fileId, 
+              filename: files?.find(f => f.id === fileId)?.filename 
+            });
+          }
+          return;
+        }
+      } else {
+        // Associate the file with the workflow with retries
+        try {
+          const result = await retryOperation(
+            () => associateFileWithWorkflow(fileId),
+            { 
+              maxRetries: 3, 
+              delay: 1000,
+              onRetry: (err, attempt) => {
+                console.log(`Retry ${attempt} for file association after error: ${err.message}`);
+                updateProcessingState('associating', 10 + (attempt * 10), `Retrying association (${attempt}/3)...`);
+              }
+            }
+          );
+          
+          if (!result) {
+            console.error('File association failed after retries');
+            updateProcessingState('error', 0, 'Error', 'File association failed after multiple attempts');
+            toast.error('Failed to associate file with workflow node');
+            return;
+          }
+          
+          console.log('File association successful after retries');
+        } catch (assocError) {
+          console.error('Error in association after retries:', assocError);
+          updateProcessingState('error', 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
           toast.error('Failed to associate file with workflow node');
           return;
         }
-        
-        console.log('File association successful');
-      } catch (assocError) {
-        console.error('Error in association:', assocError);
-        updateProcessingState('error', 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
-        toast.error('Failed to associate file with workflow node');
-        return;
       }
       
       // Queue the file for processing
@@ -401,6 +531,9 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         
         toast.success('File processing started');
         
+        // Refresh the association data
+        refetchAssociation();
+        
         // Delay to fetch schema data (realtime subscription will update status)
         setTimeout(() => {
           if (processingState.status !== 'completed' && processingState.status !== 'error') {
@@ -424,6 +557,37 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     if (!selectedFileId) return;
     updateProcessingState('associating', 10, 'Retrying file processing...');
     await handleFileSelection(selectedFileId);
+  };
+
+  // Function to force refresh workflow file status
+  const forceRefreshStatus = async () => {
+    if (!selectedFileId || !workflowId) return;
+    
+    try {
+      // Force refetch of related data
+      await Promise.all([
+        refetch(),
+        refetchAssociation()
+      ]);
+      
+      const currentStatus = await checkWorkflowFileStatus(selectedFileId);
+      console.log(`Current workflow file status from refresh: ${currentStatus}`);
+      
+      if (currentStatus === 'completed') {
+        updateProcessingState('completed', 100, 'File processed successfully');
+      } else if (currentStatus === 'processing') {
+        updateProcessingState('processing', 50, 'Processing file data...');
+      } else if (currentStatus === 'error' || currentStatus === 'failed') {
+        updateProcessingState('error', 0, 'Error', 'File processing failed');
+      } else if (!currentStatus && existingAssociation === null) {
+        updateProcessingState('pending', 0);
+      }
+      
+      toast.success('Status refreshed');
+    } catch (error) {
+      console.error('Error refreshing status:', error);
+      toast.error('Failed to refresh status');
+    }
   };
 
   // Get file schema columns
@@ -602,7 +766,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             variant="ghost" 
             size="sm" 
             className="h-6 w-6 p-0" 
-            onClick={() => refetch()}
+            onClick={forceRefreshStatus}
             disabled={processingState.status !== 'pending' && processingState.status !== 'completed' && processingState.status !== 'error'}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
@@ -680,6 +844,12 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
               </div>
             )}
             
+            {existingAssociation && (
+              <div className="mt-1 text-[10px] text-green-600 overflow-hidden">
+                File ID: {existingAssociation.file_id.substring(0, 8)}...
+              </div>
+            )}
+            
             {getSchemaInfo()}
           </div>
         )}
@@ -694,6 +864,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
             {workflowId.startsWith('temp-') ? 'Temporary workflow: ' : 'Workflow: '}
             {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
+            {associationAttempt > 0 && ` (${associationAttempt} attempts)`}
           </div>
         )}
       </div>
