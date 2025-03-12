@@ -1,6 +1,5 @@
-
-import { supabase } from '@/integrations/supabase/client';
-import { SchemaColumn } from '@/utils/schemaUtils';
+import { SchemaColumn } from '@/types/workflow';
+import { schemaUtils } from './schemaUtils';
 
 interface WorkflowFileSchema {
   workflow_id: string;

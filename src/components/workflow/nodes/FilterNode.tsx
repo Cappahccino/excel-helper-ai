@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { schemaUtils, SchemaColumn } from '@/utils/schemaUtils';
+import { schemaUtils } from '@/utils/schemaUtils';
+import { SchemaColumn } from '@/types/workflow';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
