@@ -10,6 +10,7 @@ import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGen
 import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 import FilteringNode from '@/components/workflow/nodes/FilteringNode';
+import AggregationNode from '@/components/workflow/nodes/AggregationNode';
 import { NodeTypes } from '@xyflow/react';
 
 export const nodeTypes: NodeTypes = {
@@ -24,6 +25,7 @@ export const nodeTypes: NodeTypes = {
   utilityNode: UtilityNode,
   fileUpload: FileUploadNode,
   filtering: FilteringNode,
+  aggregation: AggregationNode,
 };
 
 export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: any) => void, workflowId: string | null) => ({
@@ -50,6 +52,15 @@ export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: an
     {...props}
     data={{
       ...props.data,
+      workflowId: workflowId,
+      onChange: handleNodeConfigUpdate
+    }}
+  />,
+  aggregation: (props: any) => <AggregationNode
+    {...props}
+    data={{
+      ...props.data,
+      workflowId: workflowId,
       onChange: handleNodeConfigUpdate
     }}
   />,
