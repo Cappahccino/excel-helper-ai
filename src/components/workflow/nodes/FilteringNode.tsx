@@ -5,12 +5,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { FilterIcon, AlertTriangle, Loader2 } from 'lucide-react';
+import { FilterIcon, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { useSchemaManagement } from '@/hooks/useSchemaManagement';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 interface FilteringNodeProps {
   id: string;
@@ -64,6 +66,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [isLoading, setIsLoading] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const workflow = useWorkflow();
   const { 
@@ -73,13 +76,25 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     validationErrors: schemaValidationErrors
   } = useSchemaManagement();
 
-  const loadSchema = useCallback(async () => {
+  const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
+    console.log(`FilteringNode ${id}: Loading schema for workflow ${workflow.workflowId}`);
     setIsLoading(true);
     setLoadingError(null);
     
     try {
+      let schema = await getNodeSchema(workflow.workflowId, id, { forceRefresh });
+      
+      if (schema && schema.length > 0) {
+        console.log(`FilteringNode ${id}: Found schema directly for this node:`, schema);
+        setColumns(schema);
+        updateOperatorsForColumn(data.config.column, schema);
+        validateConfiguration(data.config, schema);
+        setIsLoading(false);
+        return;
+      }
+      
       const edges = await workflow.getEdges(workflow.workflowId);
       const inputNodeIds = edges
         .filter(edge => edge.target === id)
@@ -88,37 +103,49 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       if (inputNodeIds.length === 0) {
         setLoadingError('No input connection found. Connect a data source to this node.');
         setColumns([]);
+        setIsLoading(false);
         return;
       }
       
       const sourceNodeId = inputNodeIds[0];
-      const schema = await getNodeSchema(workflow.workflowId, sourceNodeId);
+      console.log(`FilteringNode ${id}: Getting schema from source node ${sourceNodeId}`);
+      
+      schema = await getNodeSchema(workflow.workflowId, sourceNodeId, { forceRefresh });
       
       if (!schema || schema.length === 0) {
         setLoadingError('No schema available from the connected node.');
+        setIsLoading(false);
         return;
       }
       
+      console.log(`FilteringNode ${id}: Retrieved schema from source node:`, schema);
       setColumns(schema);
       
       updateOperatorsForColumn(data.config.column, schema);
-      
       validateConfiguration(data.config, schema);
     } catch (error) {
-      console.error('Error loading schema for filtering node:', error);
+      console.error(`FilteringNode ${id}: Error loading schema:`, error);
       setLoadingError('Failed to load schema information. Please try again.');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  }, [id, workflow, data.config.column, getNodeSchema]);
+  }, [id, workflow, data.config, getNodeSchema, validateConfiguration]);
 
   useEffect(() => {
     if (selected) {
-      loadSchema();
+      loadSchema(false);
     }
   }, [loadSchema, selected]);
 
-  const updateOperatorsForColumn = (columnName?: string, schemaColumns?: SchemaColumn[]) => {
+  useEffect(() => {
+    if (workflow.workflowId && id) {
+      console.log(`FilteringNode ${id}: Workflow or node ID changed, loading schema`);
+      loadSchema(false);
+    }
+  }, [workflow.workflowId, id, loadSchema]);
+
+  const updateOperatorsForColumn = useCallback((columnName?: string, schemaColumns?: SchemaColumn[]) => {
     if (!columnName || !schemaColumns) {
       setOperators(OPERATORS.default);
       return;
@@ -145,22 +172,40 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           setOperators(OPERATORS.default);
       }
     }
-  };
+  }, []);
   
-  const validateConfiguration = (config: any, schema: SchemaColumn[]) => {
+  const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
       setValidationErrors([]);
       return;
     }
     
-    const { isValid, errors } = validateNodeConfig(config, schema);
+    const errors: string[] = [];
     
-    if (!isValid) {
-      setValidationErrors(errors.map(err => err.message));
-    } else {
-      setValidationErrors([]);
+    if (config.column && !schema.some(col => col.name === config.column)) {
+      errors.push(`Column "${config.column}" does not exist in the schema`);
     }
-  };
+    
+    if (config.column && config.operator) {
+      const column = schema.find(col => col.name === config.column);
+      if (column) {
+        const stringOperators = ['contains', 'starts-with', 'ends-with'];
+        const numericOperators = ['greater-than', 'less-than'];
+        
+        if (column.type === 'number' && stringOperators.includes(config.operator)) {
+          errors.push(`Operator "${config.operator}" cannot be used with numeric column "${config.column}"`);
+        }
+        
+        if ((column.type === 'string' || column.type === 'text') && numericOperators.includes(config.operator)) {
+          errors.push(`Operator "${config.operator}" cannot be used with text column "${config.column}"`);
+        }
+      }
+    }
+    
+    setValidationErrors(errors);
+    
+    return errors.length === 0;
+  }, []);
 
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
@@ -217,14 +262,42 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return 'Value to match';
   };
 
+  const handleRefreshSchema = () => {
+    setIsRefreshing(true);
+    toast.info("Refreshing schema...");
+    loadSchema(true);
+  };
+
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>
       <CardHeader className="bg-blue-50 p-3 flex flex-row items-center">
         <FilterIcon className="w-4 h-4 mr-2 text-blue-600" />
         <CardTitle className="text-sm font-medium">{data.label || 'Filter Data'}</CardTitle>
-        {(isLoading || schemaLoading[id]) && (
-          <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
-        )}
+        
+        <div className="ml-auto flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={handleRefreshSchema}
+                  disabled={isLoading || isRefreshing}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Refresh schema
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {(isLoading || schemaLoading[id] || isRefreshing) && (
+            <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
         {loadingError && (
@@ -265,6 +338,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               )}
             </SelectContent>
           </Select>
+          {columns.length > 0 && (
+            <div className="text-xs text-blue-600 mt-1">
+              {columns.length} column{columns.length !== 1 ? 's' : ''} available
+            </div>
+          )}
         </div>
         
         <div className="space-y-1.5">

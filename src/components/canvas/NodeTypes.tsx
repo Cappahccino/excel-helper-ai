@@ -53,7 +53,7 @@ export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: an
     data={{
       ...props.data,
       workflowId: workflowId,
-      onChange: handleNodeConfigUpdate
+      onChange: handleNodeConfigUpdate,
     }}
   />,
   aggregation: (props: any) => <AggregationNode

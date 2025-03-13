@@ -64,6 +64,8 @@ export function useSchemaManagement() {
         return null;
       }
       
+      console.log(`Found schema data for node ${nodeId}:`, data);
+      
       // Convert to SchemaColumn format
       const schema: SchemaColumn[] = data.columns.map(column => {
         return {
@@ -111,11 +113,13 @@ export function useSchemaManagement() {
       const cacheAge = Date.now() - cacheEntry.timestamp;
       
       if (cacheAge < maxCacheAge) {
+        console.log(`Using cached schema for node ${nodeId}, age: ${cacheAge}ms`);
         return cacheEntry.schema;
       }
     }
     
     // Otherwise fetch from database
+    console.log(`Fetching fresh schema for node ${nodeId} (forceRefresh: ${forceRefresh})`);
     const schema = await fetchSchemaFromDb(workflowId, nodeId);
     return schema || [];
   }, [fetchSchemaFromDb, schemaCache]);
