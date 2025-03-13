@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -14,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { normalizeWorkflowId } from '@/utils/schemaPropagation';
 
 interface FilteringNodeProps {
   id: string;
@@ -68,6 +68,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
   
   const workflow = useWorkflow();
   const { 
@@ -77,7 +79,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     validationErrors: schemaValidationErrors
   } = useSchemaManagement();
 
-  // Define validateConfiguration before using it
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
       setValidationErrors([]);
@@ -110,7 +111,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     
     return errors.length === 0;
   }, []);
-  
+
   const updateOperatorsForColumn = useCallback((columnName?: string, schemaColumns?: SchemaColumn[]) => {
     if (!columnName || !schemaColumns) {
       setOperators(OPERATORS.default);
@@ -143,12 +144,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
-    console.log(`FilteringNode ${id}: Loading schema for workflow ${workflow.workflowId}`);
+    const normalizedWorkflowId = normalizeWorkflowId(workflow.workflowId);
+    console.log(`FilteringNode ${id}: Loading schema for workflow ${normalizedWorkflowId}`);
     setIsLoading(true);
     setLoadingError(null);
     
     try {
-      let schema = await getNodeSchema(workflow.workflowId, id, { forceRefresh });
+      let schema = await getNodeSchema(normalizedWorkflowId, id, { forceRefresh });
       
       if (schema && schema.length > 0) {
         console.log(`FilteringNode ${id}: Found schema directly for this node:`, schema);
@@ -156,10 +158,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         updateOperatorsForColumn(data.config.column, schema);
         validateConfiguration(data.config, schema);
         setIsLoading(false);
+        setRetryCount(0);
         return;
       }
       
-      const edges = await workflow.getEdges(workflow.workflowId);
+      const edges = await workflow.getEdges(normalizedWorkflowId);
       const inputNodeIds = edges
         .filter(edge => edge.target === id)
         .map(edge => edge.source);
@@ -174,10 +177,21 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       const sourceNodeId = inputNodeIds[0];
       console.log(`FilteringNode ${id}: Getting schema from source node ${sourceNodeId}`);
       
-      schema = await getNodeSchema(workflow.workflowId, sourceNodeId, { forceRefresh });
+      schema = await getNodeSchema(normalizedWorkflowId, sourceNodeId, { forceRefresh });
       
       if (!schema || schema.length === 0) {
         setLoadingError('No schema available from the connected node.');
+        
+        if (retryCount < maxRetries) {
+          const nextRetry = retryCount + 1;
+          setRetryCount(nextRetry);
+          console.log(`No schema found, scheduling retry attempt ${nextRetry}/${maxRetries}`);
+          
+          setTimeout(() => {
+            loadSchema(true);
+          }, 1000 * nextRetry);
+        }
+        
         setIsLoading(false);
         return;
       }
@@ -194,7 +208,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [id, workflow, data.config, getNodeSchema, updateOperatorsForColumn, validateConfiguration]);
+  }, [id, workflow, data.config, getNodeSchema, updateOperatorsForColumn, validateConfiguration, retryCount]);
 
   useEffect(() => {
     if (selected) {
@@ -222,7 +236,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       data.onChange(id, newConfig);
     }
   };
-  
+
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
@@ -266,6 +280,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
 
   const handleRefreshSchema = () => {
     setIsRefreshing(true);
+    setRetryCount(0);
     toast.info("Refreshing schema...");
     loadSchema(true);
   };
@@ -436,3 +451,4 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
 };
 
 export default FilteringNode;
+
