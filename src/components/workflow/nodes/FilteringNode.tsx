@@ -215,7 +215,42 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       console.log(`FilteringNode ${id}: Getting schema from source node ${sourceId}`);
       
-      // Try to get source node schema with retry
+      // Try to directly force a schema refresh first for the most up-to-date data
+      const refreshedSchema = await forceSchemaRefresh(workflow.workflowId, sourceId);
+      
+      if (refreshedSchema && refreshedSchema.length > 0) {
+        console.log(`FilteringNode ${id}: Retrieved refreshed schema from source node:`, refreshedSchema);
+        
+        // Attempt to propagate this schema to our node
+        const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id);
+        
+        if (propagated) {
+          // If propagation succeeded, load our own schema which should now be updated
+          const ownSchema = await getNodeSchema(workflow.workflowId, id, { forceRefresh: true });
+          
+          if (ownSchema && ownSchema.columns.length > 0) {
+            const schemaColumns = convertToSchemaColumns(ownSchema);
+            setColumns(schemaColumns);
+            setSchemaSource('propagated');
+            updateOperatorsForColumn(data.config.column, schemaColumns);
+            validateConfiguration(data.config, schemaColumns);
+            setLastRefreshTime(new Date());
+            setIsLoading(false);
+            return;
+          }
+        }
+        
+        // Even if propagation failed, use the source schema directly
+        setColumns(refreshedSchema);
+        setSchemaSource('source');
+        updateOperatorsForColumn(data.config.column, refreshedSchema);
+        validateConfiguration(data.config, refreshedSchema);
+        setLastRefreshTime(new Date());
+        setIsLoading(false);
+        return;
+      }
+      
+      // Try to get source node schema with retry as a fallback
       const sourceSchema = await retryOperation(
         () => getNodeSchema(workflow.workflowId, sourceId, { forceRefresh }),
         {
@@ -249,7 +284,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           }
         }
         
-        setLoadingError('No schema available from the connected node. Try refreshing.');
+        setLoadingError('No schema available from the connected node. Try refreshing or check that your source node has data.');
         setIsLoading(false);
         return;
       }
@@ -289,7 +324,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     findSourceNode
   ]);
 
-  // Load schema when node is first selected or when workflow changes
+  // Load schema whenever selected, workflow changes, or source node changes
   useEffect(() => {
     if (selected && workflow.workflowId) {
       console.log(`Node ${id} selected, loading schema`);

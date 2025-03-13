@@ -1,9 +1,11 @@
+
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { retryOperation } from '@/utils/retryUtils';
 
 // Define the schema for file data with correct types
 export interface WorkflowFileSchema {
@@ -63,6 +65,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         
         const dbWorkflowId = convertToDbWorkflowId(workflowId);
         
+        console.log(`Checking if node ${nodeId} is a file node in workflow ${dbWorkflowId}`);
+        
         const { data, error } = await supabase
           .from('workflow_files')
           .select('file_id')
@@ -70,7 +74,13 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
           .eq('node_id', nodeId)
           .maybeSingle();
           
-        resolve(!!data?.file_id);
+        if (error) {
+          console.error('Error checking file node:', error);
+        }
+        
+        const isFile = !!data?.file_id;
+        console.log(`Node ${nodeId} is${isFile ? '' : ' not'} a file node`);
+        resolve(isFile);
       } catch (err) {
         console.error('Error checking if node is file node:', err);
         resolve(false);
@@ -78,27 +88,43 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     });
   }, [workflowId]);
 
-  // Function to get file schema from a node
+  // Function to get file schema from a node with improved error handling
   const getFileSchema = useCallback(async (nodeId: string): Promise<WorkflowFileSchema | null> => {
     try {
       if (!workflowId) return null;
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}`);
       
-      // Try to get schema from workflow_file_schemas table first
-      const { data: schemaData, error: schemaError } = await supabase
-        .from('workflow_file_schemas')
-        .select('columns, data_types')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
-        
-      if (schemaError) {
-        console.error('Error fetching schema:', schemaError);
-        return null;
-      }
+      // Use retryOperation for resilient fetching
+      const schemaData = await retryOperation(
+        async () => {
+          // Try to get schema from workflow_file_schemas table first
+          const { data, error } = await supabase
+            .from('workflow_file_schemas')
+            .select('columns, data_types')
+            .eq('workflow_id', dbWorkflowId)
+            .eq('node_id', nodeId)
+            .maybeSingle();
+            
+          if (error) {
+            console.error('Error fetching schema:', error);
+            throw error;
+          }
+          
+          return data;
+        },
+        {
+          maxRetries: 3,
+          delay: 500,
+          onRetry: (err, attempt) => {
+            console.log(`Retry ${attempt}/3 fetching schema: ${err.message}`);
+          }
+        }
+      );
       
       if (schemaData) {
+        console.log(`Found schema for node ${nodeId}:`, schemaData);
         // Cast the data appropriately to match our WorkflowFileSchema interface
         const schema: WorkflowFileSchema = {
           columns: schemaData.columns || [],
@@ -107,27 +133,49 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         return schema;
       }
       
+      console.log(`No schema found directly, looking for file metadata for node ${nodeId}`);
+      
       // If no schema found, try to get it from the file metadata
-      const { data: fileData } = await supabase
-        .from('workflow_files')
-        .select('file_id')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
-        
+      const fileData = await retryOperation(
+        async () => {
+          const { data, error } = await supabase
+            .from('workflow_files')
+            .select('file_id')
+            .eq('workflow_id', dbWorkflowId)
+            .eq('node_id', nodeId)
+            .maybeSingle();
+            
+          if (error) throw error;
+          return data;
+        },
+        { maxRetries: 2 }
+      );
+      
       if (!fileData?.file_id) {
+        console.log(`No file ID found for node ${nodeId}`);
         return null;
       }
       
-      const { data: metaData } = await supabase
-        .from('file_metadata')
-        .select('column_definitions')
-        .eq('file_id', fileData.file_id)
-        .maybeSingle();
-        
+      const metaData = await retryOperation(
+        async () => {
+          const { data, error } = await supabase
+            .from('file_metadata')
+            .select('column_definitions')
+            .eq('file_id', fileData.file_id)
+            .maybeSingle();
+            
+          if (error) throw error;
+          return data;
+        },
+        { maxRetries: 2 }
+      );
+      
       if (!metaData?.column_definitions) {
+        console.log(`No column definitions found for file ${fileData.file_id}`);
         return null;
       }
+      
+      console.log(`Found file metadata for node ${nodeId}:`, metaData);
       
       // Cast the data appropriately to match our WorkflowFileSchema interface
       const schema: WorkflowFileSchema = {
@@ -142,7 +190,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [workflowId]);
 
-  // Function to propagate schema from source to target
+  // Function to propagate schema from source to target with improved error handling
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
     try {
       if (!workflowId) return false;
@@ -156,6 +204,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}`);
         return true;
       }
+      
+      console.log(`Direct propagation failed, trying alternative approach`);
       
       // Check if source is a file node
       const isSource = await isFileNode(sourceNodeId);
@@ -188,25 +238,36 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         
       const fileId = fileData?.file_id || '00000000-0000-0000-0000-000000000000';
       
-      // Create or update schema for target node
-      const { error } = await supabase
-        .from('workflow_file_schemas')
-        .upsert({
-          workflow_id: dbWorkflowId,
-          node_id: targetNodeId,
-          file_id: fileId,
-          columns: sourceSchema.columns,
-          data_types: sourceSchema.types,
-          has_headers: true,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'workflow_id,node_id'
-        });
-        
-      if (error) {
-        console.error('Error updating target schema:', error);
-        return false;
-      }
+      console.log(`Using file ID ${fileId} for schema propagation`);
+      
+      // Create or update schema for target node with retry for resilience
+      const result = await retryOperation(
+        async () => {
+          const { error } = await supabase
+            .from('workflow_file_schemas')
+            .upsert({
+              workflow_id: dbWorkflowId,
+              node_id: targetNodeId,
+              file_id: fileId,
+              columns: sourceSchema.columns,
+              data_types: sourceSchema.types,
+              has_headers: true,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'workflow_id,node_id'
+            });
+            
+          if (error) throw error;
+          return { success: true };
+        },
+        {
+          maxRetries: 3,
+          delay: 500,
+          onRetry: (err, attempt) => {
+            console.log(`Retry ${attempt}/3 updating target schema: ${err.message}`);
+          }
+        }
+      );
       
       console.log(`Successfully propagated schema to target node ${targetNodeId}`);
       return true;
@@ -216,24 +277,33 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [isFileNode, getFileSchema, workflowId]);
 
-  // Function to get edges for a workflow
+  // Function to get edges for a workflow with improved resilience
   const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
     try {
       if (!workflowId) return [];
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      console.log(`Getting edges for workflow ${dbWorkflowId}`);
       
-      const { data, error } = await supabase
-        .from('workflow_edges')
-        .select('*')
-        .eq('workflow_id', dbWorkflowId);
-        
-      if (error) {
-        console.error('Error fetching workflow edges:', error);
-        return [];
-      }
+      const result = await retryOperation(
+        async () => {
+          const { data, error } = await supabase
+            .from('workflow_edges')
+            .select('*')
+            .eq('workflow_id', dbWorkflowId);
+            
+          if (error) throw error;
+          return data || [];
+        },
+        {
+          maxRetries: 2,
+          delay: 300
+        }
+      );
       
-      return data.map(edge => ({
+      console.log(`Found ${result.length} edges for workflow ${dbWorkflowId}`);
+      
+      return result.map(edge => ({
         id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
         source: edge.source_node_id,
         target: edge.target_node_id,
@@ -251,28 +321,37 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     try {
       console.log(`Migrating data from temporary workflow ${temporaryId} to permanent workflow ${permanentId}`);
       
-      // Instead of using RPC, use direct table operations
-      // Migrate workflow_files
-      const { error: filesMigrationError } = await supabase
-        .from('workflow_files')
-        .update({ workflow_id: permanentId })
-        .eq('workflow_id', temporaryId);
+      // Extract the UUID part from temporary ID if needed
+      const tempDbId = temporaryId.startsWith('temp-') ? temporaryId.substring(5) : temporaryId;
       
-      if (filesMigrationError) {
-        console.error('Error migrating workflow files:', filesMigrationError);
-        return false;
-      }
+      // Instead of using RPC, use direct table operations for better control
+      // Migrate workflow_files with retry
+      const filesMigrationResult = await retryOperation(
+        async () => {
+          const { error } = await supabase
+            .from('workflow_files')
+            .update({ workflow_id: permanentId })
+            .eq('workflow_id', tempDbId);
+          
+          if (error) throw error;
+          return { success: true };
+        },
+        { maxRetries: 2 }
+      );
       
-      // Migrate workflow_file_schemas
-      const { error: schemasMigrationError } = await supabase
-        .from('workflow_file_schemas')
-        .update({ workflow_id: permanentId })
-        .eq('workflow_id', temporaryId);
-      
-      if (schemasMigrationError) {
-        console.error('Error migrating workflow schemas:', schemasMigrationError);
-        return false;
-      }
+      // Migrate workflow_file_schemas with retry
+      const schemasMigrationResult = await retryOperation(
+        async () => {
+          const { error } = await supabase
+            .from('workflow_file_schemas')
+            .update({ workflow_id: permanentId })
+            .eq('workflow_id', tempDbId);
+          
+          if (error) throw error;
+          return { success: true };
+        },
+        { maxRetries: 2 }
+      );
       
       console.log('Temporary workflow data migration completed successfully');
       return true;

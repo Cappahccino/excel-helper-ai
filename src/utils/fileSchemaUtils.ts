@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/types/workflow';
 import { WorkflowFileSchema } from '@/components/workflow/context/WorkflowContext';
@@ -80,8 +79,11 @@ export async function getNodeSchema(
   try {
     const { forceRefresh = false } = options;
     
+    // Handle temporary workflow IDs
+    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+    
     // Generate cache key
-    const cacheKey = `node-${workflowId}-${nodeId}`;
+    const cacheKey = `node-${dbWorkflowId}-${nodeId}`;
     
     // Check cache first unless force refresh is requested
     if (!forceRefresh && schemaCache[cacheKey] && (Date.now() - schemaCache[cacheKey].timestamp) < SCHEMA_CACHE_TTL) {
@@ -89,14 +91,14 @@ export async function getNodeSchema(
       return schemaCache[cacheKey].schema;
     }
     
-    console.log(`Fetching schema for node ${nodeId} in workflow ${workflowId}`);
+    console.log(`Fetching schema for node ${nodeId} in workflow ${dbWorkflowId}`);
     
     const response = await retryOperation(
       async () => {
         const { data, error } = await supabase
           .from('workflow_file_schemas')
           .select('columns, data_types, file_id')
-          .eq('workflow_id', workflowId)
+          .eq('workflow_id', dbWorkflowId)
           .eq('node_id', nodeId)
           .maybeSingle();
         
@@ -112,6 +114,12 @@ export async function getNodeSchema(
     
     if (!response.data || !response.data.columns) {
       console.log(`No schema found for node ${nodeId}`);
+      return null;
+    }
+    
+    // Validate schema structure
+    if (!Array.isArray(response.data.columns) || !response.data.data_types) {
+      console.warn(`Invalid schema structure for node ${nodeId}:`, response.data);
       return null;
     }
     
@@ -194,6 +202,11 @@ export async function updateNodeSchema(
  * Convert WorkflowFileSchema to SchemaColumn array
  */
 export function convertToSchemaColumns(schema: WorkflowFileSchema): SchemaColumn[] {
+  if (!schema.columns || !Array.isArray(schema.columns)) {
+    console.warn('Invalid schema format in convertToSchemaColumns:', schema);
+    return [];
+  }
+  
   return schema.columns.map(column => ({
     name: column,
     type: schema.types[column] as 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown'
@@ -329,9 +342,12 @@ export function clearSchemaCache(options?: {
   
   const { workflowId, nodeId, fileId } = options;
   
+  // Handle temporary workflow IDs
+  const dbWorkflowId = workflowId?.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+  
   Object.keys(schemaCache).forEach(key => {
     if (
-      (workflowId && key.includes(`-${workflowId}-`)) ||
+      (dbWorkflowId && key.includes(`-${dbWorkflowId}-`)) ||
       (nodeId && key.endsWith(`-${nodeId}`)) ||
       (fileId && key === `file-${fileId}`)
     ) {
