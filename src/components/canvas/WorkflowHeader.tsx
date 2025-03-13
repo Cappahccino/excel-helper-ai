@@ -19,6 +19,7 @@ interface WorkflowHeaderProps {
   migrationError: string | null;
   optimisticSave: boolean;
   subscriptionStatus: string | null;
+  children?: React.ReactNode; // Add this line to accept children
 }
 
 const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
@@ -34,7 +35,8 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   savingWorkflowId,
   migrationError,
   optimisticSave,
-  subscriptionStatus
+  subscriptionStatus,
+  children // Add this to destructuring
 }) => {
   return (
     <div className="border-b p-4 flex justify-between items-center">
@@ -103,6 +105,8 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           <Play className="mr-2 h-4 w-4" />
           {isRunning ? 'Starting...' : executionStatus === 'running' ? 'Running...' : 'Run'}
         </Button>
+        
+        {children} {/* Render children here */}
       </div>
     </div>
   );
