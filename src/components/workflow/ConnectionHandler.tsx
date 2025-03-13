@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Json } from '@/types/workflow';
 import { useDebounce } from '@/hooks/useDebounce';
+import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 
 interface ConnectionHandlerProps {
   workflowId?: string;
@@ -12,8 +13,7 @@ interface ConnectionHandlerProps {
 
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
   const reactFlowInstance = useReactFlow();
-  const { propagateFileSchema, isTemporaryId } = useWorkflow();
-  const { convertToDbWorkflowId } = useWorkflow();
+  const { propagateFileSchema, isTemporaryId, convertToDbWorkflowId } = useWorkflow();
   const [retryMap, setRetryMap] = useState<Record<string, { attempts: number, maxAttempts: number, lastAttempt: number }>>({});
   
   const edgesRef = useRef<Edge[]>([]);
@@ -93,6 +93,16 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
                 console.error('Error details:', JSON.stringify(error));
               }
             }
+            
+            if (edgesData.length > 0) {
+              for (const edge of edgesData) {
+                await propagateSchemaDirectly(
+                  dbWorkflowId, 
+                  edge.source_node_id, 
+                  edge.target_node_id
+                ).catch(err => console.error('Error in post-save schema propagation:', err));
+              }
+            }
           }
         } catch (error) {
           console.error('Error in saveEdgesToDatabase:', error);
@@ -107,8 +117,33 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   }, [workflowId, convertToDbWorkflowId]);
 
   const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string): Promise<boolean> => {
+    if (!workflowId) return false;
+    
     const edgeKey = `${sourceId}-${targetId}`;
     const now = Date.now();
+    
+    try {
+      const result = await propagateSchemaDirectly(workflowId, sourceId, targetId);
+      
+      if (result) {
+        setSchemaPropagationStatus(prev => ({
+          ...prev,
+          [edgeKey]: {
+            status: 'completed',
+            lastAttempt: now
+          }
+        }));
+        
+        setRetryMap(prev => ({
+          ...prev,
+          [edgeKey]: { attempts: 0, maxAttempts: 5, lastAttempt: now }
+        }));
+        
+        return true;
+      }
+    } catch (error) {
+      console.error('Direct schema propagation failed, falling back to context method:', error);
+    }
     
     const retryInfo = retryMap[edgeKey];
     if (retryInfo) {
@@ -208,7 +243,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       
       return false;
     }
-  }, [propagateFileSchema]);
+  }, [propagateFileSchema, retryMap, workflowId]);
 
   useEffect(() => {
     if (!workflowId) return;

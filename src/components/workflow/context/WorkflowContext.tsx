@@ -1,9 +1,9 @@
-
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
+import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 
 // Define the schema for file data with correct types
 export interface WorkflowFileSchema {
@@ -145,7 +145,17 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   // Function to propagate schema from source to target
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
     try {
+      if (!workflowId) return false;
+
       console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}`);
+      
+      // Use the direct propagation method which works better with temporary workflows
+      const directResult = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId);
+      
+      if (directResult) {
+        console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}`);
+        return true;
+      }
       
       // Check if source is a file node
       const isSource = await isFileNode(sourceNodeId);
@@ -165,15 +175,46 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       console.log(`Found schema for source node ${sourceNodeId}:`, sourceSchema);
       
-      // No need to directly update target node - the schema will be retrieved
-      // when needed through the schema context
+      // Update the target node schema in the database
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
+      // Get the file_id from source if available
+      const { data: fileData } = await supabase
+        .from('workflow_files')
+        .select('file_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', sourceNodeId)
+        .maybeSingle();
+        
+      const fileId = fileData?.file_id || '00000000-0000-0000-0000-000000000000';
+      
+      // Create or update schema for target node
+      const { error } = await supabase
+        .from('workflow_file_schemas')
+        .upsert({
+          workflow_id: dbWorkflowId,
+          node_id: targetNodeId,
+          file_id: fileId,
+          columns: sourceSchema.columns,
+          data_types: sourceSchema.types,
+          has_headers: true,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'workflow_id,node_id'
+        });
+        
+      if (error) {
+        console.error('Error updating target schema:', error);
+        return false;
+      }
+      
+      console.log(`Successfully propagated schema to target node ${targetNodeId}`);
       return true;
     } catch (err) {
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isFileNode, getFileSchema]);
+  }, [isFileNode, getFileSchema, workflowId]);
 
   // Function to get edges for a workflow
   const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {

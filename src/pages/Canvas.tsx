@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -9,6 +10,7 @@ import { useTemporaryId } from '@/hooks/useTemporaryId';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
 import { useWorkflowDatabase } from '@/hooks/useWorkflowDatabase';
 import { useNodeManagement } from '@/hooks/useNodeManagement';
+import { useWorkflowSync } from '@/hooks/useWorkflowSync';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 import StepLogPanel from '@/components/workflow/StepLogPanel';
@@ -18,6 +20,7 @@ import CanvasFlow from '@/components/canvas/CanvasFlow';
 import { nodeCategories } from '@/components/canvas/NodeCategories';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 
 declare global {
   interface Window {
@@ -55,6 +58,9 @@ const Canvas = () => {
     runWorkflow
   } = useWorkflowDatabase(savingWorkflowId, setSavingWorkflowId);
 
+  // Use our new workflow sync hook
+  useWorkflowSync(savingWorkflowId, nodes, edges, isSaving);
+
   const {
     selectedNodeId,
     setSelectedNodeId,
@@ -82,14 +88,25 @@ const Canvas = () => {
       if (params.source && params.target) {
         updateSchemaPropagationMap(params.source, params.target);
         
-        setTimeout(() => {
-          triggerSchemaUpdate(params.source);
-        }, 500);
+        // Try immediate schema propagation when an edge is created
+        if (savingWorkflowId) {
+          propagateSchemaDirectly(savingWorkflowId, params.source, params.target)
+            .then(success => {
+              if (success) {
+                console.log(`Successfully propagated schema on edge creation: ${params.source} -> ${params.target}`);
+              } else {
+                // Schedule a retry after a short delay
+                setTimeout(() => {
+                  triggerSchemaUpdate(params.source);
+                }, 500);
+              }
+            });
+        }
       }
       
       return newEdges;
     });
-  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate]);
+  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate, savingWorkflowId]);
 
   const saveWorkflow = useCallback(() => {
     return saveWorkflowToDb(nodes, edges);
@@ -104,6 +121,15 @@ const Canvas = () => {
       }
     }
   }, [workflowId, loadWorkflow]);
+
+  // Create adapter functions to ensure schema management works correctly
+  const getNodeSchemaAdapter = useCallback((nodeId: string): SchemaColumn[] => {
+    return getNodeSchema(nodeId) || [];
+  }, [getNodeSchema]);
+
+  const updateNodeSchemaAdapter = useCallback((nodeId: string, schema: SchemaColumn[]): void => {
+    updateNodeSchema(nodeId, schema);
+  }, [updateNodeSchema]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
@@ -123,8 +149,8 @@ const Canvas = () => {
     <WorkflowProvider 
       workflowId={savingWorkflowId || undefined}
       schemaProviderValue={{
-        getNodeSchema,
-        updateNodeSchema,
+        getNodeSchema: getNodeSchemaAdapter,
+        updateNodeSchema: updateNodeSchemaAdapter,
         checkSchemaCompatibility,
       }}
     >
@@ -196,7 +222,7 @@ const Canvas = () => {
           isOpen={isAddingNode}
           onClose={() => setIsAddingNode(false)}
           onAddNode={(nodeType, nodeCategory, nodeLabel) => {
-            handleAddNode(nodeType, nodeCategory, nodeLabel);
+            handleAddNode(nodeType as any, nodeCategory, nodeLabel);
             toast.success(`Added ${nodeLabel} node to canvas`);
           }}
           nodeCategories={nodeCategories}
