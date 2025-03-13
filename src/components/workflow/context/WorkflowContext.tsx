@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Edge } from '@xyflow/react';
@@ -133,11 +134,14 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       // Remove 'temp-' prefix if it exists
       const normalizedTempId = normalizeWorkflowId(tempId);
       
-      // Call the newly created RPC function - be careful with the exact function name
-      const { error: schemaError } = await supabase.rpc('migrate_workflow_schemas', {
-        source_workflow_id: normalizedTempId,
-        target_workflow_id: permanentId
-      });
+      // Use direct SQL query instead of RPC function to work around TypeScript limitations
+      const { error: schemaError } = await supabase
+        .from('workflow_file_schemas')
+        .update({
+          workflow_id: permanentId,
+          is_temporary: false
+        })
+        .eq('workflow_id', normalizedTempId);
       
       if (schemaError) {
         console.error('Error migrating schema data:', schemaError);
