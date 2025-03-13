@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { WorkflowNode } from '@/types/workflow';
 import { 
@@ -33,15 +34,18 @@ export function useNodeManagement(
   const [schemaPropagationMap, setSchemaPropagationMap] = useState<SchemaPropagationMapping>({});
   const [schemaCache, setSchemaCache] = useState<Record<string, SchemaColumn[]>>({});
   const [pendingSchemaUpdates, setPendingSchemaUpdates] = useState<Set<string>>(new Set());
+  const [propagationInProgress, setPropagationInProgress] = useState<Record<string, boolean>>({});
   
   // Track nodes that need schema updates when source nodes change
   const updateSchemaPropagationMap = useCallback((sourceId: string, targetId: string) => {
+    console.log(`Updating schema propagation map: ${sourceId} -> ${targetId}`);
+    
     setSchemaPropagationMap(prev => {
       const existingMapping = prev[sourceId] || { targetNodes: [] };
       
       // Add target node to the list if it doesn't exist
       if (!existingMapping.targetNodes.includes(targetId)) {
-        return {
+        const updatedMapping = {
           ...prev,
           [sourceId]: {
             ...existingMapping,
@@ -49,6 +53,8 @@ export function useNodeManagement(
             lastUpdated: Date.now()
           }
         };
+        console.log('Updated propagation map:', updatedMapping);
+        return updatedMapping;
       }
       return prev;
     });
@@ -63,6 +69,8 @@ export function useNodeManagement(
   
   // Update schema cache for a node
   const updateNodeSchema = useCallback((nodeId: string, schema: SchemaColumn[]) => {
+    console.log(`Updating schema cache for node ${nodeId}:`, schema);
+    
     setSchemaCache(prev => ({
       ...prev,
       [nodeId]: schema
@@ -71,6 +79,8 @@ export function useNodeManagement(
     // Trigger schema updates for dependent nodes
     const mapping = schemaPropagationMap[nodeId];
     if (mapping && mapping.targetNodes.length > 0) {
+      console.log(`Triggering schema updates for dependent nodes:`, mapping.targetNodes);
+      
       // Mark all dependent nodes as needing updates
       setPendingSchemaUpdates(prev => {
         const newSet = new Set(prev);
@@ -81,6 +91,8 @@ export function useNodeManagement(
   }, [schemaPropagationMap]);
   
   const handleNodeConfigUpdate = useCallback((nodeId: string, config: any) => {
+    console.log(`Handling node config update for ${nodeId}:`, config);
+    
     setNodes((prevNodes) => {
       return prevNodes.map((node) => {
         if (node.id === nodeId) {
@@ -107,9 +119,11 @@ export function useNodeManagement(
     if (config.fileId || config.schema) {
       // If we have schema information, update the schema cache
       if (config.schema) {
+        console.log(`Schema found in config update for ${nodeId}`, config.schema);
         updateNodeSchema(nodeId, config.schema);
       } else {
         // Mark node as needing schema update
+        console.log(`Marking node ${nodeId} as needing schema update (no schema in config)`);
         setPendingSchemaUpdates(prev => {
           const newSet = new Set(prev);
           newSet.add(nodeId);
@@ -128,6 +142,7 @@ export function useNodeManagement(
       
       // Create the new node
       const newNode = createNode(nodeType, nodeCategory, nodeLabel, position);
+      console.log(`Created new node of type ${nodeType}:`, newNode);
       
       return [...prevNodes, newNode];
     });
@@ -137,7 +152,11 @@ export function useNodeManagement(
    * Get schema for a specific node
    */
   const getNodeSchema = useCallback((nodeId: string): SchemaColumn[] => {
-    return schemaCache[nodeId] || [];
+    const schema = schemaCache[nodeId] || [];
+    if (schema.length === 0) {
+      console.log(`No schema found in cache for node ${nodeId}`);
+    }
+    return schema;
   }, [schemaCache]);
   
   /**
@@ -203,11 +222,50 @@ export function useNodeManagement(
       // Mark all dependent nodes as needing schema updates
       setPendingSchemaUpdates(prev => {
         const newSet = new Set(prev);
-        mapping.targetNodes.forEach(targetId => newSet.add(targetId));
+        mapping.targetNodes.forEach(targetId => {
+          newSet.add(targetId);
+          
+          // Also mark propagation as in progress
+          setPropagationInProgress(prev => ({
+            ...prev,
+            [`${sourceNodeId}-${targetId}`]: true
+          }));
+        });
         return newSet;
       });
+      
+      // Clear propagation status after a timeout to prevent hanging state
+      setTimeout(() => {
+        mapping.targetNodes.forEach(targetId => {
+          setPropagationInProgress(prev => ({
+            ...prev,
+            [`${sourceNodeId}-${targetId}`]: false
+          }));
+        });
+      }, 5000);
+    } else {
+      console.log(`No target nodes found for source node ${sourceNodeId} in propagation map`);
     }
   }, [schemaPropagationMap]);
+
+  const forcePropagateSchemaToAllTargets = useCallback(() => {
+    console.log('Force propagating schema to all targets');
+    
+    // For each source node in the propagation map
+    Object.keys(schemaPropagationMap).forEach(sourceId => {
+      triggerSchemaUpdate(sourceId);
+    });
+  }, [schemaPropagationMap, triggerSchemaUpdate]);
+
+  // Add debug function to help troubleshoot
+  const getDebugInfo = useCallback(() => {
+    return {
+      schemaPropagationMap,
+      schemaCache,
+      pendingSchemaUpdates: Array.from(pendingSchemaUpdates),
+      propagationInProgress
+    };
+  }, [schemaPropagationMap, schemaCache, pendingSchemaUpdates, propagationInProgress]);
 
   return {
     selectedNodeId,
@@ -220,6 +278,9 @@ export function useNodeManagement(
     updateNodeSchema,
     checkSchemaCompatibility,
     pendingSchemaUpdates,
-    schemaCache
+    schemaCache,
+    forcePropagateSchemaToAllTargets,
+    getDebugInfo,
+    propagationInProgress
   };
 }

@@ -4,6 +4,7 @@ import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integr
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
+import { toast } from 'sonner';
 
 // Define the schema for file data with correct types
 export interface WorkflowFileSchema {
@@ -83,7 +84,16 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     try {
       if (!workflowId) return null;
       
+      console.log(`Getting file schema for node ${nodeId} in workflow ${workflowId}`);
+      
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      // Check cache first
+      const cachedSchema = schemaCache[nodeId];
+      if (cachedSchema && Date.now() - cachedSchema.timestamp < 60000) {
+        console.log(`Using cached schema for node ${nodeId}`);
+        return cachedSchema.schema as WorkflowFileSchema;
+      }
       
       // Try to get schema from workflow_file_schemas table first
       const { data: schemaData, error: schemaError } = await supabase
@@ -99,11 +109,23 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       }
       
       if (schemaData) {
+        console.log(`Found schema for node ${nodeId} in workflow_file_schemas:`, schemaData);
+        
         // Cast the data appropriately to match our WorkflowFileSchema interface
         const schema: WorkflowFileSchema = {
           columns: schemaData.columns || [],
           types: (schemaData.data_types as Record<string, string>) || {}
         };
+        
+        // Update cache
+        setSchemaCache(prev => ({
+          ...prev,
+          [nodeId]: {
+            schema,
+            timestamp: Date.now()
+          }
+        }));
+        
         return schema;
       }
       
@@ -116,8 +138,11 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         .maybeSingle();
         
       if (!fileData?.file_id) {
+        console.log(`No file_id found for node ${nodeId}`);
         return null;
       }
+      
+      console.log(`Found file_id ${fileData.file_id} for node ${nodeId}, fetching metadata`);
       
       const { data: metaData } = await supabase
         .from('file_metadata')
@@ -126,14 +151,26 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         .maybeSingle();
         
       if (!metaData?.column_definitions) {
+        console.log(`No column_definitions found for file ${fileData.file_id}`);
         return null;
       }
+      
+      console.log(`Found column definitions for file ${fileData.file_id}:`, metaData.column_definitions);
       
       // Cast the data appropriately to match our WorkflowFileSchema interface
       const schema: WorkflowFileSchema = {
         columns: Object.keys(metaData.column_definitions),
         types: metaData.column_definitions as Record<string, string>
       };
+      
+      // Update cache
+      setSchemaCache(prev => ({
+        ...prev,
+        [nodeId]: {
+          schema,
+          timestamp: Date.now()
+        }
+      }));
       
       return schema;
     } catch (err) {
@@ -145,7 +182,12 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   // Function to propagate schema from source to target
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
     try {
-      console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}`);
+      console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}`);
+      
+      if (!workflowId) {
+        console.warn('No workflow ID available');
+        return false;
+      }
       
       // Check if source is a file node
       const isSource = await isFileNode(sourceNodeId);
@@ -158,22 +200,116 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       // Get source schema
       const sourceSchema = await getFileSchema(sourceNodeId);
       
-      if (!sourceSchema) {
+      if (!sourceSchema || !sourceSchema.columns || sourceSchema.columns.length === 0) {
         console.log(`No schema found for source node ${sourceNodeId}`);
         return false;
       }
       
       console.log(`Found schema for source node ${sourceNodeId}:`, sourceSchema);
       
-      // No need to directly update target node - the schema will be retrieved
-      // when needed through the schema context
+      // Convert to SchemaColumn format
+      const schemaColumns: SchemaColumn[] = sourceSchema.columns.map(colName => {
+        const colType = sourceSchema.types[colName] || 'unknown';
+        let normalizedType: 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown' = 'unknown';
+        
+        if (colType.includes('varchar') || colType.includes('text') || colType.includes('char')) {
+          normalizedType = 'string';
+        } else if (colType.includes('int') || colType.includes('float') || colType.includes('double') || colType.includes('decimal') || colType.includes('numeric')) {
+          normalizedType = 'number';
+        } else if (colType.includes('bool')) {
+          normalizedType = 'boolean';
+        } else if (colType.includes('date') || colType.includes('time')) {
+          normalizedType = 'date';
+        } else if (colType.includes('json') || colType.includes('object')) {
+          normalizedType = 'object';
+        } else if (colType.includes('array')) {
+          normalizedType = 'array';
+        }
+        
+        return {
+          name: colName,
+          type: normalizedType
+        };
+      });
+      
+      console.log(`Converted schema to SchemaColumn format:`, schemaColumns);
+      
+      // Save the schema to the workflow_file_schemas table for the target node
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      const dataTypes: Record<string, string> = {};
+      sourceSchema.columns.forEach(col => {
+        dataTypes[col] = sourceSchema.types[col] || 'unknown';
+      });
+      
+      const { error } = await supabase
+        .from('workflow_file_schemas')
+        .upsert({
+          workflow_id: dbWorkflowId,
+          node_id: targetNodeId,
+          columns: sourceSchema.columns,
+          data_types: dataTypes,
+          // Use the file_id from the source node
+          file_id: await getSourceFileId(dbWorkflowId, sourceNodeId),
+          has_headers: true,
+          is_temporary: isTemporaryWorkflowId(workflowId)
+        }, {
+          onConflict: 'workflow_id,node_id'
+        });
+        
+      if (error) {
+        console.error('Error saving target schema:', error);
+        return false;
+      }
+      
+      console.log(`Successfully propagated schema from ${sourceNodeId} to ${targetNodeId}`);
+      
+      // Update the schema in the SchemaContext if available
+      if (schemaProviderValue?.updateNodeSchema) {
+        console.log(`Updating schema context for node ${targetNodeId}`);
+        schemaProviderValue.updateNodeSchema(targetNodeId, schemaColumns);
+      }
+      
+      // Also update cache
+      setSchemaCache(prev => ({
+        ...prev,
+        [targetNodeId]: {
+          schema: {
+            columns: sourceSchema.columns,
+            types: dataTypes
+          },
+          timestamp: Date.now()
+        }
+      }));
       
       return true;
     } catch (err) {
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isFileNode, getFileSchema]);
+    
+    // Helper function to get the file_id from a source node
+    async function getSourceFileId(dbWorkflowId: string, sourceNodeId: string): Promise<string> {
+      try {
+        const { data, error } = await supabase
+          .from('workflow_files')
+          .select('file_id')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', sourceNodeId)
+          .maybeSingle();
+          
+        if (error || !data?.file_id) {
+          console.warn(`No file_id found for source node ${sourceNodeId}, using default`);
+          return '00000000-0000-0000-0000-000000000000'; // Placeholder UUID
+        }
+        
+        return data.file_id;
+      } catch (err) {
+        console.error('Error getting source file ID:', err);
+        return '00000000-0000-0000-0000-000000000000'; // Placeholder UUID
+      }
+    }
+  }, [isFileNode, getFileSchema, workflowId, schemaProviderValue]);
 
   // Function to get edges for a workflow
   const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
@@ -192,13 +328,17 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         return [];
       }
       
-      return data.map(edge => ({
+      const edges = data.map(edge => ({
         id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
         source: edge.source_node_id,
         target: edge.target_node_id,
         // Use a type assertion here to ensure it's an object before spreading
         ...(edge.metadata ? edge.metadata as object : {})
       }));
+      
+      console.log(`Retrieved ${edges.length} edges for workflow ${workflowId}:`, edges);
+      
+      return edges;
     } catch (err) {
       console.error('Error getting workflow edges:', err);
       return [];
