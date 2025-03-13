@@ -1,94 +1,144 @@
-
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import React from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { NodeLibraryProps, NodeComponentType } from '@/types/workflow';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search } from 'lucide-react';
+import { NodeLibraryProps } from '@/types/workflow';
 
-const NodeLibrary = ({ isOpen, onClose, onAddNode, nodeCategories }: NodeLibraryProps) => {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  const handleAddNode = (nodeType: string, nodeCategory: string, nodeLabel: string) => {
-    if (onAddNode) {
-      onAddNode(nodeType, nodeCategory, nodeLabel);
+const NodeLibrary: React.FC<NodeLibraryProps> = ({
+  isOpen,
+  onClose,
+  onAddNode,
+  nodeCategories = []
+}) => {
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState('all');
+  
+  // Filter nodes based on search term and active tab
+  const filteredCategories = React.useMemo(() => {
+    let filteredByTab = nodeCategories;
+    
+    // Filter by tab first if not 'all'
+    if (activeTab !== 'all') {
+      filteredByTab = nodeCategories.filter(category => {
+        return category.id === activeTab;
+      });
     }
-    onClose();
-  };
+    
+    // Then filter by search term
+    if (!searchTerm.trim()) {
+      return filteredByTab;
+    }
+    
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    
+    return filteredByTab.filter(category => {
+      // If the category matches, include it
+      if (category.name.toLowerCase().includes(lowerSearchTerm)) {
+        return true;
+      }
+      
+      // Filter items within the category
+      const filteredItems = category.items.filter(item => 
+        item.label.toLowerCase().includes(lowerSearchTerm) || 
+        (item.description && item.description.toLowerCase().includes(lowerSearchTerm))
+      );
+      
+      // Include the category if it has matching items
+      return filteredItems.length > 0;
+    }).map(category => {
+      // Only include matching items within each category
+      return {
+        ...category,
+        items: category.items.filter(item => 
+          item.label.toLowerCase().includes(lowerSearchTerm) || 
+          (item.description && item.description.toLowerCase().includes(lowerSearchTerm))
+        )
+      };
+    });
+  }, [searchTerm, activeTab, nodeCategories]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Node</DialogTitle>
-          <DialogDescription>
-            Select a node type to add to your workflow.
-          </DialogDescription>
         </DialogHeader>
         
-        <div className="flex flex-1 gap-4 mt-4 min-h-0">
-          {/* Categories sidebar */}
-          <div className="w-1/4 border-r pr-4">
-            <div className="space-y-2">
-              {nodeCategories?.map((category) => (
-                <Button
-                  key={category.id}
-                  variant={selectedCategory === category.id ? "default" : "ghost"}
-                  className="w-full justify-start text-left"
-                  onClick={() => setSelectedCategory(category.id)}
-                >
-                  {category.name}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Node items */}
-          <ScrollArea className="flex-1">
-            <div className="grid grid-cols-2 gap-4 p-1">
-              {selectedCategory
-                ? nodeCategories
-                    ?.find((cat) => cat.id === selectedCategory)
-                    ?.items.map((item) => (
-                      <Button
-                        key={item.type}
-                        variant="outline"
-                        className="flex flex-col h-24 p-3 gap-2 hover:bg-gray-50 transition-colors"
-                        onClick={() => handleAddNode(item.type, selectedCategory, item.label)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {item.icon && <span>{item.icon}</span>}
-                          <span className="font-medium">{item.label}</span>
-                        </div>
-                        {item.description && (
-                          <span className="text-xs text-muted-foreground line-clamp-2 text-left">
-                            {item.description}
-                          </span>
-                        )}
-                      </Button>
-                    ))
-                : nodeCategories?.flatMap((category) =>
-                    category.items.map((item) => (
-                      <Button
-                        key={`${category.id}-${item.type}`}
-                        variant="outline"
-                        className="flex flex-col h-24 p-3 gap-2 hover:bg-gray-50 transition-colors"
-                        onClick={() => handleAddNode(item.type, category.id, item.label)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {item.icon && <span>{item.icon}</span>}
-                          <span className="font-medium">{item.label}</span>
-                        </div>
-                        {item.description && (
-                          <span className="text-xs text-muted-foreground line-clamp-2 text-left">
-                            {item.description}
-                          </span>
-                        )}
-                      </Button>
-                    ))
-                  )}
-            </div>
-          </ScrollArea>
+        <div className="relative mb-4">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search nodes..."
+            className="pl-8"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
+        
+        <Tabs 
+          defaultValue="all" 
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="w-full"
+        >
+          <TabsList className="w-full justify-start mb-4 overflow-x-auto flex-wrap">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="input">Inputs</TabsTrigger>
+            <TabsTrigger value="processing">Processing</TabsTrigger>
+            <TabsTrigger value="ai">AI & ML</TabsTrigger>
+            <TabsTrigger value="integration">Integrations</TabsTrigger>
+            <TabsTrigger value="output">Outputs</TabsTrigger>
+            <TabsTrigger value="control">Control Flow</TabsTrigger>
+            <TabsTrigger value="utility">Utilities</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value={activeTab} className="mt-0">
+            {filteredCategories.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No nodes match your search
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {filteredCategories.map((category) => (
+                  <div key={category.id} className="mb-6">
+                    <h3 className="text-sm font-medium mb-2 flex items-center">
+                      {category.name}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {category.items.map((item) => {
+                        const IconComponent = item.icon;
+                        return (
+                          <Button
+                            key={item.type}
+                            variant="outline"
+                            className="justify-start h-auto py-3 px-4"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onAddNode?.(item.type, category.id, item.label);
+                              onClose();
+                            }}
+                            type="button"
+                          >
+                            <div className="flex items-center text-left">
+                              {IconComponent && <IconComponent className="w-4 h-4 mr-2" />}
+                              <div>
+                                <div className="font-medium">{item.label}</div>
+                                {item.description && (
+                                  <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                                )}
+                              </div>
+                            </div>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

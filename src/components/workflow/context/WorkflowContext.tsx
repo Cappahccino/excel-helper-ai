@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -24,7 +25,6 @@ interface WorkflowContextValue {
   isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
-  propagateSchema: (sourceNodeId: string, targetNodeId: string, schema: SchemaColumn[]) => Promise<boolean>;
   getEdges: (workflowId: string) => Promise<any[]>;
   schema?: SchemaContextValue;
   getFileSchema?: (nodeId: string) => Promise<WorkflowFileSchema | null>;
@@ -35,7 +35,6 @@ const WorkflowContext = createContext<WorkflowContextValue>({
   isTemporaryId: () => false,
   convertToDbWorkflowId: (id) => id,
   propagateFileSchema: async () => false,
-  propagateSchema: async () => false,
   getEdges: async () => [],
 });
 
@@ -55,9 +54,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     schema: any, 
     timestamp: number 
   }>>({});
-  
-  // In-memory schema storage for temporary workflows
-  const [tempSchemaStore, setTempSchemaStore] = useState<Record<string, SchemaColumn[]>>({});
 
   // Function to check if a node is related to file operations
   const isFileNode = useCallback((nodeId: string): Promise<boolean> => {
@@ -146,65 +142,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [workflowId]);
 
-  // Function to propagate generic schema from source to target
-  const propagateSchema = useCallback(async (
-    sourceNodeId: string, 
-    targetNodeId: string, 
-    schema: SchemaColumn[]
-  ): Promise<boolean> => {
-    try {
-      if (!workflowId) return false;
-      
-      console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}`);
-      console.log('Schema:', schema);
-      
-      // For temporary workflows, store in memory instead of database
-      if (isTemporaryWorkflowId(workflowId)) {
-        console.log(`Using in-memory schema store for temporary workflow ${workflowId}`);
-        setTempSchemaStore(prev => ({
-          ...prev,
-          [`${targetNodeId}`]: schema
-        }));
-        return true;
-      }
-      
-      // Use file schema propagation function for permanent workflows
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      // Convert SchemaColumn array to workflow_file_schemas format
-      const columns = schema.map(col => col.name);
-      const dataTypes = schema.reduce((acc, col) => {
-        acc[col.name] = col.type;
-        return acc;
-      }, {} as Record<string, string>);
-      
-      const { error } = await supabase
-        .from('workflow_file_schemas')
-        .upsert({
-          workflow_id: dbWorkflowId,
-          node_id: targetNodeId,
-          file_id: '00000000-0000-0000-0000-000000000000', // Placeholder for propagated schema
-          columns,
-          data_types: dataTypes,
-          is_temporary: false,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'workflow_id,node_id'
-        });
-        
-      if (error) {
-        console.error('Error propagating schema:', error);
-        return false;
-      }
-      
-      console.log(`Schema propagated successfully to ${targetNodeId}`);
-      return true;
-    } catch (error) {
-      console.error('Error in propagateSchema:', error);
-      return false;
-    }
-  }, [workflowId]);
-
   // Function to propagate schema from source to target
   const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
     try {
@@ -228,19 +165,15 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       console.log(`Found schema for source node ${sourceNodeId}:`, sourceSchema);
       
-      // Convert to SchemaColumn array
-      const schemaColumns: SchemaColumn[] = sourceSchema.columns.map(column => ({
-        name: column,
-        type: sourceSchema.types[column] as 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown'
-      }));
+      // No need to directly update target node - the schema will be retrieved
+      // when needed through the schema context
       
-      // Use the generic schema propagation function
-      return await propagateSchema(sourceNodeId, targetNodeId, schemaColumns);
+      return true;
     } catch (err) {
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isFileNode, getFileSchema, propagateSchema]);
+  }, [isFileNode, getFileSchema]);
 
   // Function to get edges for a workflow
   const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
@@ -313,20 +246,10 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     isTemporaryId: isTemporaryWorkflowId,
     convertToDbWorkflowId,
     propagateFileSchema,
-    propagateSchema,
     getEdges,
     getFileSchema,
     migrateTemporaryWorkflow,
-    schema: {
-      ...schemaProviderValue,
-      getNodeSchema: (nodeId) => {
-        // For temporary workflows, check in-memory store first
-        if (workflowId && isTemporaryWorkflowId(workflowId) && tempSchemaStore[nodeId]) {
-          return tempSchemaStore[nodeId];
-        }
-        return schemaProviderValue?.getNodeSchema?.(nodeId) || [];
-      }
-    }
+    schema: schemaProviderValue
   };
 
   return (

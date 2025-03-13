@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Database, Info, Check } from 'lucide-react';
+import { FilterIcon, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { useSchemaManagement } from '@/hooks/useSchemaManagement';
 import { Badge } from '@/components/ui/badge';
@@ -68,7 +68,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [schemaSource, setSchemaSource] = useState<string | null>(null);
   
   const workflow = useWorkflow();
   const { 
@@ -77,7 +76,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     isLoading: schemaLoading,
     validationErrors: schemaValidationErrors
   } = useSchemaManagement();
-  
+
   // Define validateConfiguration before using it
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -149,23 +148,18 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     setLoadingError(null);
     
     try {
-      // First, try to get schema directly for this node (in case it was previously saved)
       let schema = await getNodeSchema(workflow.workflowId, id, { forceRefresh });
       
       if (schema && schema.length > 0) {
         console.log(`FilteringNode ${id}: Found schema directly for this node:`, schema);
         setColumns(schema);
-        setSchemaSource("node");
         updateOperatorsForColumn(data.config.column, schema);
         validateConfiguration(data.config, schema);
         setIsLoading(false);
         return;
       }
       
-      // If no direct schema, get the connections to find input nodes
       const edges = await workflow.getEdges(workflow.workflowId);
-      console.log(`FilteringNode ${id}: Retrieved ${edges.length} edges for workflow`);
-      
       const inputNodeIds = edges
         .filter(edge => edge.target === id)
         .map(edge => edge.source);
@@ -180,53 +174,16 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       const sourceNodeId = inputNodeIds[0];
       console.log(`FilteringNode ${id}: Getting schema from source node ${sourceNodeId}`);
       
-      // Try to get schema from the source node
       schema = await getNodeSchema(workflow.workflowId, sourceNodeId, { forceRefresh });
       
       if (!schema || schema.length === 0) {
-        // If not in the schema management, try directly from workflow context's file schema
-        if (workflow.getFileSchema) {
-          console.log(`FilteringNode ${id}: Trying to get file schema from workflow context`);
-          const fileSchema = await workflow.getFileSchema(sourceNodeId);
-          
-          if (fileSchema && fileSchema.columns.length > 0) {
-            const convertedSchema: SchemaColumn[] = fileSchema.columns.map(col => ({
-              name: col,
-              type: (fileSchema.types[col] || 'string') as any
-            }));
-            
-            console.log(`FilteringNode ${id}: Retrieved schema from workflow file schema:`, convertedSchema);
-            
-            // Save this schema for future use
-            if (workflow.propagateSchema) {
-              await workflow.propagateSchema(sourceNodeId, id, convertedSchema);
-              console.log(`FilteringNode ${id}: Propagated schema from ${sourceNodeId}`);
-            }
-            
-            setColumns(convertedSchema);
-            setSchemaSource("file");
-            updateOperatorsForColumn(data.config.column, convertedSchema);
-            validateConfiguration(data.config, convertedSchema);
-            setIsLoading(false);
-            return;
-          }
-        }
-        
-        setLoadingError('No schema available from the connected node. Ensure the source node has processed data.');
+        setLoadingError('No schema available from the connected node.');
         setIsLoading(false);
         return;
       }
       
       console.log(`FilteringNode ${id}: Retrieved schema from source node:`, schema);
-      
-      // Propagate the schema to this node for future reference
-      if (workflow.propagateSchema) {
-        await workflow.propagateSchema(sourceNodeId, id, schema);
-        console.log(`FilteringNode ${id}: Propagated schema from ${sourceNodeId}`);
-      }
-      
       setColumns(schema);
-      setSchemaSource("source");
       
       updateOperatorsForColumn(data.config.column, schema);
       validateConfiguration(data.config, schema);
@@ -341,25 +298,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           
           {(isLoading || schemaLoading[id] || isRefreshing) && (
             <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
-          )}
-          
-          {schemaSource && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="ml-1">
-                    {schemaSource === "node" && <Check className="w-3.5 h-3.5 text-green-500" />}
-                    {schemaSource === "source" && <Database className="w-3.5 h-3.5 text-blue-500" />}
-                    {schemaSource === "file" && <Info className="w-3.5 h-3.5 text-amber-500" />}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {schemaSource === "node" && "Schema loaded from this node's saved data"}
-                  {schemaSource === "source" && "Schema propagated from source node"}
-                  {schemaSource === "file" && "Schema loaded from file schema"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           )}
         </div>
       </CardHeader>
