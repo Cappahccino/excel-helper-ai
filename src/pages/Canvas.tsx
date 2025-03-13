@@ -174,18 +174,31 @@ const Canvas = () => {
     setIsAddingNode(true);
   }, []);
 
+  // Create adapter functions that satisfy the WorkflowContext type expectations
+  const getNodeSchemaAdapter = useCallback((nodeId: string) => {
+    if (!savingWorkflowId) return [];
+    // Call the full function but provide defaults that the adapter doesn't need to worry about
+    return getNodeSchema(savingWorkflowId, nodeId, { forceRefresh: false });
+  }, [getNodeSchema, savingWorkflowId]);
+
+  const updateNodeSchemaAdapter = useCallback((nodeId: string, schema: any) => {
+    if (!savingWorkflowId) return;
+    // Call the full function with the workflow ID
+    updateNodeSchema(savingWorkflowId, nodeId, schema);
+  }, [updateNodeSchema, savingWorkflowId]);
+
   return (
     <WorkflowProvider 
       workflowId={savingWorkflowId || undefined}
       schemaProviderValue={{
-        getNodeSchema,
-        updateNodeSchema,
+        getNodeSchema: getNodeSchemaAdapter,
+        updateNodeSchema: updateNodeSchemaAdapter,
         checkSchemaCompatibility,
       }}
     >
       <div className="h-screen flex flex-col">
         {showTemporaryWorkflowAlert && (
-          <Alert variant="warning" className="m-4 border-amber-300 bg-amber-50">
+          <Alert variant="default" className="m-4 border-amber-300 bg-amber-50">
             <AlertCircle className="h-4 w-4 text-amber-600" />
             <AlertTitle className="text-amber-800">Temporary Workflow</AlertTitle>
             <AlertDescription className="text-amber-700">

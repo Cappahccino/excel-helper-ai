@@ -1,7 +1,8 @@
+
 import { useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
-import { Edge, WorkflowNode } from '@/types/workflow';
+import { Edge, WorkflowNode, NodeComponentType, InputNodeType, ProcessingNodeType, AINodeType, OutputNodeType, IntegrationNodeType, ControlNodeType, UtilityNodeType } from '@/types/workflow';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { propagateSchema as dbPropagateSchema } from '@/utils/fileSchemaUtils';
 
@@ -36,7 +37,7 @@ export function useNodeManagement(
   }, [setNodes, saveWorkflow]);
 
   // Function to add a new node with the appropriate node type and label
-  const handleAddNode = useCallback((nodeType: string, nodeCategory: string, nodeLabel: string = 'New Node') => {
+  const handleAddNode = useCallback((nodeType: NodeComponentType, nodeCategory: string, nodeLabel: string = 'New Node') => {
     const newNodeId = `node-${uuidv4()}`;
     const position = { x: Math.random() * 300, y: Math.random() * 300 };
     
@@ -46,7 +47,7 @@ export function useNodeManagement(
       position,
       data: {
         label: nodeLabel,
-        type: nodeType,
+        type: nodeType as any, // Type assertion to handle the node type mapping
         category: nodeCategory,
         config: {},
         onChange: handleNodeConfigUpdate
