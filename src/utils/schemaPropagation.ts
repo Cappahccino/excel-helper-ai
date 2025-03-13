@@ -1,7 +1,9 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils/fileSchemaUtils';
 import { toast } from 'sonner';
+import { retryOperation } from '@/utils/retryUtils';
 
 /**
  * Directly propagate schema from source node to target node
@@ -20,46 +22,65 @@ export async function propagateSchemaDirectly(
       ? workflowId.substring(5)
       : workflowId;
     
-    // 1. First, get the schema from the source node
-    const { data: sourceSchema, error: sourceError } = await supabase
-      .from('workflow_file_schemas')
-      .select('columns, data_types, file_id')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', sourceNodeId)
-      .maybeSingle();
-      
-    if (sourceError) {
-      console.error('Error fetching source schema:', sourceError);
-      return false;
-    }
+    // 1. First, get the schema from the source node with retries
+    const result = await retryOperation(
+      async () => {
+        // Clear cache for more reliable fetching in this critical operation
+        clearSchemaCache({ workflowId: dbWorkflowId, nodeId: sourceNodeId });
+        
+        const { data: sourceSchema, error: sourceError } = await supabase
+          .from('workflow_file_schemas')
+          .select('columns, data_types, file_id')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', sourceNodeId)
+          .maybeSingle();
+          
+        if (sourceError) {
+          console.error('Error fetching source schema:', sourceError);
+          return false;
+        }
+        
+        if (!sourceSchema || !sourceSchema.columns) {
+          console.log(`No schema found for source node ${sourceNodeId}`);
+          return false;
+        }
+        
+        // 2. Now propagate to the target node
+        const { error: targetError } = await supabase
+          .from('workflow_file_schemas')
+          .upsert({
+            workflow_id: dbWorkflowId,
+            node_id: targetNodeId,
+            file_id: sourceSchema.file_id || '00000000-0000-0000-0000-000000000000',
+            columns: sourceSchema.columns,
+            data_types: sourceSchema.data_types,
+            updated_at: new Date().toISOString(),
+            is_temporary: false
+          }, {
+            onConflict: 'workflow_id,node_id'
+          });
+          
+        if (targetError) {
+          console.error('Error propagating schema to target node:', targetError);
+          return false;
+        }
+        
+        // Clear the target node's cache to ensure fresh data
+        clearSchemaCache({ workflowId: dbWorkflowId, nodeId: targetNodeId });
+        
+        console.log(`Successfully propagated schema from ${sourceNodeId} to ${targetNodeId}`);
+        return true;
+      },
+      {
+        maxRetries: 3,
+        delay: 500,
+        onRetry: (err, attempt) => {
+          console.log(`Retrying schema propagation (${attempt}/3): ${err.message}`);
+        }
+      }
+    );
     
-    if (!sourceSchema) {
-      console.log(`No schema found for source node ${sourceNodeId}`);
-      return false;
-    }
-    
-    // 2. Now propagate to the target node
-    const { error: targetError } = await supabase
-      .from('workflow_file_schemas')
-      .upsert({
-        workflow_id: dbWorkflowId,
-        node_id: targetNodeId,
-        file_id: sourceSchema.file_id || '00000000-0000-0000-0000-000000000000',
-        columns: sourceSchema.columns,
-        data_types: sourceSchema.data_types,
-        updated_at: new Date().toISOString(),
-        is_temporary: false
-      }, {
-        onConflict: 'workflow_id,node_id'
-      });
-      
-    if (targetError) {
-      console.error('Error propagating schema to target node:', targetError);
-      return false;
-    }
-    
-    console.log(`Successfully propagated schema from ${sourceNodeId} to ${targetNodeId}`);
-    return true;
+    return result;
   } catch (error) {
     console.error('Error in direct schema propagation:', error);
     return false;
@@ -90,4 +111,52 @@ export function convertDbSchemaToColumns(
     name: column,
     type: dataTypes[column] as 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown'
   }));
+}
+
+/**
+ * Force schema refresh for a node by clearing cache and refetching from database
+ */
+export async function forceSchemaRefresh(
+  workflowId: string,
+  nodeId: string
+): Promise<SchemaColumn[] | null> {
+  // Clear cache first
+  clearSchemaCache({ workflowId, nodeId });
+  
+  console.log(`Forcing schema refresh for node ${nodeId}`);
+  
+  // Get fresh schema
+  const schema = await getNodeSchema(workflowId, nodeId, { forceRefresh: true });
+  
+  if (!schema) {
+    return null;
+  }
+  
+  return convertToSchemaColumns(schema);
+}
+
+/**
+ * Check if schema propagation is needed
+ */
+export async function checkSchemaPropagationNeeded(
+  workflowId: string,
+  sourceNodeId: string,
+  targetNodeId: string
+): Promise<boolean> {
+  const sourceSchema = await getNodeSchema(workflowId, sourceNodeId);
+  const targetSchema = await getNodeSchema(workflowId, targetNodeId);
+  
+  if (!sourceSchema) {
+    return false; // Nothing to propagate
+  }
+  
+  if (!targetSchema) {
+    return true; // Target needs schema
+  }
+  
+  // Compare schemas - if they're different, propagation is needed
+  const sourceColumns = sourceSchema.columns.sort().join(',');
+  const targetColumns = targetSchema.columns.sort().join(',');
+  
+  return sourceColumns !== targetColumns;
 }

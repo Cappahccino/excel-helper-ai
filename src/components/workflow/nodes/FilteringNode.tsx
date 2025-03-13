@@ -1,19 +1,28 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { FilterIcon, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Info, Check, X } from 'lucide-react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
-import { useSchemaManagement } from '@/hooks/useSchemaManagement';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { 
+  getNodeSchema, 
+  getSourceNodeSchema, 
+  convertToSchemaColumns 
+} from '@/utils/fileSchemaUtils';
+import { 
+  forceSchemaRefresh, 
+  propagateSchemaDirectly 
+} from '@/utils/schemaPropagation';
+import { retryOperation, withTimeout } from '@/utils/retryUtils';
 
 interface FilteringNodeProps {
   id: string;
@@ -68,14 +77,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingAttempts, setLoadingAttempts] = useState(0);
+  const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
+  const [schemaSource, setSchemaSource] = useState<'direct' | 'source' | 'propagated' | null>(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   
   const workflow = useWorkflow();
-  const { 
-    getNodeSchema, 
-    validateNodeConfig,
-    isLoading: schemaLoading,
-    validationErrors: schemaValidationErrors
-  } = useSchemaManagement();
 
   // Define validateConfiguration before using it
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
@@ -140,74 +147,169 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, []);
 
+  // Function to find the source node that connects to this node
+  const findSourceNode = useCallback(async () => {
+    if (!workflow.workflowId || !id) return null;
+    
+    try {
+      console.log(`Finding source node for ${id} in workflow ${workflow.workflowId}`);
+      const edges = await workflow.getEdges(workflow.workflowId);
+      const sources = edges
+        .filter(edge => edge.target === id)
+        .map(edge => edge.source);
+      
+      console.log(`Found source nodes: ${sources.join(', ')}`);
+      
+      if (sources.length > 0) {
+        setSourceNodeId(sources[0]);
+        return sources[0];
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error finding source node:', error);
+      return null;
+    }
+  }, [workflow, id]);
+
+  // Enhanced schema loading with better error handling and retries
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
-    console.log(`FilteringNode ${id}: Loading schema for workflow ${workflow.workflowId}`);
+    console.log(`FilteringNode ${id}: Loading schema for workflow ${workflow.workflowId} (forceRefresh: ${forceRefresh})`);
     setIsLoading(true);
     setLoadingError(null);
+    setLoadingAttempts(prev => prev + 1);
     
     try {
-      let schema = await getNodeSchema(workflow.workflowId, id, { forceRefresh });
+      // Approach 1: Try to get schema directly for this node
+      let schema = forceRefresh
+        ? null  // Skip if force refresh requested
+        : await withTimeout(
+            getNodeSchema(workflow.workflowId, id, { forceRefresh }), 
+            3000, 
+            'Schema retrieval timed out'
+          );
       
-      if (schema && schema.length > 0) {
+      if (schema && schema.columns.length > 0) {
         console.log(`FilteringNode ${id}: Found schema directly for this node:`, schema);
-        setColumns(schema);
-        updateOperatorsForColumn(data.config.column, schema);
-        validateConfiguration(data.config, schema);
+        const schemaColumns = convertToSchemaColumns(schema);
+        setColumns(schemaColumns);
+        setSchemaSource('direct');
+        updateOperatorsForColumn(data.config.column, schemaColumns);
+        validateConfiguration(data.config, schemaColumns);
+        setLastRefreshTime(new Date());
         setIsLoading(false);
         return;
       }
       
-      const edges = await workflow.getEdges(workflow.workflowId);
-      const inputNodeIds = edges
-        .filter(edge => edge.target === id)
-        .map(edge => edge.source);
+      // Approach 2: If no direct schema, find the source node and get its schema
+      const sourceId = sourceNodeId || await findSourceNode();
       
-      if (inputNodeIds.length === 0) {
+      if (!sourceId) {
         setLoadingError('No input connection found. Connect a data source to this node.');
         setColumns([]);
         setIsLoading(false);
         return;
       }
       
-      const sourceNodeId = inputNodeIds[0];
-      console.log(`FilteringNode ${id}: Getting schema from source node ${sourceNodeId}`);
+      console.log(`FilteringNode ${id}: Getting schema from source node ${sourceId}`);
       
-      schema = await getNodeSchema(workflow.workflowId, sourceNodeId, { forceRefresh });
+      // Try to get source node schema with retry
+      const sourceSchema = await retryOperation(
+        () => getNodeSchema(workflow.workflowId, sourceId, { forceRefresh }),
+        {
+          maxRetries: 3,
+          delay: 800,
+          onRetry: (err, attempt) => {
+            console.log(`Retry ${attempt}/3 getting source schema: ${err.message}`);
+          },
+          timeout: 5000
+        }
+      );
       
-      if (!schema || schema.length === 0) {
-        setLoadingError('No schema available from the connected node.');
+      if (!sourceSchema || sourceSchema.columns.length === 0) {
+        // Last resort: try direct propagation
+        console.log(`FilteringNode ${id}: Attempting direct schema propagation from ${sourceId}`);
+        const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id);
+        
+        if (propagated) {
+          // Get the freshly propagated schema
+          const propagatedSchema = await getNodeSchema(workflow.workflowId, id, { forceRefresh: true });
+          
+          if (propagatedSchema && propagatedSchema.columns.length > 0) {
+            const schemaColumns = convertToSchemaColumns(propagatedSchema);
+            setColumns(schemaColumns);
+            setSchemaSource('propagated');
+            updateOperatorsForColumn(data.config.column, schemaColumns);
+            validateConfiguration(data.config, schemaColumns);
+            setLastRefreshTime(new Date());
+            setIsLoading(false);
+            return;
+          }
+        }
+        
+        setLoadingError('No schema available from the connected node. Try refreshing.');
         setIsLoading(false);
         return;
       }
       
-      console.log(`FilteringNode ${id}: Retrieved schema from source node:`, schema);
-      setColumns(schema);
+      const schemaColumns = convertToSchemaColumns(sourceSchema);
+      console.log(`FilteringNode ${id}: Retrieved schema from source node:`, schemaColumns);
+      setColumns(schemaColumns);
+      setSchemaSource('source');
       
-      updateOperatorsForColumn(data.config.column, schema);
-      validateConfiguration(data.config, schema);
+      // Also propagate the schema to this node for future use
+      if (!forceRefresh) {  // Don't propagate on forced refresh to avoid loops
+        propagateSchemaDirectly(workflow.workflowId, sourceId, id)
+          .then(success => {
+            if (success) {
+              console.log(`Schema propagated from ${sourceId} to ${id}`);
+            }
+          });
+      }
+      
+      updateOperatorsForColumn(data.config.column, schemaColumns);
+      validateConfiguration(data.config, schemaColumns);
+      setLastRefreshTime(new Date());
     } catch (error) {
       console.error(`FilteringNode ${id}: Error loading schema:`, error);
-      setLoadingError('Failed to load schema information. Please try again.');
+      setLoadingError(`Failed to load schema information: ${(error as Error).message}`);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [id, workflow, data.config, getNodeSchema, updateOperatorsForColumn, validateConfiguration]);
+  }, [
+    id, 
+    workflow, 
+    data.config, 
+    updateOperatorsForColumn, 
+    validateConfiguration, 
+    sourceNodeId,
+    findSourceNode
+  ]);
 
+  // Load schema when node is first selected or when workflow changes
   useEffect(() => {
-    if (selected) {
+    if (selected && workflow.workflowId) {
+      console.log(`Node ${id} selected, loading schema`);
       loadSchema(false);
     }
-  }, [loadSchema, selected]);
+  }, [selected, workflow.workflowId, loadSchema]);
 
+  // When sourceNodeId changes and we don't have columns yet, try loading again
   useEffect(() => {
-    if (workflow.workflowId && id) {
-      console.log(`FilteringNode ${id}: Workflow or node ID changed, loading schema`);
+    if (sourceNodeId && columns.length === 0 && !isLoading) {
       loadSchema(false);
     }
-  }, [workflow.workflowId, id, loadSchema]);
+  }, [sourceNodeId, columns.length, isLoading, loadSchema]);
+
+  // Find source node when the component mounts
+  useEffect(() => {
+    if (workflow.workflowId && id && !sourceNodeId) {
+      findSourceNode();
+    }
+  }, [workflow.workflowId, id, sourceNodeId, findSourceNode]);
 
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
@@ -291,12 +393,36 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                Refresh schema
+                <p>Refresh schema</p>
+                {lastRefreshTime && (
+                  <p className="text-xs text-gray-500">
+                    Last refreshed: {lastRefreshTime.toLocaleTimeString()}
+                  </p>
+                )}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
           
-          {(isLoading || schemaLoading[id] || isRefreshing) && (
+          {schemaSource && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    {schemaSource === 'direct' && <Check className="w-4 h-4 text-green-500" />}
+                    {schemaSource === 'source' && <Info className="w-4 h-4 text-blue-500" />}
+                    {schemaSource === 'propagated' && <Info className="w-4 h-4 text-amber-500" />}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {schemaSource === 'direct' && "Using this node's schema"}
+                  {schemaSource === 'source' && "Using source node's schema"}
+                  {schemaSource === 'propagated' && "Using propagated schema"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {(isLoading || isRefreshing) && (
             <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
           )}
         </div>
@@ -306,7 +432,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
             <div className="flex">
               <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 flex-shrink-0" />
-              {loadingError}
+              <div>
+                <p>{loadingError}</p>
+                {loadingAttempts > 1 && (
+                  <p className="text-xs mt-1">
+                    Try connecting a data source and refreshing or reopening the workflow.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}

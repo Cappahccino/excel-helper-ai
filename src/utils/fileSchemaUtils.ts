@@ -3,26 +3,129 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/types/workflow';
 import { WorkflowFileSchema } from '@/components/workflow/context/WorkflowContext';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { retryOperation } from '@/utils/retryUtils';
+import { toast } from 'sonner';
+
+// Schema cache with expiration for better performance
+const schemaCache: Record<string, {
+  schema: WorkflowFileSchema;
+  timestamp: number;
+  source: 'database' | 'propagation';
+}> = {};
+
+// Cache TTL in milliseconds (5 minutes)
+const SCHEMA_CACHE_TTL = 5 * 60 * 1000;
 
 export async function getFileMetadata(fileId: string): Promise<WorkflowFileSchema | null> {
   try {
-    const { data: metaData, error: metaError } = await supabase
-      .from('file_metadata')
-      .select('column_definitions')
-      .eq('file_id', fileId)
-      .maybeSingle();
+    // Check cache first
+    const cacheKey = `file-${fileId}`;
+    const cachedSchema = schemaCache[cacheKey];
+    
+    if (cachedSchema && (Date.now() - cachedSchema.timestamp) < SCHEMA_CACHE_TTL) {
+      console.log(`Using cached schema for file ${fileId}`);
+      return cachedSchema.schema;
+    }
+    
+    console.log(`Fetching file metadata for file ${fileId}`);
+    
+    // Use retry operation for more resilient fetching
+    const { data: metaData, error: metaError } = await retryOperation(
+      () => supabase
+        .from('file_metadata')
+        .select('column_definitions')
+        .eq('file_id', fileId)
+        .maybeSingle(),
+      {
+        maxRetries: 3,
+        delay: 500,
+        onRetry: (err, attempt) => console.log(`Retrying file metadata fetch (${attempt}/3): ${err.message}`)
+      }
+    );
       
     if (metaError || !metaData?.column_definitions) {
       console.error('Error fetching file metadata:', metaError);
       return null;
     }
     
-    return {
+    const schema = {
       columns: Object.keys(metaData.column_definitions),
       types: metaData.column_definitions as Record<string, string>
     };
+    
+    // Update cache
+    schemaCache[cacheKey] = {
+      schema,
+      timestamp: Date.now(),
+      source: 'database'
+    };
+    
+    return schema;
   } catch (error) {
     console.error('Error in getFileMetadata:', error);
+    return null;
+  }
+}
+
+export async function getNodeSchema(
+  workflowId: string,
+  nodeId: string,
+  options: { forceRefresh?: boolean } = {}
+): Promise<WorkflowFileSchema | null> {
+  try {
+    const { forceRefresh = false } = options;
+    
+    // Generate cache key
+    const cacheKey = `node-${workflowId}-${nodeId}`;
+    
+    // Check cache first unless force refresh is requested
+    if (!forceRefresh && schemaCache[cacheKey] && (Date.now() - schemaCache[cacheKey].timestamp) < SCHEMA_CACHE_TTL) {
+      console.log(`Using cached schema for node ${nodeId}`);
+      return schemaCache[cacheKey].schema;
+    }
+    
+    console.log(`Fetching schema for node ${nodeId} in workflow ${workflowId}`);
+    
+    const { data, error } = await retryOperation(
+      () => supabase
+        .from('workflow_file_schemas')
+        .select('columns, data_types, file_id')
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle(),
+      {
+        maxRetries: 3,
+        delay: 500,
+        onRetry: (err, attempt) => console.log(`Retrying schema fetch (${attempt}/3): ${err.message}`)
+      }
+    );
+    
+    if (error) {
+      console.error('Error fetching node schema:', error);
+      return null;
+    }
+    
+    if (!data || !data.columns) {
+      console.log(`No schema found for node ${nodeId}`);
+      return null;
+    }
+    
+    // Convert to WorkflowFileSchema format
+    const schema: WorkflowFileSchema = {
+      columns: data.columns,
+      types: data.data_types as Record<string, string>
+    };
+    
+    // Update cache
+    schemaCache[cacheKey] = {
+      schema,
+      timestamp: Date.now(),
+      source: 'database'
+    };
+    
+    return schema;
+  } catch (error) {
+    console.error('Error in getNodeSchema:', error);
     return null;
   }
 }
@@ -37,23 +140,37 @@ export async function updateNodeSchema(
     console.log(`Updating schema for node ${nodeId} in workflow ${workflowId}`);
     console.log('Schema data:', schema);
     
-    const { error } = await supabase
-      .from('workflow_file_schemas')
-      .upsert({
-        workflow_id: workflowId,
-        node_id: nodeId,
-        file_id: fileId,
-        columns: schema.columns,
-        data_types: schema.types,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'workflow_id,node_id'
-      });
+    const { error } = await retryOperation(
+      () => supabase
+        .from('workflow_file_schemas')
+        .upsert({
+          workflow_id: workflowId,
+          node_id: nodeId,
+          file_id: fileId,
+          columns: schema.columns,
+          data_types: schema.types,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'workflow_id,node_id'
+        }),
+      {
+        maxRetries: 2,
+        delay: 300
+      }
+    );
       
     if (error) {
       console.error('Error updating node schema:', error);
       return false;
     }
+    
+    // Update cache with new schema
+    const cacheKey = `node-${workflowId}-${nodeId}`;
+    schemaCache[cacheKey] = {
+      schema,
+      timestamp: Date.now(),
+      source: 'database'
+    };
     
     console.log(`Schema updated successfully for node ${nodeId}`);
     return true;
@@ -71,6 +188,21 @@ export function convertToSchemaColumns(schema: WorkflowFileSchema): SchemaColumn
     name: column,
     type: schema.types[column] as 'string' | 'text' | 'number' | 'boolean' | 'date' | 'object' | 'array' | 'unknown'
   }));
+}
+
+/**
+ * Convert SchemaColumn array to WorkflowFileSchema
+ */
+export function convertFromSchemaColumns(columns: SchemaColumn[]): WorkflowFileSchema {
+  const types = columns.reduce((acc, col) => {
+    acc[col.name] = col.type;
+    return acc;
+  }, {} as Record<string, string>);
+  
+  return {
+    columns: columns.map(col => col.name),
+    types
+  };
 }
 
 /**
@@ -92,29 +224,111 @@ export async function propagateSchema(
       return acc;
     }, {} as Record<string, string>);
     
-    const { error } = await supabase
-      .from('workflow_file_schemas')
-      .upsert({
-        workflow_id: workflowId,
-        node_id: targetNodeId,
-        file_id: '00000000-0000-0000-0000-000000000000', // Placeholder for propagated schema
-        columns,
-        data_types: dataTypes,
-        is_temporary: false,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'workflow_id,node_id'
-      });
-      
-    if (error) {
-      console.error('Error propagating schema:', error);
-      return false;
+    const result = await retryOperation(
+      async () => {
+        const { error } = await supabase
+          .from('workflow_file_schemas')
+          .upsert({
+            workflow_id: workflowId,
+            node_id: targetNodeId,
+            file_id: '00000000-0000-0000-0000-000000000000', // Placeholder for propagated schema
+            columns,
+            data_types: dataTypes,
+            is_temporary: false,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'workflow_id,node_id'
+          });
+          
+        if (error) {
+          console.error('Error propagating schema:', error);
+          return false;
+        }
+        
+        // Update cache with propagated schema
+        const cacheKey = `node-${workflowId}-${targetNodeId}`;
+        schemaCache[cacheKey] = {
+          schema: { columns, types: dataTypes },
+          timestamp: Date.now(),
+          source: 'propagation'
+        };
+        
+        return true;
+      },
+      {
+        maxRetries: 3,
+        delay: 500,
+        onRetry: (err, attempt) => console.log(`Retrying schema propagation (${attempt}/3): ${err.message}`)
+      }
+    );
+    
+    if (result) {
+      console.log(`Schema propagated successfully to ${targetNodeId}`);
     }
     
-    console.log(`Schema propagated successfully to ${targetNodeId}`);
-    return true;
+    return result;
   } catch (error) {
     console.error('Error in propagateSchema:', error);
     return false;
   }
+}
+
+/**
+ * Retrieve schema from a source node that connects to the target node
+ */
+export async function getSourceNodeSchema(
+  workflowId: string, 
+  targetNodeId: string
+): Promise<WorkflowFileSchema | null> {
+  try {
+    // First, find edges that connect to this target node
+    const { data: edges, error: edgesError } = await supabase
+      .from('workflow_edges')
+      .select('source_node_id')
+      .eq('workflow_id', workflowId)
+      .eq('target_node_id', targetNodeId);
+      
+    if (edgesError || !edges || edges.length === 0) {
+      console.log(`No incoming edges found for node ${targetNodeId}`);
+      return null;
+    }
+    
+    // Get the first source node
+    const sourceNodeId = edges[0].source_node_id;
+    
+    // Now get the schema from the source node
+    return await getNodeSchema(workflowId, sourceNodeId);
+  } catch (error) {
+    console.error('Error getting source node schema:', error);
+    return null;
+  }
+}
+
+/**
+ * Clear the schema cache for specific nodes or the entire cache
+ */
+export function clearSchemaCache(options?: { 
+  workflowId?: string; 
+  nodeId?: string;
+  fileId?: string;
+}) {
+  if (!options) {
+    // Clear entire cache
+    Object.keys(schemaCache).forEach(key => delete schemaCache[key]);
+    console.log('Cleared entire schema cache');
+    return;
+  }
+  
+  const { workflowId, nodeId, fileId } = options;
+  
+  Object.keys(schemaCache).forEach(key => {
+    if (
+      (workflowId && key.includes(`-${workflowId}-`)) ||
+      (nodeId && key.endsWith(`-${nodeId}`)) ||
+      (fileId && key === `file-${fileId}`)
+    ) {
+      delete schemaCache[key];
+      console.log(`Cleared cache for key: ${key}`);
+    }
+  });
 }

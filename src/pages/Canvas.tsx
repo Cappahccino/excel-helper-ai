@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -20,7 +19,8 @@ import CanvasFlow from '@/components/canvas/CanvasFlow';
 import { nodeCategories } from '@/components/canvas/NodeCategories';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { propagateSchemaDirectly, checkSchemaPropagationNeeded } from '@/utils/schemaPropagation';
+import { retryOperation } from '@/utils/retryUtils';
 
 declare global {
   interface Window {
@@ -58,7 +58,6 @@ const Canvas = () => {
     runWorkflow
   } = useWorkflowDatabase(savingWorkflowId, setSavingWorkflowId);
 
-  // Use our new workflow sync hook
   useWorkflowSync(savingWorkflowId, nodes, edges, isSaving);
 
   const {
@@ -88,19 +87,33 @@ const Canvas = () => {
       if (params.source && params.target) {
         updateSchemaPropagationMap(params.source, params.target);
         
-        // Try immediate schema propagation when an edge is created
         if (savingWorkflowId) {
-          propagateSchemaDirectly(savingWorkflowId, params.source, params.target)
-            .then(success => {
-              if (success) {
-                console.log(`Successfully propagated schema on edge creation: ${params.source} -> ${params.target}`);
-              } else {
-                // Schedule a retry after a short delay
-                setTimeout(() => {
-                  triggerSchemaUpdate(params.source);
-                }, 500);
+          retryOperation(
+            () => propagateSchemaDirectly(savingWorkflowId, params.source, params.target),
+            {
+              maxRetries: 3,
+              delay: 500,
+              onRetry: (err, attempt) => {
+                console.log(`Retrying schema propagation on connect (${attempt}/3): ${err.message}`);
               }
-            });
+            }
+          ).then(success => {
+            if (success) {
+              console.log(`Successfully propagated schema on edge creation: ${params.source} -> ${params.target}`);
+              toast.success("Schema propagated successfully", { id: "schema-propagation" });
+            } else {
+              console.log(`Initial schema propagation failed, scheduling retry`);
+              setTimeout(() => {
+                checkSchemaPropagationNeeded(savingWorkflowId, params.source, params.target)
+                  .then(needed => {
+                    if (needed) {
+                      triggerSchemaUpdate(params.source);
+                      toast.info("Updating schema from source node...", { id: "schema-update" });
+                    }
+                  });
+              }, 1000);
+            }
+          });
         }
       }
       
@@ -122,7 +135,6 @@ const Canvas = () => {
     }
   }, [workflowId, loadWorkflow]);
 
-  // Create adapter functions to ensure schema management works correctly
   const getNodeSchemaAdapter = useCallback((nodeId: string): SchemaColumn[] => {
     return getNodeSchema(nodeId) || [];
   }, [getNodeSchema]);
