@@ -1,5 +1,6 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useNodesState, useEdgesState, addEdge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -18,6 +19,8 @@ import CanvasFlow from '@/components/canvas/CanvasFlow';
 import { nodeCategories } from '@/components/canvas/NodeCategories';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 declare global {
   interface Window {
@@ -27,6 +30,7 @@ declare global {
 
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
+  const navigate = useNavigate();
   
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -35,6 +39,7 @@ const Canvas = () => {
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
+  const [showTemporaryWorkflowAlert, setShowTemporaryWorkflowAlert] = useState<boolean>(false);
   
   const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
     workflowId === 'new' ? null : workflowId,
@@ -75,6 +80,25 @@ const Canvas = () => {
     }
   });
 
+  // Check if we're on a temporary workflow
+  useEffect(() => {
+    if (savingWorkflowId && savingWorkflowId.startsWith('temp-') && workflowId === 'new') {
+      setShowTemporaryWorkflowAlert(true);
+      
+      // Auto-save temporary workflow when nodes/edges change
+      const autoSaveTimeout = setTimeout(() => {
+        if (nodes.length > 0 || edges.length > 0) {
+          console.log('Auto-saving temporary workflow...');
+          saveWorkflowToDb(nodes, edges);
+        }
+      }, 5000);
+      
+      return () => clearTimeout(autoSaveTimeout);
+    } else {
+      setShowTemporaryWorkflowAlert(false);
+    }
+  }, [savingWorkflowId, workflowId, nodes, edges, saveWorkflowToDb]);
+
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => {
       const newEdges = addEdge(params, eds);
@@ -82,6 +106,7 @@ const Canvas = () => {
       if (params.source && params.target) {
         updateSchemaPropagationMap(params.source, params.target);
         
+        // Trigger schema propagation immediately
         setTimeout(() => {
           triggerSchemaUpdate(params.source);
         }, 500);
@@ -89,11 +114,34 @@ const Canvas = () => {
       
       return newEdges;
     });
-  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate]);
+    
+    // Save workflow after connecting nodes
+    if (savingWorkflowId) {
+      setTimeout(() => saveWorkflowToDb(nodes, edges), 1000);
+    }
+  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate, saveWorkflowToDb, nodes, edges, savingWorkflowId]);
 
   const saveWorkflow = useCallback(() => {
     return saveWorkflowToDb(nodes, edges);
   }, [saveWorkflowToDb, nodes, edges]);
+
+  // Perform auto-save for temporary workflows
+  useEffect(() => {
+    if (workflowId === 'new' && nodes.length > 0) {
+      const saveTimer = setTimeout(() => {
+        saveWorkflow().then(savedId => {
+          if (savedId && savedId !== workflowId && savedId !== 'new') {
+            console.log(`Workflow saved with ID: ${savedId}`);
+            if (!savingWorkflowId.startsWith('temp-') && savingWorkflowId !== savedId) {
+              navigate(`/canvas/${savedId}`, { replace: true });
+            }
+          }
+        });
+      }, 3000);
+      
+      return () => clearTimeout(saveTimer);
+    }
+  }, [nodes, edges, workflowId, saveWorkflow, savingWorkflowId, navigate]);
 
   useEffect(() => {
     if (workflowId && workflowId !== 'new') {
@@ -103,16 +151,23 @@ const Canvas = () => {
         loadWorkflow(workflowId, setNodes, setEdges);
       }
     }
-  }, [workflowId, loadWorkflow]);
+  }, [workflowId, loadWorkflow, setNodes, setEdges]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
     setShowLogPanel(true);
-  }, []);
+  }, [setSelectedNodeId]);
 
   const handleRunWorkflow = useCallback(() => {
-    runWorkflow(savingWorkflowId, nodes, edges, setIsRunning, setExecutionId);
-  }, [savingWorkflowId, nodes, edges, runWorkflow]);
+    // Always save before running
+    saveWorkflow().then(savedId => {
+      if (savedId) {
+        runWorkflow(savedId, nodes, edges, setIsRunning, setExecutionId);
+      } else {
+        toast.error('Failed to save workflow before running');
+      }
+    });
+  }, [nodes, edges, runWorkflow, saveWorkflow, setIsRunning]);
 
   const handleAddNodeClick = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -129,6 +184,17 @@ const Canvas = () => {
       }}
     >
       <div className="h-screen flex flex-col">
+        {showTemporaryWorkflowAlert && (
+          <Alert variant="warning" className="m-4 border-amber-300 bg-amber-50">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800">Temporary Workflow</AlertTitle>
+            <AlertDescription className="text-amber-700">
+              You're working on a temporary workflow. To keep your changes permanently, 
+              please save this workflow when you're done.
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <WorkflowHeader 
           workflowName={workflowName}
           workflowDescription={workflowDescription}
