@@ -1,4 +1,3 @@
-
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
@@ -29,7 +28,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   
   const edgesSavePending = useRef(false);
   const edgesSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const initialPropagationAttempted = useRef(false);
 
   const saveEdgesToDatabase = useCallback(async (edgesToSave: Edge[], immediate = false) => {
     if (!workflowId) return;
@@ -112,8 +110,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     const edgeKey = `${sourceId}-${targetId}`;
     const now = Date.now();
     
-    console.log(`Attempting to propagate schema: ${sourceId} -> ${targetId}`);
-    
     const retryInfo = retryMap[edgeKey];
     if (retryInfo) {
       const backoffTime = Math.min(1000 * Math.pow(2, retryInfo.attempts), 30000);
@@ -126,7 +122,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     }
     
     try {
-      console.log(`Executing schema propagation from ${sourceId} to ${targetId}`);
+      console.log(`Attempting to propagate schema from ${sourceId} to ${targetId}`);
       
       setSchemaPropagationStatus(prev => ({
         ...prev,
@@ -146,7 +142,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       }));
       
       const result = await propagateFileSchema(sourceId, targetId);
-      console.log(`Schema propagation result for ${sourceId} -> ${targetId}:`, result);
       
       if (result) {
         setRetryMap(prev => ({
@@ -185,12 +180,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
           }
         }));
         
-        // If first attempt failed, let's try one more time with a short delay
-        if ((retryMap[edgeKey]?.attempts || 0) === 0) {
-          console.log(`First attempt failed for ${edgeKey}, scheduling one immediate retry`);
-          setTimeout(() => propagateSchemaWithRetry(sourceId, targetId), 1500);
-        }
-        
         return false;
       }
     } catch (error) {
@@ -219,9 +208,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       
       return false;
     }
-  }, [propagateFileSchema, retryMap]);
+  }, [propagateFileSchema]);
 
-  // Initial load of edges
   useEffect(() => {
     if (!workflowId) return;
     
@@ -229,24 +217,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       const currentEdges = reactFlowInstance.getEdges();
       edgesRef.current = currentEdges;
       setEdges(currentEdges);
-      
-      // Check for any edges that need initial schema propagation
-      if (!initialPropagationAttempted.current && currentEdges.length > 0) {
-        console.log('Performing initial schema propagation check for all edges');
-        initialPropagationAttempted.current = true;
-        
-        // Schedule with a slight delay to ensure all components are loaded
-        setTimeout(() => {
-          currentEdges.forEach(edge => {
-            const edgeKey = `${edge.source}-${edge.target}`;
-            const status = schemaPropagationStatus[edgeKey];
-            
-            if (!status || status.status !== 'completed') {
-              propagateSchemaWithRetry(edge.source, edge.target);
-            }
-          });
-        }, 1000);
-      }
     };
     
     handleEdgeChanges();
@@ -266,23 +236,18 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         saveEdgesToDatabase(edgesRef.current, true);
       }
     };
-  }, [reactFlowInstance, workflowId, saveEdgesToDatabase, propagateSchemaWithRetry, schemaPropagationStatus]);
+  }, [reactFlowInstance, workflowId, saveEdgesToDatabase]);
 
-  // Save edges to database when they change
   useEffect(() => {
     if (!workflowId || debouncedEdges.length === 0) return;
     saveEdgesToDatabase(debouncedEdges);
   }, [debouncedEdges, workflowId, saveEdgesToDatabase]);
 
-  // Periodic schema propagation check
   useEffect(() => {
     if (!workflowId) return;
     
     const propagateSchemas = async () => {
       const currentEdges = edgesRef.current;
-      if (currentEdges.length === 0) return;
-      
-      console.log('Checking for schema propagation needs...');
       
       const sortedEdges = [...currentEdges].sort((a, b) => {
         const keyA = `${a.source}-${a.target}`;
@@ -327,10 +292,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       }
     };
     
-    // Run initial propagation
-    setTimeout(propagateSchemas, 2000);
+    propagateSchemas();
     
-    // Setup periodic checks
     const intervalId = setInterval(() => {
       const now = Date.now();
       const edgesNeedingRetry = edgesRef.current.filter(edge => {

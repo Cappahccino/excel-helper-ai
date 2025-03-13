@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,7 +9,6 @@ import { useTemporaryId } from '@/hooks/useTemporaryId';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
 import { useWorkflowDatabase } from '@/hooks/useWorkflowDatabase';
 import { useNodeManagement } from '@/hooks/useNodeManagement';
-import { useSchemaManagement } from '@/hooks/useSchemaManagement';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
 import StepLogPanel from '@/components/workflow/StepLogPanel';
@@ -20,7 +18,6 @@ import CanvasFlow from '@/components/canvas/CanvasFlow';
 import { nodeCategories } from '@/components/canvas/NodeCategories';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
 
 declare global {
   interface Window {
@@ -38,7 +35,6 @@ const Canvas = () => {
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
-  const [showSchemaDebug, setShowSchemaDebug] = useState<boolean>(false);
   
   const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
     workflowId === 'new' ? null : workflowId,
@@ -68,12 +64,8 @@ const Canvas = () => {
     triggerSchemaUpdate,
     getNodeSchema,
     updateNodeSchema,
-    checkSchemaCompatibility,
-    forcePropagateSchemaToAllTargets,
-    getDebugInfo
+    checkSchemaCompatibility
   } = useNodeManagement(setNodes, () => saveWorkflowToDb(nodes, edges));
-  
-  const schemaManagement = useSchemaManagement();
 
   const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
     executionId,
@@ -84,17 +76,13 @@ const Canvas = () => {
   });
 
   const onConnect = useCallback((params: Connection) => {
-    console.log('Connection established:', params);
-    
     setEdges((eds) => {
       const newEdges = addEdge(params, eds);
       
       if (params.source && params.target) {
-        console.log(`Updating schema propagation map: ${params.source} -> ${params.target}`);
         updateSchemaPropagationMap(params.source, params.target);
         
         setTimeout(() => {
-          console.log(`Triggering schema update from source node: ${params.source}`);
           triggerSchemaUpdate(params.source);
         }, 500);
       }
@@ -130,20 +118,14 @@ const Canvas = () => {
     e.preventDefault();
     setIsAddingNode(true);
   }, []);
-  
-  const handleForceSchemaUpdate = useCallback(() => {
-    console.log('Forcing schema update for all nodes...');
-    toast.info('Forcing schema update for all connections');
-    forcePropagateSchemaToAllTargets();
-  }, [forcePropagateSchemaToAllTargets]);
 
   return (
     <WorkflowProvider 
       workflowId={savingWorkflowId || undefined}
       schemaProviderValue={{
-        getNodeSchema: getNodeSchema,
-        updateNodeSchema: updateNodeSchema,
-        checkSchemaCompatibility: checkSchemaCompatibility,
+        getNodeSchema,
+        updateNodeSchema,
+        checkSchemaCompatibility,
       }}
     >
       <div className="h-screen flex flex-col">
@@ -161,28 +143,13 @@ const Canvas = () => {
           migrationError={migrationError}
           optimisticSave={optimisticSave}
           subscriptionStatus={subscriptionStatus}
-        >
-          {/* Add debug button in dev mode only */}
-          {process.env.NODE_ENV === 'development' && (
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="ml-2"
-              onClick={handleForceSchemaUpdate}
-            >
-              Force Schema Update
-            </Button>
-          )}
-        </WorkflowHeader>
+        />
         
         <div className="flex-1 flex">
           <Tabs defaultValue="canvas" className="w-full">
             <TabsList className="px-4 pt-2">
               <TabsTrigger value="canvas">Canvas</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
-              {process.env.NODE_ENV === 'development' && (
-                <TabsTrigger value="debug">Debug</TabsTrigger>
-              )}
             </TabsList>
             
             <TabsContent value="canvas" className="flex-1 h-full">
@@ -222,57 +189,6 @@ const Canvas = () => {
                 edgesCount={edges.length}
               />
             </TabsContent>
-            
-            {process.env.NODE_ENV === 'development' && (
-              <TabsContent value="debug">
-                <div className="p-4">
-                  <h2 className="text-xl font-bold mb-4">Schema Debug Information</h2>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="border rounded-md p-4">
-                      <h3 className="text-lg font-medium mb-2">Schema Propagation Map</h3>
-                      <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-96">
-                        {JSON.stringify(getDebugInfo().schemaPropagationMap, null, 2)}
-                      </pre>
-                    </div>
-                    
-                    <div className="border rounded-md p-4">
-                      <h3 className="text-lg font-medium mb-2">Schema Cache</h3>
-                      <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-96">
-                        {JSON.stringify(getDebugInfo().schemaCache, null, 2)}
-                      </pre>
-                    </div>
-                    
-                    <div className="border rounded-md p-4">
-                      <h3 className="text-lg font-medium mb-2">Schema Management</h3>
-                      <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-96">
-                        {JSON.stringify({
-                          isLoading: schemaManagement.isLoading,
-                          validationErrors: schemaManagement.validationErrors
-                        }, null, 2)}
-                      </pre>
-                    </div>
-                    
-                    <div className="border rounded-md p-4">
-                      <h3 className="text-lg font-medium mb-2">Pending Updates</h3>
-                      <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-96">
-                        {JSON.stringify({
-                          pendingSchemaUpdates: Array.from(getDebugInfo().pendingSchemaUpdates),
-                          propagationInProgress: getDebugInfo().propagationInProgress
-                        }, null, 2)}
-                      </pre>
-                      
-                      <Button 
-                        className="mt-4"
-                        onClick={handleForceSchemaUpdate}
-                      >
-                        Force Schema Update
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            )}
           </Tabs>
         </div>
 
