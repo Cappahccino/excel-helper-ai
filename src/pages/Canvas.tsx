@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -17,6 +16,7 @@ import WorkflowHeader from '@/components/canvas/WorkflowHeader';
 import WorkflowSettings from '@/components/canvas/WorkflowSettings';
 import CanvasFlow from '@/components/canvas/CanvasFlow';
 import { nodeCategories } from '@/components/canvas/NodeCategories';
+import { NodeComponentType } from '@/types/workflow';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle } from 'lucide-react';
@@ -80,12 +80,10 @@ const Canvas = () => {
     }
   });
 
-  // Check if we're on a temporary workflow
   useEffect(() => {
     if (savingWorkflowId && savingWorkflowId.startsWith('temp-') && workflowId === 'new') {
       setShowTemporaryWorkflowAlert(true);
       
-      // Auto-save temporary workflow when nodes/edges change
       const autoSaveTimeout = setTimeout(() => {
         if (nodes.length > 0 || edges.length > 0) {
           console.log('Auto-saving temporary workflow...');
@@ -106,7 +104,6 @@ const Canvas = () => {
       if (params.source && params.target) {
         updateSchemaPropagationMap(params.source, params.target);
         
-        // Trigger schema propagation immediately
         setTimeout(() => {
           triggerSchemaUpdate(params.source);
         }, 500);
@@ -115,7 +112,6 @@ const Canvas = () => {
       return newEdges;
     });
     
-    // Save workflow after connecting nodes
     if (savingWorkflowId) {
       setTimeout(() => saveWorkflowToDb(nodes, edges), 1000);
     }
@@ -125,7 +121,6 @@ const Canvas = () => {
     return saveWorkflowToDb(nodes, edges);
   }, [saveWorkflowToDb, nodes, edges]);
 
-  // Perform auto-save for temporary workflows
   useEffect(() => {
     if (workflowId === 'new' && nodes.length > 0) {
       const saveTimer = setTimeout(() => {
@@ -159,7 +154,6 @@ const Canvas = () => {
   }, [setSelectedNodeId]);
 
   const handleRunWorkflow = useCallback(() => {
-    // Always save before running
     saveWorkflow().then(savedId => {
       if (savedId) {
         runWorkflow(savedId, nodes, edges, setIsRunning, setExecutionId);
@@ -174,16 +168,21 @@ const Canvas = () => {
     setIsAddingNode(true);
   }, []);
 
-  // Create adapter functions that satisfy the WorkflowContext type expectations
   const getNodeSchemaAdapter = useCallback((nodeId: string) => {
     if (!savingWorkflowId) return [];
-    // Call the full function but provide defaults that the adapter doesn't need to worry about
-    return getNodeSchema(savingWorkflowId, nodeId, { forceRefresh: false });
+    const schema: any[] = [];
+    getNodeSchema(savingWorkflowId, nodeId, { forceRefresh: false })
+      .then(result => {
+        result.forEach(item => schema.push(item));
+      })
+      .catch(err => {
+        console.error("Error fetching schema:", err);
+      });
+    return schema;
   }, [getNodeSchema, savingWorkflowId]);
 
   const updateNodeSchemaAdapter = useCallback((nodeId: string, schema: any) => {
     if (!savingWorkflowId) return;
-    // Call the full function with the workflow ID
     updateNodeSchema(savingWorkflowId, nodeId, schema);
   }, [updateNodeSchema, savingWorkflowId]);
 
@@ -275,7 +274,7 @@ const Canvas = () => {
           isOpen={isAddingNode}
           onClose={() => setIsAddingNode(false)}
           onAddNode={(nodeType, nodeCategory, nodeLabel) => {
-            handleAddNode(nodeType, nodeCategory, nodeLabel);
+            handleAddNode(nodeType as NodeComponentType, nodeCategory, nodeLabel);
             toast.success(`Added ${nodeLabel} node to canvas`);
           }}
           nodeCategories={nodeCategories}
