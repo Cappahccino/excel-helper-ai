@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -76,6 +77,69 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     validationErrors: schemaValidationErrors
   } = useSchemaManagement();
 
+  // Define validateConfiguration before using it
+  const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
+    if (!config || !schema || schema.length === 0) {
+      setValidationErrors([]);
+      return;
+    }
+    
+    const errors: string[] = [];
+    
+    if (config.column && !schema.some(col => col.name === config.column)) {
+      errors.push(`Column "${config.column}" does not exist in the schema`);
+    }
+    
+    if (config.column && config.operator) {
+      const column = schema.find(col => col.name === config.column);
+      if (column) {
+        const stringOperators = ['contains', 'starts-with', 'ends-with'];
+        const numericOperators = ['greater-than', 'less-than'];
+        
+        if (column.type === 'number' && stringOperators.includes(config.operator)) {
+          errors.push(`Operator "${config.operator}" cannot be used with numeric column "${config.column}"`);
+        }
+        
+        if ((column.type === 'string' || column.type === 'text') && numericOperators.includes(config.operator)) {
+          errors.push(`Operator "${config.operator}" cannot be used with text column "${config.column}"`);
+        }
+      }
+    }
+    
+    setValidationErrors(errors);
+    
+    return errors.length === 0;
+  }, []);
+  
+  const updateOperatorsForColumn = useCallback((columnName?: string, schemaColumns?: SchemaColumn[]) => {
+    if (!columnName || !schemaColumns) {
+      setOperators(OPERATORS.default);
+      return;
+    }
+    
+    const column = schemaColumns.find(col => col.name === columnName);
+    
+    if (column) {
+      switch(column.type) {
+        case 'number':
+          setOperators(OPERATORS.number);
+          break;
+        case 'date':
+          setOperators(OPERATORS.date);
+          break;
+        case 'boolean':
+          setOperators(OPERATORS.boolean);
+          break;
+        case 'string':
+        case 'text':
+          setOperators(OPERATORS.string);
+          break;
+        default:
+          setOperators(OPERATORS.default);
+      }
+    }
+  }, []);
+
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
@@ -130,7 +194,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [id, workflow, data.config, getNodeSchema, validateConfiguration]);
+  }, [id, workflow, data.config, getNodeSchema, updateOperatorsForColumn, validateConfiguration]);
 
   useEffect(() => {
     if (selected) {
@@ -144,68 +208,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       loadSchema(false);
     }
   }, [workflow.workflowId, id, loadSchema]);
-
-  const updateOperatorsForColumn = useCallback((columnName?: string, schemaColumns?: SchemaColumn[]) => {
-    if (!columnName || !schemaColumns) {
-      setOperators(OPERATORS.default);
-      return;
-    }
-    
-    const column = schemaColumns.find(col => col.name === columnName);
-    
-    if (column) {
-      switch(column.type) {
-        case 'number':
-          setOperators(OPERATORS.number);
-          break;
-        case 'date':
-          setOperators(OPERATORS.date);
-          break;
-        case 'boolean':
-          setOperators(OPERATORS.boolean);
-          break;
-        case 'string':
-        case 'text':
-          setOperators(OPERATORS.string);
-          break;
-        default:
-          setOperators(OPERATORS.default);
-      }
-    }
-  }, []);
-  
-  const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
-    if (!config || !schema || schema.length === 0) {
-      setValidationErrors([]);
-      return;
-    }
-    
-    const errors: string[] = [];
-    
-    if (config.column && !schema.some(col => col.name === config.column)) {
-      errors.push(`Column "${config.column}" does not exist in the schema`);
-    }
-    
-    if (config.column && config.operator) {
-      const column = schema.find(col => col.name === config.column);
-      if (column) {
-        const stringOperators = ['contains', 'starts-with', 'ends-with'];
-        const numericOperators = ['greater-than', 'less-than'];
-        
-        if (column.type === 'number' && stringOperators.includes(config.operator)) {
-          errors.push(`Operator "${config.operator}" cannot be used with numeric column "${config.column}"`);
-        }
-        
-        if ((column.type === 'string' || column.type === 'text') && numericOperators.includes(config.operator)) {
-          errors.push(`Operator "${config.operator}" cannot be used with text column "${config.column}"`);
-        }
-      }
-    }
-    
-    setValidationErrors(errors);
-    
-    return errors.length === 0;
-  }, []);
 
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
