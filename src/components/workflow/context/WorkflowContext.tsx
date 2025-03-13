@@ -3,7 +3,7 @@ import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integr
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
-import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { propagateSchemaDirectly, normalizeWorkflowId } from '@/utils/schemaPropagation';
 
 // Define the schema for file data with correct types
 export interface WorkflowFileSchema {
@@ -83,7 +83,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     try {
       if (!workflowId) return null;
       
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      const dbWorkflowId = normalizeWorkflowId(workflowId);
       
       // Try to get schema from workflow_file_schemas table first
       const { data: schemaData, error: schemaError } = await supabase
@@ -221,7 +221,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     try {
       if (!workflowId) return [];
       
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      const dbWorkflowId = normalizeWorkflowId(workflowId);
       
       const { data, error } = await supabase
         .from('workflow_edges')

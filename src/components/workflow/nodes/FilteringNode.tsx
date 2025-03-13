@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { getNodeSchema, normalizeWorkflowId } from '@/utils/schemaPropagation';
 
 interface FilteringNodeProps {
   id: string;
@@ -68,10 +69,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [schemaSource, setSchemaSource] = useState<string>('none');
   
   const workflow = useWorkflow();
   const { 
-    getNodeSchema, 
     validateNodeConfig,
     isLoading: schemaLoading,
     validationErrors: schemaValidationErrors
@@ -140,6 +142,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, []);
 
+  /**
+   * Try to load schema directly for this node first, then from input nodes if none found
+   */
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
@@ -148,17 +153,20 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     setLoadingError(null);
     
     try {
-      let schema = await getNodeSchema(workflow.workflowId, id, { forceRefresh });
+      // First, try to get schema directly for this node
+      let schema = await getNodeSchema(workflow.workflowId, id);
       
       if (schema && schema.length > 0) {
         console.log(`FilteringNode ${id}: Found schema directly for this node:`, schema);
         setColumns(schema);
+        setSchemaSource('direct');
         updateOperatorsForColumn(data.config.column, schema);
         validateConfiguration(data.config, schema);
         setIsLoading(false);
         return;
       }
       
+      // If no direct schema, try to get input nodes
       const edges = await workflow.getEdges(workflow.workflowId);
       const inputNodeIds = edges
         .filter(edge => edge.target === id)
@@ -174,12 +182,43 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       const sourceNodeId = inputNodeIds[0];
       console.log(`FilteringNode ${id}: Getting schema from source node ${sourceNodeId}`);
       
-      schema = await getNodeSchema(workflow.workflowId, sourceNodeId, { forceRefresh });
+      // Get schema from source node
+      schema = await getNodeSchema(workflow.workflowId, sourceNodeId);
       
       if (!schema || schema.length === 0) {
-        setLoadingError('No schema available from the connected node.');
-        setIsLoading(false);
-        return;
+        // If source node doesn't have schema, try to propagate it
+        if (workflow.propagateFileSchema) {
+          console.log(`FilteringNode ${id}: Attempting to propagate schema from ${sourceNodeId}`);
+          const propagated = await workflow.propagateFileSchema(sourceNodeId, id);
+          
+          if (propagated) {
+            // If propagation succeeded, try to fetch schema again after a short delay
+            await new Promise(resolve => setTimeout(resolve, 500));
+            schema = await getNodeSchema(workflow.workflowId, id);
+            if (schema && schema.length > 0) {
+              setSchemaSource('propagated');
+            }
+          }
+        }
+        
+        if (!schema || schema.length === 0) {
+          setLoadingError('No schema available from the connected node.');
+          setIsLoading(false);
+          
+          // If this is a retry or selected node, schedule another attempt
+          if (retryCount < 3 || selected) {
+            const nextRetry = retryCount + 1;
+            console.log(`Scheduling retry ${nextRetry} for schema load`);
+            setRetryCount(nextRetry);
+            
+            setTimeout(() => {
+              loadSchema(true);
+            }, Math.min(2000 * Math.pow(1.5, retryCount), 10000));
+          }
+          return;
+        }
+      } else {
+        setSchemaSource('source');
       }
       
       console.log(`FilteringNode ${id}: Retrieved schema from source node:`, schema);
@@ -190,18 +229,31 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     } catch (error) {
       console.error(`FilteringNode ${id}: Error loading schema:`, error);
       setLoadingError('Failed to load schema information. Please try again.');
+      
+      // Schedule retry
+      if (retryCount < 3) {
+        const nextRetry = retryCount + 1;
+        console.log(`Scheduling error retry ${nextRetry} for schema load`);
+        setRetryCount(nextRetry);
+        
+        setTimeout(() => {
+          loadSchema(true);
+        }, 2000 * Math.pow(1.5, retryCount));
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [id, workflow, data.config, getNodeSchema, updateOperatorsForColumn, validateConfiguration]);
+  }, [id, workflow, data.config, updateOperatorsForColumn, validateConfiguration, retryCount, selected]);
 
+  // Load schema when selected
   useEffect(() => {
     if (selected) {
       loadSchema(false);
     }
   }, [loadSchema, selected]);
 
+  // Load schema when workflow or node ID changes
   useEffect(() => {
     if (workflow.workflowId && id) {
       console.log(`FilteringNode ${id}: Workflow or node ID changed, loading schema`);
@@ -266,6 +318,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
 
   const handleRefreshSchema = () => {
     setIsRefreshing(true);
+    setRetryCount(0);
     toast.info("Refreshing schema...");
     loadSchema(true);
   };
@@ -307,7 +360,21 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             <div className="flex">
               <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 flex-shrink-0" />
               {loadingError}
+              
+              {retryCount > 0 && (
+                <div className="ml-auto text-xs text-amber-600">
+                  Retry {retryCount}/3
+                </div>
+              )}
             </div>
+          </div>
+        )}
+        
+        {schemaSource !== 'none' && !loadingError && (
+          <div className="rounded-md bg-blue-50 p-2 text-xs text-blue-800 border border-blue-200">
+            Schema loaded {schemaSource === 'direct' ? 'from this node' : 
+              schemaSource === 'source' ? 'from source node' : 
+              'and propagated successfully'}
           </div>
         )}
         
