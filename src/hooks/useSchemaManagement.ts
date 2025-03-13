@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
-import { normalizeWorkflowId } from '@/utils/schemaPropagation';
 
 /**
  * Schema cache entry with metadata
@@ -42,13 +41,12 @@ export function useSchemaManagement() {
     setIsLoading(prev => ({ ...prev, [nodeId]: true }));
     
     try {
-      const dbWorkflowId = normalizeWorkflowId(workflowId);
-      console.log(`Fetching schema from DB for node ${nodeId} in workflow ${dbWorkflowId}`);
+      console.log(`Fetching schema from DB for node ${nodeId} in workflow ${workflowId}`);
       
       const { data, error } = await supabase
         .from('workflow_file_schemas')
         .select('columns, data_types, file_id')
-        .eq('workflow_id', dbWorkflowId)
+        .eq('workflow_id', workflowId)
         .eq('node_id', nodeId)
         .maybeSingle();
       
@@ -161,7 +159,6 @@ export function useSchemaManagement() {
       // Update database if requested
       if (updateDb) {
         const fileIdToUse = fileId || '00000000-0000-0000-0000-000000000000'; // Placeholder UUID
-        const dbWorkflowId = normalizeWorkflowId(workflowId);
         
         const columns = schema.map(col => col.name);
         const dataTypes = schema.reduce((acc, col) => {
@@ -173,7 +170,7 @@ export function useSchemaManagement() {
         const { error } = await supabase
           .from('workflow_file_schemas')
           .upsert({
-            workflow_id: dbWorkflowId,
+            workflow_id: workflowId,
             node_id: nodeId,
             columns,
             data_types: dataTypes,
@@ -212,10 +209,8 @@ export function useSchemaManagement() {
     try {
       setIsLoading(prev => ({ ...prev, [targetNodeId]: true }));
       
-      const dbWorkflowId = normalizeWorkflowId(workflowId);
-      
       // Get source schema
-      const sourceSchema = await getNodeSchema(dbWorkflowId, sourceNodeId);
+      const sourceSchema = await getNodeSchema(workflowId, sourceNodeId);
       
       if (!sourceSchema || sourceSchema.length === 0) {
         console.warn(`No schema available from source node ${sourceNodeId}`);
@@ -233,7 +228,7 @@ export function useSchemaManagement() {
       const targetSchema = transform ? transform(sourceSchema) : sourceSchema;
       
       // Update target schema
-      await updateNodeSchema(dbWorkflowId, targetNodeId, targetSchema, {
+      await updateNodeSchema(workflowId, targetNodeId, targetSchema, {
         updateDb: true,
         source: 'propagation'
       });

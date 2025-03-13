@@ -1,8 +1,8 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/types/workflow';
-import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { WorkflowFileSchema } from '@/components/workflow/context/WorkflowContext';
+import { SchemaColumn } from '@/hooks/useNodeManagement';
 
 export async function getFileMetadata(fileId: string): Promise<WorkflowFileSchema | null> {
   try {

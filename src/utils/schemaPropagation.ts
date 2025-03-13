@@ -4,16 +4,6 @@ import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
 
 /**
- * Normalize workflow ID by removing 'temp-' prefix if needed
- */
-export function normalizeWorkflowId(workflowId: string): string {
-  if (workflowId.startsWith('temp-')) {
-    return workflowId.substring(5);
-  }
-  return workflowId;
-}
-
-/**
  * Directly propagate schema from source node to target node
  * This ensures immediate propagation when an edge is created
  */
@@ -25,8 +15,10 @@ export async function propagateSchemaDirectly(
   try {
     console.log(`Direct schema propagation: ${sourceNodeId} -> ${targetNodeId}`);
     
-    // Normalize the workflow ID
-    const dbWorkflowId = normalizeWorkflowId(workflowId);
+    // Check for temporary workflow ID and convert if needed
+    const dbWorkflowId = workflowId.startsWith('temp-')
+      ? workflowId.substring(5)
+      : workflowId;
     
     // 1. First, get the schema from the source node
     const { data: sourceSchema, error: sourceError } = await supabase

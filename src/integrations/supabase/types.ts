@@ -1308,13 +1308,6 @@ export type Database = {
           has_excel_data: boolean
         }[]
       }
-      migrate_workflow_schemas: {
-        Args: {
-          source_workflow_id: string
-          target_workflow_id: string
-        }
-        Returns: boolean
-      }
       normalize_workflow_id: {
         Args: {
           workflow_id: string
