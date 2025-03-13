@@ -2,14 +2,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
-import { retryOperation } from '@/utils/retryUtils';
-
-/**
- * Helper function to convert temporary workflow ID to database format
- */
-export function normalizeWorkflowId(workflowId: string): string {
-  return workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
-}
 
 /**
  * Directly propagate schema from source node to target node
@@ -23,8 +15,10 @@ export async function propagateSchemaDirectly(
   try {
     console.log(`Direct schema propagation: ${sourceNodeId} -> ${targetNodeId}`);
     
-    // Convert temp workflow ID to database format
-    const dbWorkflowId = normalizeWorkflowId(workflowId);
+    // Check for temporary workflow ID and convert if needed
+    const dbWorkflowId = workflowId.startsWith('temp-')
+      ? workflowId.substring(5)
+      : workflowId;
     
     // 1. First, get the schema from the source node
     const { data: sourceSchema, error: sourceError } = await supabase
@@ -69,53 +63,6 @@ export async function propagateSchemaDirectly(
   } catch (error) {
     console.error('Error in direct schema propagation:', error);
     return false;
-  }
-}
-
-/**
- * Retrieve schema for a node with retry capability
- */
-export async function getNodeSchema(
-  workflowId: string,
-  nodeId: string
-): Promise<SchemaColumn[] | null> {
-  try {
-    // Convert temp workflow ID if needed
-    const dbWorkflowId = normalizeWorkflowId(workflowId);
-    console.log(`Getting schema for node ${nodeId} in workflow ${dbWorkflowId}`);
-    
-    const operation = async () => {
-      const { data, error } = await supabase
-        .from('workflow_file_schemas')
-        .select('columns, data_types')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
-        
-      if (error) {
-        console.error(`Error fetching schema for node ${nodeId}:`, error);
-        throw error;
-      }
-      
-      if (!data) {
-        console.log(`No schema found for node ${nodeId}`);
-        return null;
-      }
-      
-      return convertDbSchemaToColumns(data.columns, data.data_types);
-    };
-    
-    return await retryOperation(operation, {
-      maxRetries: 3,
-      delay: 500,
-      backoff: 1.5,
-      onRetry: (error, attempt) => {
-        console.log(`Retry ${attempt} for schema fetch of node ${nodeId}:`, error.message);
-      }
-    });
-  } catch (error) {
-    console.error('Error in getNodeSchema:', error);
-    return null;
   }
 }
 
