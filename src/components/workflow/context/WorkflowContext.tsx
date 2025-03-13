@@ -5,6 +5,12 @@ import { Edge } from '@xyflow/react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { normalizeWorkflowId } from '@/utils/schemaPropagation';
 
+// Define WorkflowFileSchema interface
+export interface WorkflowFileSchema {
+  columns: string[];
+  types: Record<string, string>;
+}
+
 interface SchemaContextValue {
   getNodeSchema: (nodeId: string) => SchemaColumn[] | null;
   updateNodeSchema: (nodeId: string, schema: SchemaColumn[]) => void;
@@ -18,6 +24,7 @@ interface WorkflowContextValue {
   isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
+  migrateTemporaryWorkflow?: (tempId: string, permanentId: string) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextValue>({
@@ -119,6 +126,32 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [workflowId, schemaProviderValue]);
 
+  // Add migration function for temporary workflows
+  const migrateTemporaryWorkflow = useCallback(async (tempId: string, permanentId: string): Promise<boolean> => {
+    try {
+      console.log(`Migrating temporary workflow: ${tempId} -> ${permanentId}`);
+      
+      // Remove 'temp-' prefix if it exists
+      const normalizedTempId = normalizeWorkflowId(tempId);
+      
+      // Migrate schema data
+      const { error: schemaError } = await supabase.rpc('migrate_workflow_schemas', {
+        source_workflow_id: normalizedTempId,
+        target_workflow_id: permanentId
+      });
+      
+      if (schemaError) {
+        console.error('Error migrating schema data:', schemaError);
+        return false;
+      }
+      
+      return true;
+    } catch (err) {
+      console.error('Error in migrateTemporaryWorkflow:', err);
+      return false;
+    }
+  }, []);
+
   return (
     <WorkflowContext.Provider
       value={{
@@ -128,6 +161,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         isTemporaryId,
         convertToDbWorkflowId,
         propagateFileSchema,
+        migrateTemporaryWorkflow,
       }}
     >
       {children}
