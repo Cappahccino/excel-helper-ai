@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -8,7 +9,7 @@ import { WorkflowProvider } from '@/components/workflow/context/WorkflowContext'
 import { useTemporaryId } from '@/hooks/useTemporaryId';
 import { useWorkflowRealtime } from '@/hooks/useWorkflowRealtime';
 import { useWorkflowDatabase } from '@/hooks/useWorkflowDatabase';
-import { useNodeManagement } from '@/hooks/useNodeManagement';
+import { useNodeManagement, SchemaColumn } from '@/hooks/useNodeManagement';
 import { useWorkflowSync } from '@/hooks/useWorkflowSync';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';

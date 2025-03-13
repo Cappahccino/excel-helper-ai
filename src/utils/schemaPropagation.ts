@@ -28,40 +28,40 @@ export async function propagateSchemaDirectly(
         // Clear cache for more reliable fetching in this critical operation
         clearSchemaCache({ workflowId: dbWorkflowId, nodeId: sourceNodeId });
         
-        const { data: sourceSchema, error: sourceError } = await supabase
+        const response = await supabase
           .from('workflow_file_schemas')
           .select('columns, data_types, file_id')
           .eq('workflow_id', dbWorkflowId)
           .eq('node_id', sourceNodeId)
           .maybeSingle();
           
-        if (sourceError) {
-          console.error('Error fetching source schema:', sourceError);
+        if (response.error) {
+          console.error('Error fetching source schema:', response.error);
           return false;
         }
         
-        if (!sourceSchema || !sourceSchema.columns) {
+        if (!response.data || !response.data.columns) {
           console.log(`No schema found for source node ${sourceNodeId}`);
           return false;
         }
         
         // 2. Now propagate to the target node
-        const { error: targetError } = await supabase
+        const targetResponse = await supabase
           .from('workflow_file_schemas')
           .upsert({
             workflow_id: dbWorkflowId,
             node_id: targetNodeId,
-            file_id: sourceSchema.file_id || '00000000-0000-0000-0000-000000000000',
-            columns: sourceSchema.columns,
-            data_types: sourceSchema.data_types,
+            file_id: response.data.file_id || '00000000-0000-0000-0000-000000000000',
+            columns: response.data.columns,
+            data_types: response.data.data_types,
             updated_at: new Date().toISOString(),
             is_temporary: false
           }, {
             onConflict: 'workflow_id,node_id'
           });
           
-        if (targetError) {
-          console.error('Error propagating schema to target node:', targetError);
+        if (targetResponse.error) {
+          console.error('Error propagating schema to target node:', targetResponse.error);
           return false;
         }
         
