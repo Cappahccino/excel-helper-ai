@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -61,21 +60,9 @@ export function clearSchemaCache({ workflowId, nodeId, sheetName }: {
   nodeId: string, 
   sheetName?: string 
 }): void {
-  if (sheetName) {
-    // Clear specific sheet cache
-    const key = getCacheKey(workflowId, nodeId, sheetName);
-    schemaCache.delete(key);
-    console.log(`Schema cache cleared for ${key}`);
-  } else {
-    // Clear all caches for this node by iterating and checking prefix
-    const prefix = `${workflowId}:${nodeId}:`;
-    [...schemaCache.keys()].forEach(key => {
-      if (key.startsWith(prefix)) {
-        schemaCache.delete(key);
-      }
-    });
-    console.log(`All schema caches cleared for node ${nodeId} in workflow ${workflowId}`);
-  }
+  const key = getCacheKey(workflowId, nodeId, sheetName);
+  schemaCache.delete(key);
+  console.log(`Schema cache cleared for ${key}`);
 }
 
 /**
@@ -93,7 +80,7 @@ export async function getNodeSchema(
       : workflowId;
     
     // Default options
-    const { forceRefresh = false, sheetName } = options;
+    const { forceRefresh = false, sheetName = 'Sheet1' } = options;
     
     // Generate cache key
     const cacheKey = getCacheKey(workflowId, nodeId, sheetName);
@@ -108,25 +95,19 @@ export async function getNodeSchema(
       }
     }
     
-    console.log(`Fetching schema from database for ${nodeId} in workflow ${workflowId}${sheetName ? `, sheet ${sheetName}` : ''}`);
+    console.log(`Fetching schema from database for ${nodeId} in workflow ${workflowId}, sheet ${sheetName}`);
     
-    // Build the query
-    let query = supabase
+    // Fetch schema from workflow_file_schemas table
+    const { data: schemaData, error: schemaError } = await supabase
       .from('workflow_file_schemas')
-      .select('columns, data_types, file_id, has_headers, total_rows, sample_data, sheet_name')
+      .select('columns, data_types, file_id, has_headers, total_rows, sample_data')
       .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId);
-    
-    // Add sheet name filter if provided
-    if (sheetName) {
-      query = query.eq('sheet_name', sheetName);
-    }
-    
-    // Execute the query
-    const { data: schemaData, error: schemaError } = await query.maybeSingle();
+      .eq('node_id', nodeId)
+      .eq('sheet_name', sheetName)
+      .maybeSingle();
     
     if (schemaError) {
-      console.error(`Error fetching node schema for ${nodeId} with${sheetName ? ` sheet ${sheetName}` : ''}:`, schemaError);
+      console.error('Error fetching node schema:', schemaError);
       return null;
     }
     
@@ -136,43 +117,16 @@ export async function getNodeSchema(
         schema: schemaData,
         timestamp: Date.now(),
         source: 'database',
-        sheetName: schemaData.sheet_name || sheetName
+        sheetName
       };
       
       schemaCache.set(cacheKey, cacheEntry);
       
-      console.log(`Schema found for ${nodeId} in workflow ${workflowId}${sheetName ? `, sheet ${sheetName}` : ''}`);
+      console.log(`Schema found for ${nodeId} in workflow ${workflowId}, sheet ${sheetName}`);
       return schemaData;
     }
     
-    // If no schema found with sheet name, try without sheet name filter as fallback
-    if (sheetName) {
-      console.log(`No schema found with sheet ${sheetName}, trying without sheet name filter`);
-      
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('workflow_file_schemas')
-        .select('columns, data_types, file_id, has_headers, total_rows, sample_data, sheet_name')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
-        
-      if (!fallbackError && fallbackData) {
-        // Store in cache
-        const cacheEntry: SchemaCacheEntry = {
-          schema: fallbackData,
-          timestamp: Date.now(),
-          source: 'database',
-          sheetName: fallbackData.sheet_name
-        };
-        
-        schemaCache.set(cacheKey, cacheEntry);
-        
-        console.log(`Found fallback schema for ${nodeId} with sheet ${fallbackData.sheet_name || 'default'}`);
-        return fallbackData;
-      }
-    }
-    
-    console.log(`Schema not found for ${nodeId} in workflow ${workflowId}${sheetName ? `, sheet ${sheetName}` : ''}`);
+    console.log(`Schema not found for ${nodeId} in workflow ${workflowId}, sheet ${sheetName}`);
     return null;
   } catch (error) {
     console.error('Error in getNodeSchema:', error);
@@ -206,8 +160,6 @@ export async function getSourceNodeSchema(
     const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
     const sourceSheetName = metadata?.selected_sheet || sheetName;
     
-    console.log(`Getting source node schema with sheet: ${sourceSheetName || 'default'}`);
-    
     // Now get the schema from the source node with the determined sheet
     return await getNodeSchema(workflowId, sourceNodeId, { sheetName: sourceSheetName });
   } catch (error) {
@@ -228,7 +180,7 @@ export async function propagateSchema(
   try {
     console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}`);
     
-    // Get schema from source node with sheet selection handling
+    // Get schema from source node
     const sourceSchema = await getSourceNodeSchema(workflowId, sourceNodeId, sheetName);
     if (!sourceSchema) {
       console.error(`No schema available for source node ${sourceNodeId}`);
@@ -242,8 +194,6 @@ export async function propagateSchema(
     
     // Get source sheet name - this may have been retrieved from the source node's metadata
     const sourceSheetName = sourceSchema.sheet_name || sheetName || 'Sheet1';
-    
-    console.log(`Using sheet name for propagation: ${sourceSheetName}`);
     
     // Update target node schema
     const { error } = await supabase
@@ -278,31 +228,7 @@ export async function propagateSchema(
       sheetName: sourceSheetName
     });
     
-    // Also update the workflow_files metadata to store the selected sheet
-    try {
-      const { error: metadataError } = await supabase
-        .from('workflow_files')
-        .upsert({
-          workflow_id: dbWorkflowId,
-          node_id: targetNodeId,
-          metadata: {
-            selected_sheet: sourceSheetName
-          },
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'workflow_id,node_id'
-        });
-        
-      if (metadataError) {
-        console.warn(`Error updating selected sheet for target node: ${metadataError.message}`);
-        // Non-fatal error, continue
-      }
-    } catch (metadataError) {
-      console.warn('Error updating selected sheet metadata:', metadataError);
-      // Non-fatal error, continue
-    }
-    
-    console.log(`Schema propagated successfully to ${targetNodeId} with sheet ${sourceSheetName}`);
+    console.log(`Schema propagated successfully to ${targetNodeId}`);
     return true;
   } catch (error) {
     console.error('Error in propagateSchema:', error);
@@ -446,90 +372,6 @@ export async function getNodeSelectedSheet(
     return metadata?.selected_sheet || null;
   } catch (error) {
     console.error('Error in getNodeSelectedSheet:', error);
-    return null;
-  }
-}
-
-/**
- * Find source nodes that are connected to the given node
- */
-export async function findSourceNodes(
-  workflowId: string,
-  targetNodeId: string
-): Promise<string[]> {
-  try {
-    // Check for temporary workflow ID and convert if needed
-    const dbWorkflowId = workflowId.startsWith('temp-')
-      ? workflowId.substring(5)
-      : workflowId;
-    
-    console.log(`Finding source nodes for target node ${targetNodeId} in workflow ${dbWorkflowId}`);
-    
-    const { data: edges, error } = await supabase
-      .from('workflow_edges')
-      .select('source_node_id')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('target_node_id', targetNodeId);
-      
-    if (error) {
-      console.error('Error finding source nodes:', error);
-      return [];
-    }
-    
-    if (!edges || edges.length === 0) {
-      console.log(`No source nodes found for target node ${targetNodeId}`);
-      return [];
-    }
-    
-    const sourceNodeIds = edges.map(edge => edge.source_node_id);
-    console.log(`Found source nodes for ${targetNodeId}: ${sourceNodeIds.join(', ')}`);
-    return sourceNodeIds;
-  } catch (error) {
-    console.error('Error in findSourceNodes:', error);
-    return [];
-  }
-}
-
-/**
- * Get file upload node source for the given target node
- */
-export async function getFileUploadSource(
-  workflowId: string,
-  targetNodeId: string
-): Promise<{ nodeId: string, selectedSheet: string | null } | null> {
-  try {
-    const sourceNodeIds = await findSourceNodes(workflowId, targetNodeId);
-    
-    if (sourceNodeIds.length === 0) {
-      return null;
-    }
-    
-    // Check for temporary workflow ID and convert if needed
-    const dbWorkflowId = workflowId.startsWith('temp-')
-      ? workflowId.substring(5)
-      : workflowId;
-    
-    // Find which source node is a file upload node (has a file associated)
-    for (const sourceNodeId of sourceNodeIds) {
-      const { data: workflowFile, error } = await supabase
-        .from('workflow_files')
-        .select('file_id, metadata')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', sourceNodeId)
-        .maybeSingle();
-        
-      if (!error && workflowFile && workflowFile.file_id) {
-        const metadata = workflowFile.metadata as FileMetadata | null;
-        return {
-          nodeId: sourceNodeId,
-          selectedSheet: metadata?.selected_sheet || null
-        };
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error in getFileUploadSource:', error);
     return null;
   }
 }

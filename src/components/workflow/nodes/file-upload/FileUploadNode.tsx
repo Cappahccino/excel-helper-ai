@@ -49,12 +49,12 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     formatFileSize,
     handleFileSelection,
     handleSheetSelection,
-    handleRetry,
-    propagateSchemaToConnectedNodes
+    handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
 
   return (
     <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>
+      <Handle type="target" position={Position.Top} id="in" />
       <Handle type="source" position={Position.Bottom} id="out" />
       
       <div className="flex items-center justify-between mb-3">
@@ -101,13 +101,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           <SheetSelector
             selectedSheet={selectedSheet}
             availableSheets={availableSheets}
-            onSheetSelect={(sheetName) => {
-              handleSheetSelection(sheetName);
-              // Propagate schema to connected nodes when sheet changes
-              if (nodeWorkflowId && selectedFileId) {
-                propagateSchemaToConnectedNodes(sheetName);
-              }
-            }}
+            onSheetSelect={handleSheetSelection}
           />
         )}
         
