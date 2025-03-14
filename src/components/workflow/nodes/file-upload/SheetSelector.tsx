@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { Table } from 'lucide-react';
+import { Table, AlertCircle, CheckCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -59,8 +59,32 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
 
   return (
     <div>
-      <Label htmlFor="sheetSelect" className="text-xs font-medium">
+      <Label htmlFor="sheetSelect" className="text-xs font-medium flex items-center">
         Select Sheet
+        {isLoading && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertCircle className="h-3.5 w-3.5 ml-1 text-amber-500 animate-pulse" />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Updating schema for this sheet...</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {selectedSheet && !isLoading && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <CheckCircle className="h-3.5 w-3.5 ml-1 text-green-500" />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Sheet selected and schema available</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </Label>
       <Select 
         value={selectedSheet} 

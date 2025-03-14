@@ -1,6 +1,7 @@
+
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileText, RefreshCw } from 'lucide-react';
+import { FileText, RefreshCw, FileBarChart2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { useFileUploadNode } from './useFileUploadNode';
@@ -9,6 +10,7 @@ import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
 import FileInfoDisplay from './FileInfoDisplay';
+import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 
 interface FileUploadNodeProps {
   id: string;
@@ -28,7 +30,7 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) => {
-  const { workflowId, propagateFileSchema, getEdges } = useWorkflow();
+  const { workflowId, executionId, propagateFileSchema, getEdges } = useWorkflow();
   const nodeWorkflowId = data.workflowId || workflowId;
   
   const {
@@ -50,6 +52,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     handleSheetSelection,
     handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
+
+  const [showLogs, setShowLogs] = React.useState(false);
 
   useEffect(() => {
     async function propagateSchemaToConnectedNodes() {
@@ -167,6 +171,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
           </Button>
+          
+          {executionId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setShowLogs(!showLogs)}
+            >
+              <FileBarChart2 className="h-3.5 w-3.5 text-gray-500" />
+            </Button>
+          )}
         </div>
       </div>
       
@@ -224,6 +239,15 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           </div>
         )}
       </div>
+      
+      {showLogs && executionId && (
+        <WorkflowLogPanel
+          workflowId={workflowId}
+          executionId={executionId}
+          selectedNodeId={id}
+          trigger={null}
+        />
+      )}
     </div>
   );
 };
