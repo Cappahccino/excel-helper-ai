@@ -74,9 +74,33 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
         
         for (const targetNodeId of connectedNodes) {
           console.log(`FileUploadNode ${id}: Propagating schema to node ${targetNodeId} with sheet ${selectedSheet}`);
+          
           try {
-            const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
-            console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} ${success ? 'succeeded' : 'failed'}`);
+            let success = false;
+            let attempts = 0;
+            const maxAttempts = 3;
+            
+            while (!success && attempts < maxAttempts) {
+              attempts++;
+              try {
+                success = await propagateFileSchema(id, targetNodeId, selectedSheet);
+                if (success) {
+                  console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} succeeded on attempt ${attempts}`);
+                  break;
+                } else {
+                  console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} failed on attempt ${attempts}, retrying...`);
+                  await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+                }
+              } catch (attemptError) {
+                console.error(`Error on propagation attempt ${attempts}:`, attemptError);
+                if (attempts >= maxAttempts) throw attemptError;
+                await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+              }
+            }
+            
+            if (!success) {
+              console.error(`FileUploadNode ${id}: Failed to propagate schema to ${targetNodeId} after ${maxAttempts} attempts`);
+            }
           } catch (propagationError) {
             console.error(`Error propagating schema to node ${targetNodeId}:`, propagationError);
           }

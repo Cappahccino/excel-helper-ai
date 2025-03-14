@@ -48,6 +48,11 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   }, [selectedSheet, availableSheets, onSheetSelect]);
 
   const handleSheetSelection = (value: string) => {
+    if (value === selectedSheet) {
+      console.log(`SheetSelector: Sheet ${value} already selected, skipping duplicate selection`);
+      return;
+    }
+    
     console.log(`SheetSelector: Selected sheet ${value}`);
     onSheetSelect(value);
   };
