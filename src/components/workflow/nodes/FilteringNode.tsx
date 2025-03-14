@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
   getNodeSchema, 
-  convertToSchemaColumns 
+  convertToSchemaColumns,
+  getNodeSelectedSheet
 } from '@/utils/fileSchemaUtils';
 import { 
   forceSchemaRefresh, 
@@ -77,6 +78,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingAttempts, setLoadingAttempts] = useState(0);
   const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
+  const [sourceNodeSheet, setSourceNodeSheet] = useState<string | null>(null);
   const [schemaSource, setSchemaSource] = useState<'direct' | 'source' | 'propagated' | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   
@@ -158,6 +160,18 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       if (sources.length > 0) {
         setSourceNodeId(sources[0]);
+        
+        if (workflow.workflowId) {
+          const sheet = await getNodeSelectedSheet(workflow.workflowId, sources[0]);
+          if (sheet) {
+            console.log(`Source node ${sources[0]} has selected sheet: ${sheet}`);
+            setSourceNodeSheet(sheet);
+          } else {
+            console.log(`Source node ${sources[0]} has no selected sheet, using default`);
+            setSourceNodeSheet('Sheet1');
+          }
+        }
+        
         return sources[0];
       }
       
@@ -206,17 +220,21 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return;
       }
       
-      console.log(`FilteringNode ${id}: Getting schema from source node ${sourceId}`);
+      const sheetName = sourceNodeSheet || 'Sheet1';
+      console.log(`FilteringNode ${id}: Getting schema from source node ${sourceId} for sheet ${sheetName}`);
       
-      const refreshedSchema = await forceSchemaRefresh(workflow.workflowId, sourceId);
+      const refreshedSchema = await forceSchemaRefresh(workflow.workflowId, sourceId, sheetName);
       
       if (refreshedSchema && refreshedSchema.length > 0) {
         console.log(`FilteringNode ${id}: Retrieved refreshed schema from source node:`, refreshedSchema);
         
-        const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id);
+        const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id, sheetName);
         
         if (propagated) {
-          const ownSchema = await getNodeSchema(workflow.workflowId, id, { forceRefresh: true });
+          const ownSchema = await getNodeSchema(workflow.workflowId, id, { 
+            forceRefresh: true,
+            sheetName 
+          });
           
           if (ownSchema && ownSchema.columns.length > 0) {
             const schemaColumns = convertToSchemaColumns(ownSchema);
@@ -240,7 +258,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       }
       
       const sourceSchema = await retryOperation(
-        () => getNodeSchema(workflow.workflowId, sourceId, { forceRefresh }),
+        () => getNodeSchema(workflow.workflowId, sourceId, { 
+          forceRefresh,
+          sheetName 
+        }),
         {
           maxRetries: 3,
           delay: 800,
@@ -253,10 +274,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       if (!sourceSchema || sourceSchema.columns.length === 0) {
         console.log(`FilteringNode ${id}: Attempting direct schema propagation from ${sourceId}`);
-        const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id);
+        const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id, sheetName);
         
         if (propagated) {
-          const propagatedSchema = await getNodeSchema(workflow.workflowId, id, { forceRefresh: true });
+          const propagatedSchema = await getNodeSchema(workflow.workflowId, id, { 
+            forceRefresh: true,
+            sheetName 
+          });
           
           if (propagatedSchema && propagatedSchema.columns.length > 0) {
             const schemaColumns = convertToSchemaColumns(propagatedSchema);
@@ -270,7 +294,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           }
         }
         
-        setLoadingError('No schema available from the connected node. Try refreshing or check that your source node has data.');
+        setLoadingError('No schema available from the connected node. Try refreshing or check that your source node has data and a sheet is selected.');
         setIsLoading(false);
         return;
       }
@@ -281,7 +305,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       setSchemaSource('source');
       
       if (!forceRefresh) {
-        propagateSchemaDirectly(workflow.workflowId, sourceId, id)
+        propagateSchemaDirectly(workflow.workflowId, sourceId, id, sheetName)
           .then(success => {
             if (success) {
               console.log(`Schema propagated from ${sourceId} to ${id}`);
@@ -306,6 +330,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     updateOperatorsForColumn, 
     validateConfiguration, 
     sourceNodeId,
+    sourceNodeSheet,
     findSourceNode
   ]);
 
@@ -327,6 +352,73 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       findSourceNode();
     }
   }, [workflow.workflowId, id, sourceNodeId, findSourceNode]);
+
+  useEffect(() => {
+    if (!workflow.workflowId || !id) return;
+    
+    console.log(`Setting up subscription to detect edges changes for node ${id}`);
+    
+    const channel = supabase
+      .channel(`edge_changes_${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workflow_edges',
+          filter: `target_node_id=eq.${id}`
+        },
+        (payload) => {
+          console.log(`Edge change detected for node ${id}:`, payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const sourceId = payload.new.source_node_id;
+            setSourceNodeId(sourceId);
+            findSourceNode().then(() => {
+              loadSchema(true);
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old.target_node_id === id) {
+            findSourceNode();
+          }
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [workflow.workflowId, id, findSourceNode, loadSchema]);
+
+  useEffect(() => {
+    if (!workflow.workflowId || !sourceNodeId) return;
+    
+    console.log(`Setting up subscription to detect schema changes for source node ${sourceNodeId}`);
+    
+    const dbWorkflowId = workflow.workflowId.startsWith('temp-')
+      ? workflow.workflowId.substring(5)
+      : workflow.workflowId;
+    
+    const channel = supabase
+      .channel(`schema_changes_${sourceNodeId}_${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workflow_file_schemas',
+          filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${sourceNodeId}`
+        },
+        (payload) => {
+          console.log(`Schema change detected for source node ${sourceNodeId}:`, payload);
+          loadSchema(true);
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [workflow.workflowId, sourceNodeId, id, loadSchema]);
 
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
@@ -414,6 +506,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                 {lastRefreshTime && (
                   <p className="text-xs text-gray-500">
                     Last refreshed: {lastRefreshTime.toLocaleTimeString()}
+                  </p>
+                )}
+                {sourceNodeSheet && (
+                  <p className="text-xs text-blue-500">
+                    Using sheet: {sourceNodeSheet}
                   </p>
                 )}
               </TooltipContent>

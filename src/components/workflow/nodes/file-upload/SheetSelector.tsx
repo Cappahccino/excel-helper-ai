@@ -30,6 +30,11 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
     return null;
   }
 
+  const handleSheetSelection = (value: string) => {
+    console.log(`SheetSelector: Selected sheet ${value}`);
+    onSheetSelect(value);
+  };
+
   return (
     <div>
       <Label htmlFor="sheetSelect" className="text-xs font-medium">
@@ -37,7 +42,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
       </Label>
       <Select 
         value={selectedSheet} 
-        onValueChange={onSheetSelect}
+        onValueChange={handleSheetSelection}
       >
         <SelectTrigger id="sheetSelect" className="mt-1">
           <SelectValue placeholder="Choose a sheet..." />

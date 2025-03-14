@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils/fileSchemaUtils';
@@ -27,17 +26,17 @@ export async function propagateSchemaDirectly(
   workflowId: string,
   sourceNodeId: string, 
   targetNodeId: string,
-  sheetName: string = 'Sheet1'
+  sheetName?: string
 ): Promise<boolean> {
   try {
-    console.log(`Direct schema propagation: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName}`);
+    console.log(`Direct schema propagation: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'not specified'}`);
     
     // Check for temporary workflow ID and convert if needed
     const dbWorkflowId = workflowId.startsWith('temp-')
       ? workflowId.substring(5)
       : workflowId;
     
-    // 1. First, get the selected sheet from the source node
+    // 1. First, get the selected sheet from the source node if not provided
     const { data: sourceNodeFile, error: sourceNodeError } = await supabase
       .from('workflow_files')
       .select('metadata')
@@ -45,9 +44,13 @@ export async function propagateSchemaDirectly(
       .eq('node_id', sourceNodeId)
       .maybeSingle();
       
+    if (sourceNodeError) {
+      console.error('Error fetching source node metadata:', sourceNodeError);
+    }
+    
     // Use the provided sheet name or get it from the source node's metadata
     const metadata = sourceNodeFile?.metadata as FileMetadata | null;
-    const effectiveSheetName = metadata?.selected_sheet || sheetName;
+    const effectiveSheetName = sheetName || metadata?.selected_sheet || 'Sheet1';
     
     console.log(`Using effective sheet name: ${effectiveSheetName}`);
     
@@ -74,6 +77,8 @@ export async function propagateSchemaDirectly(
           console.log(`No schema found for source node ${sourceNodeId}, sheet ${effectiveSheetName}`);
           return false;
         }
+        
+        console.log(`Found schema for source node ${sourceNodeId}, sheet ${effectiveSheetName}:`, response.data.columns.slice(0, 5));
         
         // 3. Now propagate to the target node
         const targetResponse = await supabase
@@ -109,13 +114,15 @@ export async function propagateSchemaDirectly(
         // Update the selected sheet in the target node's metadata
         const { error: updateError } = await supabase
           .from('workflow_files')
-          .update({
+          .upsert({
+            workflow_id: dbWorkflowId,
+            node_id: targetNodeId,
             metadata: {
               selected_sheet: effectiveSheetName
             }
-          })
-          .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', targetNodeId);
+          }, {
+            onConflict: 'workflow_id,node_id'
+          });
           
         if (updateError) {
           console.warn('Could not update target node selected sheet:', updateError);

@@ -1,10 +1,10 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
+import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 
 // Interface for sheet metadata
 interface SheetMetadata {
@@ -515,19 +515,77 @@ export const useFileUploadNode = (
     }
   };
 
-  // Handle sheet selection
+  // Handle sheet selection with schema propagation
   const handleSheetSelection = async (sheetName: string) => {
     if (!workflowId || !nodeId) return;
     
     console.log(`Selecting sheet: ${sheetName}`);
     setSelectedSheet(sheetName);
     
-    // Update node configuration
-    if (onChange) {
-      onChange(nodeId, { 
-        ...config,
-        selectedSheet: sheetName
-      });
+    try {
+      // Update node configuration
+      if (onChange) {
+        onChange(nodeId, { 
+          ...config,
+          selectedSheet: sheetName
+        });
+      }
+      
+      // Update the selected sheet in the database
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      const { error: updateError } = await supabase
+        .from('workflow_files')
+        .update({
+          metadata: {
+            selected_sheet: sheetName
+          }
+        })
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId);
+        
+      if (updateError) {
+        console.error('Error updating selected sheet in database:', updateError);
+        // Non-critical, continue
+      } else {
+        console.log(`Successfully updated selected sheet to ${sheetName} in database for node ${nodeId}`);
+      }
+      
+      // If the file is already processed, trigger schema propagation to connected nodes
+      if (processingState.status === FileProcessingState.Completed && selectedFileId) {
+        console.log(`Attempting to propagate schema for newly selected sheet ${sheetName}`);
+        
+        // Get edges to find connected nodes
+        const { data: edges, error: edgesError } = await supabase
+          .from('workflow_edges')
+          .select('target_node_id')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('source_node_id', nodeId);
+          
+        if (edgesError) {
+          console.error('Error fetching edges:', edgesError);
+        } else if (edges && edges.length > 0) {
+          console.log(`Found ${edges.length} connected nodes to propagate schema to`);
+          
+          // Propagate schema to each connected node
+          for (const edge of edges) {
+            const targetNodeId = edge.target_node_id;
+            console.log(`Propagating schema to node ${targetNodeId}`);
+            
+            try {
+              const success = await propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName);
+              console.log(`Schema propagation to ${targetNodeId} ${success ? 'succeeded' : 'failed'}`);
+            } catch (propagateError) {
+              console.error(`Error propagating schema to node ${targetNodeId}:`, propagateError);
+            }
+          }
+        } else {
+          console.log('No connected nodes found to propagate schema to');
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleSheetSelection:', error);
+      toast.error('Failed to update sheet selection');
     }
   };
 

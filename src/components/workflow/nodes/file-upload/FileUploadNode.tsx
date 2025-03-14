@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileText, Badge, RefreshCw } from 'lucide-react';
+import { FileText, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { useFileUploadNode } from './useFileUploadNode';
@@ -29,7 +29,7 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) => {
-  const { workflowId } = useWorkflow();
+  const { workflowId, propagateFileSchema, getEdges } = useWorkflow();
   const nodeWorkflowId = data.workflowId || workflowId;
   
   const {
@@ -51,6 +51,43 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     handleSheetSelection,
     handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
+
+  // When sheet is selected or changes, propagate schema to all connected nodes
+  useEffect(() => {
+    async function propagateSchemaToConnectedNodes() {
+      if (!workflowId || !selectedSheet || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
+        return;
+      }
+
+      try {
+        console.log(`FileUploadNode ${id}: Propagating schema with sheet ${selectedSheet} to connected nodes`);
+        
+        // Get all connected nodes
+        const edges = await getEdges(workflowId);
+        const connectedNodes = edges
+          .filter(edge => edge.source === id)
+          .map(edge => edge.target);
+
+        if (connectedNodes.length === 0) {
+          console.log(`FileUploadNode ${id}: No connected nodes found to propagate schema to`);
+          return;
+        }
+
+        console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
+        
+        // Propagate schema to each connected node
+        for (const targetNodeId of connectedNodes) {
+          console.log(`FileUploadNode ${id}: Propagating schema to node ${targetNodeId} with sheet ${selectedSheet}`);
+          const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
+          console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} ${success ? 'succeeded' : 'failed'}`);
+        }
+      } catch (error) {
+        console.error(`FileUploadNode ${id}: Error propagating schema to connected nodes:`, error);
+      }
+    }
+
+    propagateSchemaToConnectedNodes();
+  }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
 
   return (
     <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>
