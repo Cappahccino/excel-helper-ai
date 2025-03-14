@@ -105,10 +105,12 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}, sheet ${sheetName || 'default'}`);
       
-      // Fix here: getNodeSchema expects only nodeId and options object
-      return await getNodeSchema(dbWorkflowId, nodeId, { 
+      // getNodeSchema expects workflowId, nodeId, and options
+      const schema = await getNodeSchema(dbWorkflowId, nodeId, { 
         sheetName: sheetName || 'Sheet1' 
       });
+      
+      return schema;
     } catch (err) {
       console.error('Error getting file schema:', err);
       return null;
@@ -121,7 +123,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // Fix here: getNodeSheets function expects only the workflowId and nodeId
+      // getNodeSheets expects workflowId and nodeId
       return await getNodeSheets(dbWorkflowId, nodeId);
     } catch (err) {
       console.error('Error getting node sheets:', err);
@@ -135,7 +137,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // Fix here: setNodeSelectedSheet expects only two arguments - workflowId and nodeId
+      // setNodeSelectedSheet expects workflowId, nodeId, and sheetName
       return await setNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
     } catch (err) {
       console.error('Error setting selected sheet:', err);
