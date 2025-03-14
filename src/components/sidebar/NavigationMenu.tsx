@@ -29,7 +29,7 @@ const workspaceNavLinks = [
   },
   {
     label: "Create Workflow",
-    href: "/canvas",
+    href: "/canvas/new",
     icon: <FilePlus className="h-4 w-4 text-gray-600" />,
   },
   {
