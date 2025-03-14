@@ -217,6 +217,7 @@ export interface FileUploadNodeData extends BaseNodeData {
     filename?: string;
     hasHeaders?: boolean;
     delimiter?: string;
+    selectedSheet?: string;
   };
   onChange?: (nodeId: string, config: any) => void;
   workflowId?: string;
