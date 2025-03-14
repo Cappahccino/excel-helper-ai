@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw } from 'lucide-react';
@@ -52,7 +51,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
 
-  // When sheet is selected or changes, propagate schema to all connected nodes
   useEffect(() => {
     async function propagateSchemaToConnectedNodes() {
       if (!workflowId || !selectedSheet || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
@@ -62,7 +60,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       try {
         console.log(`FileUploadNode ${id}: Propagating schema with sheet ${selectedSheet} to connected nodes`);
         
-        // Get all connected nodes
         const edges = await getEdges(workflowId);
         const connectedNodes = edges
           .filter(edge => edge.source === id)
@@ -75,11 +72,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
 
         console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
         
-        // Propagate schema to each connected node
         for (const targetNodeId of connectedNodes) {
           console.log(`FileUploadNode ${id}: Propagating schema to node ${targetNodeId} with sheet ${selectedSheet}`);
-          const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
-          console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} ${success ? 'succeeded' : 'failed'}`);
+          try {
+            const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
+            console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} ${success ? 'succeeded' : 'failed'}`);
+          } catch (propagationError) {
+            console.error(`Error propagating schema to node ${targetNodeId}:`, propagationError);
+          }
         }
       } catch (error) {
         console.error(`FileUploadNode ${id}: Error propagating schema to connected nodes:`, error);
@@ -87,6 +87,30 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     }
 
     propagateSchemaToConnectedNodes();
+  }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
+
+  useEffect(() => {
+    if (!workflowId) return;
+    
+    const handleEdgeChanges = async () => {
+      if (!selectedSheet || !selectedFileId || processingState.status !== FileProcessingState.Completed) return;
+      
+      try {
+        const edges = await getEdges(workflowId);
+        const connectedNodes = edges
+          .filter(edge => edge.source === id)
+          .map(edge => edge.target);
+          
+        for (const targetNodeId of connectedNodes) {
+          await propagateFileSchema(id, targetNodeId, selectedSheet);
+        }
+      } catch (error) {
+        console.error(`Error handling edge changes:`, error);
+      }
+    };
+    
+    return () => {
+    };
   }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
 
   return (
@@ -133,12 +157,12 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
                    processingState.status !== FileProcessingState.Error}
         />
         
-        {/* Sheet selector - Show only when file is processed successfully */}
         {selectedFileId && processingState.status === FileProcessingState.Completed && availableSheets.length > 0 && (
           <SheetSelector
             selectedSheet={selectedSheet}
             availableSheets={availableSheets}
             onSheetSelect={handleSheetSelection}
+            isLoading={isLoadingSheetSchema}
           />
         )}
         

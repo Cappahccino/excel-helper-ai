@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   getNodeSchema, 
   convertToSchemaColumns,
@@ -683,3 +684,4 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
 };
 
 export default FilteringNode;
+
