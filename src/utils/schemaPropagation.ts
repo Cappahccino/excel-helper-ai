@@ -8,6 +8,14 @@ import { retryOperation } from '@/utils/retryUtils';
 // Type definition for metadata
 interface FileMetadata {
   selected_sheet?: string;
+  sheets?: Array<{
+    name: string;
+    index: number;
+    row_count?: number;
+    rowCount?: number;
+    is_default?: boolean;
+    isDefault?: boolean;
+  }>;
   [key: string]: any;
 }
 

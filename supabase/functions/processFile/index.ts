@@ -85,50 +85,58 @@ async function processSheetSchema(
   sampleData: Record<string, any[]>,
   rowCount: number
 }> {
-  // Get the worksheet
-  const worksheet = workbook.Sheets[sheetName];
-  
-  // Convert worksheet to JSON
-  const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-  
-  // Get total rows and prepare result structure
-  const rowCount = data.length > 0 ? data.length - 1 : 0;
-  const columns: string[] = [];
-  const columnTypes: Record<string, string> = {};
-  const sampleData: Record<string, any[]> = {};
-  
-  if (data.length > 0) {
-    const headers = data[0];
-    
-    // Process each column
-    for (let colIndex = 0; colIndex < headers.length; colIndex++) {
-      // Ensure header is a string and handle empty/null headers
-      const header = headers[colIndex] ? String(headers[colIndex]) : `Column ${colIndex + 1}`;
-      columns.push(header);
-      
-      // Get sample values from first 10 rows (or all rows if fewer)
-      const sampleValues = [];
-      for (let rowIndex = 1; rowIndex < Math.min(data.length, 11); rowIndex++) {
-        if (data[rowIndex] && data[rowIndex][colIndex] !== undefined) {
-          sampleValues.push(data[rowIndex][colIndex]);
-        }
-      }
-      
-      // Detect column type and store sample data
-      const type = detectColumnType(sampleValues);
-      columnTypes[header] = type;
-      sampleData[header] = sampleValues;
+  try {
+    // Get the worksheet
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) {
+      throw new Error(`Worksheet '${sheetName}' not found in workbook`);
     }
+    
+    // Convert worksheet to JSON
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    // Get total rows and prepare result structure
+    const rowCount = data.length > 0 ? data.length - 1 : 0;
+    const columns: string[] = [];
+    const columnTypes: Record<string, string> = {};
+    const sampleData: Record<string, any[]> = {};
+    
+    if (data.length > 0) {
+      const headers = data[0];
+      
+      // Process each column
+      for (let colIndex = 0; colIndex < headers.length; colIndex++) {
+        // Ensure header is a string and handle empty/null headers
+        const header = headers[colIndex] ? String(headers[colIndex]) : `Column ${colIndex + 1}`;
+        columns.push(header);
+        
+        // Get sample values from first 10 rows (or all rows if fewer)
+        const sampleValues = [];
+        for (let rowIndex = 1; rowIndex < Math.min(data.length, 11); rowIndex++) {
+          if (data[rowIndex] && data[rowIndex][colIndex] !== undefined) {
+            sampleValues.push(data[rowIndex][colIndex]);
+          }
+        }
+        
+        // Detect column type and store sample data
+        const type = detectColumnType(sampleValues);
+        columnTypes[header] = type;
+        sampleData[header] = sampleValues;
+      }
+    }
+    
+    return {
+      name: sheetName,
+      index: sheetIndex,
+      columns,
+      columnTypes,
+      sampleData,
+      rowCount
+    };
+  } catch (error) {
+    console.error(`Error processing sheet ${sheetName}:`, error);
+    throw error;
   }
-  
-  return {
-    name: sheetName,
-    index: sheetIndex,
-    columns,
-    columnTypes,
-    sampleData,
-    rowCount
-  };
 }
 
 // Server function to handle file processing
@@ -172,8 +180,14 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
       
     if (fileError) {
       console.error('Error fetching file info:', fileError);
-      throw fileError;
+      throw new Error(`File information not found: ${fileError.message}`);
     }
+    
+    if (!fileInfo || !fileInfo.file_path) {
+      throw new Error('File path is missing or invalid');
+    }
+    
+    console.log(`Downloading file from path: ${fileInfo.file_path}`);
     
     // Download file from storage
     const { data: fileData, error: downloadError } = await supabaseAdmin
@@ -183,7 +197,11 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
       
     if (downloadError) {
       console.error('Error downloading file:', downloadError);
-      throw downloadError;
+      throw new Error(`Failed to download file: ${downloadError.message}`);
+    }
+    
+    if (!fileData) {
+      throw new Error('Downloaded file data is empty or invalid');
     }
     
     // Process file based on mime type
@@ -198,12 +216,16 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
     const buffer = await fileData.arrayBuffer();
     
     try {
+      console.log('Reading workbook with XLSX...');
+      
       // Read the workbook using XLSX
       const workbook = XLSX.read(new Uint8Array(buffer), { 
         type: 'array',
         cellDates: true,
         cellNF: true
       });
+      
+      console.log(`Workbook read successfully. Sheets found: ${workbook.SheetNames.join(', ')}`);
       
       // Store sheet information
       dataSummary.numSheets = workbook.SheetNames.length;
@@ -218,6 +240,8 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
         throw new Error(`Requested sheet "${requestedSheetName}" not found in the workbook`);
       }
       
+      console.log(`Processing sheets: ${sheetsToProcess.join(', ')}`);
+      
       // Process each sheet
       for (let i = 0; i < sheetsToProcess.length; i++) {
         const sheetName = sheetsToProcess[i];
@@ -225,6 +249,7 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
         
         if (sheetIndex === -1) continue; // Skip if sheet not found (shouldn't happen)
         
+        console.log(`Processing sheet: ${sheetName} (index: ${sheetIndex})`);
         const sheetData = await processSheetSchema(workbook, sheetName, sheetIndex);
         sheetsData.push(sheetData);
         
@@ -251,6 +276,8 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
         is_default: sheet.name === defaultSheet
       }));
       
+      console.log(`Creating/updating file metadata for ${sheetsMetadata.length} sheets`);
+      
       // Create or update file metadata - using proper upsert with the new constraint
       const { data: metadata, error: metadataError } = await supabaseAdmin
         .from('file_metadata')
@@ -268,8 +295,10 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
       
       if (metadataError) {
         console.error('Error updating file metadata:', metadataError);
-        throw metadataError;
+        throw new Error(`Failed to update file metadata: ${metadataError.message}`);
       }
+      
+      console.log(`Updating workflow_files with sheet information`);
       
       // Update workflow_files with sheet information
       const { error: workflowUpdateError } = await supabaseAdmin
@@ -294,8 +323,10 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
         
       if (workflowUpdateError) {
         console.error('Error updating workflow file with sheets:', workflowUpdateError);
-        throw workflowUpdateError;
+        throw new Error(`Failed to update workflow file data: ${workflowUpdateError.message}`);
       }
+      
+      console.log(`Creating/updating schema for ${sheetsData.length} sheets`);
       
       // For each sheet, create or update workflow_file_schemas
       for (const sheetData of sheetsData) {
@@ -323,9 +354,11 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
           
         if (schemaError) {
           console.error(`Error creating workflow file schema for sheet ${sheetData.name}:`, schemaError);
-          throw schemaError;
+          throw new Error(`Failed to create schema for sheet ${sheetData.name}: ${schemaError.message}`);
         }
       }
+      
+      console.log('File processing completed successfully');
       
       return { 
         success: true, 
@@ -382,7 +415,18 @@ Deno.serve(async (req) => {
 
   try {
     // Get request body
-    const { fileId, workflowId, nodeId, sheetName } = await req.json();
+    let requestData;
+    try {
+      requestData = await req.json();
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid request data format' }),
+        { headers: corsHeaders, status: 400 }
+      );
+    }
+    
+    const { fileId, workflowId, nodeId, sheetName } = requestData;
     
     // Validate required parameters
     if (!fileId) {
@@ -405,6 +449,8 @@ Deno.serve(async (req) => {
         { headers: corsHeaders, status: 400 }
       );
     }
+    
+    console.log(`Processing file: ${fileId}, workflow: ${workflowId}, node: ${nodeId}, sheet: ${sheetName || 'default'}`);
     
     // Process the file, optionally with a specific sheet
     const result = await processFile(fileId, workflowId, nodeId, sheetName);
