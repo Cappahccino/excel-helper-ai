@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -869,4 +870,70 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
                 {availableSheets.map((sheet) => (
                   <SelectItem key={sheet.index} value={sheet.name}>
                     <div className="flex items-center gap-2">
-                      <Table className="h-3.5 w-3.5 flex-shrink
+                      <Table className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate max-w-[180px]">{sheet.name}</span>
+                      {sheet.rowCount > 0 && (
+                        <span className="text-xs text-gray-500">({sheet.rowCount} rows)</span>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
+        {renderProcessingStatus()}
+        
+        {selectedFileId && fileInfo && processingState.status === FileProcessingState.Completed && !isLoadingSelectedFile && (
+          <div className="bg-gray-50 p-2 rounded-md border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="h-4 w-4 text-gray-500" />
+              <h4 className="font-medium text-xs truncate">{fileInfo.filename}</h4>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+              <div className="flex items-center gap-1">
+                <Upload className="h-3 w-3" />
+                <span>{formatFileSize(fileInfo.file_size || 0)}</span>
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <Database className="h-3 w-3" />
+                <span>
+                  {fileInfo.file_metadata?.row_count 
+                    ? `${fileInfo.file_metadata.row_count} rows` 
+                    : 'Unknown size'}
+                </span>
+              </div>
+            </div>
+            
+            {fileInfo.processing_status !== 'completed' && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-amber-600">
+                <Info className="h-3 w-3" />
+                <span>Status: {fileInfo.processing_status}</span>
+              </div>
+            )}
+            
+            {getSchemaInfo()}
+          </div>
+        )}
+        
+        {!selectedFileId && !isLoadingFiles && (
+          <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-700 border border-blue-100">
+            <p>Select a file to use in this workflow. You can upload files in the Files section.</p>
+          </div>
+        )}
+        
+        {workflowId && (
+          <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
+            {workflowId.startsWith('temp-') ? 'Temporary workflow: ' : 'Workflow: '}
+            {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default FileUploadNode;
