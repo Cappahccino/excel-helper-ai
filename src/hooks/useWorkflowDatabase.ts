@@ -166,6 +166,11 @@ export function useWorkflowDatabase(
         }),
         user_id: userId,
         created_by: userId,
+        status: 'draft',
+        trigger_type: 'manual',
+        version: 1,
+        is_temporary: workflowId?.startsWith('temp-') || false,
+        is_template: false
       };
       
       let response;
@@ -216,7 +221,10 @@ export function useWorkflowDatabase(
         }
       }
       
-      if (response && response.error) throw response.error;
+      if (response && response.error) {
+        console.error('Error details:', response.error);
+        throw response.error;
+      }
       
       toast.success('Workflow saved successfully');
       
