@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -5,6 +6,7 @@ import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client'
 import { FileProcessingState } from '@/types/workflowStatus';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { getNodeSchema } from '@/utils/fileSchemaUtils';
 
 interface SheetMetadata {
   name: string;
@@ -44,6 +46,7 @@ export const useFileUploadNode = (
   const [fileInfo, setFileInfo] = useState<any>(null);
   const [realtimeEnabled, setRealtimeEnabled] = useState(false);
   const [connectedNodes, setConnectedNodes] = useState<string[]>([]);
+  const [lastSchemaUpdate, setLastSchemaUpdate] = useState<number>(0);
 
   const updateProcessingState = useCallback((
     status: FileProcessingState, 
@@ -102,28 +105,27 @@ export const useFileUploadNode = (
   });
 
   const { data: sheetSchema, isLoading: isLoadingSheetSchema } = useQuery({
-    queryKey: ['sheet-schema', workflowId, nodeId, selectedSheet],
+    queryKey: ['sheet-schema', workflowId, nodeId, selectedSheet, lastSchemaUpdate],
     queryFn: async () => {
       if (!workflowId || !nodeId || !selectedSheet) return null;
       
       setIsLoadingSchema(true);
       try {
+        console.log(`Fetching schema for node ${nodeId}, sheet: ${selectedSheet}`);
         const dbWorkflowId = convertToDbWorkflowId(workflowId);
         
-        const { data, error } = await supabase
-          .from('workflow_file_schemas')
-          .select('columns, data_types, sample_data')
-          .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', nodeId)
-          .eq('sheet_name', selectedSheet)
-          .maybeSingle();
-          
-        if (error) {
-          console.error('Error fetching sheet schema:', error);
+        // Use our enhanced getNodeSchema function that properly handles sheets
+        const schema = await getNodeSchema(dbWorkflowId, nodeId, { 
+          sheetName: selectedSheet,
+          forceRefresh: true
+        });
+        
+        if (!schema) {
+          console.warn(`No schema found for node ${nodeId}, sheet ${selectedSheet}`);
           return null;
         }
         
-        return data;
+        return schema;
       } catch (error) {
         console.error('Error in sheet schema query:', error);
         return null;
@@ -164,32 +166,64 @@ export const useFileUploadNode = (
       console.error('Error in fetchConnectedNodes:', error);
     }
   }, [workflowId, nodeId]);
-
+  
   const propagateSchemaToConnectedNodes = useCallback(async (sheetName: string) => {
     if (!workflowId || !nodeId || connectedNodes.length === 0) return;
     
     try {
-      console.log(`Propagating schema from ${nodeId} to ${connectedNodes.length} connected nodes`);
+      console.log(`Propagating schema from ${nodeId} to ${connectedNodes.length} connected nodes, sheet: ${sheetName}`);
       toast.info(`Propagating schema to ${connectedNodes.length} connected node(s)...`);
       
-      const results = await Promise.all(
-        connectedNodes.map(targetNodeId => 
-          propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName)
-        )
-      );
+      let successCount = 0;
+      let failedNodes: string[] = [];
       
-      const successCount = results.filter(Boolean).length;
-      if (successCount > 0) {
-        toast.success(`Schema propagated to ${successCount} node(s)`);
-      } else if (results.length > 0) {
-        toast.error('Failed to propagate schema');
+      for (const targetNodeId of connectedNodes) {
+        // Try up to 3 times with exponential backoff
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            console.log(`Propagating schema to ${targetNodeId}, attempt ${attempt + 1}`);
+            const success = await propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName);
+            
+            if (success) {
+              successCount++;
+              console.log(`Successfully propagated schema to ${targetNodeId}`);
+              break; // Exit retry loop on success
+            } else if (attempt < 2) {
+              // Wait before retrying
+              await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt)));
+            } else {
+              failedNodes.push(targetNodeId);
+            }
+          } catch (err) {
+            console.error(`Error propagating schema to ${targetNodeId}:`, err);
+            if (attempt === 2) {
+              failedNodes.push(targetNodeId);
+            }
+          }
+        }
       }
+      
+      if (successCount > 0) {
+        if (failedNodes.length === 0) {
+          toast.success(`Schema propagated to all ${successCount} node(s)`);
+        } else {
+          toast.success(`Schema propagated to ${successCount}/${connectedNodes.length} node(s)`);
+          console.warn(`Failed to propagate schema to nodes: ${failedNodes.join(', ')}`);
+        }
+      } else {
+        toast.error('Failed to propagate schema to connected nodes');
+      }
+      
+      // Update timestamp to refresh subscribed components
+      setLastSchemaUpdate(Date.now());
+      
     } catch (error) {
       console.error('Error propagating schema:', error);
       toast.error('Error propagating schema to connected nodes');
     }
   }, [workflowId, nodeId, connectedNodes]);
 
+  // Set up real-time subscription for file status updates
   useEffect(() => {
     if (!workflowId || !selectedFileId || !nodeId) return;
     
@@ -215,6 +249,15 @@ export const useFileUploadNode = (
           if (processingStatus === WorkflowFileStatus.Completed) {
             updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
             refetch();
+            
+            // Check if we need to propagate schema after file processing completes
+            if (connectedNodes.length > 0 && selectedSheet) {
+              // Add a small delay to ensure the schema is ready
+              setTimeout(() => {
+                propagateSchemaToConnectedNodes(selectedSheet);
+              }, 500);
+            }
+            
           } else if (processingStatus === WorkflowFileStatus.Processing) {
             updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
           } else if (processingStatus === WorkflowFileStatus.Failed || 
@@ -238,14 +281,16 @@ export const useFileUploadNode = (
       console.log('Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
-  }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetch]);
+  }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetch, propagateSchemaToConnectedNodes, connectedNodes, selectedSheet]);
 
+  // Fetch connected nodes when workflow or node changes
   useEffect(() => {
     if (workflowId && nodeId) {
       fetchConnectedNodes();
     }
   }, [workflowId, nodeId, fetchConnectedNodes]);
 
+  // Process sheet information from file metadata
   useEffect(() => {
     if (selectedFile?.file_metadata) {
       const metadata = selectedFile.file_metadata;
@@ -278,6 +323,7 @@ export const useFileUploadNode = (
     }
   }, [selectedFile, selectedSheet, nodeId, config, onChange]);
 
+  // Update processing state based on file information
   useEffect(() => {
     if (selectedFile) {
       setFileInfo(selectedFile);
@@ -302,6 +348,7 @@ export const useFileUploadNode = (
     }
   }, [selectedFile, updateProcessingState]);
 
+  // Propagate schema to connected nodes when file processing completes
   useEffect(() => {
     if (
       processingState.status === FileProcessingState.Completed &&
@@ -563,6 +610,14 @@ export const useFileUploadNode = (
         ...config,
         selectedSheet: sheetName
       });
+    }
+    
+    // Automatically propagate schema when a sheet is selected
+    if (connectedNodes.length > 0) {
+      // Add a small delay to ensure state updates
+      setTimeout(() => {
+        propagateSchemaToConnectedNodes(sheetName);
+      }, 300);
     }
   };
 

@@ -104,7 +104,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
             onSheetSelect={(sheetName) => {
               handleSheetSelection(sheetName);
               // Propagate schema to connected nodes when sheet changes
-              if (nodeWorkflowId) {
+              if (nodeWorkflowId && selectedFileId) {
                 propagateSchemaToConnectedNodes(sheetName);
               }
             }}
