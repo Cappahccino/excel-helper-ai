@@ -39,10 +39,15 @@ const Canvas = () => {
   const [isAddingNode, setIsAddingNode] = useState<boolean>(false);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  
+  // Determine if we need a new temp ID or to use an existing one
+  const isNewWorkflow = workflowId === 'new';
+  const isTemporaryWorkflow = workflowId && workflowId.startsWith('temp-');
   
   const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
-    workflowId === 'new' ? null : workflowId,
-    workflowId === 'new' || (workflowId && workflowId.startsWith('temp-'))
+    isNewWorkflow ? null : workflowId,
+    isNewWorkflow || isTemporaryWorkflow
   );
   
   const {
@@ -127,14 +132,25 @@ const Canvas = () => {
   }, [saveWorkflowToDb, nodes, edges]);
 
   useEffect(() => {
-    if (workflowId && workflowId !== 'new') {
-      if (workflowId.startsWith('temp-')) {
-        console.log('Loading workflow with temporary ID:', workflowId);
-      } else {
-        loadWorkflow(workflowId, setNodes, setEdges);
-      }
+    // Skip loading if we're on the "new" workflow page
+    if (isNewWorkflow) {
+      setIsInitialized(true);
+      return;
     }
-  }, [workflowId, loadWorkflow]);
+    
+    // Skip loading for temporary IDs until they're properly initialized in the DB
+    if (isTemporaryWorkflow && !isInitialized) {
+      const checkInitTimer = setTimeout(() => {
+        setIsInitialized(true);
+      }, 1500);
+      return () => clearTimeout(checkInitTimer);
+    }
+    
+    // Load existing workflow when ID is available and not temporary
+    if (workflowId && !isNewWorkflow && isInitialized) {
+      loadWorkflow(workflowId, setNodes, setEdges);
+    }
+  }, [workflowId, loadWorkflow, isInitialized, isNewWorkflow, isTemporaryWorkflow]);
 
   const getNodeSchemaAdapter = useCallback((nodeId: string): SchemaColumn[] => {
     return getNodeSchema(nodeId) || [];

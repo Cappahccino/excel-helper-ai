@@ -45,23 +45,59 @@ export function useTemporaryId(
         }
       }
       
-      // Generate a new temporary ID
-      const newId = `temp-${uuidv4()}`;
-      if (typeof window !== 'undefined') {
-        try {
-          sessionStorage.setItem(`temp_${key}`, newId);
-        } catch (err) {
-          console.error('Failed to store temporary ID in session storage:', err);
-        }
-      }
-      console.log(`Generated new temporary ID: ${newId}`);
-      return newId;
+      // Generate a new unique temporary ID
+      return generateUniqueId(key);
     } catch (error) {
       console.error('Error initializing temporary ID:', error);
       // Fallback to a new ID if anything fails
-      return `temp-${uuidv4()}`;
+      return generateUniqueId(key);
     }
   });
+
+  /**
+   * Generate a unique ID that's guaranteed not to conflict with existing IDs
+   */
+  function generateUniqueId(keyPrefix: string): string {
+    const newId = `temp-${uuidv4()}`;
+    
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(`temp_${keyPrefix}`, newId);
+      } catch (err) {
+        console.error('Failed to store temporary ID in session storage:', err);
+      }
+    }
+    
+    console.log(`Generated new temporary ID: ${newId}`);
+    return newId;
+  }
+
+  /**
+   * Verify if a temporary ID already exists in the database
+   */
+  async function checkIdExists(tempId: string): Promise<boolean> {
+    if (!tempId.startsWith('temp-')) return false;
+    
+    try {
+      const dbId = convertToDbWorkflowId(tempId);
+      
+      const { data, error } = await supabase
+        .from('workflows')
+        .select('id')
+        .eq('id', dbId)
+        .limit(1);
+        
+      if (error) {
+        console.error('Error checking if ID exists:', error);
+        return false;
+      }
+      
+      return data && data.length > 0;
+    } catch (err) {
+      console.error('Error in checkIdExists:', err);
+      return false;
+    }
+  }
 
   // For workflows, ensure the temp ID exists in the database immediately
   useEffect(() => {
@@ -107,8 +143,7 @@ export function useTemporaryId(
           .from('workflows')
           .select('id')
           .eq('id', tempUuid)
-          .eq('is_temporary', true)
-          .maybeSingle();
+          .limit(1);
           
         if (checkError) {
           console.error('Error checking for existing temporary workflow:', checkError);
@@ -128,7 +163,28 @@ export function useTemporaryId(
           }
         }
         
-        if (!existingWorkflow) {
+        // If ID already exists but is another user's workflow, generate a new ID
+        if (existingWorkflow && existingWorkflow.length > 0) {
+          console.log(`ID ${tempUuid} already exists in database, checking if it belongs to current user`);
+          
+          const { data: workflowData } = await supabase
+            .from('workflows')
+            .select('created_by')
+            .eq('id', tempUuid)
+            .single();
+            
+          if (workflowData && workflowData.created_by !== user.id) {
+            console.log(`ID conflict: generating new temporary ID to avoid collision`);
+            const newId = generateUniqueId(key);
+            setIdState(newId);
+            syncInProgress.current = false;
+            // Don't set isDbSynced = true here, let the effect run again with the new ID
+            return;
+          } else {
+            console.log(`Found existing temporary workflow in database: ${id}`);
+            setIsDbSynced(true);
+          }
+        } else {
           console.log(`Creating new temporary workflow in database: ${id}`);
           
           // Create the temporary workflow entry
@@ -145,23 +201,30 @@ export function useTemporaryId(
             });
             
           if (createError) {
-            console.error('Error creating temporary workflow:', createError);
-            
-            // Only retry if we haven't exceeded max attempts
-            if (initAttempts.current < maxInitAttempts) {
-              setTimeout(() => {
-                syncInProgress.current = false;
-                syncTempIdWithDatabase();
-              }, 1000 * initAttempts.current);
+            // If creation fails due to uniqueness constraint
+            if (createError.code === '23505') { // UNIQUE VIOLATION
+              console.log(`Uniqueness violation: generating new temporary ID`);
+              const newId = generateUniqueId(key);
+              setIdState(newId);
+              syncInProgress.current = false;
+              // Don't set isDbSynced = true here, let the effect run again with the new ID
               return;
+            } else {
+              console.error('Error creating temporary workflow:', createError);
+              
+              // Only retry if we haven't exceeded max attempts
+              if (initAttempts.current < maxInitAttempts) {
+                setTimeout(() => {
+                  syncInProgress.current = false;
+                  syncTempIdWithDatabase();
+                }, 1000 * initAttempts.current);
+                return;
+              }
             }
           } else {
             console.log(`Successfully created temporary workflow in database: ${id}`);
             setIsDbSynced(true);
           }
-        } else {
-          console.log(`Found existing temporary workflow in database: ${id}`);
-          setIsDbSynced(true);
         }
         
         setIsInitialized(true);
@@ -178,7 +241,7 @@ export function useTemporaryId(
   }, [id, key, isDbSynced]);
 
   // Custom setter that updates both state and session storage
-  const setId = useCallback((newId: string | null) => {
+  const setId = useCallback(async (newId: string | null) => {
     try {
       if (newId) {
         // Ensure temp IDs have the proper prefix
@@ -186,26 +249,42 @@ export function useTemporaryId(
           ? `temp-${newId}` 
           : newId;
         
-        setIdState(formattedId);
-        
-        // Only store in session if it's a temporary ID
-        if (isTemporaryWorkflowId(formattedId) && typeof window !== 'undefined') {
-          sessionStorage.setItem(`temp_${key}`, formattedId);
-          console.log(`Stored temporary ID in session storage: ${formattedId}`);
-        } else if (typeof window !== 'undefined') {
-          // If we're setting a permanent ID, remove the temporary one
-          sessionStorage.removeItem(`temp_${key}`);
-          console.log(`Removed temporary ID from session storage for key ${key}`);
+        // If it's a temp ID, check if it exists before using it
+        if (isTemporaryWorkflowId(formattedId)) {
+          const exists = await checkIdExists(formattedId);
+          
+          if (exists) {
+            // Generate a unique ID instead
+            console.log(`ID ${formattedId} already exists, generating new one`);
+            const uniqueId = generateUniqueId(key);
+            setIdState(uniqueId);
+            
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(`temp_${key}`, uniqueId);
+              console.log(`Stored new temporary ID in session storage: ${uniqueId}`);
+            }
+          } else {
+            setIdState(formattedId);
+            
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(`temp_${key}`, formattedId);
+              console.log(`Stored temporary ID in session storage: ${formattedId}`);
+            }
+          }
+        } else {
+          // For non-temporary IDs
+          setIdState(formattedId);
+          
+          if (typeof window !== 'undefined') {
+            // If we're setting a permanent ID, remove the temporary one
+            sessionStorage.removeItem(`temp_${key}`);
+            console.log(`Removed temporary ID from session storage for key ${key}`);
+          }
         }
       } else {
         // If null is passed, generate a new temporary ID
-        const newTempId = `temp-${uuidv4()}`;
+        const newTempId = generateUniqueId(key);
         setIdState(newTempId);
-        
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(`temp_${key}`, newTempId);
-          console.log(`Generated and stored new temporary ID: ${newTempId}`);
-        }
       }
 
       // Reset initialization state to trigger DB sync for new ID
