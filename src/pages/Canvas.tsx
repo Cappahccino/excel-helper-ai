@@ -177,6 +177,7 @@ const Canvas = () => {
   return (
     <WorkflowProvider 
       workflowId={savingWorkflowId || undefined}
+      executionId={executionId} // Pass executionId to the WorkflowProvider
       schemaProviderValue={{
         getNodeSchema: getNodeSchemaAdapter,
         updateNodeSchema: updateNodeSchemaAdapter,

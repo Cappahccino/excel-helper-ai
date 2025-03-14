@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -34,6 +35,7 @@ interface SchemaContextValue {
 
 interface WorkflowContextValue {
   workflowId?: string;
+  executionId?: string | null; // Added executionId property
   isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => Promise<boolean>;
@@ -55,12 +57,14 @@ const WorkflowContext = createContext<WorkflowContextValue>({
 interface WorkflowProviderProps {
   children: ReactNode;
   workflowId?: string;
+  executionId?: string | null; // Added executionId prop
   schemaProviderValue?: SchemaContextValue;
 }
 
 export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({ 
   children, 
   workflowId,
+  executionId, // Added executionId
   schemaProviderValue
 }) => {
   const [schemaCache, setSchemaCache] = useState<Record<string, { 
@@ -315,6 +319,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
 
   const value: WorkflowContextValue = {
     workflowId,
+    executionId, // Added executionId to the context value
     isTemporaryId: isTemporaryWorkflowId,
     convertToDbWorkflowId,
     propagateFileSchema,
