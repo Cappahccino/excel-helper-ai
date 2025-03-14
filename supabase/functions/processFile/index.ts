@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.27.0'
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
 
@@ -328,11 +327,19 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
       
       console.log(`Creating/updating schema for ${sheetsData.length} sheets`);
       
-      // For each sheet, create or update workflow_file_schemas
+      // First, clear any existing schemas for this workflow/node combination
+      // This ensures we don't have any conflicts with the unique constraint
+      await supabaseAdmin
+        .from('workflow_file_schemas')
+        .delete()
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId);
+      
+      // For each sheet, create a new schema entry in workflow_file_schemas
       for (const sheetData of sheetsData) {
         const { error: schemaError } = await supabaseAdmin
           .from('workflow_file_schemas')
-          .upsert({
+          .insert({
             workflow_id: dbWorkflowId,
             node_id: nodeId,
             file_id: fileId,
@@ -348,8 +355,6 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
             has_headers: true,
             is_temporary: isTemporary,
             updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'workflow_id,node_id,sheet_name'
           });
           
         if (schemaError) {
