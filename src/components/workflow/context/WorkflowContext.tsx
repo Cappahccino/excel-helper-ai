@@ -6,7 +6,11 @@ import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
-import { getNodeSchema, getNodeSheets, setNodeSelectedSheet } from '@/utils/fileSchemaUtils';
+import { 
+  getNodeSchema as fetchNodeSchema, 
+  getNodeSheets as fetchNodeSheets, 
+  setNodeSelectedSheet as updateNodeSelectedSheet 
+} from '@/utils/fileSchemaUtils';
 
 export interface WorkflowFileSchema {
   columns: string[];
@@ -105,8 +109,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}, sheet ${sheetName || 'default'}`);
       
-      // getNodeSchema expects workflowId, nodeId, and options
-      const schema = await getNodeSchema(dbWorkflowId, nodeId, { 
+      // Use renamed import to avoid collision
+      const schema = await fetchNodeSchema(dbWorkflowId, nodeId, { 
         sheetName: sheetName || 'Sheet1' 
       });
       
@@ -123,8 +127,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // getNodeSheets expects workflowId and nodeId
-      return await getNodeSheets(dbWorkflowId, nodeId);
+      // Use renamed import to avoid collision
+      return await fetchNodeSheets(dbWorkflowId, nodeId);
     } catch (err) {
       console.error('Error getting node sheets:', err);
       return null;
@@ -137,8 +141,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // setNodeSelectedSheet expects workflowId, nodeId, and sheetName
-      return await setNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
+      // Use renamed import to avoid collision
+      return await updateNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
     } catch (err) {
       console.error('Error setting selected sheet:', err);
       return false;
