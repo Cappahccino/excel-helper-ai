@@ -5,7 +5,7 @@ import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
-import { getNodeSchema, getAvailableSheets, setSelectedSheet } from '@/utils/fileSchemaUtils';
+import { getNodeSchema, getNodeSheets, setNodeSelectedSheet } from '@/utils/fileSchemaUtils';
 
 export interface WorkflowFileSchema {
   columns: string[];
@@ -119,7 +119,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      return await getAvailableSheets(dbWorkflowId, nodeId);
+      return await getNodeSheets(dbWorkflowId, nodeId);
     } catch (err) {
       console.error('Error getting node sheets:', err);
       return null;
@@ -132,7 +132,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      return await setSelectedSheet(dbWorkflowId, nodeId, sheetName);
+      return await setNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
     } catch (err) {
       console.error('Error setting selected sheet:', err);
       return false;
@@ -328,3 +328,4 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
 };
 
 export const useWorkflow = () => useContext(WorkflowContext);
+

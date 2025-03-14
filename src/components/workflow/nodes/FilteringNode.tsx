@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -15,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { 
   getNodeSchema, 
-  getSourceNodeSchema, 
   convertToSchemaColumns 
 } from '@/utils/fileSchemaUtils';
 import { 
@@ -84,7 +82,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   
   const workflow = useWorkflow();
 
-  // Define validateConfiguration before using it
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
       setValidationErrors([]);
@@ -117,7 +114,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     
     return errors.length === 0;
   }, []);
-  
+
   const updateOperatorsForColumn = useCallback((columnName?: string, schemaColumns?: SchemaColumn[]) => {
     if (!columnName || !schemaColumns) {
       setOperators(OPERATORS.default);
@@ -147,7 +144,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, []);
 
-  // Function to find the source node that connects to this node
   const findSourceNode = useCallback(async () => {
     if (!workflow.workflowId || !id) return null;
     
@@ -172,7 +168,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id]);
 
-  // Enhanced schema loading with better error handling and retries
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
@@ -182,9 +177,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     setLoadingAttempts(prev => prev + 1);
     
     try {
-      // Approach 1: Try to get schema directly for this node
       let schema = forceRefresh
-        ? null  // Skip if force refresh requested
+        ? null
         : await withTimeout(
             getNodeSchema(workflow.workflowId, id, { forceRefresh }), 
             3000, 
@@ -203,7 +197,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return;
       }
       
-      // Approach 2: If no direct schema, find the source node and get its schema
       const sourceId = sourceNodeId || await findSourceNode();
       
       if (!sourceId) {
@@ -215,17 +208,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       console.log(`FilteringNode ${id}: Getting schema from source node ${sourceId}`);
       
-      // Try to directly force a schema refresh first for the most up-to-date data
       const refreshedSchema = await forceSchemaRefresh(workflow.workflowId, sourceId);
       
       if (refreshedSchema && refreshedSchema.length > 0) {
         console.log(`FilteringNode ${id}: Retrieved refreshed schema from source node:`, refreshedSchema);
         
-        // Attempt to propagate this schema to our node
         const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id);
         
         if (propagated) {
-          // If propagation succeeded, load our own schema which should now be updated
           const ownSchema = await getNodeSchema(workflow.workflowId, id, { forceRefresh: true });
           
           if (ownSchema && ownSchema.columns.length > 0) {
@@ -240,7 +230,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           }
         }
         
-        // Even if propagation failed, use the source schema directly
         setColumns(refreshedSchema);
         setSchemaSource('source');
         updateOperatorsForColumn(data.config.column, refreshedSchema);
@@ -250,7 +239,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return;
       }
       
-      // Try to get source node schema with retry as a fallback
       const sourceSchema = await retryOperation(
         () => getNodeSchema(workflow.workflowId, sourceId, { forceRefresh }),
         {
@@ -264,12 +252,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       );
       
       if (!sourceSchema || sourceSchema.columns.length === 0) {
-        // Last resort: try direct propagation
         console.log(`FilteringNode ${id}: Attempting direct schema propagation from ${sourceId}`);
         const propagated = await propagateSchemaDirectly(workflow.workflowId, sourceId, id);
         
         if (propagated) {
-          // Get the freshly propagated schema
           const propagatedSchema = await getNodeSchema(workflow.workflowId, id, { forceRefresh: true });
           
           if (propagatedSchema && propagatedSchema.columns.length > 0) {
@@ -294,8 +280,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       setColumns(schemaColumns);
       setSchemaSource('source');
       
-      // Also propagate the schema to this node for future use
-      if (!forceRefresh) {  // Don't propagate on forced refresh to avoid loops
+      if (!forceRefresh) {
         propagateSchemaDirectly(workflow.workflowId, sourceId, id)
           .then(success => {
             if (success) {
@@ -324,7 +309,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     findSourceNode
   ]);
 
-  // Load schema whenever selected, workflow changes, or source node changes
   useEffect(() => {
     if (selected && workflow.workflowId) {
       console.log(`Node ${id} selected, loading schema`);
@@ -332,14 +316,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [selected, workflow.workflowId, loadSchema]);
 
-  // When sourceNodeId changes and we don't have columns yet, try loading again
   useEffect(() => {
     if (sourceNodeId && columns.length === 0 && !isLoading) {
       loadSchema(false);
     }
   }, [sourceNodeId, columns.length, isLoading, loadSchema]);
 
-  // Find source node when the component mounts
   useEffect(() => {
     if (workflow.workflowId && id && !sourceNodeId) {
       findSourceNode();

@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -136,6 +135,40 @@ export async function getNodeSchema(
 }
 
 /**
+ * Helper function to get source node schema with proper handling for sheet selection
+ */
+export async function getSourceNodeSchema(
+  workflowId: string, 
+  sourceNodeId: string, 
+  sheetName?: string
+) {
+  try {
+    // Check for temporary workflow ID and convert if needed
+    const dbWorkflowId = workflowId.startsWith('temp-')
+      ? workflowId.substring(5)
+      : workflowId;
+    
+    // Get source node's configuration to find selected sheet
+    const { data: sourceNodeConfig } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', sourceNodeId)
+      .maybeSingle();
+      
+    // Use the source node's selected sheet if available, otherwise use the provided sheet name
+    const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
+    const sourceSheetName = metadata?.selected_sheet || sheetName;
+    
+    // Now get the schema from the source node with the determined sheet
+    return await getNodeSchema(workflowId, sourceNodeId, { sheetName: sourceSheetName });
+  } catch (error) {
+    console.error('Error in getSourceNodeSchema:', error);
+    return null;
+  }
+}
+
+/**
  * Propagate schema from source node to target node
  */
 export async function propagateSchema(
@@ -200,40 +233,6 @@ export async function propagateSchema(
   } catch (error) {
     console.error('Error in propagateSchema:', error);
     return false;
-  }
-}
-
-/**
- * Helper function to get source node schema with proper handling for sheet selection
- */
-async function getSourceNodeSchema(
-  workflowId: string, 
-  sourceNodeId: string, 
-  sheetName?: string
-) {
-  try {
-    // Check for temporary workflow ID and convert if needed
-    const dbWorkflowId = workflowId.startsWith('temp-')
-      ? workflowId.substring(5)
-      : workflowId;
-    
-    // Get source node's configuration to find selected sheet
-    const { data: sourceNodeConfig } = await supabase
-      .from('workflow_files')
-      .select('metadata')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', sourceNodeId)
-      .maybeSingle();
-      
-    // Use the source node's selected sheet if available, otherwise use the provided sheet name
-    const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
-    const sourceSheetName = metadata?.selected_sheet || sheetName;
-    
-    // Now get the schema from the source node with the determined sheet
-    return await getNodeSchema(workflowId, sourceNodeId, { sheetName: sourceSheetName });
-  } catch (error) {
-    console.error('Error in getSourceNodeSchema:', error);
-    return null;
   }
 }
 
