@@ -14,6 +14,18 @@ interface SchemaCacheEntry {
   sheetName?: string;
 }
 
+// Type definitions for metadata objects
+interface FileMetadata {
+  selected_sheet?: string;
+  sheets?: Array<{
+    name: string;
+    index: number;
+    rowCount: number;
+    isDefault: boolean;
+  }>;
+  [key: string]: any;
+}
+
 // Schema cache with expiration for better performance
 const schemaCache: Record<string, SchemaCacheEntry> = {};
 
@@ -374,7 +386,8 @@ export async function getSourceNodeSchema(
       .maybeSingle();
       
     // Use the source node's selected sheet if available, otherwise use the provided sheet name
-    const sourceSheetName = sourceNodeConfig?.metadata?.selected_sheet || sheetName;
+    const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
+    const sourceSheetName = metadata?.selected_sheet || sheetName;
     
     // Now get the schema from the source node with the determined sheet
     return await getNodeSchema(workflowId, sourceNodeId, { sheetName: sourceSheetName });
@@ -405,8 +418,9 @@ export async function getAvailableSheets(
     }
     
     // Check if metadata already has sheets information
-    if (workflowFile.metadata?.sheets && Array.isArray(workflowFile.metadata.sheets)) {
-      return workflowFile.metadata.sheets.map((sheet: any) => ({
+    const metadata = workflowFile.metadata as FileMetadata | null;
+    if (metadata?.sheets && Array.isArray(metadata.sheets)) {
+      return metadata.sheets.map((sheet: any) => ({
         name: sheet.name,
         index: sheet.index,
         rowCount: sheet.row_count || 0,
@@ -452,15 +466,12 @@ export async function setSelectedSheet(
     console.log(`Setting selected sheet ${sheetName} for node ${nodeId} in workflow ${workflowId}`);
     
     // Update the workflow_files record with the new selected sheet
-    const { error: updateError } = await supabase
+    const { data, error: updateError } = await supabase
       .from('workflow_files')
       .update({
-        metadata: supabase.rpc('jsonb_set_deep', {
-          target: 'metadata',
-          path: ['selected_sheet'],
-          value: sheetName
-        }),
-        updated_at: new Date().toISOString()
+        metadata: {
+          selected_sheet: sheetName
+        }
       })
       .eq('workflow_id', workflowId)
       .eq('node_id', nodeId);

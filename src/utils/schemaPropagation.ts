@@ -5,6 +5,12 @@ import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils
 import { toast } from 'sonner';
 import { retryOperation } from '@/utils/retryUtils';
 
+// Type definition for metadata
+interface FileMetadata {
+  selected_sheet?: string;
+  [key: string]: any;
+}
+
 /**
  * Directly propagate schema from source node to target node
  * This ensures immediate propagation when an edge is created
@@ -32,7 +38,8 @@ export async function propagateSchemaDirectly(
       .maybeSingle();
       
     // Use the provided sheet name or get it from the source node's metadata
-    const effectiveSheetName = sourceNodeFile?.metadata?.selected_sheet || sheetName;
+    const metadata = sourceNodeFile?.metadata as FileMetadata | null;
+    const effectiveSheetName = metadata?.selected_sheet || sheetName;
     
     // 2. Get the schema from the source node with retries
     const result = await retryOperation(
@@ -174,7 +181,8 @@ export async function checkSchemaPropagationNeeded(
     .eq('node_id', sourceNodeId)
     .maybeSingle();
     
-  const sourceSheetName = sourceNodeFile?.metadata?.selected_sheet || sheetName;
+  const metadata = sourceNodeFile?.metadata as FileMetadata | null;
+  const sourceSheetName = metadata?.selected_sheet || sheetName;
   
   const sourceSchema = await getNodeSchema(workflowId, sourceNodeId, { sheetName: sourceSheetName });
   const targetSchema = await getNodeSchema(workflowId, targetNodeId, { sheetName: sourceSheetName });

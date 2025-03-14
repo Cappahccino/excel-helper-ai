@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button-xs'; // Changed to use button-xs
 import { Badge } from '@/components/ui/badge';
 import { useWorkflow } from '../context/WorkflowContext';
 
