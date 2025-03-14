@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -109,7 +108,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}, sheet ${sheetName || 'default'}`);
       
-      // Use renamed import to avoid collision
       const schema = await fetchNodeSchema(dbWorkflowId, nodeId, { 
         sheetName: sheetName || 'Sheet1' 
       });
@@ -127,7 +125,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // Use renamed import to avoid collision
       return await fetchNodeSheets(dbWorkflowId, nodeId);
     } catch (err) {
       console.error('Error getting node sheets:', err);
@@ -141,7 +138,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // Use renamed import to avoid collision
       return await updateNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
     } catch (err) {
       console.error('Error setting selected sheet:', err);

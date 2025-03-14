@@ -49,6 +49,8 @@ export async function propagateSchemaDirectly(
     const metadata = sourceNodeFile?.metadata as FileMetadata | null;
     const effectiveSheetName = metadata?.selected_sheet || sheetName;
     
+    console.log(`Using effective sheet name: ${effectiveSheetName}`);
+    
     // 2. Get the schema from the source node with retries
     const result = await retryOperation(
       async () => {
@@ -57,7 +59,7 @@ export async function propagateSchemaDirectly(
         
         const response = await supabase
           .from('workflow_file_schemas')
-          .select('columns, data_types, file_id')
+          .select('columns, data_types, file_id, sample_data, total_rows, has_headers')
           .eq('workflow_id', dbWorkflowId)
           .eq('node_id', sourceNodeId)
           .eq('sheet_name', effectiveSheetName)
@@ -83,8 +85,11 @@ export async function propagateSchemaDirectly(
             sheet_name: effectiveSheetName,
             columns: response.data.columns,
             data_types: response.data.data_types,
-            updated_at: new Date().toISOString(),
-            is_temporary: false
+            sample_data: response.data.sample_data || [],
+            total_rows: response.data.total_rows || 0,
+            has_headers: response.data.has_headers !== undefined ? response.data.has_headers : true,
+            is_temporary: workflowId.startsWith('temp-'),
+            updated_at: new Date().toISOString()
           }, {
             onConflict: 'workflow_id,node_id,sheet_name'
           });
@@ -100,6 +105,22 @@ export async function propagateSchemaDirectly(
           nodeId: targetNodeId,
           sheetName: effectiveSheetName 
         });
+        
+        // Update the selected sheet in the target node's metadata
+        const { error: updateError } = await supabase
+          .from('workflow_files')
+          .update({
+            metadata: {
+              selected_sheet: effectiveSheetName
+            }
+          })
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', targetNodeId);
+          
+        if (updateError) {
+          console.warn('Could not update target node selected sheet:', updateError);
+          // Non-critical error, don't fail the operation
+        }
         
         console.log(`Successfully propagated schema from ${sourceNodeId} to ${targetNodeId}, sheet ${effectiveSheetName}`);
         return true;

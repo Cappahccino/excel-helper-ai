@@ -1,8 +1,9 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { Handle, Position } from '@xyflow/react';
-import { FileText, Upload, RefreshCw, Database, AlertCircle, Check, Info, Loader2 } from 'lucide-react';
+import { FileText, Upload, RefreshCw, Database, AlertCircle, Check, Info, Loader2, Table } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -28,12 +29,27 @@ interface FileUploadNodeProps {
   data: FileUploadNodeData;
 }
 
+// Interface for sheet metadata
+interface SheetMetadata {
+  name: string;
+  index: number;
+  rowCount?: number;
+  isDefault?: boolean;
+}
+
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) => {
-  const { workflowId, propagateFileSchema } = useWorkflow();
+  const { workflowId, propagateFileSchema, setNodeSelectedSheet } = useWorkflow();
   const [selectedFileId, setSelectedFileId] = useState<string | undefined>(
     data.config?.fileId
   );
   const debouncedFileId = useDebounce(selectedFileId, 300); // Debounce file ID to prevent flickering
+  
+  // State for sheet selection
+  const [selectedSheet, setSelectedSheet] = useState<string | undefined>(
+    data.config?.selectedSheet
+  );
+  const [availableSheets, setAvailableSheets] = useState<SheetMetadata[]>([]);
+  const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   
   // Enhanced processing state
   const [processingState, setProcessingState] = useState<{
@@ -110,6 +126,40 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     enabled: !!debouncedFileId,
   });
 
+  // Query to fetch sheet-specific schema
+  const { data: sheetSchema, isLoading: isLoadingSheetSchema } = useQuery({
+    queryKey: ['sheet-schema', workflowId, id, selectedSheet],
+    queryFn: async () => {
+      if (!workflowId || !id || !selectedSheet) return null;
+      
+      setIsLoadingSchema(true);
+      try {
+        const dbWorkflowId = convertToDbWorkflowId(workflowId);
+        
+        const { data, error } = await supabase
+          .from('workflow_file_schemas')
+          .select('columns, data_types, sample_data')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', id)
+          .eq('sheet_name', selectedSheet)
+          .maybeSingle();
+          
+        if (error) {
+          console.error('Error fetching sheet schema:', error);
+          return null;
+        }
+        
+        return data;
+      } catch (error) {
+        console.error('Error in sheet schema query:', error);
+        return null;
+      } finally {
+        setIsLoadingSchema(false);
+      }
+    },
+    enabled: !!workflowId && !!id && !!selectedSheet,
+  });
+
   // Setup realtime subscription for workflow file updates
   useEffect(() => {
     if (!workflowId || !selectedFileId || !id) return;
@@ -165,6 +215,42 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     };
   }, [workflowId, selectedFileId, id, updateProcessingState, refetch]);
 
+  // Load available sheets when file info changes
+  useEffect(() => {
+    if (selectedFile?.file_metadata) {
+      const metadata = selectedFile.file_metadata;
+      
+      // Extract sheets metadata
+      let sheets: SheetMetadata[] = [];
+      
+      if (metadata.sheets_metadata && Array.isArray(metadata.sheets_metadata)) {
+        sheets = metadata.sheets_metadata.map((sheet: any) => ({
+          name: sheet.name,
+          index: sheet.index,
+          rowCount: sheet.row_count || sheet.rowCount || 0,
+          isDefault: sheet.is_default || sheet.isDefault || false
+        }));
+      }
+      
+      console.log('Available sheets:', sheets);
+      setAvailableSheets(sheets);
+      
+      // Set default sheet if none selected
+      if (!selectedSheet && sheets.length > 0) {
+        const defaultSheet = sheets.find(s => s.isDefault) || sheets[0];
+        setSelectedSheet(defaultSheet.name);
+        
+        // Update node configuration
+        if (data.onChange) {
+          data.onChange(id, { 
+            ...data.config,
+            selectedSheet: defaultSheet.name
+          });
+        }
+      }
+    }
+  }, [selectedFile, selectedSheet, id, data]);
+
   // Update file info when selected file changes
   useEffect(() => {
     if (selectedFile) {
@@ -197,6 +283,34 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     if (sizeInBytes < 1024) return `${sizeInBytes} B`;
     if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`;
     return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+  
+  // Handle sheet selection
+  const handleSheetSelection = async (sheetName: string) => {
+    if (!workflowId || !id) return;
+    
+    console.log(`Selecting sheet: ${sheetName}`);
+    setSelectedSheet(sheetName);
+    
+    // Update node configuration
+    if (data.onChange) {
+      data.onChange(id, { 
+        ...data.config,
+        selectedSheet: sheetName
+      });
+    }
+    
+    // Update selected sheet in database if utility function is available
+    if (setNodeSelectedSheet) {
+      try {
+        const success = await setNodeSelectedSheet(id, sheetName);
+        if (!success) {
+          console.warn('Failed to update selected sheet in database');
+        }
+      } catch (error) {
+        console.error('Error setting selected sheet:', error);
+      }
+    }
   };
   
   // Helper function to explicitly associate the file with the workflow
@@ -322,6 +436,9 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
       updateProcessingState(FileProcessingState.Associating, 10, 'Associating file with workflow...');
       setSelectedFileId(fileId);
       
+      // Reset selected sheet when changing files
+      setSelectedSheet(undefined);
+      
       // Validate workflow ID availability
       if (!workflowId) {
         updateProcessingState(FileProcessingState.Error, 0, 'Error', 'No workflow ID available. Please save the workflow first.');
@@ -351,6 +468,12 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         toast.error('Failed to get file information');
         throw fileError;
       }
+      
+      if (!fileData || !fileData.file_path) {
+        throw new Error('File path is missing or invalid');
+      }
+      
+      console.log(`Downloading file from path: ${fileData.file_path}`);
       
       // Get current user for the file operation
       const { data: { user } } = await supabase.auth.getUser();
@@ -449,6 +572,65 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
 
   // Get file schema columns
   const getSchemaInfo = () => {
+    // If we're loading the schema, show a loading indicator
+    if (isLoadingSchema || isLoadingSheetSchema) {
+      return (
+        <div className="mt-3 border-t pt-2">
+          <h4 className="text-xs font-semibold mb-1 flex items-center">
+            <Database className="h-3 w-3 mr-1" /> Loading Schema...
+          </h4>
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-full" />
+          </div>
+        </div>
+      );
+    }
+    
+    // If no sheet is selected, prompt the user
+    if (!selectedSheet && availableSheets.length > 0) {
+      return (
+        <div className="mt-3 border-t pt-2">
+          <div className="bg-blue-50 p-2 rounded-md text-xs text-blue-700 border border-blue-100">
+            <p>Please select a sheet to view its schema.</p>
+          </div>
+        </div>
+      );
+    }
+    
+    // Use the sheet-specific schema from the query
+    if (sheetSchema) {
+      const columns = sheetSchema.columns.map((name: string, index: number) => ({
+        name,
+        type: sheetSchema.data_types[name] || 'string'
+      }));
+      
+      if (!columns.length) return null;
+      
+      return (
+        <div className="mt-3 border-t pt-2">
+          <h4 className="text-xs font-semibold mb-1 flex items-center">
+            <Table className="h-3 w-3 mr-1" /> Sheet Schema: {selectedSheet}
+          </h4>
+          <div className="max-h-28 overflow-y-auto pr-1 custom-scrollbar">
+            {columns.map((column, index) => (
+              <div 
+                key={index} 
+                className="text-xs flex gap-2 items-center p-1 border-b border-gray-100 last:border-0"
+              >
+                <span className="font-medium truncate max-w-28">{column.name}</span>
+                <Badge variant="outline" className="h-5 text-[10px]">
+                  {column.type}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    // Fallback to file metadata if sheet-specific schema is not available
     if (!fileInfo?.file_metadata?.column_definitions) return null;
     
     const columnDefs = fileInfo.file_metadata.column_definitions;
@@ -461,7 +643,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     
     return (
       <div className="mt-3 border-t pt-2">
-        <h4 className="text-xs font-semibold mb-1">File Schema</h4>
+        <h4 className="text-xs font-semibold mb-1">File Schema (from metadata)</h4>
         <div className="max-h-28 overflow-y-auto pr-1 custom-scrollbar">
           {columns.map((column, index) => (
             <div 
@@ -669,6 +851,36 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
             </Select>
           )}
         </div>
+        
+        {/* Sheet selector - Show only when file is processed successfully */}
+        {selectedFileId && processingState.status === FileProcessingState.Completed && availableSheets.length > 0 && (
+          <div>
+            <Label htmlFor="sheetSelect" className="text-xs font-medium">
+              Select Sheet
+            </Label>
+            <Select 
+              value={selectedSheet} 
+              onValueChange={handleSheetSelection}
+            >
+              <SelectTrigger id="sheetSelect" className="mt-1">
+                <SelectValue placeholder="Choose a sheet..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableSheets.map((sheet) => (
+                  <SelectItem key={sheet.index} value={sheet.name}>
+                    <div className="flex items-center gap-2">
+                      <Table className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate max-w-[180px]">{sheet.name}</span>
+                      {sheet.rowCount > 0 && (
+                        <span className="text-xs text-gray-500">({sheet.rowCount} rows)</span>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         
         {renderProcessingStatus()}
         
