@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.27.0'
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
 
@@ -327,8 +328,7 @@ async function processFile(fileId: string, workflowId: string, nodeId: string, r
       
       console.log(`Creating/updating schema for ${sheetsData.length} sheets`);
       
-      // First, clear any existing schemas for this workflow/node combination
-      // This ensures we don't have any conflicts with the unique constraint
+      // Remove existing schemas for this workflow/node combination to avoid conflicts
       await supabaseAdmin
         .from('workflow_file_schemas')
         .delete()
