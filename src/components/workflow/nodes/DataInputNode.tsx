@@ -1,8 +1,19 @@
 
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Database, GripVertical, FileText, Globe, User } from 'lucide-react';
+import { Database, GripVertical, FileText, Globe, User, ChevronDown } from 'lucide-react';
 import { NodeProps, DataInputNodeData } from '@/types/workflow';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useWorkflow } from '../context/WorkflowContext';
 
 // Default data if none is provided
 const defaultData: DataInputNodeData = {
@@ -11,9 +22,70 @@ const defaultData: DataInputNodeData = {
   config: {}
 };
 
-const DataInputNode: React.FC<NodeProps<DataInputNodeData>> = ({ data, selected }) => {
+const DataInputNode: React.FC<NodeProps<DataInputNodeData>> = ({ data, selected, id }) => {
   // Use provided data or fallback to default data
   const nodeData = data ? data as DataInputNodeData : defaultData;
+  const workflow = useWorkflow();
+  
+  const [sheets, setSheets] = useState<{ name: string, index: number, rowCount: number, isDefault: boolean }[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string | undefined>(undefined);
+  const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+
+  // Fetch available sheets when the node is selected
+  useEffect(() => {
+    const fetchSheets = async () => {
+      if (nodeData.type === 'excelInput' && nodeData.config?.fileId && workflow.getNodeSheets) {
+        setIsLoadingSheets(true);
+        try {
+          const sheetsData = await workflow.getNodeSheets(id);
+          if (sheetsData && sheetsData.length > 0) {
+            setSheets(sheetsData);
+            
+            // Set selected sheet based on node config or default
+            const currentSelectedSheet = nodeData.config?.selectedSheet || 
+                                       sheetsData.find(s => s.isDefault)?.name || 
+                                       sheetsData[0]?.name;
+            setSelectedSheet(currentSelectedSheet);
+          }
+        } catch (error) {
+          console.error('Error fetching sheets:', error);
+        } finally {
+          setIsLoadingSheets(false);
+        }
+      }
+    };
+    
+    if (selected) {
+      fetchSheets();
+    }
+  }, [selected, id, nodeData.type, nodeData.config?.fileId, workflow.getNodeSheets, nodeData.config?.selectedSheet]);
+
+  // Handle sheet selection
+  const handleSheetSelect = async (sheetName: string) => {
+    if (workflow.setNodeSelectedSheet && id) {
+      setSelectedSheet(sheetName);
+      
+      try {
+        await workflow.setNodeSelectedSheet(id, sheetName);
+        
+        // Propagate schema to connected nodes
+        // Get connected nodes from edges
+        if (workflow.workflowId && workflow.getEdges) {
+          const edges = await workflow.getEdges(workflow.workflowId);
+          const targetNodes = edges
+            .filter(edge => edge.source === id)
+            .map(edge => edge.target);
+            
+          // Propagate schema to each target node
+          for (const targetNodeId of targetNodes) {
+            await workflow.propagateFileSchema(id, targetNodeId, sheetName);
+          }
+        }
+      } catch (error) {
+        console.error('Error setting selected sheet:', error);
+      }
+    }
+  };
 
   // Node icon based on type
   const getNodeIcon = () => {
@@ -49,10 +121,52 @@ const DataInputNode: React.FC<NodeProps<DataInputNodeData>> = ({ data, selected 
               <span>File:</span>
               <span className="font-medium">{nodeData.config?.fileId ? 'Selected' : 'Not selected'}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span>Headers:</span>
-              <span className="font-medium">{nodeData.config?.hasHeaders ? 'Yes' : 'No'}</span>
-            </div>
+            
+            {nodeData.config?.fileId && (
+              <>
+                <div className="flex items-center justify-between mb-1">
+                  <span>Headers:</span>
+                  <span className="font-medium">{nodeData.config?.hasHeaders ? 'Yes' : 'No'}</span>
+                </div>
+                
+                {/* Sheet selector */}
+                <div className="flex items-center justify-between mt-2">
+                  <span>Sheet:</span>
+                  {sheets.length > 0 ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="xs" className="h-6 px-2 text-xs">
+                          {selectedSheet || 'Select Sheet'}
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuLabel>Available Sheets</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {sheets.map((sheet) => (
+                          <DropdownMenuItem 
+                            key={sheet.name}
+                            onClick={() => handleSheetSelect(sheet.name)}
+                            className="flex items-center justify-between"
+                          >
+                            <span>{sheet.name}</span>
+                            {sheet.name === selectedSheet && (
+                              <Badge variant="outline" className="ml-2 text-xs">
+                                Selected
+                              </Badge>
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <span className="font-medium text-xs">
+                      {isLoadingSheets ? 'Loading...' : 'No sheets'}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
         

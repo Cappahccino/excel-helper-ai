@@ -72,9 +72,68 @@ function detectColumnType(sampleValues: any[]): string {
   return 'string';
 }
 
+// Process a specific sheet and extract its schema
+async function processSheetSchema(
+  workbook: XLSX.WorkBook, 
+  sheetName: string, 
+  sheetIndex: number
+): Promise<{
+  name: string,
+  index: number,
+  columns: string[],
+  columnTypes: Record<string, string>,
+  sampleData: Record<string, any[]>,
+  rowCount: number
+}> {
+  // Get the worksheet
+  const worksheet = workbook.Sheets[sheetName];
+  
+  // Convert worksheet to JSON
+  const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  
+  // Get total rows and prepare result structure
+  const rowCount = data.length > 0 ? data.length - 1 : 0;
+  const columns: string[] = [];
+  const columnTypes: Record<string, string> = {};
+  const sampleData: Record<string, any[]> = {};
+  
+  if (data.length > 0) {
+    const headers = data[0];
+    
+    // Process each column
+    for (let colIndex = 0; colIndex < headers.length; colIndex++) {
+      // Ensure header is a string and handle empty/null headers
+      const header = headers[colIndex] ? String(headers[colIndex]) : `Column ${colIndex + 1}`;
+      columns.push(header);
+      
+      // Get sample values from first 10 rows (or all rows if fewer)
+      const sampleValues = [];
+      for (let rowIndex = 1; rowIndex < Math.min(data.length, 11); rowIndex++) {
+        if (data[rowIndex] && data[rowIndex][colIndex] !== undefined) {
+          sampleValues.push(data[rowIndex][colIndex]);
+        }
+      }
+      
+      // Detect column type and store sample data
+      const type = detectColumnType(sampleValues);
+      columnTypes[header] = type;
+      sampleData[header] = sampleValues;
+    }
+  }
+  
+  return {
+    name: sheetName,
+    index: sheetIndex,
+    columns,
+    columnTypes,
+    sampleData,
+    rowCount
+  };
+}
+
 // Server function to handle file processing
-async function processFile(fileId: string, workflowId: string, nodeId: string) {
-  console.log(`Processing file ${fileId} for workflow ${workflowId}, node ${nodeId}`);
+async function processFile(fileId: string, workflowId: string, nodeId: string, requestedSheetName?: string) {
+  console.log(`Processing file ${fileId} for workflow ${workflowId}, node ${nodeId}, sheet: ${requestedSheetName || 'all'}`);
   
   try {
     // Normalize the workflow ID
@@ -128,11 +187,11 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
     }
     
     // Process file based on mime type
-    let columnDefinitions = {};
+    let sheetsData: any[] = [];
     let dataSummary = {
       numSheets: 0,
       totalRows: 0,
-      sheetNames: []
+      sheetNames: [] as string[]
     };
     
     // Convert ArrayBuffer to appropriate format for XLSX
@@ -140,116 +199,152 @@ async function processFile(fileId: string, workflowId: string, nodeId: string) {
     
     try {
       // Read the workbook using XLSX
-      const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+      const workbook = XLSX.read(new Uint8Array(buffer), { 
+        type: 'array',
+        cellDates: true,
+        cellNF: true
+      });
       
       // Store sheet information
       dataSummary.numSheets = workbook.SheetNames.length;
       dataSummary.sheetNames = workbook.SheetNames;
       
-      // Process the first sheet
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
+      // Determine which sheet(s) to process
+      const sheetsToProcess = requestedSheetName 
+        ? [requestedSheetName]  // Process just the requested sheet
+        : workbook.SheetNames;  // Process all sheets
       
-      // Convert worksheet to JSON
-      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      if (requestedSheetName && !workbook.SheetNames.includes(requestedSheetName)) {
+        throw new Error(`Requested sheet "${requestedSheetName}" not found in the workbook`);
+      }
       
-      // Get total rows
-      dataSummary.totalRows = data.length;
-      
-      if (data.length > 0) {
-        const headers = data[0];
+      // Process each sheet
+      for (let i = 0; i < sheetsToProcess.length; i++) {
+        const sheetName = sheetsToProcess[i];
+        const sheetIndex = workbook.SheetNames.indexOf(sheetName);
         
-        // Analyze column types
-        for (let colIndex = 0; colIndex < headers.length; colIndex++) {
-          const header = headers[colIndex];
-          
-          // Get sample values from first 10 rows (or all rows if fewer)
-          const sampleValues = [];
-          for (let rowIndex = 1; rowIndex < Math.min(data.length, 11); rowIndex++) {
-            if (data[rowIndex] && data[rowIndex][colIndex] !== undefined) {
-              sampleValues.push(data[rowIndex][colIndex]);
-            }
+        if (sheetIndex === -1) continue; // Skip if sheet not found (shouldn't happen)
+        
+        const sheetData = await processSheetSchema(workbook, sheetName, sheetIndex);
+        sheetsData.push(sheetData);
+        
+        // Add to total rows count
+        dataSummary.totalRows += sheetData.rowCount;
+      }
+      
+      // Set the default sheet - either the requested one or the first one
+      const defaultSheet = requestedSheetName || workbook.SheetNames[0];
+      
+      // If processing just one sheet, get that sheet's data
+      const currentSheetData = sheetsData.find(sheet => sheet.name === defaultSheet);
+      
+      if (!currentSheetData && sheetsData.length > 0) {
+        console.warn(`Requested sheet "${defaultSheet}" not found in processed data`);
+      }
+      
+      // Create or update file metadata with sheet information
+      const sheetsMetadata = sheetsData.map(sheet => ({
+        name: sheet.name,
+        index: sheet.index,
+        row_count: sheet.rowCount,
+        column_count: sheet.columns.length,
+        is_default: sheet.name === defaultSheet
+      }));
+      
+      // Create or update file metadata - using proper upsert with the new constraint
+      const { data: metadata, error: metadataError } = await supabaseAdmin
+        .from('file_metadata')
+        .upsert({
+          file_id: fileId,
+          row_count: dataSummary.totalRows,
+          column_definitions: currentSheetData?.columnTypes || {},
+          data_summary: dataSummary,
+          sheets_metadata: sheetsMetadata,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'file_id'
+        })
+        .select();
+      
+      if (metadataError) {
+        console.error('Error updating file metadata:', metadataError);
+        throw metadataError;
+      }
+      
+      // Update workflow_files with sheet information
+      const { error: workflowUpdateError } = await supabaseAdmin
+        .from('workflow_files')
+        .update({
+          metadata: {
+            sheets: sheetsMetadata,
+            selected_sheet: defaultSheet
+          },
+          processing_status: FILE_STATUS.COMPLETED,
+          status: FILE_STATUS.COMPLETED,
+          processing_result: {
+            success: true,
+            processed_at: new Date().toISOString(),
+            sheets_count: sheetsData.length,
+            total_row_count: dataSummary.totalRows
           }
+        })
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId)
+        .eq('file_id', fileId);
+        
+      if (workflowUpdateError) {
+        console.error('Error updating workflow file with sheets:', workflowUpdateError);
+        throw workflowUpdateError;
+      }
+      
+      // For each sheet, create or update workflow_file_schemas
+      for (const sheetData of sheetsData) {
+        const { error: schemaError } = await supabaseAdmin
+          .from('workflow_file_schemas')
+          .upsert({
+            workflow_id: dbWorkflowId,
+            node_id: nodeId,
+            file_id: fileId,
+            sheet_name: sheetData.name,
+            sheet_index: sheetData.index,
+            columns: sheetData.columns,
+            data_types: sheetData.columnTypes,
+            sample_data: Object.entries(sheetData.sampleData).map(([col, samples]) => ({
+              column: col,
+              samples
+            })),
+            total_rows: sheetData.rowCount,
+            has_headers: true,
+            is_temporary: isTemporary,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'workflow_id,node_id,sheet_name'
+          });
           
-          // Detect column type
-          const type = detectColumnType(sampleValues);
-          columnDefinitions[header.toString()] = type;
+        if (schemaError) {
+          console.error(`Error creating workflow file schema for sheet ${sheetData.name}:`, schemaError);
+          throw schemaError;
         }
       }
+      
+      return { 
+        success: true, 
+        fileId,
+        filename: fileInfo.filename,
+        sheets: sheetsMetadata,
+        selectedSheet: defaultSheet,
+        totalSheets: sheetsData.length,
+        totalRows: dataSummary.totalRows,
+        // Include the current sheet's schema if processing a specific sheet
+        schema: currentSheetData ? {
+          columns: currentSheetData.columns,
+          types: currentSheetData.columnTypes
+        } : null
+      };
     } catch (processingError) {
       console.error('Error processing file content:', processingError);
       throw new Error(`Failed to process file content: ${processingError.message}`);
     }
-    
-    // Create or update file metadata - using proper upsert with the new constraint
-    const { data: metadata, error: metadataError } = await supabaseAdmin
-      .from('file_metadata')
-      .upsert({
-        file_id: fileId,
-        row_count: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0, // Subtract header row
-        column_definitions: columnDefinitions,
-        data_summary: dataSummary,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'file_id'
-      })
-      .select();
-    
-    if (metadataError) {
-      console.error('Error updating file metadata:', metadataError);
-      throw metadataError;
-    }
-    
-    // Create or update workflow_file_schemas with proper upsert
-    const { error: schemaError } = await supabaseAdmin
-      .from('workflow_file_schemas')
-      .upsert({
-        workflow_id: dbWorkflowId,
-        node_id: nodeId,
-        file_id: fileId,
-        columns: Object.keys(columnDefinitions),
-        data_types: columnDefinitions,
-        total_rows: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0,
-        has_headers: true,
-        is_temporary: isTemporary
-      }, {
-        onConflict: 'workflow_id,node_id'
-      });
-      
-    if (schemaError) {
-      console.error('Error creating workflow file schema:', schemaError);
-      throw schemaError;
-    }
-    
-    // Mark workflow file as processed
-    const { error: completeError } = await supabaseAdmin
-      .from('workflow_files')
-      .update({
-        processing_status: FILE_STATUS.COMPLETED,
-        status: FILE_STATUS.COMPLETED,
-        processing_result: {
-          success: true,
-          processed_at: new Date().toISOString(),
-          column_count: Object.keys(columnDefinitions).length,
-          row_count: dataSummary.totalRows > 0 ? dataSummary.totalRows - 1 : 0
-        }
-      })
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId)
-      .eq('file_id', fileId);
-    
-    if (completeError) {
-      console.error('Error completing workflow file processing:', completeError);
-      throw completeError;
-    }
-    
-    return { 
-      success: true, 
-      fileId,
-      filename: fileInfo.filename,
-      columnDefinitions,
-      dataSummary
-    };
   } catch (error) {
     console.error('Error in processFile function:', error);
     
@@ -287,7 +382,7 @@ Deno.serve(async (req) => {
 
   try {
     // Get request body
-    const { fileId, workflowId, nodeId } = await req.json();
+    const { fileId, workflowId, nodeId, sheetName } = await req.json();
     
     // Validate required parameters
     if (!fileId) {
@@ -311,8 +406,8 @@ Deno.serve(async (req) => {
       );
     }
     
-    // Process the file
-    const result = await processFile(fileId, workflowId, nodeId);
+    // Process the file, optionally with a specific sheet
+    const result = await processFile(fileId, workflowId, nodeId, sheetName);
     
     return new Response(
       JSON.stringify(result),

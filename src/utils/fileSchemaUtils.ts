@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/types/workflow';
 import { WorkflowFileSchema } from '@/components/workflow/context/WorkflowContext';
@@ -5,35 +6,49 @@ import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { retryOperation } from '@/utils/retryUtils';
 import { toast } from 'sonner';
 
-// Schema cache with expiration for better performance
-const schemaCache: Record<string, {
+// Schema cache entry with metadata
+interface SchemaCacheEntry {
   schema: WorkflowFileSchema;
   timestamp: number;
-  source: 'database' | 'propagation';
-}> = {};
+  source: 'database' | 'propagation' | 'manual';
+  sheetName?: string;
+}
+
+// Schema cache with expiration for better performance
+const schemaCache: Record<string, SchemaCacheEntry> = {};
 
 // Cache TTL in milliseconds (5 minutes)
 const SCHEMA_CACHE_TTL = 5 * 60 * 1000;
 
-export async function getFileMetadata(fileId: string): Promise<WorkflowFileSchema | null> {
+// Generate cache key for different schema types
+function generateCacheKey(fileId: string, nodeId?: string, workflowId?: string, sheetName?: string): string {
+  if (fileId && nodeId && workflowId) {
+    return `node-${workflowId}-${nodeId}-${sheetName || 'default'}`;
+  } else if (fileId) {
+    return `file-${fileId}-${sheetName || 'default'}`;
+  }
+  return `${fileId}-${nodeId}-${workflowId}-${sheetName || 'default'}`;
+}
+
+export async function getFileMetadata(fileId: string, sheetName?: string): Promise<WorkflowFileSchema | null> {
   try {
     // Check cache first
-    const cacheKey = `file-${fileId}`;
+    const cacheKey = generateCacheKey(fileId, undefined, undefined, sheetName);
     const cachedSchema = schemaCache[cacheKey];
     
     if (cachedSchema && (Date.now() - cachedSchema.timestamp) < SCHEMA_CACHE_TTL) {
-      console.log(`Using cached schema for file ${fileId}`);
+      console.log(`Using cached schema for file ${fileId}, sheet ${sheetName || 'default'}`);
       return cachedSchema.schema;
     }
     
-    console.log(`Fetching file metadata for file ${fileId}`);
+    console.log(`Fetching file metadata for file ${fileId}, sheet ${sheetName || 'default'}`);
     
     // Use retry operation for more resilient fetching
     const response = await retryOperation(
       async () => {
         const { data, error } = await supabase
           .from('file_metadata')
-          .select('column_definitions')
+          .select('column_definitions, sheets_metadata')
           .eq('file_id', fileId)
           .maybeSingle();
         
@@ -47,21 +62,38 @@ export async function getFileMetadata(fileId: string): Promise<WorkflowFileSchem
       }
     );
       
-    if (!response.data?.column_definitions) {
+    if (!response.data) {
       console.error('Error fetching file metadata or no data found');
       return null;
     }
     
+    // If a specific sheet is requested, check if it exists in sheets_metadata
+    let columnDefinitions = response.data.column_definitions;
+    
+    if (sheetName && response.data.sheets_metadata) {
+      // Find the requested sheet in sheets_metadata
+      const sheetData = Array.isArray(response.data.sheets_metadata) 
+        ? response.data.sheets_metadata.find((sheet: any) => sheet.name === sheetName)
+        : null;
+        
+      if (sheetData) {
+        // If we have specific column definitions for this sheet, use them
+        // This might be implemented in a future enhancement
+        // For now, we'll continue using the general column_definitions
+      }
+    }
+    
     const schema = {
-      columns: Object.keys(response.data.column_definitions),
-      types: response.data.column_definitions as Record<string, string>
+      columns: Object.keys(columnDefinitions),
+      types: columnDefinitions as Record<string, string>
     };
     
     // Update cache
     schemaCache[cacheKey] = {
       schema,
       timestamp: Date.now(),
-      source: 'database'
+      source: 'database',
+      sheetName
     };
     
     return schema;
@@ -74,24 +106,24 @@ export async function getFileMetadata(fileId: string): Promise<WorkflowFileSchem
 export async function getNodeSchema(
   workflowId: string,
   nodeId: string,
-  options: { forceRefresh?: boolean } = {}
+  options: { forceRefresh?: boolean, sheetName?: string } = {}
 ): Promise<WorkflowFileSchema | null> {
   try {
-    const { forceRefresh = false } = options;
+    const { forceRefresh = false, sheetName = 'Sheet1' } = options;
     
     // Handle temporary workflow IDs
     const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
     
-    // Generate cache key
-    const cacheKey = `node-${dbWorkflowId}-${nodeId}`;
+    // Generate cache key that includes sheet name
+    const cacheKey = generateCacheKey('', nodeId, dbWorkflowId, sheetName);
     
     // Check cache first unless force refresh is requested
     if (!forceRefresh && schemaCache[cacheKey] && (Date.now() - schemaCache[cacheKey].timestamp) < SCHEMA_CACHE_TTL) {
-      console.log(`Using cached schema for node ${nodeId}`);
+      console.log(`Using cached schema for node ${nodeId}, sheet ${sheetName}`);
       return schemaCache[cacheKey].schema;
     }
     
-    console.log(`Fetching schema for node ${nodeId} in workflow ${dbWorkflowId}`);
+    console.log(`Fetching schema for node ${nodeId} in workflow ${dbWorkflowId}, sheet ${sheetName}`);
     
     const response = await retryOperation(
       async () => {
@@ -100,6 +132,7 @@ export async function getNodeSchema(
           .select('columns, data_types, file_id')
           .eq('workflow_id', dbWorkflowId)
           .eq('node_id', nodeId)
+          .eq('sheet_name', sheetName)
           .maybeSingle();
         
         if (error) throw error;
@@ -113,13 +146,20 @@ export async function getNodeSchema(
     );
     
     if (!response.data || !response.data.columns) {
-      console.log(`No schema found for node ${nodeId}`);
+      console.log(`No schema found for node ${nodeId}, sheet ${sheetName}`);
+      
+      // Try to fetch the schema for the default sheet if a non-default sheet was requested
+      if (sheetName !== 'Sheet1') {
+        console.log(`Trying default sheet (Sheet1) for node ${nodeId}`);
+        return await getNodeSchema(workflowId, nodeId, { forceRefresh, sheetName: 'Sheet1' });
+      }
+      
       return null;
     }
     
     // Validate schema structure
     if (!Array.isArray(response.data.columns) || !response.data.data_types) {
-      console.warn(`Invalid schema structure for node ${nodeId}:`, response.data);
+      console.warn(`Invalid schema structure for node ${nodeId}, sheet ${sheetName}:`, response.data);
       return null;
     }
     
@@ -133,7 +173,8 @@ export async function getNodeSchema(
     schemaCache[cacheKey] = {
       schema,
       timestamp: Date.now(),
-      source: 'database'
+      source: 'database',
+      sheetName
     };
     
     return schema;
@@ -147,10 +188,11 @@ export async function updateNodeSchema(
   workflowId: string,
   nodeId: string,
   fileId: string,
-  schema: WorkflowFileSchema
+  schema: WorkflowFileSchema,
+  sheetName: string = 'Sheet1'
 ): Promise<boolean> {
   try {
-    console.log(`Updating schema for node ${nodeId} in workflow ${workflowId}`);
+    console.log(`Updating schema for node ${nodeId} in workflow ${workflowId}, sheet ${sheetName}`);
     console.log('Schema data:', schema);
     
     const result = await retryOperation(
@@ -161,11 +203,12 @@ export async function updateNodeSchema(
             workflow_id: workflowId,
             node_id: nodeId,
             file_id: fileId,
+            sheet_name: sheetName,
             columns: schema.columns,
             data_types: schema.types,
             updated_at: new Date().toISOString()
           }, {
-            onConflict: 'workflow_id,node_id'
+            onConflict: 'workflow_id,node_id,sheet_name'
           });
         
         if (error) throw error;
@@ -183,14 +226,15 @@ export async function updateNodeSchema(
     }
     
     // Update cache with new schema
-    const cacheKey = `node-${workflowId}-${nodeId}`;
+    const cacheKey = generateCacheKey('', nodeId, workflowId, sheetName);
     schemaCache[cacheKey] = {
       schema,
       timestamp: Date.now(),
-      source: 'database'
+      source: 'database',
+      sheetName
     };
     
-    console.log(`Schema updated successfully for node ${nodeId}`);
+    console.log(`Schema updated successfully for node ${nodeId}, sheet ${sheetName}`);
     return true;
   } catch (error) {
     console.error('Error in updateNodeSchema:', error);
@@ -235,10 +279,11 @@ export async function propagateSchema(
   workflowId: string,
   sourceNodeId: string,
   targetNodeId: string,
-  schema: SchemaColumn[]
+  schema: SchemaColumn[],
+  sheetName: string = 'Sheet1'
 ): Promise<boolean> {
   try {
-    console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}`);
+    console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}, sheet ${sheetName}`);
     
     // Convert SchemaColumn array to workflow_file_schemas format
     const columns = schema.map(col => col.name);
@@ -255,12 +300,13 @@ export async function propagateSchema(
             workflow_id: workflowId,
             node_id: targetNodeId,
             file_id: '00000000-0000-0000-0000-000000000000', // Placeholder for propagated schema
+            sheet_name: sheetName,
             columns,
             data_types: dataTypes,
             is_temporary: false,
             updated_at: new Date().toISOString()
           }, {
-            onConflict: 'workflow_id,node_id'
+            onConflict: 'workflow_id,node_id,sheet_name'
           });
           
         if (error) throw error;
@@ -279,14 +325,15 @@ export async function propagateSchema(
     }
     
     // Update cache with propagated schema
-    const cacheKey = `node-${workflowId}-${targetNodeId}`;
+    const cacheKey = generateCacheKey('', targetNodeId, workflowId, sheetName);
     schemaCache[cacheKey] = {
       schema: { columns, types: dataTypes },
       timestamp: Date.now(),
-      source: 'propagation'
+      source: 'propagation',
+      sheetName
     };
     
-    console.log(`Schema propagated successfully to ${targetNodeId}`);
+    console.log(`Schema propagated successfully to ${targetNodeId}, sheet ${sheetName}`);
     return true;
   } catch (error) {
     console.error('Error in propagateSchema:', error);
@@ -299,7 +346,8 @@ export async function propagateSchema(
  */
 export async function getSourceNodeSchema(
   workflowId: string, 
-  targetNodeId: string
+  targetNodeId: string,
+  sheetName: string = 'Sheet1'
 ): Promise<WorkflowFileSchema | null> {
   try {
     // First, find edges that connect to this target node
@@ -317,11 +365,116 @@ export async function getSourceNodeSchema(
     // Get the first source node
     const sourceNodeId = edges[0].source_node_id;
     
-    // Now get the schema from the source node
-    return await getNodeSchema(workflowId, sourceNodeId);
+    // Get the sheet name from the source node's configuration if available
+    const { data: sourceNodeConfig, error: configError } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', workflowId)
+      .eq('node_id', sourceNodeId)
+      .maybeSingle();
+      
+    // Use the source node's selected sheet if available, otherwise use the provided sheet name
+    const sourceSheetName = sourceNodeConfig?.metadata?.selected_sheet || sheetName;
+    
+    // Now get the schema from the source node with the determined sheet
+    return await getNodeSchema(workflowId, sourceNodeId, { sheetName: sourceSheetName });
   } catch (error) {
     console.error('Error getting source node schema:', error);
     return null;
+  }
+}
+
+/**
+ * Get available sheets for a file in a workflow node
+ */
+export async function getAvailableSheets(
+  workflowId: string,
+  nodeId: string
+): Promise<{ name: string, index: number, rowCount: number, isDefault: boolean }[] | null> {
+  try {
+    const { data: workflowFile, error: fileError } = await supabase
+      .from('workflow_files')
+      .select('file_id, metadata')
+      .eq('workflow_id', workflowId)
+      .eq('node_id', nodeId)
+      .maybeSingle();
+      
+    if (fileError || !workflowFile?.file_id) {
+      console.error('Error fetching workflow file:', fileError);
+      return null;
+    }
+    
+    // Check if metadata already has sheets information
+    if (workflowFile.metadata?.sheets && Array.isArray(workflowFile.metadata.sheets)) {
+      return workflowFile.metadata.sheets.map((sheet: any) => ({
+        name: sheet.name,
+        index: sheet.index,
+        rowCount: sheet.row_count || 0,
+        isDefault: sheet.is_default || false
+      }));
+    }
+    
+    // Fetch from file_metadata as fallback
+    const { data: fileMetadata, error: metadataError } = await supabase
+      .from('file_metadata')
+      .select('sheets_metadata')
+      .eq('file_id', workflowFile.file_id)
+      .maybeSingle();
+      
+    if (metadataError || !fileMetadata?.sheets_metadata) {
+      console.error('Error fetching file metadata:', metadataError);
+      return null;
+    }
+    
+    return Array.isArray(fileMetadata.sheets_metadata) 
+      ? fileMetadata.sheets_metadata.map((sheet: any) => ({
+          name: sheet.name,
+          index: sheet.index,
+          rowCount: sheet.row_count || 0,
+          isDefault: sheet.is_default || false
+        }))
+      : null;
+  } catch (error) {
+    console.error('Error in getAvailableSheets:', error);
+    return null;
+  }
+}
+
+/**
+ * Set the selected sheet for a node
+ */
+export async function setSelectedSheet(
+  workflowId: string,
+  nodeId: string,
+  sheetName: string
+): Promise<boolean> {
+  try {
+    console.log(`Setting selected sheet ${sheetName} for node ${nodeId} in workflow ${workflowId}`);
+    
+    // Update the workflow_files record with the new selected sheet
+    const { error: updateError } = await supabase
+      .from('workflow_files')
+      .update({
+        metadata: supabase.rpc('jsonb_set_deep', {
+          target: 'metadata',
+          path: ['selected_sheet'],
+          value: sheetName
+        }),
+        updated_at: new Date().toISOString()
+      })
+      .eq('workflow_id', workflowId)
+      .eq('node_id', nodeId);
+      
+    if (updateError) {
+      console.error('Error updating selected sheet:', updateError);
+      return false;
+    }
+    
+    console.log(`Selected sheet updated successfully for node ${nodeId}`);
+    return true;
+  } catch (error) {
+    console.error('Error in setSelectedSheet:', error);
+    return false;
   }
 }
 
@@ -332,6 +485,7 @@ export function clearSchemaCache(options?: {
   workflowId?: string; 
   nodeId?: string;
   fileId?: string;
+  sheetName?: string;
 }) {
   if (!options) {
     // Clear entire cache
@@ -340,7 +494,7 @@ export function clearSchemaCache(options?: {
     return;
   }
   
-  const { workflowId, nodeId, fileId } = options;
+  const { workflowId, nodeId, fileId, sheetName } = options;
   
   // Handle temporary workflow IDs
   const dbWorkflowId = workflowId?.startsWith('temp-') ? workflowId.substring(5) : workflowId;
@@ -348,8 +502,9 @@ export function clearSchemaCache(options?: {
   Object.keys(schemaCache).forEach(key => {
     if (
       (dbWorkflowId && key.includes(`-${dbWorkflowId}-`)) ||
-      (nodeId && key.endsWith(`-${nodeId}`)) ||
-      (fileId && key === `file-${fileId}`)
+      (nodeId && key.includes(`-${nodeId}-`)) ||
+      (fileId && key.includes(`-${fileId}-`)) ||
+      (sheetName && key.includes(`-${sheetName}`))
     ) {
       delete schemaCache[key];
       console.log(`Cleared cache for key: ${key}`);

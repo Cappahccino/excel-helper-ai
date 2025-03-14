@@ -289,6 +289,7 @@ export type Database = {
           file_id: string | null
           id: string
           row_count: number | null
+          sheets_metadata: Json | null
           updated_at: string | null
         }
         Insert: {
@@ -298,6 +299,7 @@ export type Database = {
           file_id?: string | null
           id?: string
           row_count?: number | null
+          sheets_metadata?: Json | null
           updated_at?: string | null
         }
         Update: {
@@ -307,6 +309,7 @@ export type Database = {
           file_id?: string | null
           id?: string
           row_count?: number | null
+          sheets_metadata?: Json | null
           updated_at?: string | null
         }
         Relationships: [
@@ -767,6 +770,7 @@ export type Database = {
           is_temporary: boolean
           node_id: string
           sample_data: Json[] | null
+          sheet_index: number | null
           sheet_name: string | null
           total_rows: number | null
           updated_at: string
@@ -782,6 +786,7 @@ export type Database = {
           is_temporary?: boolean
           node_id: string
           sample_data?: Json[] | null
+          sheet_index?: number | null
           sheet_name?: string | null
           total_rows?: number | null
           updated_at?: string
@@ -797,6 +802,7 @@ export type Database = {
           is_temporary?: boolean
           node_id?: string
           sample_data?: Json[] | null
+          sheet_index?: number | null
           sheet_name?: string | null
           total_rows?: number | null
           updated_at?: string

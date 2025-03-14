@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -6,16 +5,23 @@ import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
+import { getNodeSchema, getAvailableSheets, setSelectedSheet } from '@/utils/fileSchemaUtils';
 
-// Define the schema for file data with correct types
 export interface WorkflowFileSchema {
   columns: string[];
   types: Record<string, string>;
 }
 
+export interface SheetMetadata {
+  name: string;
+  index: number;
+  rowCount: number;
+  isDefault: boolean;
+}
+
 interface SchemaContextValue {
-  getNodeSchema?: (nodeId: string) => SchemaColumn[];
-  updateNodeSchema?: (nodeId: string, schema: SchemaColumn[]) => void;
+  getNodeSchema?: (nodeId: string, sheetName?: string) => SchemaColumn[];
+  updateNodeSchema?: (nodeId: string, schema: SchemaColumn[], sheetName?: string) => void;
   checkSchemaCompatibility?: (sourceSchema: SchemaColumn[], targetConfig: any) => { 
     isCompatible: boolean;
     errors: string[];
@@ -26,11 +32,13 @@ interface WorkflowContextValue {
   workflowId?: string;
   isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
-  propagateFileSchema: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
+  propagateFileSchema: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => Promise<boolean>;
   getEdges: (workflowId: string) => Promise<any[]>;
   schema?: SchemaContextValue;
-  getFileSchema?: (nodeId: string) => Promise<WorkflowFileSchema | null>;
+  getFileSchema?: (nodeId: string, sheetName?: string) => Promise<WorkflowFileSchema | null>;
   migrateTemporaryWorkflow?: (temporaryId: string, permanentId: string) => Promise<boolean>;
+  getNodeSheets?: (nodeId: string) => Promise<SheetMetadata[] | null>;
+  setNodeSelectedSheet?: (nodeId: string, sheetName: string) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextValue>({
@@ -51,13 +59,11 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
   workflowId,
   schemaProviderValue
 }) => {
-  // Cache for retrieved file schemas
   const [schemaCache, setSchemaCache] = useState<Record<string, { 
     schema: any, 
     timestamp: number 
   }>>({});
 
-  // Function to check if a node is related to file operations
   const isFileNode = useCallback((nodeId: string): Promise<boolean> => {
     return new Promise(async (resolve) => {
       try {
@@ -88,126 +94,76 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     });
   }, [workflowId]);
 
-  // Function to get file schema from a node with improved error handling
-  const getFileSchema = useCallback(async (nodeId: string): Promise<WorkflowFileSchema | null> => {
+  const getFileSchema = useCallback(async (
+    nodeId: string, 
+    sheetName?: string
+  ): Promise<WorkflowFileSchema | null> => {
     try {
       if (!workflowId) return null;
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}`);
+      console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}, sheet ${sheetName || 'default'}`);
       
-      // Use retryOperation for resilient fetching
-      const schemaData = await retryOperation(
-        async () => {
-          // Try to get schema from workflow_file_schemas table first
-          const { data, error } = await supabase
-            .from('workflow_file_schemas')
-            .select('columns, data_types')
-            .eq('workflow_id', dbWorkflowId)
-            .eq('node_id', nodeId)
-            .maybeSingle();
-            
-          if (error) {
-            console.error('Error fetching schema:', error);
-            throw error;
-          }
-          
-          return data;
-        },
-        {
-          maxRetries: 3,
-          delay: 500,
-          onRetry: (err, attempt) => {
-            console.log(`Retry ${attempt}/3 fetching schema: ${err.message}`);
-          }
-        }
-      );
-      
-      if (schemaData) {
-        console.log(`Found schema for node ${nodeId}:`, schemaData);
-        // Cast the data appropriately to match our WorkflowFileSchema interface
-        const schema: WorkflowFileSchema = {
-          columns: schemaData.columns || [],
-          types: (schemaData.data_types as Record<string, string>) || {}
-        };
-        return schema;
-      }
-      
-      console.log(`No schema found directly, looking for file metadata for node ${nodeId}`);
-      
-      // If no schema found, try to get it from the file metadata
-      const fileData = await retryOperation(
-        async () => {
-          const { data, error } = await supabase
-            .from('workflow_files')
-            .select('file_id')
-            .eq('workflow_id', dbWorkflowId)
-            .eq('node_id', nodeId)
-            .maybeSingle();
-            
-          if (error) throw error;
-          return data;
-        },
-        { maxRetries: 2 }
-      );
-      
-      if (!fileData?.file_id) {
-        console.log(`No file ID found for node ${nodeId}`);
-        return null;
-      }
-      
-      const metaData = await retryOperation(
-        async () => {
-          const { data, error } = await supabase
-            .from('file_metadata')
-            .select('column_definitions')
-            .eq('file_id', fileData.file_id)
-            .maybeSingle();
-            
-          if (error) throw error;
-          return data;
-        },
-        { maxRetries: 2 }
-      );
-      
-      if (!metaData?.column_definitions) {
-        console.log(`No column definitions found for file ${fileData.file_id}`);
-        return null;
-      }
-      
-      console.log(`Found file metadata for node ${nodeId}:`, metaData);
-      
-      // Cast the data appropriately to match our WorkflowFileSchema interface
-      const schema: WorkflowFileSchema = {
-        columns: Object.keys(metaData.column_definitions),
-        types: metaData.column_definitions as Record<string, string>
-      };
-      
-      return schema;
+      return await getNodeSchema(dbWorkflowId, nodeId, { 
+        sheetName: sheetName || 'Sheet1' 
+      });
     } catch (err) {
       console.error('Error getting file schema:', err);
       return null;
     }
   }, [workflowId]);
 
-  // Function to propagate schema from source to target with improved error handling
-  const propagateFileSchema = useCallback(async (sourceNodeId: string, targetNodeId: string): Promise<boolean> => {
+  const getNodeSheets = useCallback(async (nodeId: string): Promise<SheetMetadata[] | null> => {
+    try {
+      if (!workflowId) return null;
+      
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      return await getAvailableSheets(dbWorkflowId, nodeId);
+    } catch (err) {
+      console.error('Error getting node sheets:', err);
+      return null;
+    }
+  }, [workflowId]);
+
+  const setNodeSelectedSheet = useCallback(async (nodeId: string, sheetName: string): Promise<boolean> => {
+    try {
+      if (!workflowId) return false;
+      
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      return await setSelectedSheet(dbWorkflowId, nodeId, sheetName);
+    } catch (err) {
+      console.error('Error setting selected sheet:', err);
+      return false;
+    }
+  }, [workflowId]);
+
+  const propagateFileSchema = useCallback(async (
+    sourceNodeId: string, 
+    targetNodeId: string,
+    sheetName?: string
+  ): Promise<boolean> => {
     try {
       if (!workflowId) return false;
 
-      console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}`);
+      console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}, sheet ${sheetName || 'default'}`);
       
-      // Use the direct propagation method which works better with temporary workflows
-      const directResult = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId);
+      if (!sheetName) {
+        const sourceSheets = await getNodeSheets(sourceNodeId);
+        const defaultSheet = sourceSheets?.find(sheet => sheet.isDefault);
+        sheetName = defaultSheet?.name || 'Sheet1';
+      }
+      
+      const directResult = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
       
       if (directResult) {
-        console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}`);
+        console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}, sheet ${sheetName}`);
         return true;
       }
       
       console.log(`Direct propagation failed, trying alternative approach`);
       
-      // Check if source is a file node
       const isSource = await isFileNode(sourceNodeId);
       
       if (!isSource) {
@@ -215,20 +171,17 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         return false;
       }
       
-      // Get source schema
-      const sourceSchema = await getFileSchema(sourceNodeId);
+      const sourceSchema = await getFileSchema(sourceNodeId, sheetName);
       
       if (!sourceSchema) {
-        console.log(`No schema found for source node ${sourceNodeId}`);
+        console.log(`No schema found for source node ${sourceNodeId}, sheet ${sheetName}`);
         return false;
       }
       
-      console.log(`Found schema for source node ${sourceNodeId}:`, sourceSchema);
+      console.log(`Found schema for source node ${sourceNodeId}, sheet ${sheetName}:`, sourceSchema);
       
-      // Update the target node schema in the database
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      // Get the file_id from source if available
       const { data: fileData } = await supabase
         .from('workflow_files')
         .select('file_id')
@@ -238,9 +191,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         
       const fileId = fileData?.file_id || '00000000-0000-0000-0000-000000000000';
       
-      console.log(`Using file ID ${fileId} for schema propagation`);
+      console.log(`Using file ID ${fileId} for schema propagation, sheet ${sheetName}`);
       
-      // Create or update schema for target node with retry for resilience
       const result = await retryOperation(
         async () => {
           const { error } = await supabase
@@ -249,12 +201,13 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
               workflow_id: dbWorkflowId,
               node_id: targetNodeId,
               file_id: fileId,
+              sheet_name: sheetName,
               columns: sourceSchema.columns,
               data_types: sourceSchema.types,
               has_headers: true,
               updated_at: new Date().toISOString()
             }, {
-              onConflict: 'workflow_id,node_id'
+              onConflict: 'workflow_id,node_id,sheet_name'
             });
             
           if (error) throw error;
@@ -269,15 +222,14 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         }
       );
       
-      console.log(`Successfully propagated schema to target node ${targetNodeId}`);
+      console.log(`Successfully propagated schema to target node ${targetNodeId}, sheet ${sheetName}`);
       return true;
     } catch (err) {
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isFileNode, getFileSchema, workflowId]);
+  }, [isFileNode, getFileSchema, workflowId, getNodeSheets]);
 
-  // Function to get edges for a workflow with improved resilience
   const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
     try {
       if (!workflowId) return [];
@@ -307,7 +259,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
         source: edge.source_node_id,
         target: edge.target_node_id,
-        // Use a type assertion here to ensure it's an object before spreading
         ...(edge.metadata ? edge.metadata as object : {})
       }));
     } catch (err) {
@@ -316,16 +267,12 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, []);
 
-  // Function to migrate data from temporary workflow to permanent workflow
   const migrateTemporaryWorkflow = useCallback(async (temporaryId: string, permanentId: string): Promise<boolean> => {
     try {
       console.log(`Migrating data from temporary workflow ${temporaryId} to permanent workflow ${permanentId}`);
       
-      // Extract the UUID part from temporary ID if needed
       const tempDbId = temporaryId.startsWith('temp-') ? temporaryId.substring(5) : temporaryId;
       
-      // Instead of using RPC, use direct table operations for better control
-      // Migrate workflow_files with retry
       const filesMigrationResult = await retryOperation(
         async () => {
           const { error } = await supabase
@@ -339,7 +286,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
         { maxRetries: 2 }
       );
       
-      // Migrate workflow_file_schemas with retry
       const schemasMigrationResult = await retryOperation(
         async () => {
           const { error } = await supabase
@@ -369,6 +315,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     getEdges,
     getFileSchema,
     migrateTemporaryWorkflow,
+    getNodeSheets,
+    setNodeSelectedSheet,
     schema: schemaProviderValue
   };
 
