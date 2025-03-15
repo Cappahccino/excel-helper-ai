@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -19,7 +18,7 @@ import CanvasFlow from '@/components/canvas/CanvasFlow';
 import { nodeCategories } from '@/components/canvas/NodeCategories';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { propagateSchemaDirectly, checkSchemaPropagationNeeded } from '@/utils/schemaPropagation';
+import { checkSchemaPropagationNeeded } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
 
 declare global {
@@ -93,32 +92,55 @@ const Canvas = () => {
         updateSchemaPropagationMap(params.source, params.target);
         
         if (savingWorkflowId) {
-          retryOperation(
-            () => propagateSchemaDirectly(savingWorkflowId, params.source, params.target),
-            {
-              maxRetries: 3,
-              delay: 500,
-              onRetry: (err, attempt) => {
-                console.log(`Retrying schema propagation on connect (${attempt}/3): ${err.message}`);
+          const workflow = window.workflowContext;
+          
+          if (workflow && workflow.queueSchemaPropagation) {
+            console.log(`Queueing schema propagation on edge creation: ${params.source} -> ${params.target}`);
+            workflow.queueSchemaPropagation(params.source, params.target);
+            
+            setTimeout(() => {
+              checkSchemaPropagationNeeded(savingWorkflowId, params.source, params.target)
+                .then(needed => {
+                  if (needed) {
+                    console.log(`Schema propagation needed for ${params.source} -> ${params.target}`);
+                    triggerSchemaUpdate(params.source);
+                    toast.info("Updating schema from source node...", { id: "schema-update" });
+                  }
+                });
+            }, 1000);
+          } else {
+            retryOperation(
+              () => {
+                console.log(`Using fallback schema propagation method for ${params.source} -> ${params.target}`);
+                return window.propagateSchemaDirectly 
+                  ? window.propagateSchemaDirectly(savingWorkflowId, params.source, params.target)
+                  : false;
+              },
+              {
+                maxRetries: 3,
+                delay: 500,
+                onRetry: (err, attempt) => {
+                  console.log(`Retrying schema propagation on connect (${attempt}/3): ${err.message}`);
+                }
               }
-            }
-          ).then(success => {
-            if (success) {
-              console.log(`Successfully propagated schema on edge creation: ${params.source} -> ${params.target}`);
-              toast.success("Schema propagated successfully", { id: "schema-propagation" });
-            } else {
-              console.log(`Initial schema propagation failed, scheduling retry`);
-              setTimeout(() => {
-                checkSchemaPropagationNeeded(savingWorkflowId, params.source, params.target)
-                  .then(needed => {
-                    if (needed) {
-                      triggerSchemaUpdate(params.source);
-                      toast.info("Updating schema from source node...", { id: "schema-update" });
-                    }
-                  });
-              }, 1000);
-            }
-          });
+            ).then(success => {
+              if (success) {
+                console.log(`Successfully propagated schema on edge creation: ${params.source} -> ${params.target}`);
+                toast.success("Schema propagated successfully", { id: "schema-propagation" });
+              } else {
+                console.log(`Initial schema propagation failed, scheduling retry`);
+                setTimeout(() => {
+                  checkSchemaPropagationNeeded(savingWorkflowId, params.source, params.target)
+                    .then(needed => {
+                      if (needed) {
+                        triggerSchemaUpdate(params.source);
+                        toast.info("Updating schema from source node...", { id: "schema-update" });
+                      }
+                    });
+                }, 1000);
+              }
+            });
+          }
         }
       }
       
@@ -126,30 +148,21 @@ const Canvas = () => {
     });
   }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate, savingWorkflowId]);
 
-  const saveWorkflow = useCallback(() => {
-    return saveWorkflowToDb(nodes, edges);
-  }, [saveWorkflowToDb, nodes, edges]);
-
   useEffect(() => {
-    // Skip loading if we're on the "new" workflow page
-    if (isNewWorkflow) {
-      setIsInitialized(true);
-      return;
+    if (window) {
+      const workflowContextElement = document.getElementById('workflow-context-provider');
+      if (workflowContextElement) {
+        const workflowContextData = workflowContextElement.getAttribute('data-context');
+        if (workflowContextData) {
+          try {
+            window.workflowContext = JSON.parse(workflowContextData);
+          } catch (e) {
+            console.error('Failed to parse workflow context data', e);
+          }
+        }
+      }
     }
-    
-    // Skip loading for temporary IDs until they're properly initialized in the DB
-    if (isTemporaryWorkflow && !isInitialized) {
-      const checkInitTimer = setTimeout(() => {
-        setIsInitialized(true);
-      }, 1500);
-      return () => clearTimeout(checkInitTimer);
-    }
-    
-    // Load existing workflow when ID is available and not temporary
-    if (workflowId && !isNewWorkflow && isInitialized) {
-      loadWorkflow(workflowId, setNodes, setEdges);
-    }
-  }, [workflowId, loadWorkflow, isInitialized, isNewWorkflow, isTemporaryWorkflow]);
+  }, []);
 
   const getNodeSchemaAdapter = useCallback((nodeId: string): SchemaColumn[] => {
     return getNodeSchema(nodeId) || [];
@@ -159,10 +172,8 @@ const Canvas = () => {
     updateNodeSchema(nodeId, schema);
   }, [updateNodeSchema]);
 
-  // Modified node click handler that just selects the node without showing logs
   const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
-    // We no longer set showLogPanel to true here
   }, [setSelectedNodeId]);
 
   const handleRunWorkflow = useCallback(() => {
@@ -177,13 +188,14 @@ const Canvas = () => {
   return (
     <WorkflowProvider 
       workflowId={savingWorkflowId || undefined}
-      executionId={executionId} // Pass executionId to the WorkflowProvider
+      executionId={executionId}
       schemaProviderValue={{
         getNodeSchema: getNodeSchemaAdapter,
         updateNodeSchema: updateNodeSchemaAdapter,
         checkSchemaCompatibility,
       }}
     >
+      <div id="workflow-context-provider" data-context='{"workflowId":"${savingWorkflowId}"}' style={{display: 'none'}}></div>
       <div className="h-screen flex flex-col">
         <WorkflowHeader 
           workflowName={workflowName}

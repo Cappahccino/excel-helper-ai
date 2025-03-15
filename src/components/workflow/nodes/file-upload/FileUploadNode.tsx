@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw } from 'lucide-react';
@@ -29,7 +28,13 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) => {
-  const { workflowId, propagateFileSchema, getEdges } = useWorkflow();
+  const { 
+    workflowId, 
+    queueSchemaPropagation, 
+    getEdges, 
+    isNodeReadyForPropagation 
+  } = useWorkflow();
+  
   const nodeWorkflowId = data.workflowId || workflowId;
   
   const {
@@ -60,7 +65,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       }
 
       try {
-        console.log(`FileUploadNode ${id}: Propagating schema with sheet ${selectedSheet} to connected nodes`);
+        console.log(`FileUploadNode ${id}: Checking readiness for schema propagation`);
+        
+        // Check if this node is ready for propagation
+        const isReady = await isNodeReadyForPropagation(id);
+        
+        if (!isReady) {
+          console.log(`FileUploadNode ${id}: Not ready for schema propagation yet`);
+          return;
+        }
+        
+        console.log(`FileUploadNode ${id}: Ready to propagate schema with sheet ${selectedSheet} to connected nodes`);
         
         const edges = await getEdges(workflowId);
         const connectedNodes = edges
@@ -75,37 +90,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
         console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
         
         for (const targetNodeId of connectedNodes) {
-          console.log(`FileUploadNode ${id}: Propagating schema to node ${targetNodeId} with sheet ${selectedSheet}`);
-          
-          try {
-            let success = false;
-            let attempts = 0;
-            const maxAttempts = 3;
-            
-            while (!success && attempts < maxAttempts) {
-              attempts++;
-              try {
-                success = await propagateFileSchema(id, targetNodeId, selectedSheet);
-                if (success) {
-                  console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} succeeded on attempt ${attempts}`);
-                  break;
-                } else {
-                  console.log(`FileUploadNode ${id}: Schema propagation to ${targetNodeId} failed on attempt ${attempts}, retrying...`);
-                  await new Promise(resolve => setTimeout(resolve, 500 * attempts));
-                }
-              } catch (attemptError) {
-                console.error(`Error on propagation attempt ${attempts}:`, attemptError);
-                if (attempts >= maxAttempts) throw attemptError;
-                await new Promise(resolve => setTimeout(resolve, 500 * attempts));
-              }
-            }
-            
-            if (!success) {
-              console.error(`FileUploadNode ${id}: Failed to propagate schema to ${targetNodeId} after ${maxAttempts} attempts`);
-            }
-          } catch (propagationError) {
-            console.error(`Error propagating schema to node ${targetNodeId}:`, propagationError);
-          }
+          console.log(`FileUploadNode ${id}: Queueing schema propagation to node ${targetNodeId} with sheet ${selectedSheet}`);
+          queueSchemaPropagation(id, targetNodeId, selectedSheet);
         }
       } catch (error) {
         console.error(`FileUploadNode ${id}: Error propagating schema to connected nodes:`, error);
@@ -113,36 +99,48 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     }
 
     propagateSchemaToConnectedNodes();
-  }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
+  }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, queueSchemaPropagation, getEdges, isNodeReadyForPropagation]);
 
-  // Listen for edge changes to ensure schema is propagated to newly connected nodes
+  // Also propagate when connected to new nodes
   useEffect(() => {
-    if (!workflowId) return;
+    if (!workflowId || !selectedSheet || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
+      return;
+    }
     
-    const handleEdgeChanges = async () => {
-      if (!selectedSheet || !selectedFileId || processingState.status !== FileProcessingState.Completed) return;
-      
+    const checkForNewConnections = async () => {
       try {
         const edges = await getEdges(workflowId);
         const connectedNodes = edges
           .filter(edge => edge.source === id)
           .map(edge => edge.target);
           
-        for (const targetNodeId of connectedNodes) {
-          await propagateFileSchema(id, targetNodeId, selectedSheet);
+        if (connectedNodes.length > 0) {
+          console.log(`FileUploadNode ${id}: Checking schema propagation for ${connectedNodes.length} connected nodes`);
+          
+          // Check if this node is ready for propagation
+          const isReady = await isNodeReadyForPropagation(id);
+          
+          if (!isReady) {
+            console.log(`FileUploadNode ${id}: Not ready for schema propagation yet`);
+            return;
+          }
+          
+          for (const targetNodeId of connectedNodes) {
+            queueSchemaPropagation(id, targetNodeId, selectedSheet);
+          }
         }
       } catch (error) {
-        console.error(`Error handling edge changes:`, error);
+        console.error(`Error checking for new connections:`, error);
       }
     };
     
-    // We're not setting up an actual event listener here - just defining the function
-    // for future edge change handling
+    // Check on mount and set up a timer to check periodically
+    checkForNewConnections();
     
-    return () => {
-      // Cleanup function
-    };
-  }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
+    const intervalId = setInterval(checkForNewConnections, 15000);
+    
+    return () => clearInterval(intervalId);
+  }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, queueSchemaPropagation, getEdges, isNodeReadyForPropagation]);
 
   return (
     <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>

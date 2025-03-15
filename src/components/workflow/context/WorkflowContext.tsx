@@ -1,10 +1,9 @@
-
 import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
-import { propagateSchemaDirectly, synchronizeNodesSheetSelection } from '@/utils/schemaPropagation';
+import { propagateSchemaDirectly, synchronizeNodesSheetSelection, isNodeReadyForSchemaPropagation } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
 import { 
   getNodeSchema as fetchNodeSchema, 
@@ -12,6 +11,7 @@ import {
   setNodeSelectedSheet as updateNodeSelectedSheet,
   validateNodeSheetSchema
 } from '@/utils/fileSchemaUtils';
+import { useSchemaPropagationQueue, PropagationTask } from '@/hooks/useSchemaPropagationQueue';
 
 export interface WorkflowFileSchema {
   columns: string[];
@@ -52,21 +52,29 @@ interface WorkflowContextValue {
   isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => Promise<boolean>;
+  queueSchemaPropagation: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => string;
+  propagationQueue: PropagationTask[];
+  isPropagating: boolean;
   getEdges: (workflowId: string) => Promise<any[]>;
+  isNodeReadyForPropagation: (nodeId: string) => Promise<boolean>;
   schema?: SchemaContextValue;
   getFileSchema?: (nodeId: string, sheetName?: string) => Promise<WorkflowFileSchema | null>;
   migrateTemporaryWorkflow?: (temporaryId: string, permanentId: string) => Promise<boolean>;
   getNodeSheets?: (nodeId: string) => Promise<SheetMetadata[] | null>;
   setNodeSelectedSheet?: (nodeId: string, sheetName: string) => Promise<boolean>;
   validateNodeSheetSchema?: (nodeId: string, sheetName?: string) => Promise<{ isValid: boolean, message?: string }>;
-  syncSheetSelection?: (sourceNodeId: string, targetNodeId: string) => Promise<boolean>;
+  syncSheetSelection?: (sourceNodeId: string, targetNodeId) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextValue>({
   isTemporaryId: () => false,
   convertToDbWorkflowId: (id) => id,
   propagateFileSchema: async () => false,
+  queueSchemaPropagation: () => '',
+  propagationQueue: [],
+  isPropagating: false,
   getEdges: async () => [],
+  isNodeReadyForPropagation: async () => false,
 });
 
 interface WorkflowProviderProps {
@@ -86,6 +94,14 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     schema: any, 
     timestamp: number 
   }>>({});
+
+  // Initialize the schema propagation queue
+  const { 
+    addToQueue, 
+    queue: propagationQueue, 
+    isProcessing: isPropagating, 
+    setPropagateFunction
+  } = useSchemaPropagationQueue(workflowId);
 
   // Define getEdges first to fix the "used before declaration" error
   const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
@@ -239,6 +255,19 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [workflowId]);
 
+  // Implement the isNodeReadyForPropagation method
+  const isNodeReadyForPropagation = useCallback(async (nodeId: string): Promise<boolean> => {
+    if (!workflowId) return false;
+    
+    try {
+      return await isNodeReadyForSchemaPropagation(workflowId, nodeId);
+    } catch (error) {
+      console.error(`Error checking if node ${nodeId} is ready for propagation:`, error);
+      return false;
+    }
+  }, [workflowId]);
+
+  // Update propagateFileSchema to be more resilient
   const propagateFileSchema = useCallback(async (
     sourceNodeId: string, 
     targetNodeId: string,
@@ -251,6 +280,13 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       }
 
       console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}, sheet ${sheetName || 'default'}`);
+      
+      // Check if source node is ready for propagation
+      const isSourceReady = await isNodeReadyForPropagation(sourceNodeId);
+      if (!isSourceReady) {
+        console.log(`Source node ${sourceNodeId} is not ready for schema propagation`);
+        return false;
+      }
       
       // First, try direct propagation with the specified sheet name
       const directResult = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
@@ -400,7 +436,22 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isFileNode, getFileSchema, workflowId]);
+  }, [isNodeReadyForPropagation, workflowId, isFileNode, getFileSchema]);
+
+  // Register the propagate function with the queue
+  useEffect(() => {
+    setPropagateFunction(propagateFileSchema);
+  }, [propagateFileSchema, setPropagateFunction]);
+
+  // Add the queue schema propagation method
+  const queueSchemaPropagation = useCallback((
+    sourceNodeId: string, 
+    targetNodeId: string, 
+    sheetName?: string
+  ): string => {
+    console.log(`Queueing schema propagation from ${sourceNodeId} to ${targetNodeId}`);
+    return addToQueue(sourceNodeId, targetNodeId, sheetName);
+  }, [addToQueue]);
 
   const syncSheetSelection = useCallback(async (
     sourceNodeId: string, 
@@ -462,7 +513,11 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     isTemporaryId: isTemporaryWorkflowId,
     convertToDbWorkflowId,
     propagateFileSchema,
+    queueSchemaPropagation,
+    propagationQueue,
+    isPropagating,
     getEdges,
+    isNodeReadyForPropagation,
     getFileSchema,
     migrateTemporaryWorkflow,
     getNodeSheets,
