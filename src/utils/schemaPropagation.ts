@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils/fileSchemaUtils';
@@ -118,9 +119,21 @@ export async function propagateSchemaDirectly(
             // Non-critical error, don't fail the operation
           }
           
-          const fileId = existingFile?.file_id || '00000000-0000-0000-0000-000000000000';
+          // Determine file ID to use - use source file ID if target doesn't have one
+          let fileId = existingFile?.file_id;
+          if (!fileId && sourceNodeFile?.file_id) {
+            fileId = sourceNodeFile.file_id;
+            console.log(`Using source node's file ID: ${fileId}`);
+          } else if (!fileId) {
+            // Create a placeholder for DB needs
+            fileId = '00000000-0000-0000-0000-000000000000';
+            console.log(`No file ID available, using placeholder UUID`);
+          }
           
-          // Update the target schema with the source schema for the specific sheet
+          console.log(`Using file ID ${fileId} for schema propagation, sheet ${effectiveSheetName}`);
+          
+          // Update the target schema with the source schema for the specific sheet using parameters
+          // to prevent SQL injection and UUID format errors
           const targetResponse = await supabase
             .from('workflow_file_schemas')
             .upsert({
