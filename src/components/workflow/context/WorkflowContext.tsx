@@ -1,4 +1,5 @@
-import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
+
+import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';

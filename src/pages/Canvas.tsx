@@ -39,7 +39,6 @@ const Canvas = () => {
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   
-  // Determine if we need a new temp ID or to use an existing one
   const isNewWorkflow = workflowId === 'new';
   const isTemporaryWorkflow = workflowId && workflowId.startsWith('temp-');
   
@@ -114,7 +113,7 @@ const Canvas = () => {
                 console.log(`Using fallback schema propagation method for ${params.source} -> ${params.target}`);
                 return window.propagateSchemaDirectly 
                   ? window.propagateSchemaDirectly(savingWorkflowId, params.source, params.target)
-                  : false;
+                  : Promise.resolve(false);
               },
               {
                 maxRetries: 3,
@@ -202,7 +201,7 @@ const Canvas = () => {
           workflowDescription={workflowDescription}
           onWorkflowNameChange={(e) => setWorkflowName(e.target.value)}
           onWorkflowDescriptionChange={(e) => setWorkflowDescription(e.target.value)}
-          onSave={saveWorkflow}
+          onSave={() => saveWorkflowToDb(nodes, edges)}
           onRun={handleRunWorkflow}
           isSaving={isSaving}
           isRunning={isRunning}
