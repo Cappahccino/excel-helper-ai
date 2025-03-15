@@ -16,7 +16,7 @@ export function SignUpDialog() {
         <div className="flex flex-col items-center gap-2">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-white border border-border overflow-hidden" aria-hidden="true">
             <img 
-              src="/lovable-uploads/587dea28-4d68-459d-bfbe-843d206d1ad6.png" 
+              src="/lovable-uploads/web_logo.png" 
               alt="Tallyze Logo" 
               className="w-full h-full object-contain p-1"
             />
