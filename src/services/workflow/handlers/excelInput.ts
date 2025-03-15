@@ -1,6 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
+// Define a type for metadata to fix the selected_sheet property
+interface NodeMetadata {
+  selected_sheet?: string;
+  [key: string]: any;
+}
+
 export const executeExcelInput = async (nodeData: any, options: any) => {
   console.log('Executing Excel input:', nodeData, options);
   
@@ -23,9 +29,10 @@ export const executeExcelInput = async (nodeData: any, options: any) => {
       .eq('node_id', nodeId)
       .maybeSingle();
     
-    // Determine which sheet to use
+    // Determine which sheet to use - cast metadata to proper type
+    const metadata = nodeFile?.metadata as NodeMetadata | null;
     const selectedSheet = nodeData?.config?.selectedSheet || 
-      nodeFile?.metadata?.selected_sheet || 'Sheet1';
+      metadata?.selected_sheet || 'Sheet1';
     
     console.log(`Using selected sheet: ${selectedSheet}`);
     

@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils/fileSchemaUtils';
@@ -155,8 +154,9 @@ export async function propagateSchemaDirectly(
           // Also update the target node's metadata to include the selected sheet
           // This ensures the target node "knows" which sheet to use
           const targetMetadata = existingFile?.metadata || {};
+          // Fix the spread type error by casting to a valid object type
           const updatedMetadata = {
-            ...targetMetadata,
+            ...(targetMetadata as Record<string, any>),
             selected_sheet: effectiveSheetName
           };
           
@@ -418,7 +418,7 @@ export async function synchronizeNodesSheetSelection(
     
     const metadata = targetFile.metadata as FileMetadata | null || {};
     const updatedMetadata = {
-      ...metadata,
+      ...(metadata as Record<string, any>),
       selected_sheet: sourceSheet
     };
     

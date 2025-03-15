@@ -34,6 +34,18 @@ interface SchemaContextValue {
   };
 }
 
+// Define the FileMetadata interface to fix the selected_sheet errors
+interface FileMetadata {
+  selected_sheet?: string;
+  sheets?: Array<{
+    name: string;
+    index: number;
+    rowCount?: number;
+    isDefault?: boolean;
+  }>;
+  [key: string]: any;
+}
+
 interface WorkflowContextValue {
   workflowId?: string;
   executionId?: string | null;
@@ -74,6 +86,44 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     schema: any, 
     timestamp: number 
   }>>({});
+
+  // Define getEdges first to fix the "used before declaration" error
+  const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
+    try {
+      if (!workflowId) return [];
+      
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      console.log(`Getting edges for workflow ${dbWorkflowId}`);
+      
+      const result = await retryOperation(
+        async () => {
+          const { data, error } = await supabase
+            .from('workflow_edges')
+            .select('*')
+            .eq('workflow_id', dbWorkflowId);
+            
+          if (error) throw error;
+          return data || [];
+        },
+        {
+          maxRetries: 2,
+          delay: 300
+        }
+      );
+      
+      console.log(`Found ${result.length} edges for workflow ${dbWorkflowId}`);
+      
+      return result.map(edge => ({
+        id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
+        source: edge.source_node_id,
+        target: edge.target_node_id,
+        ...(edge.metadata ? edge.metadata as object : {})
+      }));
+    } catch (err) {
+      console.error('Error getting workflow edges:', err);
+      return [];
+    }
+  }, []);
 
   const isFileNode = useCallback((nodeId: string): Promise<boolean> => {
     return new Promise(async (resolve) => {
@@ -236,7 +286,9 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
           .eq('node_id', sourceNodeId)
           .maybeSingle();
           
-        effectiveSheetName = sourceNodeConfig?.metadata?.selected_sheet || 'Sheet1';
+        // Cast metadata to FileMetadata to avoid type errors
+        const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
+        effectiveSheetName = metadata?.selected_sheet || 'Sheet1';
         console.log(`Retrieved effective sheet name from source node: ${effectiveSheetName}`);
       }
       
@@ -272,7 +324,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
             .eq('node_id', targetNodeId)
             .maybeSingle();
             
-          const currentMetadata = targetNodeFile?.metadata || {};
+          // Cast metadata to object to avoid type errors
+          const currentMetadata = targetNodeFile?.metadata as Record<string, any> || {};
           
           const { error: metadataError } = await supabase
             .from('workflow_files')
@@ -338,43 +391,6 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       return false;
     }
   }, [workflowId]);
-
-  const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
-    try {
-      if (!workflowId) return [];
-      
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      console.log(`Getting edges for workflow ${dbWorkflowId}`);
-      
-      const result = await retryOperation(
-        async () => {
-          const { data, error } = await supabase
-            .from('workflow_edges')
-            .select('*')
-            .eq('workflow_id', dbWorkflowId);
-            
-          if (error) throw error;
-          return data || [];
-        },
-        {
-          maxRetries: 2,
-          delay: 300
-        }
-      );
-      
-      console.log(`Found ${result.length} edges for workflow ${dbWorkflowId}`);
-      
-      return result.map(edge => ({
-        id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
-        source: edge.source_node_id,
-        target: edge.target_node_id,
-        ...(edge.metadata ? edge.metadata as object : {})
-      }));
-    } catch (err) {
-      console.error('Error getting workflow edges:', err);
-      return [];
-    }
-  }, []);
 
   const migrateTemporaryWorkflow = useCallback(async (temporaryId: string, permanentId: string): Promise<boolean> => {
     try {
