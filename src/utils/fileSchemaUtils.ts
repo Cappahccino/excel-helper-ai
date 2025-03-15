@@ -1,7 +1,7 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
+import { standardizeSchemaColumns, convertStandardSchemaToDbFormat, convertDbSchemaToStandardSchema } from '@/utils/schemaStandardization';
 
 // Type definitions for schema cache
 interface SchemaCacheEntry {
@@ -40,10 +40,14 @@ export function convertToSchemaColumns(schema: any): SchemaColumn[] {
     return [];
   }
 
-  return schema.columns.map((column: string) => ({
+  // First create raw schema columns based on database format
+  const rawColumns = schema.columns.map((column: string) => ({
     name: column,
     type: schema.data_types[column] || 'string'
   }));
+  
+  // Standardize the columns to ensure consistent type handling
+  return standardizeSchemaColumns(rawColumns);
 }
 
 /**
@@ -240,6 +244,11 @@ export async function propagateSchema(
     // Get source sheet name - this may have been retrieved from the source node's metadata
     const sourceSheetName = sourceSchema.sheet_name || sheetName || 'Sheet1';
     
+    // Convert the source schema columns to standardized format
+    const schemaColumns = convertToSchemaColumns(sourceSchema);
+    const standardized = standardizeSchemaColumns(schemaColumns);
+    const { columns, data_types } = convertStandardSchemaToDbFormat(standardized);
+    
     // Update target node schema
     const { error } = await supabase
       .from('workflow_file_schemas')
@@ -248,8 +257,8 @@ export async function propagateSchema(
         node_id: targetNodeId,
         file_id: sourceSchema.file_id || '00000000-0000-0000-0000-000000000000',
         sheet_name: sourceSheetName,
-        columns: sourceSchema.columns,
-        data_types: sourceSchema.data_types,
+        columns: columns,
+        data_types: data_types,
         sample_data: sourceSchema.sample_data || [],
         total_rows: sourceSchema.total_rows || 0,
         has_headers: sourceSchema.has_headers !== undefined ? sourceSchema.has_headers : true,

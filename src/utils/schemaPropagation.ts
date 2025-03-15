@@ -4,6 +4,7 @@ import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils/fileSchemaUtils';
 import { toast } from 'sonner';
 import { retryOperation } from '@/utils/retryUtils';
+import { standardizeSchemaColumns, convertStandardSchemaToDbFormat } from '@/utils/schemaStandardization';
 
 interface FileMetadata {
   selected_sheet?: string;
@@ -132,6 +133,18 @@ export async function propagateSchemaDirectly(
           
           console.log(`Using file ID ${fileId} for schema propagation, sheet ${effectiveSheetName}`);
           
+          // Standardize the source schema before propagation
+          const rawSourceColumns = data.columns.map((column: string) => ({
+            name: column,
+            type: data.data_types[column] || 'string'
+          }));
+          
+          // Apply standardization to ensure consistent format
+          const standardizedSchema = standardizeSchemaColumns(rawSourceColumns);
+          
+          // Convert back to the DB format
+          const { columns, data_types } = convertStandardSchemaToDbFormat(standardizedSchema);
+          
           // Update the target schema with the source schema for the specific sheet using parameters
           // to prevent SQL injection and UUID format errors
           const targetResponse = await supabase
@@ -141,8 +154,8 @@ export async function propagateSchemaDirectly(
               node_id: targetNodeId,
               file_id: fileId,
               sheet_name: effectiveSheetName,
-              columns: data.columns,
-              data_types: data.data_types,
+              columns: columns,
+              data_types: data_types,
               sample_data: data.sample_data || [],
               total_rows: data.total_rows || 0,
               has_headers: data.has_headers !== undefined ? data.has_headers : true,
