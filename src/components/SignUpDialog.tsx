@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useId } from "react";
 import { SignUpForm } from "./auth/SignUpForm";
-import { Tally5 } from "lucide-react";
 
 export function SignUpDialog() {
   const id = useId();
@@ -15,8 +14,12 @@ export function SignUpDialog() {
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-green-500 border border-border" aria-hidden="true">
-            <Tally5 className="text-white w-6 h-6" />
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-white border border-border overflow-hidden" aria-hidden="true">
+            <img 
+              src="/lovable-uploads/587dea28-4d68-459d-bfbe-843d206d1ad6.png" 
+              alt="Tallyze Logo" 
+              className="w-full h-full object-contain p-1"
+            />
           </div>
           <DialogHeader>
             <DialogTitle className="sm:text-center">Sign up to Tallyze!</DialogTitle>
