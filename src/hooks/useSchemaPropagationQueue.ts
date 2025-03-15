@@ -31,6 +31,20 @@ export function useSchemaPropagationQueue(workflowId: string | undefined) {
     propagateSchemaRef.current = fn;
   }, []);
 
+  // Check if a node is ready for schema propagation
+  const isNodeReady = useCallback(async (nodeId: string): Promise<boolean> => {
+    if (!workflowIdRef.current) return false;
+    
+    try {
+      const result = await isNodeReadyForSchemaPropagation(workflowIdRef.current, nodeId);
+      console.log(`Node ${nodeId} readiness check result: ${result}`);
+      return result;
+    } catch (error) {
+      console.error(`Error checking if node ${nodeId} is ready:`, error);
+      return false;
+    }
+  }, []);
+
   // Add a task to the queue
   const addToQueue = useCallback((sourceNodeId: string, targetNodeId: string, sheetName?: string): string => {
     const taskId = `${sourceNodeId}-${targetNodeId}-${Date.now()}`;
@@ -68,21 +82,7 @@ export function useSchemaPropagationQueue(workflowId: string | undefined) {
     return taskId;
   }, []);
 
-  // Check if a node is ready for schema propagation
-  const isNodeReady = useCallback(async (nodeId: string): Promise<boolean> => {
-    if (!workflowIdRef.current) return false;
-    
-    try {
-      const result = await isNodeReadyForSchemaPropagation(workflowIdRef.current, nodeId);
-      console.log(`Node ${nodeId} readiness check result: ${result}`);
-      return result;
-    } catch (error) {
-      console.error(`Error checking if node ${nodeId} is ready:`, error);
-      return false;
-    }
-  }, []);
-
-  // Process the queue
+  // Process the queue - declaration moved up to solve circular reference
   const processQueue = useCallback(async () => {
     if (isProcessing || !propagateSchemaRef.current || !workflowIdRef.current) {
       console.log(`Cannot process queue: ${isProcessing ? 'already processing' : !propagateSchemaRef.current ? 'no propagate function' : 'no workflow ID'}`);
@@ -248,7 +248,7 @@ export function useSchemaPropagationQueue(workflowId: string | undefined) {
     } finally {
       setIsProcessing(false);
     }
-  }, [queue, isProcessing, isNodeReady, processQueue]);
+  }, [queue, isProcessing, isNodeReady]);  // processQueue properly depends on these values
 
   // Automatically process the queue when tasks are added or when a task completes
   useEffect(() => {
