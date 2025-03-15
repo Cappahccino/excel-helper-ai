@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -13,6 +12,7 @@ import {
   validateNodeSheetSchema
 } from '@/utils/fileSchemaUtils';
 import { useSchemaPropagationQueue, PropagationTask } from '@/hooks/useSchemaPropagationQueue';
+import { toast } from 'sonner';
 
 export interface WorkflowFileSchema {
   columns: string[];
@@ -123,8 +123,8 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
           return data || [];
         },
         {
-          maxRetries: 2,
-          delay: 300
+          maxRetries: 3,
+          delay: 500
         }
       );
       
@@ -256,11 +256,15 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [workflowId]);
 
-  // Implement the isNodeReadyForPropagation method
+  // Implement the isNodeReadyForPropagation method with improved logging
   const isNodeReadyForPropagation = useCallback(async (nodeId: string): Promise<boolean> => {
-    if (!workflowId) return false;
+    if (!workflowId) {
+      console.log(`Cannot check readiness - no workflow ID for node ${nodeId}`);
+      return false;
+    }
     
     try {
+      console.log(`Checking if node ${nodeId} is ready for propagation in workflow ${workflowId}`);
       return await isNodeReadyForSchemaPropagation(workflowId, nodeId);
     } catch (error) {
       console.error(`Error checking if node ${nodeId} is ready for propagation:`, error);
@@ -283,6 +287,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}, sheet ${sheetName || 'default'}`);
       
       // Check if source node is ready for propagation
+      console.log(`Checking if source node ${sourceNodeId} is ready for propagation`);
       const isSourceReady = await isNodeReadyForPropagation(sourceNodeId);
       if (!isSourceReady) {
         console.log(`Source node ${sourceNodeId} is not ready for schema propagation`);
@@ -290,10 +295,24 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       }
       
       // First, try direct propagation with the specified sheet name
-      const directResult = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
+      console.log(`Attempting direct schema propagation from ${sourceNodeId} to ${targetNodeId}`);
+      const directResult = await retryOperation(
+        async () => propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName),
+        {
+          maxRetries: 2,
+          delay: 500,
+          onRetry: (error, attempt) => {
+            console.log(`Retry attempt ${attempt} for direct propagation: ${error.message}`);
+          }
+        }
+      );
       
       if (directResult) {
         console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}, sheet ${sheetName || 'default'}`);
+        toast.success("Schema propagated successfully", {
+          id: "schema-propagation-success",
+          duration: 2000
+        });
         return true;
       }
       
@@ -301,6 +320,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       // If direct propagation fails and no sheet is specified, try to synchronize sheet selection
       if (!sheetName) {
+        console.log(`Attempting to synchronize sheet selection between ${sourceNodeId} and ${targetNodeId}`);
         const syncResult = await synchronizeNodesSheetSelection(workflowId, sourceNodeId, targetNodeId);
         if (syncResult) {
           console.log(`Successfully synchronized sheet selection between nodes`);
@@ -309,20 +329,15 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       }
       
       // Fall back to basic schema propagation if more advanced methods fail
+      console.log(`Attempting fallback schema propagation method`);
+      
       try {
-        // Check if source is a file node
-        const isSource = await isFileNode(sourceNodeId);
-        
-        if (!isSource) {
-          console.log(`Source node ${sourceNodeId} is not a file node`);
-          // For non-file nodes, we may want to use different propagation methods
-        }
+        const dbWorkflowId = convertToDbWorkflowId(workflowId);
         
         // If no sheet name was provided, try to get it from the source node's metadata
+        console.log(`Determining effective sheet name for propagation`);
         let effectiveSheetName = sheetName;
         if (!effectiveSheetName) {
-          const dbWorkflowId = convertToDbWorkflowId(workflowId);
-          
           const { data: sourceNodeConfig } = await supabase
             .from('workflow_files')
             .select('metadata')
@@ -331,32 +346,26 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
             .maybeSingle();
             
           // Cast metadata to FileMetadata to avoid type errors
-          const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
+          const metadata = sourceNodeConfig?.metadata as any;
           effectiveSheetName = metadata?.selected_sheet || 'Sheet1';
           console.log(`Retrieved effective sheet name from source node: ${effectiveSheetName}`);
         }
         
-        // Get the source schema
-        const sourceSchema = await getFileSchema(sourceNodeId, effectiveSheetName);
-        
-        if (!sourceSchema) {
-          console.log(`No schema found for source node ${sourceNodeId}, sheet ${effectiveSheetName}`);
-          return false;
-        }
-        
-        console.log(`Found schema for source node ${sourceNodeId}, sheet ${effectiveSheetName}:`, 
-          sourceSchema.columns.slice(0, 5));
-        
-        // Get a valid file ID (either from the source or a placeholder)
-        const dbWorkflowId = convertToDbWorkflowId(workflowId);
-        
+        // Get the source file details
+        console.log(`Fetching source file details`);
         const { data: sourceFile } = await supabase
           .from('workflow_files')
-          .select('file_id')
+          .select('file_id, processing_status')
           .eq('workflow_id', dbWorkflowId)
           .eq('node_id', sourceNodeId)
           .maybeSingle();
           
+        if (sourceFile?.processing_status !== 'completed') {
+          console.log(`Source file is not fully processed yet (status: ${sourceFile?.processing_status})`);
+          return false;
+        }
+        
+        // Get the target file details
         const { data: targetFile } = await supabase
           .from('workflow_files')
           .select('file_id, metadata')
@@ -364,80 +373,105 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
           .eq('node_id', targetNodeId)
           .maybeSingle();
         
-        // Use target file ID if available, then source file ID, or fallback to placeholder
-        let fileId = targetFile?.file_id || sourceFile?.file_id || '00000000-0000-0000-0000-000000000000';
+        // Use source file ID if available, or fallback to placeholder
+        const fileId = sourceFile?.file_id || '00000000-0000-0000-0000-000000000000';
         
         console.log(`Using file ID ${fileId} for schema propagation, sheet ${effectiveSheetName}`);
         
-        // Update the schema in the database
-        const result = await retryOperation(
-          async () => {
-            // First, update the target node's metadata to include the selected sheet
-            const currentMetadata = targetFile?.metadata as Record<string, any> || {};
-            
-            // Create or update the workflow_files entry for the target node if needed
-            const { error: fileUpdateError } = await supabase
-              .from('workflow_files')
-              .upsert({ 
-                workflow_id: dbWorkflowId,
-                node_id: targetNodeId,
-                file_id: fileId,
-                metadata: {
-                  ...currentMetadata,
-                  selected_sheet: effectiveSheetName
-                }
-              }, {
-                onConflict: 'workflow_id,node_id'
-              });
-              
-            if (fileUpdateError) {
-              console.error('Error updating target node file entry:', fileUpdateError);
-              throw fileUpdateError;
-            }
-            
-            // Then update the schema
-            const { error: schemaError } = await supabase
-              .from('workflow_file_schemas')
-              .upsert({
-                workflow_id: dbWorkflowId,
-                node_id: targetNodeId,
-                file_id: fileId,
-                sheet_name: effectiveSheetName,
-                columns: sourceSchema.columns,
-                data_types: sourceSchema.types,
-                has_headers: true,
-                updated_at: new Date().toISOString()
-              }, {
-                onConflict: 'workflow_id,node_id,sheet_name'
-              });
-              
-            if (schemaError) {
-              console.error('Error updating schema:', schemaError);
-              throw schemaError;
-            }
-            
-            console.log(`Successfully propagated schema to target node ${targetNodeId}`);
-            return { success: true };
-          },
-          {
-            maxRetries: 3,
-            delay: 500,
-            onRetry: (err, attempt) => {
-              console.log(`Retry ${attempt}/3 updating target schema: ${err.message}`);
-            }
-          }
-        );
+        // Get the source schema
+        console.log(`Fetching schema for source node ${sourceNodeId}`);
+        const { data: schemaData } = await supabase
+          .from('workflow_file_schemas')
+          .select('columns, data_types, file_id, has_headers')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', sourceNodeId)
+          .eq('sheet_name', effectiveSheetName)
+          .maybeSingle();
+          
+        if (!schemaData) {
+          console.log(`No schema found for source node ${sourceNodeId}, sheet ${effectiveSheetName}`);
+          return false;
+        }
         
+        console.log(`Found schema for source node with ${schemaData.columns.length} columns`);
+        
+        // Update the target schema with the source schema
+        console.log(`Updating target node ${targetNodeId} schema`);
+        
+        // First update the file association if needed
+        if (!targetFile) {
+          console.log(`Creating new file association for target node ${targetNodeId}`);
+          const { error: fileCreateError } = await supabase
+            .from('workflow_files')
+            .insert({
+              workflow_id: dbWorkflowId,
+              node_id: targetNodeId,
+              file_id: fileId,
+              processing_status: 'completed',
+              metadata: {
+                selected_sheet: effectiveSheetName
+              }
+            });
+            
+          if (fileCreateError) {
+            console.error(`Error creating file association:`, fileCreateError);
+            return false;
+          }
+        } else {
+          // Update the existing association
+          console.log(`Updating existing file association for target node ${targetNodeId}`);
+          const { error: fileUpdateError } = await supabase
+            .from('workflow_files')
+            .update({
+              file_id: fileId,
+              processing_status: 'completed',
+              metadata: {
+                ...targetFile.metadata,
+                selected_sheet: effectiveSheetName
+              }
+            })
+            .eq('workflow_id', dbWorkflowId)
+            .eq('node_id', targetNodeId);
+            
+          if (fileUpdateError) {
+            console.error(`Error updating file association:`, fileUpdateError);
+            return false;
+          }
+        }
+        
+        // Now update the schema
+        console.log(`Updating schema for target node ${targetNodeId}, sheet ${effectiveSheetName}`);
+        const { error: schemaUpdateError } = await supabase
+          .from('workflow_file_schemas')
+          .upsert({
+            workflow_id: dbWorkflowId,
+            node_id: targetNodeId,
+            file_id: fileId,
+            sheet_name: effectiveSheetName,
+            columns: schemaData.columns,
+            data_types: schemaData.data_types,
+            has_headers: schemaData.has_headers,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'workflow_id,node_id,sheet_name'
+          });
+          
+        if (schemaUpdateError) {
+          console.error(`Error updating schema:`, schemaUpdateError);
+          return false;
+        }
+        
+        console.log(`Successfully propagated schema to target node ${targetNodeId}`);
         return true;
-      } catch (propagationError) {
-        console.error('Error during fallback schema propagation:', propagationError);
+      } catch (fallbackError) {
+        console.error('Error during fallback schema propagation:', fallbackError);
         return false;
       }
     } catch (err) {
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isNodeReadyForPropagation, workflowId, isFileNode, getFileSchema]);
+  }, [isNodeReadyForPropagation, workflowId]);
 
   // Register the propagate function with the queue
   useEffect(() => {
@@ -450,7 +484,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     targetNodeId: string, 
     sheetName?: string
   ): string => {
-    console.log(`Queueing schema propagation from ${sourceNodeId} to ${targetNodeId}`);
+    console.log(`Queueing schema propagation from ${sourceNodeId} to ${targetNodeId} with sheet ${sheetName || 'default'}`);
     return addToQueue(sourceNodeId, targetNodeId, sheetName);
   }, [addToQueue]);
 

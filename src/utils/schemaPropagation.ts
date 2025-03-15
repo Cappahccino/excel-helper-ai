@@ -49,6 +49,11 @@ export async function propagateSchemaDirectly(
       return false;
     }
     
+    if (!sourceNodeFile || !sourceNodeFile.file_id) {
+      console.log(`No file associated with source node ${sourceNodeId}`);
+      return false;
+    }
+    
     if (sourceNodeFile?.processing_status && sourceNodeFile.processing_status !== 'completed') {
       console.log(`Source file for node ${sourceNodeId} is still processing (${sourceNodeFile.processing_status}), will retry later`);
       return false;
@@ -62,16 +67,31 @@ export async function propagateSchemaDirectly(
     
     console.log(`Using effective sheet name: ${effectiveSheetName}`);
     
+    // Check if the file has already been processed for this sheet
+    const { data: existingSchema } = await supabase
+      .from('workflow_file_schemas')
+      .select('id')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', sourceNodeId)
+      .eq('sheet_name', effectiveSheetName)
+      .maybeSingle();
+      
+    if (!existingSchema) {
+      console.log(`No schema exists for source node ${sourceNodeId}, sheet ${effectiveSheetName}. File may not be fully processed yet.`);
+      return false;
+    }
+    
     const result = await retryOperation(
       async () => {
         // Clear cache for the source node to ensure fresh schema
         clearSchemaCache({ workflowId: dbWorkflowId, nodeId: sourceNodeId, sheetName: effectiveSheetName });
         
+        // Set a timeout to prevent hanging
         let timeoutId: NodeJS.Timeout;
         const timeoutPromise = new Promise<boolean>((_, reject) => {
           timeoutId = setTimeout(() => {
             reject(new Error(`Schema fetch timed out for source node ${sourceNodeId}, sheet ${effectiveSheetName}`));
-          }, 5000);
+          }, 8000);
         });
         
         try {
@@ -100,12 +120,12 @@ export async function propagateSchemaDirectly(
             return false;
           }
           
-          if (!data || !data.columns) {
-            console.log(`No schema found for source node ${sourceNodeId}, sheet ${effectiveSheetName}`);
+          if (!data || !data.columns || data.columns.length === 0) {
+            console.log(`No valid schema found for source node ${sourceNodeId}, sheet ${effectiveSheetName}`);
             return false;
           }
           
-          console.log(`Found schema for source node ${sourceNodeId}, sheet ${effectiveSheetName}:`, data.columns.slice(0, 5));
+          console.log(`Found schema for source node ${sourceNodeId}, sheet ${effectiveSheetName} with ${data.columns.length} columns`);
           
           // Get target node's file info (if it exists)
           const { data: existingFile, error: fetchError } = await supabase
@@ -144,6 +164,27 @@ export async function propagateSchemaDirectly(
           
           // Convert back to the DB format
           const { columns, data_types } = convertStandardSchemaToDbFormat(standardizedSchema);
+          
+          // First, ensure we have a file association for the target node
+          if (!existingFile) {
+            console.log(`Creating file association for target node ${targetNodeId}`);
+            const { error: associationError } = await supabase
+              .from('workflow_files')
+              .insert({
+                workflow_id: dbWorkflowId,
+                node_id: targetNodeId,
+                file_id: fileId,
+                processing_status: 'completed',
+                metadata: {
+                  selected_sheet: effectiveSheetName
+                }
+              });
+              
+            if (associationError) {
+              console.error('Error creating file association:', associationError);
+              // Continue anyway, as the schema update might still work
+            }
+          }
           
           // Update the target schema with the source schema for the specific sheet using parameters
           // to prevent SQL injection and UUID format errors
@@ -192,6 +233,7 @@ export async function propagateSchemaDirectly(
               workflow_id: dbWorkflowId,
               node_id: targetNodeId,
               file_id: fileId,
+              processing_status: 'completed',
               metadata: updatedMetadata
             }, {
               onConflict: 'workflow_id,node_id'
