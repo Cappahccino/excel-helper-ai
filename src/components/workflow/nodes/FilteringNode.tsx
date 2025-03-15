@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -43,7 +42,7 @@ const OPERATORS = {
   ],
   date: [
     { value: 'equals', label: 'Equals' },
-    { value: 'not-equals', label: 'Not Equals' },
+    { value: 'not-equals', label: 'After' },
     { value: 'greater-than', label: 'After' },
     { value: 'less-than', label: 'Before' }
   ],
@@ -86,6 +85,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [schemaSource, setSchemaSource] = useState<'direct' | 'source' | 'propagated' | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
+  const [loadingOperation, setLoadingOperation] = useState<'initial' | 'refresh' | 'manual' | null>(null);
   
   const workflow = useWorkflow();
 
@@ -93,6 +93,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const loadingStartTime = useRef<number | null>(null);
   // Reference for loading timeout
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Reference for recovery timeout
+  const recoveryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -192,15 +194,47 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id]);
 
-  // Helper function to retry with timeout
-  const timeoutPromise = (ms: number) => {
-    return new Promise<never>((_, reject) => {
-      const id = setTimeout(() => {
-        clearTimeout(id);
-        reject(new Error(`Operation timed out after ${ms}ms`));
-      }, ms);
-    });
-  };
+  // Helper function to clear all timeouts
+  const clearAllTimeouts = useCallback(() => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+
+    if (recoveryTimeoutRef.current) {
+      clearTimeout(recoveryTimeoutRef.current);
+      recoveryTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Enhanced loading state handler with progressive timeouts
+  const handleLoadingState = useCallback(() => {
+    clearAllTimeouts();
+    
+    // Set initial timeout (15 seconds) to show warning
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (isLoading) {
+        console.log(`FilteringNode ${id}: Schema loading taking longer than expected`);
+        setLoadingError('Schema loading is taking longer than expected. This may be because the source node is still processing data or there was an error.');
+        
+        // Set recovery timeout (additional 15 seconds) to force reset loading state
+        recoveryTimeoutRef.current = setTimeout(() => {
+          if (isLoading) {
+            console.log(`FilteringNode ${id}: Schema loading timed out, forcing reset`);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            toast.warning("Schema loading timed out, please try reconnecting the nodes or refresh manually", {
+              id: "loading-timeout"
+            });
+          }
+        }, 15000); // Additional 15 seconds (30 seconds total)
+      }
+    }, 15000); // Initial 15 seconds
+    
+    // Track loading start time for debugging
+    loadingStartTime.current = Date.now();
+    
+  }, [id, isLoading, clearAllTimeouts]);
 
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
@@ -210,19 +244,17 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     setLoadingError(null);
     setLoadingAttempts(prev => prev + 1);
     
-    // Clear previous timeout if it exists
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
+    // Set loading operation type based on context
+    if (forceRefresh && isRefreshing) {
+      setLoadingOperation('refresh');
+    } else if (forceRefresh) {
+      setLoadingOperation('manual');
+    } else {
+      setLoadingOperation('initial');
     }
     
-    // Set a timeout to show error if loading takes too long (15 seconds)
-    loadingTimeoutRef.current = setTimeout(() => {
-      if (isLoading) {
-        setLoadingError('Schema loading is taking longer than expected. This may be because the source node is still processing data or there was an error.');
-      }
-    }, 15000);
-    
-    loadingStartTime.current = Date.now();
+    // Setup enhanced loading timeouts
+    handleLoadingState();
     
     try {
       // First attempt: try to get schema directly for this node
@@ -245,10 +277,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         validateConfiguration(data.config, schemaColumns);
         setLastRefreshTime(new Date());
         setIsLoading(false);
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-          loadingTimeoutRef.current = null;
-        }
+        setIsRefreshing(false);
+        setLoadingOperation(null);
+        clearAllTimeouts();
         return;
       }
       
@@ -259,10 +290,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         setLoadingError('No input connection found. Connect a data source to this node.');
         setColumns([]);
         setIsLoading(false);
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-          loadingTimeoutRef.current = null;
-        }
+        setIsRefreshing(false);
+        setLoadingOperation(null);
+        clearAllTimeouts();
         return;
       }
       
@@ -271,10 +301,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       if (!isSourceReady) {
         setLoadingError('Source node is not ready. The connected file may still be processing or has no schema available.');
         setIsLoading(false);
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
-          loadingTimeoutRef.current = null;
-        }
+        setIsRefreshing(false);
+        setLoadingOperation(null);
+        clearAllTimeouts();
         return;
       }
       
@@ -342,10 +371,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               validateConfiguration(data.config, schemaColumns);
               setLastRefreshTime(new Date());
               setIsLoading(false);
-              if (loadingTimeoutRef.current) {
-                clearTimeout(loadingTimeoutRef.current);
-                loadingTimeoutRef.current = null;
-              }
+              setIsRefreshing(false);
+              setLoadingOperation(null);
+              clearAllTimeouts();
               return;
             }
           }
@@ -357,10 +385,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           validateConfiguration(data.config, refreshedSchema);
           setLastRefreshTime(new Date());
           setIsLoading(false);
-          if (loadingTimeoutRef.current) {
-            clearTimeout(loadingTimeoutRef.current);
-            loadingTimeoutRef.current = null;
-          }
+          setIsRefreshing(false);
+          setLoadingOperation(null);
+          clearAllTimeouts();
           return;
         }
       } catch (refreshError) {
@@ -371,19 +398,16 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       // Last attempt: direct schema extraction from source
       setLoadingError('Schema could not be automatically propagated. Click "Manual Refresh" to try again.');
       setIsLoading(false);
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
+      setIsRefreshing(false);
+      setLoadingOperation(null);
+      clearAllTimeouts();
     } catch (error) {
       console.error(`FilteringNode ${id}: Error loading schema:`, error);
       setLoadingError(`Failed to load schema: ${(error as Error).message || 'Unknown error'}`);
       setIsLoading(false);
       setIsRefreshing(false);
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
+      setLoadingOperation(null);
+      clearAllTimeouts();
     }
   }, [
     id, 
@@ -394,8 +418,32 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     sourceNodeId,
     sourceNodeSheet,
     findSourceNode,
-    isLoading
+    isLoading,
+    isRefreshing,
+    handleLoadingState,
+    clearAllTimeouts
   ]);
+
+  // Enforce loading state timeout if loading gets stuck
+  useEffect(() => {
+    if (isLoading) {
+      // Set a timeout to force clear loading state after 30 seconds
+      const forceResetTimeout = setTimeout(() => {
+        console.log(`FilteringNode ${id}: Force resetting loading state (safety mechanism)`);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setLoadingOperation(null);
+        // Only show toast if not already showing an error
+        if (!loadingError) {
+          toast.warning("Schema loading timed out, please try reconnecting the nodes", {
+            id: "loading-force-timeout"
+          });
+        }
+      }, 30000); // 30 second timeout (absolute maximum)
+      
+      return () => clearTimeout(forceResetTimeout);
+    }
+  }, [isLoading, id, loadingError]);
 
   useEffect(() => {
     if (selected && workflow.workflowId) {
@@ -416,14 +464,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow.workflowId, id, sourceNodeId, findSourceNode]);
 
-  // Clean up timeout on unmount
+  // Clean up all timeouts on unmount
   useEffect(() => {
     return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
+      clearAllTimeouts();
     };
-  }, []);
+  }, [clearAllTimeouts]);
 
   // Set up subscription to detect edge changes
   useEffect(() => {
@@ -563,9 +609,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
     
     setIsLoading(true);
+    setLoadingOperation('manual');
     toast.info("Manually propagating schema from source node...");
     
     try {
+      // Setup loading timeout for manual propagation
+      handleLoadingState();
+      
       const sheet = sourceNodeSheet || await getNodeSelectedSheet(workflow.workflowId, sourceNodeId) || 'Sheet1';
       
       // Force propagate with multiple retries
@@ -587,11 +637,35 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       } else {
         toast.error("Failed to propagate schema");
         setIsLoading(false);
+        setLoadingOperation(null);
+        clearAllTimeouts();
       }
     } catch (error) {
       console.error("Error in manual propagation:", error);
       toast.error(`Propagation error: ${(error as Error).message}`);
       setIsLoading(false);
+      setLoadingOperation(null);
+      clearAllTimeouts();
+    }
+  };
+
+  // Get loading status message based on operation type
+  const getLoadingStatusMessage = () => {
+    if (!isLoading) return null;
+    
+    const duration = loadingStartTime.current 
+      ? Math.floor((Date.now() - loadingStartTime.current) / 1000)
+      : 0;
+      
+    switch(loadingOperation) {
+      case 'initial':
+        return `Loading schema... (${duration}s)`;
+      case 'refresh':
+        return `Refreshing schema... (${duration}s)`;
+      case 'manual':
+        return `Manually propagating schema... (${duration}s)`;
+      default:
+        return `Loading... (${duration}s)`;
     }
   };
 
@@ -671,11 +745,28 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           )}
           
           {(isLoading || isRefreshing) && (
-            <Loader2 className="w-4 h-4 ml-auto animate-spin text-blue-600" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{getLoadingStatusMessage()}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
+        {isLoading && loadingAttempts > 1 && (
+          <div className="text-xs text-blue-600">
+            {getLoadingStatusMessage()}
+          </div>
+        )}
+        
         {loadingError && (
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
             <div className="flex">
@@ -697,6 +788,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             </div>
           </div>
         )}
+        
         
         <div className="space-y-1.5">
           <Label htmlFor="column" className="text-xs">Column</Label>
