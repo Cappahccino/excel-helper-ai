@@ -53,7 +53,7 @@ export async function propagateSchemaDirectly(
       return false;
     }
     
-    const metadata = sourceNodeFile?.metadata as FileMetadata | null;
+    const metadata = sourceNodeFile?.metadata as { selected_sheet?: string } | null;
     
     // Determine the effective sheet name to use
     // Priority: 1. Explicitly provided sheetName, 2. Selected sheet in metadata, 3. Default 'Sheet1'

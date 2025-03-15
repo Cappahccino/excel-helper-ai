@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -29,6 +30,11 @@ export function useSchemaManagement() {
   const [schemaCache, setSchemaCache] = useState<Record<string, SchemaCacheEntry>>({});
   const [isLoading, setIsLoading] = useState<Record<string, boolean>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, SchemaValidationError[]>>({});
+  const [extractionStatus, setExtractionStatus] = useState<Record<string, {
+    status: 'idle' | 'pending' | 'success' | 'error';
+    lastAttempt: number;
+    retryCount: number;
+  }>>({});
 
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
@@ -37,18 +43,24 @@ export function useSchemaManagement() {
   /**
    * Fetch schema from the database for a specific node
    */
-  const fetchSchemaFromDb = useCallback(async (workflowId: string, nodeId: string): Promise<SchemaColumn[] | null> => {
+  const fetchSchemaFromDb = useCallback(async (workflowId: string, nodeId: string, sheetName?: string): Promise<SchemaColumn[] | null> => {
     setIsLoading(prev => ({ ...prev, [nodeId]: true }));
     
     try {
-      console.log(`Fetching schema from DB for node ${nodeId} in workflow ${workflowId}`);
+      console.log(`Fetching schema from DB for node ${nodeId} in workflow ${workflowId}${sheetName ? `, sheet ${sheetName}` : ''}`);
       
-      const { data, error } = await supabase
+      const query = supabase
         .from('workflow_file_schemas')
         .select('columns, data_types, file_id')
         .eq('workflow_id', workflowId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
+        .eq('node_id', nodeId);
+        
+      // Add sheet filter if provided
+      if (sheetName) {
+        query.eq('sheet_name', sheetName);
+      }
+      
+      const { data, error } = await query.maybeSingle();
       
       if (error) {
         console.error('Error fetching schema:', error);
@@ -60,7 +72,7 @@ export function useSchemaManagement() {
       }
       
       if (!data) {
-        console.log(`No schema found for node ${nodeId}`);
+        console.log(`No schema found for node ${nodeId}${sheetName ? ` and sheet ${sheetName}` : ''}`);
         return null;
       }
       
@@ -102,10 +114,11 @@ export function useSchemaManagement() {
     nodeId: string, 
     options?: { 
       forceRefresh?: boolean,
-      maxCacheAge?: number 
+      maxCacheAge?: number,
+      sheetName?: string
     }
   ): Promise<SchemaColumn[]> => {
-    const { forceRefresh = false, maxCacheAge = 5 * 60 * 1000 } = options || {};
+    const { forceRefresh = false, maxCacheAge = 5 * 60 * 1000, sheetName } = options || {};
     
     // Check cache first unless force refresh is requested
     if (!forceRefresh && schemaCache[nodeId]) {
@@ -120,7 +133,7 @@ export function useSchemaManagement() {
     
     // Otherwise fetch from database
     console.log(`Fetching fresh schema for node ${nodeId} (forceRefresh: ${forceRefresh})`);
-    const schema = await fetchSchemaFromDb(workflowId, nodeId);
+    const schema = await fetchSchemaFromDb(workflowId, nodeId, sheetName);
     return schema || [];
   }, [fetchSchemaFromDb, schemaCache]);
 
@@ -134,10 +147,11 @@ export function useSchemaManagement() {
     options?: {
       updateDb?: boolean,
       source?: 'db' | 'propagation' | 'manual',
-      fileId?: string
+      fileId?: string,
+      sheetName?: string
     }
   ): Promise<boolean> => {
-    const { updateDb = true, source = 'manual', fileId } = options || {};
+    const { updateDb = true, source = 'manual', fileId, sheetName = 'Sheet1' } = options || {};
     
     try {
       // Update local cache
@@ -166,7 +180,7 @@ export function useSchemaManagement() {
           return acc;
         }, {} as Record<string, string>);
         
-        // Include the required file_id field
+        // Include the required file_id field and sheet_name
         const { error } = await supabase
           .from('workflow_file_schemas')
           .upsert({
@@ -175,10 +189,11 @@ export function useSchemaManagement() {
             columns,
             data_types: dataTypes,
             file_id: fileIdToUse,
+            sheet_name: sheetName,
             has_headers: true,
             updated_at: new Date().toISOString()
           }, {
-            onConflict: 'workflow_id,node_id'
+            onConflict: 'workflow_id,node_id,sheet_name'
           });
           
         if (error) {
@@ -198,19 +213,142 @@ export function useSchemaManagement() {
   }, []);
 
   /**
-   * Propagate schema from source node to target node
+   * Fetch and propagate schema from source node to target node
+   */
+  const fetchAndPropagateSchema = useCallback(async (
+    workflowId: string,
+    sourceNodeId: string,
+    targetNodeId: string,
+    sheetName?: string
+  ): Promise<boolean> => {
+    setIsLoading(prev => ({ ...prev, [targetNodeId]: true }));
+    
+    try {
+      // First, try to get the schema from cache
+      let sourceSchema = schemaCache[sourceNodeId]?.schema;
+      
+      // If not in cache, fetch from DB with specific sheet if provided
+      if (!sourceSchema || sourceSchema.length === 0) {
+        sourceSchema = await fetchSchemaFromDb(workflowId, sourceNodeId, sheetName);
+      }
+      
+      if (!sourceSchema || sourceSchema.length === 0) {
+        // If still no schema, check for file data
+        const { data: fileData } = await supabase
+          .from('workflow_files')
+          .select('file_id, metadata')
+          .eq('workflow_id', workflowId)
+          .eq('node_id', sourceNodeId)
+          .maybeSingle();
+          
+        if (fileData?.file_id) {
+          console.log(`Fetching schema from file ${fileData.file_id} for node ${sourceNodeId}`);
+          
+          // Get the sheet name from metadata if not provided
+          const effectiveSheetName = sheetName || 
+            (fileData.metadata && typeof fileData.metadata === 'object' ? 
+              (fileData.metadata as any).selected_sheet : 'Sheet1');
+          
+          setExtractionStatus(prev => ({
+            ...prev,
+            [sourceNodeId]: {
+              status: 'pending',
+              lastAttempt: Date.now(),
+              retryCount: (prev[sourceNodeId]?.retryCount || 0) + 1
+            }
+          }));
+          
+          // Trigger file schema extraction if needed
+          try {
+            await supabase.functions.invoke('processFile', {
+              body: { 
+                fileId: fileData.file_id, 
+                nodeId: sourceNodeId, 
+                workflowId,
+                requestedSheetName: effectiveSheetName
+              }
+            });
+          } catch (err) {
+            console.error('Error invoking schema extraction:', err);
+          }
+          
+          // Wait a bit for schema extraction to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Try fetching again after extraction
+          sourceSchema = await fetchSchemaFromDb(workflowId, sourceNodeId, effectiveSheetName);
+          
+          if (sourceSchema && sourceSchema.length > 0) {
+            setExtractionStatus(prev => ({
+              ...prev,
+              [sourceNodeId]: {
+                status: 'success',
+                lastAttempt: Date.now(),
+                retryCount: 0
+              }
+            }));
+          } else {
+            setExtractionStatus(prev => ({
+              ...prev,
+              [sourceNodeId]: {
+                status: 'error',
+                lastAttempt: Date.now(),
+                retryCount: (prev[sourceNodeId]?.retryCount || 0)
+              }
+            }));
+          }
+        }
+      }
+      
+      if (!sourceSchema || sourceSchema.length === 0) {
+        setValidationErrors(prev => ({
+          ...prev,
+          [targetNodeId]: [{ 
+            code: 'source_schema_missing', 
+            message: 'Source node does not have a valid schema' 
+          }]
+        }));
+        
+        toast.error("Unable to load schema from source node", { id: "schema-error" });
+        return false;
+      }
+      
+      // Update target schema with the same sheet name
+      const result = await updateNodeSchema(workflowId, targetNodeId, sourceSchema, {
+        updateDb: true,
+        source: 'propagation',
+        sheetName: sheetName || 'Sheet1'
+      });
+      
+      if (result) {
+        toast.success("Schema propagated successfully", { id: "schema-success" });
+      }
+      
+      return result;
+    } catch (err) {
+      console.error('Error in fetchAndPropagateSchema:', err);
+      toast.error('Failed to propagate schema between nodes');
+      return false;
+    } finally {
+      setIsLoading(prev => ({ ...prev, [targetNodeId]: false }));
+    }
+  }, [fetchSchemaFromDb, schemaCache, updateNodeSchema]);
+
+  /**
+   * Propagate schema from source node to target node with transform function
    */
   const propagateSchema = useCallback(async (
     workflowId: string,
     sourceNodeId: string,
     targetNodeId: string,
-    transform?: (schema: SchemaColumn[]) => SchemaColumn[]
+    transform?: (schema: SchemaColumn[]) => SchemaColumn[],
+    sheetName?: string
   ): Promise<boolean> => {
     try {
       setIsLoading(prev => ({ ...prev, [targetNodeId]: true }));
       
       // Get source schema
-      const sourceSchema = await getNodeSchema(workflowId, sourceNodeId);
+      const sourceSchema = await getNodeSchema(workflowId, sourceNodeId, { sheetName });
       
       if (!sourceSchema || sourceSchema.length === 0) {
         console.warn(`No schema available from source node ${sourceNodeId}`);
@@ -230,7 +368,8 @@ export function useSchemaManagement() {
       // Update target schema
       await updateNodeSchema(workflowId, targetNodeId, targetSchema, {
         updateDb: true,
-        source: 'propagation'
+        source: 'propagation',
+        sheetName
       });
       
       return true;
@@ -362,10 +501,12 @@ export function useSchemaManagement() {
     getNodeSchema,
     updateNodeSchema,
     propagateSchema,
+    fetchAndPropagateSchema,
     validateNodeConfig,
     clearSchemaCache,
     schemaCache,
     isLoading,
-    validationErrors
+    validationErrors,
+    extractionStatus
   };
 }
