@@ -15,5 +15,14 @@ declare global {
       sheetName?: string
     ) => Promise<boolean>;
     standardizeSchemaColumns: (columns: any[]) => SchemaColumn[];
+    workflowContext?: {
+      workflowId?: string;
+      queueSchemaPropagation?: (
+        sourceNodeId: string, 
+        targetNodeId: string, 
+        sheetName?: string
+      ) => string;
+      [key: string]: any;
+    };
   }
 }

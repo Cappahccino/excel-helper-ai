@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -91,6 +92,7 @@ const Canvas = () => {
         updateSchemaPropagationMap(params.source, params.target);
         
         if (savingWorkflowId) {
+          // Safely access workflowContext using optional chaining
           const workflow = window.workflowContext;
           
           if (workflow && workflow.queueSchemaPropagation) {
@@ -154,6 +156,7 @@ const Canvas = () => {
         const workflowContextData = workflowContextElement.getAttribute('data-context');
         if (workflowContextData) {
           try {
+            // Safely assign to window.workflowContext
             window.workflowContext = JSON.parse(workflowContextData);
           } catch (e) {
             console.error('Failed to parse workflow context data', e);
