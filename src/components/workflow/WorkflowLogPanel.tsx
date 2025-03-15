@@ -14,11 +14,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface WorkflowLogPanelProps {
   workflowId: string | null;
   executionId: string | null;
   selectedNodeId?: string | null;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
   trigger?: React.ReactNode;
 }
 
@@ -26,13 +29,16 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
   workflowId, 
   executionId, 
   selectedNodeId,
+  isOpen,
+  onOpenChange,
   trigger
 }) => {
   const [logs, setLogs] = useState<any[]>([]);
+  const [nodeOptions, setNodeOptions] = useState<{id: string, type: string}[]>([]);
+  const [filteredNodeId, setFilteredNodeId] = useState<string | null>(selectedNodeId || null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('workflow');
-  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('all');
   
   const fetchLogs = async () => {
     if (!executionId) return;
@@ -50,6 +56,23 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
       if (error) throw error;
       
       setLogs(data || []);
+      
+      // Extract unique nodes for the filter dropdown
+      const uniqueNodes = Array.from(
+        new Map(
+          (data || []).map(log => [
+            log.node_id, 
+            { id: log.node_id, type: log.node_type }
+          ])
+        ).values()
+      );
+      
+      setNodeOptions(uniqueNodes);
+      
+      // If there's a selected node that doesn't exist in logs, reset it
+      if (filteredNodeId && !uniqueNodes.some(n => n.id === filteredNodeId)) {
+        setFilteredNodeId(null);
+      }
     } catch (err) {
       console.error('Error fetching workflow logs:', err);
       setError('Failed to load workflow logs');
@@ -61,23 +84,23 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
   
   // Fetch logs when the dialog is opened or executionId changes
   useEffect(() => {
-    if (open && executionId) {
+    if (isOpen && executionId) {
       fetchLogs();
     }
-  }, [open, executionId]);
+  }, [isOpen, executionId]);
   
   // Set active tab based on selected node
   useEffect(() => {
-    if (selectedNodeId) {
-      setActiveTab('node');
+    if (selectedNodeId || filteredNodeId) {
+      setActiveTab('filtered');
     } else {
-      setActiveTab('workflow');
+      setActiveTab('all');
     }
-  }, [selectedNodeId]);
+  }, [selectedNodeId, filteredNodeId]);
   
   // Filter logs for selected node
-  const filteredLogs = selectedNodeId 
-    ? logs.filter(log => log.node_id === selectedNodeId)
+  const filteredLogs = filteredNodeId 
+    ? logs.filter(log => log.node_id === filteredNodeId)
     : logs;
   
   const renderLogContent = (log: any) => {
@@ -137,18 +160,8 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
     );
   };
   
-  const defaultTrigger = (
-    <Button variant="outline" className="flex items-center gap-2">
-      <FileText className="h-4 w-4" />
-      Workflow Logs
-    </Button>
-  );
-  
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || defaultTrigger}
-      </DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Workflow Execution Logs</DialogTitle>
@@ -164,30 +177,49 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
             <Button 
               variant="ghost" 
               size="sm"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               <X className="h-4 w-4" />
             </Button>
           </div>
         </DialogHeader>
         
+        <div className="mb-4">
+          <Select 
+            value={filteredNodeId || ''} 
+            onValueChange={(value) => setFilteredNodeId(value || null)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Filter by node" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All nodes</SelectItem>
+              {nodeOptions.map(node => (
+                <SelectItem key={node.id} value={node.id}>
+                  {node.type} (ID: {node.id.substring(0, 8)}...)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
         <Tabs 
-          defaultValue="workflow" 
+          defaultValue="all" 
           value={activeTab} 
           onValueChange={setActiveTab}
           className="flex-1 flex flex-col"
         >
           <TabsList>
-            <TabsTrigger value="workflow">All Nodes</TabsTrigger>
+            <TabsTrigger value="all">All Logs</TabsTrigger>
             <TabsTrigger 
-              value="node" 
-              disabled={!selectedNodeId}
+              value="filtered" 
+              disabled={!filteredNodeId}
             >
-              Selected Node
+              Filtered Logs
             </TabsTrigger>
           </TabsList>
           
-          <TabsContent value="workflow" className="flex-1 mt-4">
+          <TabsContent value="all" className="flex-1 mt-4">
             {error ? (
               <div className="flex items-center justify-center h-full text-red-500">
                 <AlertTriangle className="mr-2 h-4 w-4" />
@@ -210,8 +242,8 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
             )}
           </TabsContent>
           
-          <TabsContent value="node" className="flex-1 mt-4">
-            {!selectedNodeId ? (
+          <TabsContent value="filtered" className="flex-1 mt-4">
+            {!filteredNodeId ? (
               <div className="flex items-center justify-center h-full text-gray-500">
                 Select a node to view its logs
               </div>

@@ -36,9 +36,9 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
   showLogPanel,
   setShowLogPanel
 }) => {
-  const [selectedNodeForLogs, setSelectedNodeForLogs] = useState<string | null>(null);
+  const [isLogDialogOpen, setIsLogDialogOpen] = useState(false);
 
-  // Modified node click handler that doesn't open logs panel
+  // Node click handler that doesn't automatically show logs
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     // Just pass the click to the parent handler
     onNodeClick(event, node);
@@ -73,23 +73,26 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
           </Button>
           
           {executionId && (
-            <WorkflowLogPanel
-              workflowId={workflowId}
-              executionId={executionId}
-              selectedNodeId={selectedNodeForLogs}
-              trigger={
-                <Button
-                  variant="outline"
-                  className="flex items-center"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  View Logs
-                </Button>
-              }
-            />
+            <Button
+              variant="outline"
+              className="flex items-center"
+              onClick={() => setIsLogDialogOpen(true)}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              View Logs
+            </Button>
           )}
         </div>
       </Panel>
+
+      {executionId && (
+        <WorkflowLogPanel
+          workflowId={workflowId}
+          executionId={executionId}
+          isOpen={isLogDialogOpen}
+          onOpenChange={setIsLogDialogOpen}
+        />
+      )}
     </ReactFlow>
   );
 };

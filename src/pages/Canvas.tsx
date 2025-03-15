@@ -13,7 +13,6 @@ import { useNodeManagement, SchemaColumn } from '@/hooks/useNodeManagement';
 import { useWorkflowSync } from '@/hooks/useWorkflowSync';
 
 import NodeLibrary from '@/components/workflow/NodeLibrary';
-import StepLogPanel from '@/components/workflow/StepLogPanel';
 import WorkflowHeader from '@/components/canvas/WorkflowHeader';
 import WorkflowSettings from '@/components/canvas/WorkflowSettings';
 import CanvasFlow from '@/components/canvas/CanvasFlow';
@@ -160,10 +159,11 @@ const Canvas = () => {
     updateNodeSchema(nodeId, schema);
   }, [updateNodeSchema]);
 
+  // Modified node click handler that just selects the node without showing logs
   const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
-    setShowLogPanel(true);
-  }, []);
+    // We no longer set showLogPanel to true here
+  }, [setSelectedNodeId]);
 
   const handleRunWorkflow = useCallback(() => {
     runWorkflow(savingWorkflowId, nodes, edges, setIsRunning, setExecutionId);
@@ -225,15 +225,6 @@ const Canvas = () => {
                   setShowLogPanel={setShowLogPanel}
                 />
               </div>
-
-              {showLogPanel && (
-                <StepLogPanel
-                  nodeId={selectedNodeId}
-                  executionId={executionId}
-                  workflowId={savingWorkflowId}
-                  onClose={() => setShowLogPanel(false)}
-                />
-              )}
             </TabsContent>
             
             <TabsContent value="settings">
