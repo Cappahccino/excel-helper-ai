@@ -106,7 +106,7 @@ export const useFileUploadNode = (
     enabled: !!selectedFileId,
   });
 
-  // Query to fetch sheet-specific schema
+  // Query to fetch sheet-specific schema - enhanced to handle sheet selection
   const { data: sheetSchema, isLoading: isLoadingSheetSchema } = useQuery({
     queryKey: ['sheet-schema', workflowId, nodeId, selectedSheet],
     queryFn: async () => {
@@ -115,6 +115,8 @@ export const useFileUploadNode = (
       setIsLoadingSchema(true);
       try {
         const dbWorkflowId = convertToDbWorkflowId(workflowId);
+        
+        console.log(`Fetching schema for node ${nodeId}, sheet ${selectedSheet}`);
         
         const { data, error } = await supabase
           .from('workflow_file_schemas')
@@ -127,6 +129,12 @@ export const useFileUploadNode = (
         if (error) {
           console.error('Error fetching sheet schema:', error);
           return null;
+        }
+        
+        if (!data) {
+          console.log(`No schema found for sheet ${selectedSheet}. This is normal for newly selected sheets.`);
+        } else {
+          console.log(`Found schema for sheet ${selectedSheet} with ${data.columns.length} columns`);
         }
         
         return data;
@@ -362,7 +370,7 @@ export const useFileUploadNode = (
     }
   };
 
-  // Handle file selection using transaction approach
+  // Handle file selection 
   const handleFileSelection = async (fileId: string) => {
     if (!fileId) return;
     
@@ -515,86 +523,95 @@ export const useFileUploadNode = (
     }
   };
 
-  // Handle sheet selection with schema propagation
-  const handleSheetSelection = async (sheetName: string) => {
-    if (!workflowId || !nodeId) return;
+  // Handle sheet selection with enhanced sheet propagation
+  const handleSheetSelection = useCallback(async (sheetName: string) => {
+    console.log(`Setting selected sheet to: ${sheetName}`);
     
-    console.log(`Selecting sheet: ${sheetName}`);
+    // Update local state immediately
     setSelectedSheet(sheetName);
     
+    if (!workflowId) {
+      console.warn('No workflow ID available, sheet selection will not persist');
+      return;
+    }
+    
+    // Update the node configuration
+    if (onChange) {
+      onChange(nodeId, {
+        ...config,
+        selectedSheet: sheetName
+      });
+    }
+    
     try {
-      // Update node configuration
-      if (onChange) {
-        onChange(nodeId, { 
-          ...config,
-          selectedSheet: sheetName
-        });
-      }
-      
-      // Update the selected sheet in the database
+      // Get the database-compatible workflow ID
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      const { error: updateError } = await supabase
+      // Get current metadata
+      const { data: currentFile } = await supabase
+        .from('workflow_files')
+        .select('metadata')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
+      
+      const currentMetadata = currentFile?.metadata || {};
+      
+      // Update the node's metadata with the new selected sheet
+      const { error } = await supabase
         .from('workflow_files')
         .update({
           metadata: {
+            ...currentMetadata,
             selected_sheet: sheetName
           }
         })
         .eq('workflow_id', dbWorkflowId)
         .eq('node_id', nodeId);
         
-      if (updateError) {
-        console.error('Error updating selected sheet in database:', updateError);
-        // Non-critical, continue
+      if (error) {
+        console.error('Error updating selected sheet in metadata:', error);
+        toast.error('Failed to update selected sheet');
       } else {
-        console.log(`Successfully updated selected sheet to ${sheetName} in database for node ${nodeId}`);
+        console.log(`Successfully updated selected sheet to ${sheetName} in metadata`);
+        toast.success(`Sheet "${sheetName}" selected`);
       }
       
-      // If the file is already processed, trigger schema propagation to connected nodes
-      if (processingState.status === FileProcessingState.Completed && selectedFileId) {
-        console.log(`Attempting to propagate schema for newly selected sheet ${sheetName}`);
+      // Get connected nodes to propagate the schema with the new sheet
+      const { data: edges } = await supabase
+        .from('workflow_edges')
+        .select('target_node_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('source_node_id', nodeId);
         
-        // Get edges to find connected nodes
-        const { data: edges, error: edgesError } = await supabase
-          .from('workflow_edges')
-          .select('target_node_id')
-          .eq('workflow_id', dbWorkflowId)
-          .eq('source_node_id', nodeId);
+      if (edges && edges.length > 0) {
+        console.log(`Found ${edges.length} connected nodes to update with new sheet selection`);
+        
+        for (const edge of edges) {
+          const targetNodeId = edge.target_node_id;
+          console.log(`Propagating schema to ${targetNodeId} with sheet ${sheetName}`);
           
-        if (edgesError) {
-          console.error('Error fetching edges:', edgesError);
-        } else if (edges && edges.length > 0) {
-          console.log(`Found ${edges.length} connected nodes to propagate schema to`);
-          
-          // Propagate schema to each connected node
-          for (const edge of edges) {
-            const targetNodeId = edge.target_node_id;
-            console.log(`Propagating schema to node ${targetNodeId}`);
-            
-            try {
-              const success = await propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName);
-              console.log(`Schema propagation to ${targetNodeId} ${success ? 'succeeded' : 'failed'}`);
-            } catch (propagateError) {
-              console.error(`Error propagating schema to node ${targetNodeId}:`, propagateError);
-            }
+          // Propagate schema to connected node with the new sheet
+          const success = await propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName);
+          if (success) {
+            console.log(`Successfully propagated schema to ${targetNodeId} with sheet ${sheetName}`);
+          } else {
+            console.error(`Failed to propagate schema to ${targetNodeId} with sheet ${sheetName}`);
           }
-        } else {
-          console.log('No connected nodes found to propagate schema to');
         }
       }
     } catch (error) {
-      console.error('Error in handleSheetSelection:', error);
+      console.error('Error handling sheet selection:', error);
       toast.error('Failed to update sheet selection');
     }
-  };
+  }, [workflowId, nodeId, config, onChange]);
 
-  // Function to retry failed processing
-  const handleRetry = async () => {
+  // Handle retry of failed operations
+  const handleRetry = useCallback(async () => {
     if (!selectedFileId) return;
     updateProcessingState(FileProcessingState.Associating, 10, 'Retrying file processing...');
     await handleFileSelection(selectedFileId);
-  };
+  }, [selectedFileId, workflowId, nodeId]);
 
   return {
     selectedFileId,
@@ -613,7 +630,6 @@ export const useFileUploadNode = (
     formatFileSize,
     handleFileSelection,
     handleSheetSelection,
-    handleRetry,
-    updateProcessingState
+    handleRetry
   };
 };

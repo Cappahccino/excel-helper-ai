@@ -55,6 +55,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
 
   const [showLogs, setShowLogs] = React.useState(false);
 
+  // Propagate schema when sheet changes or when file processing completes
   useEffect(() => {
     async function propagateSchemaToConnectedNodes() {
       if (!workflowId || !selectedSheet || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
@@ -117,6 +118,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     propagateSchemaToConnectedNodes();
   }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
 
+  // Listen for edge changes to ensure schema is propagated to newly connected nodes
   useEffect(() => {
     if (!workflowId) return;
     
@@ -137,7 +139,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       }
     };
     
+    // We're not setting up an actual event listener here - just defining the function
+    // for future edge change handling
+    
     return () => {
+      // Cleanup function
     };
   }, [id, workflowId, selectedSheet, selectedFileId, processingState.status, propagateFileSchema, getEdges]);
 
