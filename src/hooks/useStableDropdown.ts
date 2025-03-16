@@ -1,73 +1,53 @@
 
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface UseStableDropdownOptions {
+interface UseStableDropdownProps {
+  onOpenChange?: (open: boolean) => void;
   preventNodeSelection?: boolean;
-  debounceDelay?: number;
-  closeOnOutsideClick?: boolean;
 }
 
-/**
- * A hook that provides stable dropdown behavior within React Flow nodes
- * to prevent flickering and handle event propagation correctly
- */
-export function useStableDropdown({
-  preventNodeSelection = true,
-  debounceDelay = 50,
-  closeOnOutsideClick = true
-}: UseStableDropdownOptions = {}) {
-  const [openState, setOpenState] = useState(false);
+export function useStableDropdown({ onOpenChange, preventNodeSelection = true }: UseStableDropdownProps = {}) {
+  const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const dropdownClickTimeRef = useRef<number>(0);
-  const internalStateRef = useRef<boolean>(false);
   
-  // Create a stable handler for opening/closing dropdown
   const handleOpenChange = useCallback((newOpen: boolean) => {
-    // Skip if no actual change
-    if (newOpen === internalStateRef.current) return;
-    
-    // Update internal ref immediately to prevent double toggling
-    internalStateRef.current = newOpen;
-    
-    // Update state in the next frame to avoid React batching issues
-    setOpenState(newOpen);
-    
-    // Track click time for dropdown
-    if (newOpen) {
-      dropdownClickTimeRef.current = Date.now();
-    }
-  }, []);
+    setOpen(newOpen);
+    onOpenChange?.(newOpen);
+  }, [onOpenChange]);
   
-  // Prevent event bubbling to avoid ReactFlow node selection
-  const stopPropagation = useCallback((e: React.SyntheticEvent) => {
-    if (preventNodeSelection) {
-      e.stopPropagation();
-    }
-  }, [preventNodeSelection]);
-  
-  // Prevent selection for specific events (click, mousedown)
-  const preventSelection = useCallback((e: React.SyntheticEvent) => {
-    if (preventNodeSelection) {
-      // Always stop propagation
-      e.stopPropagation();
-      
-      // For mouse events, prevent default behavior
-      if (e.type === 'mousedown' || e.type === 'click') {
-        e.preventDefault();
+  // Handle outside clicks to close the dropdown
+  useEffect(() => {
+    if (!open) return;
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (!triggerRef.current?.contains(e.target as Node) && 
+          !contentRef.current?.contains(e.target as Node)) {
+        handleOpenChange(false);
       }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [open, handleOpenChange]);
+  
+  // Prevent node selection when clicking on dropdown elements
+  const preventSelection = useCallback((e: React.MouseEvent) => {
+    if (preventNodeSelection) {
+      e.stopPropagation();
     }
   }, [preventNodeSelection]);
   
   return {
-    open: openState,
+    open,
     setOpen: handleOpenChange,
     triggerRef,
     contentRef,
-    stopPropagation,
     preventSelection,
-    closeDropdown: useCallback(() => handleOpenChange(false), [handleOpenChange]),
-    openDropdown: useCallback(() => handleOpenChange(true), [handleOpenChange]),
-    dropdownClickTime: dropdownClickTimeRef
+    // Utility method to prevent event propagation
+    stopPropagation: (e: React.MouseEvent) => e.stopPropagation()
   };
 }

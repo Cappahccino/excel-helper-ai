@@ -1,5 +1,5 @@
 
-import React, { memo, useMemo } from 'react';
+import React from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,8 +19,7 @@ interface SheetSelectorProps {
   isLoading: boolean;
 }
 
-// Use memo to prevent unnecessary re-renders
-const SheetSelector: React.FC<SheetSelectorProps> = memo(({
+const SheetSelector: React.FC<SheetSelectorProps> = ({
   selectedSheet,
   availableSheets,
   onSheetSelect,
@@ -33,17 +32,10 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
     contentRef,
     preventSelection,
     stopPropagation
-  } = useStableDropdown({
-    preventNodeSelection: true,
-    debounceDelay: 100,
-    closeOnOutsideClick: true
-  });
-
-  // Memoize the sheets array for stability
-  const memoizedSheets = useMemo(() => availableSheets || [], [availableSheets]);
+  } = useStableDropdown();
 
   return (
-    <div className="transition-all duration-300 animate-fade-in will-change-transform">
+    <div onClick={preventSelection} className="transition-all duration-300 animate-fade-in">
       <Label htmlFor="sheetSelect" className="text-xs font-medium text-gray-700">
         Select Sheet
       </Label>
@@ -62,36 +54,24 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
         >
           <SelectTrigger 
             id="sheetSelect" 
-            className="mt-1 relative bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-green-200"
+            className="mt-1 relative z-50 bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-green-200"
             ref={triggerRef}
-            onClick={preventSelection}
-            onMouseDown={preventSelection}
+            onClick={stopPropagation}
           >
             <SelectValue placeholder="Choose a sheet..." />
           </SelectTrigger>
           <SelectContent
             ref={contentRef}
-            className="bg-white shadow-lg animate-fade-in border border-gray-200"
+            className="z-[9999] bg-white shadow-lg animate-fade-in border border-gray-200"
             position="popper"
             sideOffset={5}
-            align="start"
-            style={{ zIndex: 9999, pointerEvents: 'auto' }}
-            onMouseDown={preventSelection}
-            onClick={preventSelection}
+            onClick={stopPropagation}
           >
-            {memoizedSheets.map((sheet) => (
+            {availableSheets?.map((sheet) => (
               <SelectItem 
                 key={sheet.name} 
                 value={sheet.name}
                 className="cursor-pointer transition-colors hover:bg-green-50 focus:bg-green-50"
-                onMouseDown={(e) => {
-                  stopPropagation(e);
-                }}
-                onClick={(e) => {
-                  stopPropagation(e);
-                  onSheetSelect(sheet.name);
-                  setOpen(false);
-                }}
               >
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0 text-green-600" />
@@ -116,9 +96,6 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
       )}
     </div>
   );
-});
-
-// Add display name for debugging
-SheetSelector.displayName = 'SheetSelector';
+};
 
 export default SheetSelector;
