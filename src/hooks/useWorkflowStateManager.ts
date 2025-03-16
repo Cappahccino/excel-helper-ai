@@ -75,7 +75,10 @@ function isValidWorkflowId(value: WorkflowId): boolean {
 // Helper function to safely stringify objects for database operations
 function safeJsonStringify(value: any): string {
   try {
-    return JSON.stringify(value) || '{}';
+    // Explicitly cast the result as string to satisfy TypeScript
+    const result = JSON.stringify(value);
+    // Check if result is null or undefined - should never happen with JSON.stringify but TypeScript needs this
+    return result || '{}';
   } catch (e) {
     console.error('Error stringifying value:', e);
     return '{}';
@@ -231,7 +234,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: safeJsonStringify(definition),
+            definition: safeJsonStringify(definition) as string, // Explicit cast
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
@@ -269,7 +272,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: safeJsonStringify(definition),
+            definition: safeJsonStringify(definition) as string, // Explicit cast
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
@@ -310,7 +313,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: safeJsonStringify(definition),
+            definition: safeJsonStringify(definition) as string, // Explicit cast
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
@@ -351,7 +354,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: safeJsonStringify(definition),
+            definition: safeJsonStringify(definition) as string, // Explicit cast
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
