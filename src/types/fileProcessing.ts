@@ -8,7 +8,8 @@ export type FileProcessingStatus =
   | 'verifying'
   | 'completed' 
   | 'failed'
-  | 'error';
+  | 'error'
+  | 'queuing';  // Added this to match FileProcessingState.Queuing
 
 export interface FileProcessingState {
   status: FileProcessingStatus;

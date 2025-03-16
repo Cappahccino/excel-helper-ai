@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { FileProcessingStatus, FileProcessingState, EnhancedProcessingState, LoadingIndicatorState } from '@/types/fileProcessing';
 
@@ -25,7 +24,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
       progress: status === 'completed' ? 100 : progress,
       message,
       error,
-      isLoading: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(status),
+      isLoading: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
       ...(status === 'completed' ? { endTime: Date.now() } : {}),
       ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
     }));
@@ -45,7 +44,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
   }, [processingState.isLoading, processingState.startTime]);
 
   const enhancedState = useMemo<EnhancedProcessingState>(() => {
-    const isProcessing = ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(processingState.status);
+    const isProcessing = ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(processingState.status);
     const isComplete = processingState.status === 'completed';
     const isError = ['error', 'failed'].includes(processingState.status);
     const isPending = processingState.status === 'pending';
@@ -100,9 +99,9 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     return {
       showGlow: status !== 'pending',
       glowColor,
-      pulseAnimation: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(status),
-      progressVisible: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(status),
-      showSpinner: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(status)
+      pulseAnimation: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
+      progressVisible: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
+      showSpinner: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status)
     };
   }, [processingState]);
 
