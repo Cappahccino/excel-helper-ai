@@ -70,7 +70,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
               // This prevents the dropdown from closing when clicking inside the dropdown
               e.preventDefault();
             }}
-            forceMount
           >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">

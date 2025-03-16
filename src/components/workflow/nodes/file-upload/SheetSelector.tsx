@@ -77,7 +77,6 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
               // This prevents the dropdown from closing when clicking inside the dropdown
               e.preventDefault();
             }}
-            forceMount
           >
             {availableSheets.map((sheet) => (
               <SelectItem 
