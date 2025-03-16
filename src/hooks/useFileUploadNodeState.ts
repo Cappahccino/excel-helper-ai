@@ -115,7 +115,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           return;
         }
         
-        if (fileData && fileData.file_id) {
+        if (fileData && typeof fileData === 'object' && fileData.file_id) {
           // Get file information
           const { data: fileInfo, error: infoError } = await supabase
             .from('excel_files')

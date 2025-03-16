@@ -11,6 +11,9 @@ export enum WorkflowFileStatus {
   Error = 'error'
 }
 
+// Export FileProcessingState for use in other modules
+export { FileProcessingState };
+
 // Map database status to UI status
 export const mapWorkflowStatusToProcessingState = (
   dbStatus: WorkflowFileStatus
