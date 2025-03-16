@@ -401,7 +401,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         );
         
         // If file is completed, fetch schema
-        if (status === FileProcessingStates.COMPLETED) {
+        if (status === FileProcessingStates.COMPLETED && fileId) {
           await fetchSchema(fileId, metadata?.selected_sheet);
         }
       }
