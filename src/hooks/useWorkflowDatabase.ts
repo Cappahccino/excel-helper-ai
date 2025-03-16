@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -172,7 +171,6 @@ export function useWorkflowDatabase(
           nodes,
           edges,
         }),
-        user_id: userId,
         created_by: userId,
         status: 'draft',
         trigger_type: 'manual',
