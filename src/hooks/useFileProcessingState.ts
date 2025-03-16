@@ -1,9 +1,9 @@
 
 import { useState, useCallback } from 'react';
-import { FileProcessingStatus, FileProcessingState } from '@/types/fileProcessing';
+import { FileProcessingState, FileProcessingProgress } from '@/types/fileProcessing';
 
-export function useFileProcessingState(initialState?: Partial<FileProcessingState>) {
-  const [processingState, setProcessingState] = useState<FileProcessingState>({
+export function useFileProcessingState(initialState?: Partial<FileProcessingProgress>) {
+  const [processingState, setProcessingState] = useState<FileProcessingProgress>({
     status: initialState?.status || 'pending',
     progress: initialState?.progress || 0,
     message: initialState?.message,
@@ -13,7 +13,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
   });
 
   const updateProcessingState = useCallback((
-    status: FileProcessingStatus, 
+    status: FileProcessingState, 
     progress: number = 0, 
     message?: string,
     error?: string

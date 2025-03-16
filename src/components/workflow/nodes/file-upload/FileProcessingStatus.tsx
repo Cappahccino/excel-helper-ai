@@ -3,7 +3,7 @@ import React from 'react';
 import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
-import { FileProcessingState } from '@/types/workflowStatus';
+import { FileProcessingState } from '@/types/fileProcessing';
 
 interface FileProcessingStatusProps {
   status: FileProcessingState;
@@ -43,6 +43,15 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <Upload className="h-3 w-3 animate-pulse" />
           <span>{message || 'Queuing file...'}</span>
+        </div>
+      ),
+      progressStatus: 'default'
+    },
+    uploading: {
+      statusComponent: (
+        <div className="flex items-center gap-2 text-xs text-blue-600">
+          <Upload className="h-3 w-3 animate-pulse" />
+          <span>{message || 'Uploading file...'}</span>
         </div>
       ),
       progressStatus: 'default'
@@ -112,8 +121,8 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
   return (
     <>
       {statusComponent}
-      {status !== FileProcessingState.Pending && status !== FileProcessingState.Completed && 
-       status !== FileProcessingState.Error && status !== FileProcessingState.Failed && (
+      {status !== 'pending' && status !== 'completed' && 
+       status !== 'error' && status !== 'failed' && (
         <NodeProgress 
           value={progress} 
           status={progressStatus} 
@@ -121,7 +130,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           className="mt-2" 
         />
       )}
-      {(status === FileProcessingState.Error || status === FileProcessingState.Failed) && (
+      {(status === 'error' || status === 'failed') && (
         <Button 
           size="sm" 
           variant="outline" 

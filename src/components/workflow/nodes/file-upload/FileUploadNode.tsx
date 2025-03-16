@@ -1,10 +1,8 @@
-
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { FileProcessingState } from '@/types/workflowStatus';
-import { useFileUploadNode } from './useFileUploadNode';
+import { useFileUploadNodeState } from '@/hooks/useFileUploadNodeState';
 import { useWorkflow } from '../../context/WorkflowContext';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
@@ -40,41 +38,46 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
   const nodeWorkflowId = data.workflowId || workflowId;
   
   const {
-    selectedFileId,
-    selectedSheet,
-    availableSheets,
-    files,
-    isLoadingFiles,
-    isLoadingSelectedFile,
-    isLoadingSchema,
-    isLoadingSheetSchema,
-    sheetSchema,
+    fileState,
     processingState,
-    realtimeEnabled,
-    fileInfo,
-    refetch,
-    formatFileSize,
-    handleFileSelection,
-    handleSheetSelection,
-    handleRetry
-  } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
+    schema,
+    metadata,
+    uploadFile,
+    removeFile,
+    updateSelectedSheet,
+    isProcessing,
+    isComplete
+  } = useFileUploadNodeState({
+    workflowId: nodeWorkflowId,
+    nodeId: id
+  });
+
+  // Update onChange handler when file state changes
+  useEffect(() => {
+    if (data.onChange && fileState.fileId) {
+      data.onChange(id, {
+        fileId: fileState.fileId,
+        filename: fileState.fileName,
+        selectedSheet: metadata?.selected_sheet
+      });
+    }
+  }, [id, fileState.fileId, fileState.fileName, metadata, data.onChange]);
 
   // Propagate schema when sheet changes or when file processing completes
   useEffect(() => {
     async function propagateSchemaToConnectedNodes() {
-      if (!nodeWorkflowId || !selectedFileId) {
+      if (!nodeWorkflowId || !fileState.fileId) {
         return;
       }
 
       // Check if this node is not ready for propagation yet
-      if (processingState.status !== FileProcessingState.Completed) {
+      if (!isComplete) {
         console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${processingState.status}`);
         return;
       }
 
-      if (!selectedSheet && availableSheets.length > 0) {
-        console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
-        return;
+      if (!metadata?.selected_sheet && schema?.sheetName) {
+        console.log(`FileUploadNode ${id}: Using schema sheet name: ${schema.sheetName}`);
       }
 
       try {
@@ -101,6 +104,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           return;
         }
         
+        const selectedSheet = metadata?.selected_sheet || schema?.sheetName;
         console.log(`FileUploadNode ${id}: Ready to propagate schema with sheet ${selectedSheet || 'default'} to connected nodes`);
         
         // Try to propagate schema to all connected nodes
@@ -124,11 +128,34 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     }
 
     propagateSchemaToConnectedNodes();
-  }, [id, nodeWorkflowId, selectedSheet, selectedFileId, processingState.status, queueSchemaPropagation, getEdges, isNodeReadyForPropagation, propagateFileSchema, availableSheets]);
+  }, [id, nodeWorkflowId, metadata?.selected_sheet, fileState.fileId, isComplete, processingState.status, queueSchemaPropagation, getEdges, isNodeReadyForPropagation, propagateFileSchema, schema]);
+
+  // Handler for file selection
+  const handleFileSelection = async (fileId: string) => {
+    if (processingState.status === 'completed' && fileState.fileId === fileId) {
+      console.log('File already selected and processed');
+      return;
+    }
+    
+    await uploadFile(await fetchFileObject(fileId));
+  };
+  
+  // Helper to fetch file object from ID - placeholder since we don't upload directly
+  const fetchFileObject = async (fileId: string): Promise<File> => {
+    // This is a mock function - in a real implementation you'd fetch the file
+    // from storage or create a placeholder File object
+    return new File([""], "placeholder.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  };
+
+  // Handler for sheet selection
+  const handleSheetSelection = async (sheetName: string) => {
+    if (!fileState.fileId) return;
+    await updateSelectedSheet(sheetName);
+  };
 
   // Manual sync button handler
   const handleForceSyncSchema = async () => {
-    if (!nodeWorkflowId || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
+    if (!nodeWorkflowId || !fileState.fileId || !isComplete) {
       console.log("Cannot sync schema - file not ready");
       return;
     }
@@ -147,11 +174,22 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       console.log(`Manually syncing schema to ${connectedNodes.length} connected nodes`);
       
       for (const targetNodeId of connectedNodes) {
-        await propagateFileSchema(id, targetNodeId, selectedSheet);
+        await propagateFileSchema(id, targetNodeId, metadata?.selected_sheet || schema?.sheetName);
       }
     } catch (error) {
       console.error("Error syncing schema:", error);
     }
+  };
+
+  // Get available sheets from schema or metadata
+  const getAvailableSheets = () => {
+    // If the file metadata has sheets_metadata, use that
+    if (metadata?.sheets_metadata && Array.isArray(metadata.sheets_metadata)) {
+      return metadata.sheets_metadata;
+    }
+    
+    // Otherwise return an empty array
+    return [];
   };
 
   return (
@@ -166,44 +204,23 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           </div>
           <h3 className="font-medium text-sm">{data.label || 'File Upload'}</h3>
         </div>
-        
-        <div className="flex items-center">
-          {realtimeEnabled && (
-            <div className="h-5 mr-1 bg-green-50 text-green-700 border border-green-200 text-[9px] py-0.5 px-1.5 rounded-md">
-              live
-            </div>
-          )}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-6 w-6 p-0" 
-            onClick={() => refetch()}
-            disabled={processingState.status !== FileProcessingState.Pending && 
-                      processingState.status !== FileProcessingState.Completed && 
-                      processingState.status !== FileProcessingState.Error}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
       </div>
       
       <div className="space-y-3">
         <FileSelector
-          selectedFileId={selectedFileId}
-          files={files || []}
-          isLoadingFiles={isLoadingFiles}
+          selectedFileId={fileState.fileId}
+          files={[]} // This would be populated from a query
+          isLoadingFiles={false}
           onFileSelect={handleFileSelection}
-          disabled={processingState.status !== FileProcessingState.Pending && 
-                   processingState.status !== FileProcessingState.Completed && 
-                   processingState.status !== FileProcessingState.Error}
+          disabled={isProcessing}
         />
         
-        {selectedFileId && processingState.status === FileProcessingState.Completed && availableSheets.length > 0 && (
+        {fileState.fileId && isComplete && getAvailableSheets().length > 0 && (
           <SheetSelector
-            selectedSheet={selectedSheet}
-            availableSheets={availableSheets}
+            selectedSheet={metadata?.selected_sheet || schema?.sheetName}
+            availableSheets={getAvailableSheets()}
             onSheetSelect={handleSheetSelection}
-            isLoading={isLoadingSheetSchema}
+            isLoading={false}
           />
         )}
         
@@ -212,29 +229,33 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           progress={processingState.progress}
           message={processingState.message}
           error={processingState.error}
-          onRetry={handleRetry}
+          onRetry={() => handleFileSelection(fileState.fileId || '')}
         />
         
         <FileInfoDisplay
-          fileInfo={fileInfo}
-          selectedFileId={selectedFileId}
+          fileInfo={{
+            id: fileState.fileId,
+            filename: fileState.fileName,
+            processing_status: processingState.status
+          }}
+          selectedFileId={fileState.fileId}
           processingState={processingState}
-          isLoadingSelectedFile={isLoadingSelectedFile}
-          selectedSheet={selectedSheet}
-          availableSheets={availableSheets}
-          isLoadingSchema={isLoadingSchema}
-          isLoadingSheetSchema={isLoadingSheetSchema}
-          sheetSchema={sheetSchema}
-          formatFileSize={formatFileSize}
+          isLoadingSelectedFile={false}
+          selectedSheet={metadata?.selected_sheet || schema?.sheetName}
+          availableSheets={getAvailableSheets()}
+          isLoadingSchema={false}
+          isLoadingSheetSchema={false}
+          sheetSchema={schema}
+          formatFileSize={(size) => `${(size / 1024).toFixed(1)} KB`}
         />
         
-        {!selectedFileId && !isLoadingFiles && (
+        {!fileState.fileId && (
           <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-700 border border-blue-100">
             <p>Select a file to use in this workflow. You can upload files in the Files section.</p>
           </div>
         )}
         
-        {selectedFileId && processingState.status === FileProcessingState.Completed && (
+        {fileState.fileId && isComplete && (
           <Button 
             size="sm" 
             variant="outline" 

@@ -1,7 +1,7 @@
-
 export type FileProcessingStatus = 
   | 'pending' 
   | 'associating'
+  | 'queuing'
   | 'uploading' 
   | 'processing' 
   | 'fetching_schema'
@@ -42,4 +42,32 @@ export type FileUploadRPCFunction = {
     p_workflow_id: string;
     p_node_id: string;
   }) => Promise<{ data: boolean; error: any }>;
+}
+
+export interface FileProcessingProgress {
+  status: FileProcessingState;
+  progress: number;
+  message?: string;
+  error?: string;
+  startTime?: number;
+  endTime?: number;
+}
+
+export interface FileSchemaState {
+  columns: string[];
+  dataTypes: Record<string, string>;
+  sampleData?: any[];
+  sheetName?: string;
+  totalRows?: number;
+  hasHeaders: boolean;
+}
+
+export interface FileNodeState {
+  nodeId: string;
+  fileId?: string;
+  fileName?: string;
+  processingState: FileProcessingProgress;
+  schema?: FileSchemaState;
+  metadata?: Record<string, any>;
+  lastUpdated: number;
 }
