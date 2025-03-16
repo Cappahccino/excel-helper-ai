@@ -9,8 +9,8 @@ export enum WorkflowFileStatus {
   Error = 'error'
 }
 
-// Define our file processing state enum for UI representation
-export type FileProcessingState = 
+// Define our file processing state type for UI representation
+export type FileProcessingState =
   | 'pending'
   | 'associating' 
   | 'queuing'

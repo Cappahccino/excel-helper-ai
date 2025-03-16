@@ -12,10 +12,28 @@ export interface FileSchemaDisplayProps {
     sample_data?: any[];
   };
   isLoading?: boolean;
+  isLoadingSchema?: boolean;
+  isLoadingSheetSchema?: boolean;
+  selectedSheet?: string;
+  availableSheets?: Array<{
+    name: string;
+    index: number;
+    rowCount?: number;
+    isDefault?: boolean;
+  }>;
+  fileInfo?: any;
 }
 
-const FileSchemaDisplay: React.FC<FileSchemaDisplayProps> = ({ schemaData, isLoading = false }) => {
-  if (isLoading) {
+const FileSchemaDisplay: React.FC<FileSchemaDisplayProps> = ({ 
+  schemaData, 
+  isLoading = false,
+  isLoadingSchema,
+  isLoadingSheetSchema,
+  selectedSheet,
+  availableSheets,
+  fileInfo
+}) => {
+  if (isLoading || isLoadingSchema || isLoadingSheetSchema) {
     return (
       <div className="space-y-1">
         <span className="text-xs text-gray-600 block mb-1">Schema</span>

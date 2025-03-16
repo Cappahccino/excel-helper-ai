@@ -43,6 +43,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     return 'border-gray-300';
   }, [selected, isProcessing]);
 
+  // Find the selected sheet object from availableSheets
+  const selectedSheetObject = selectedSheet ? 
+    availableSheets.find(s => s.name === selectedSheet) : 
+    undefined;
+
   return (
     <div 
       className={cn(
@@ -90,19 +95,24 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
               availableSheets={availableSheets}
               onSheetSelect={handleSheetSelection}
               isLoading={fileInfo.isLoading}
+              disabled={isProcessing}
             />
           )}
           
           {fileInfo && (
             <FileInfoDisplay
               file={fileInfo}
-              selectedSheet={availableSheets.find(s => s.name === selectedSheet)}
+              selectedSheet={selectedSheetObject}
             />
           )}
           
           {sheetSchema && selectedSheet && !isLoadingSheetSchema && (
             <FileSchemaDisplay
-              schemaData={sheetSchema}
+              schemaData={{
+                columns: sheetSchema.columns || [],
+                data_types: sheetSchema.data_types as Record<string, string> || {},
+                sample_data: sheetSchema.sample_data || []
+              }}
               isLoading={isLoadingSchema}
             />
           )}

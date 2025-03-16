@@ -3,7 +3,7 @@ import React from 'react';
 import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
-import { FileProcessingStatus } from '@/types/fileProcessing';
+import type { FileProcessingStatus } from '@/types/fileProcessing';
 import { cn } from '@/lib/utils';
 
 interface FileProcessingStatusProps {
