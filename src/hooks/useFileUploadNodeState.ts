@@ -128,15 +128,19 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           }
           
           if (fileInfo) {
+            const metadataObj = typeof fileData.metadata === 'string' 
+              ? JSON.parse(fileData.metadata) 
+              : fileData.metadata || {};
+            
             setFileState(prev => ({
               ...prev,
               fileId: fileData.file_id,
               fileName: fileInfo.filename,
-              metadata: fileData.metadata,
+              metadata: metadataObj,
               lastUpdated: Date.now()
             }));
             
-            setMetadata(fileData.metadata);
+            setMetadata(metadataObj);
             
             // Map database status to our status type
             const status = mapProcessingStatus(fileInfo.processing_status);
@@ -153,7 +157,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
             
             // If file is completed, fetch schema
             if (status === 'completed') {
-              const selectedSheet = fileData.metadata?.selected_sheet;
+              const selectedSheet = metadataObj?.selected_sheet;
               await fetchSchema(fileData.file_id, selectedSheet);
             }
           }
@@ -194,14 +198,18 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         console.log(`File association update for node ${nodeId}:`, payload);
         
         if (payload.new && payload.new.file_id) {
+          const metadataObj = typeof payload.new.metadata === 'string' 
+            ? JSON.parse(payload.new.metadata) 
+            : payload.new.metadata || {};
+          
           setFileState(prev => ({
             ...prev,
             fileId: payload.new.file_id,
-            metadata: payload.new.metadata,
+            metadata: metadataObj,
             lastUpdated: Date.now()
           }));
           
-          setMetadata(payload.new.metadata);
+          setMetadata(metadataObj);
           
           // If this is a new file_id, update the subscription for file processing
           if (fileState.fileId !== payload.new.file_id) {

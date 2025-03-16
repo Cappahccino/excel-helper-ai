@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
+import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
 import { FileProcessingState } from '@/types/fileProcessing';

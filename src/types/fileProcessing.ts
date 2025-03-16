@@ -1,3 +1,4 @@
+
 export type FileProcessingStatus = 
   | 'pending' 
   | 'associating'
@@ -10,8 +11,10 @@ export type FileProcessingStatus =
   | 'failed'
   | 'error';
 
-export interface FileProcessingState {
-  status: FileProcessingStatus;
+export type FileProcessingState = FileProcessingStatus;
+
+export interface FileProcessingProgress {
+  status: FileProcessingState;
   progress: number;
   message?: string;
   error?: string;
@@ -42,15 +45,6 @@ export type FileUploadRPCFunction = {
     p_workflow_id: string;
     p_node_id: string;
   }) => Promise<{ data: boolean; error: any }>;
-}
-
-export interface FileProcessingProgress {
-  status: FileProcessingState;
-  progress: number;
-  message?: string;
-  error?: string;
-  startTime?: number;
-  endTime?: number;
 }
 
 export interface FileSchemaState {
