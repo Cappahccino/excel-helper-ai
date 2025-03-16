@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { FileProcessingStatus } from '@/types/fileProcessing';
+import { Json } from '@/types/common';
 
 export type NodeStatus = 
   | 'idle'
@@ -31,6 +32,27 @@ const DEFAULT_STATUS_STATE: NodeStatusState = {
   status: 'idle',
   progress: 0,
 };
+
+// Type guard to check if an object has a specific property
+function hasProperty<K extends string>(obj: unknown, prop: K): obj is { [key in K]: unknown } {
+  return typeof obj === 'object' && obj !== null && prop in obj;
+}
+
+// Helper function to safely extract a number from an unknown value
+function safeGetNumber(obj: unknown, prop: string): number {
+  if (hasProperty(obj, prop) && typeof obj[prop] === 'number') {
+    return obj[prop] as number;
+  }
+  return 0;
+}
+
+// Helper function to safely extract a string from an unknown value
+function safeGetString(obj: unknown, prop: string): string | undefined {
+  if (hasProperty(obj, prop) && typeof obj[prop] === 'string') {
+    return obj[prop] as string;
+  }
+  return undefined;
+}
 
 export function useNodeStatus({
   workflowId,
@@ -68,7 +90,7 @@ export function useNodeStatus({
     // Initial status check
     const fetchNodeStatus = async () => {
       try {
-        // Fix: Use type-safe table name - ensure tableName is a valid table
+        // Use type-safe table name
         if (tableName !== 'workflow_files') {
           console.error(`Table ${tableName} is not implemented for status tracking`);
           return;
@@ -88,15 +110,15 @@ export function useNodeStatus({
 
         if (data) {
           const fileStatus = data.status;
-          const metadata = data.metadata || {};
+          const metadata = data.metadata;
           
           // Map database status to our NodeStatus type
           let nodeStatus: NodeStatus = 'idle';
           let progress = 0;
           
-          // Safely type-check and access the metadata properties
+          // Safely extract progress using our helper function
           if (metadata && typeof metadata === 'object') {
-            progress = typeof metadata.progress === 'number' ? metadata.progress : 0;
+            progress = safeGetNumber(metadata, 'progress');
           }
           
           switch (fileStatus) {
@@ -120,13 +142,13 @@ export function useNodeStatus({
               nodeStatus = 'idle';
           }
           
-          // Safely extract message and error
+          // Safely extract message and error using our helper functions
           let message: string | undefined;
           let errorMsg: string | undefined;
           
           if (metadata && typeof metadata === 'object') {
-            message = typeof metadata.message === 'string' ? metadata.message : undefined;
-            errorMsg = typeof metadata.error === 'string' ? metadata.error : undefined;
+            message = safeGetString(metadata, 'message');
+            errorMsg = safeGetString(metadata, 'error');
           }
           
           updateNodeStatus(
@@ -156,15 +178,15 @@ export function useNodeStatus({
         
         if (data) {
           const fileStatus = data.status;
-          const metadata = data.metadata || {};
+          const metadata = data.metadata;
           
           // Map database status to our NodeStatus type
           let nodeStatus: NodeStatus = 'idle';
           let progress = 0;
           
-          // Safely type-check and access the metadata properties
+          // Safely extract progress using our helper function
           if (metadata && typeof metadata === 'object') {
-            progress = typeof metadata.progress === 'number' ? metadata.progress : 0;
+            progress = safeGetNumber(metadata, 'progress');
           }
           
           switch (fileStatus) {
@@ -188,13 +210,13 @@ export function useNodeStatus({
               nodeStatus = 'idle';
           }
           
-          // Safely extract message and error
+          // Safely extract message and error using our helper functions
           let message: string | undefined;
           let errorMsg: string | undefined;
           
           if (metadata && typeof metadata === 'object') {
-            message = typeof metadata.message === 'string' ? metadata.message : undefined;
-            errorMsg = typeof metadata.error === 'string' ? metadata.error : undefined;
+            message = safeGetString(metadata, 'message');
+            errorMsg = safeGetString(metadata, 'error');
           }
           
           updateNodeStatus(

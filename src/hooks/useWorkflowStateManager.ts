@@ -18,6 +18,14 @@ export interface UpdateOperation {
   timestamp: number;
 }
 
+// Helper function to safely convert a value to a string
+function safeToString(value: any): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+}
+
 export function useWorkflowStateManager(workflowId: string | null) {
   const [pendingUpdates, setPendingUpdates] = useState<UpdateOperation[]>([]);
   const [isProcessingUpdate, setIsProcessingUpdate] = useState(false);
@@ -167,7 +175,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', workflowId);
+          .eq('id', safeToString(workflowId));
       }
     } catch (error) {
       console.error('Error updating node configs:', error);
@@ -202,7 +210,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', workflowId);
+          .eq('id', safeToString(workflowId));
       }
     } catch (error) {
       console.error('Error updating node positions:', error);
@@ -240,7 +248,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', workflowId);
+          .eq('id', safeToString(workflowId));
       }
     } catch (error) {
       console.error('Error updating node data:', error);
@@ -278,7 +286,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', workflowId);
+          .eq('id', safeToString(workflowId));
       }
     } catch (error) {
       console.error('Error updating edge data:', error);
@@ -296,7 +304,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
         const { data: existingSchema } = await supabase
           .from('workflow_file_schemas')
           .select('*')
-          .eq('workflow_id', workflowId)
+          .eq('workflow_id', safeToString(workflowId))
           .eq('node_id', update.nodeId)
           .maybeSingle();
         
@@ -309,7 +317,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
               data_types: update.schema.dataTypes,
               updated_at: new Date().toISOString()
             })
-            .eq('workflow_id', workflowId)
+            .eq('workflow_id', safeToString(workflowId))
             .eq('node_id', update.nodeId);
         } else {
           // Insert new schema - require a file_id field based on schema
@@ -319,7 +327,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
           await supabase
             .from('workflow_file_schemas')
             .insert({
-              workflow_id: workflowId,
+              workflow_id: safeToString(workflowId),
               node_id: update.nodeId,
               file_id: dummyFileId, // Adding required file_id
               columns: update.schema.columns,
@@ -345,7 +353,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
         const { data: existingRecord } = await supabase
           .from('workflow_files')
           .select('*')
-          .eq('workflow_id', workflowId)
+          .eq('workflow_id', safeToString(workflowId))
           .eq('node_id', update.nodeId)
           .maybeSingle();
         
@@ -357,7 +365,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
               metadata: update.metadata,
               updated_at: new Date().toISOString()
             })
-            .eq('workflow_id', workflowId)
+            .eq('workflow_id', safeToString(workflowId))
             .eq('node_id', update.nodeId);
         } else {
           // Insert new record - require a file_id field based on schema
@@ -366,7 +374,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
           await supabase
             .from('workflow_files')
             .insert({
-              workflow_id: workflowId,
+              workflow_id: safeToString(workflowId),
               node_id: update.nodeId,
               file_id: dummyFileId, // Adding required file_id
               metadata: update.metadata,
@@ -388,7 +396,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
       const { data, error } = await supabase
         .from('workflows')
         .select('definition')
-        .eq('id', workflowId)
+        .eq('id', safeToString(workflowId))
         .single();
       
       if (error) {
