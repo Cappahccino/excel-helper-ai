@@ -1,5 +1,5 @@
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Panel, Node } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Plus, FileText } from 'lucide-react';
@@ -38,26 +38,32 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
   setShowLogPanel
 }) => {
   const [isLogDialogOpen, setIsLogDialogOpen] = useState(false);
-  const [lastNodeClickTime, setLastNodeClickTime] = useState(0);
+  const lastNodeClickTimeRef = useRef<number>(0);
+  const lastNodeIdRef = useRef<string | null>(null);
 
-  // Node click handler with throttling to prevent flickering
+  // Node click handler with improved throttling to prevent flickering
   const handleNodeClick = useCallback(
     throttle((event: React.MouseEvent, node: Node) => {
-      // Skip if this is the same node clicked within 100ms
+      // Skip if this is the same node clicked within 150ms
       const now = Date.now();
-      if (now - lastNodeClickTime < 100 && event.currentTarget.getAttribute('data-id') === node.id) {
+      if (now - lastNodeClickTimeRef.current < 150 && lastNodeIdRef.current === node.id) {
+        event.stopPropagation();
         return;
       }
-      setLastNodeClickTime(now);
+      
+      // Update tracking refs
+      lastNodeClickTimeRef.current = now;
+      lastNodeIdRef.current = node.id;
       
       // Only handle the click if it's directly on the node, not on child elements
       // that might have their own click handlers (like dropdowns)
       if (event.currentTarget === event.target || 
          (event.target as HTMLElement).getAttribute('data-no-capture') !== 'true') {
+        // Call the original handler
         onNodeClick(event, node);
       }
-    }, 50),
-    [onNodeClick, lastNodeClickTime]
+    }, 100),
+    [onNodeClick]
   );
 
   return (

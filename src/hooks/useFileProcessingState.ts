@@ -1,5 +1,4 @@
-
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { EnhancedProcessingState, LoadingIndicatorState } from '@/types/fileProcessing';
 
@@ -10,7 +9,10 @@ interface ProcessingStateOptions {
   error?: string;
 }
 
-export function useFileProcessingState(initialState: ProcessingStateOptions) {
+export function useFileProcessingState(
+  initialState: ProcessingStateOptions,
+  isActive: boolean = true // New parameter to conditionally activate the hook
+) {
   // Use a ref to avoid race conditions with batched updates
   const stateRef = useRef<{
     status: string;
@@ -45,6 +47,9 @@ export function useFileProcessingState(initialState: ProcessingStateOptions) {
     endTime: undefined,
   });
 
+  // Keep internal state ref in sync with actual state
+  stateRef.current = processingState;
+
   // Function to update the processing state with batched updates
   const updateProcessingState = useCallback((
     status: FileProcessingState | string,
@@ -52,35 +57,29 @@ export function useFileProcessingState(initialState: ProcessingStateOptions) {
     message?: string,
     error?: string
   ) => {
+    // Skip updates if the hook is not active
+    if (!isActive) return;
+    
     // Update ref immediately
     const now = Date.now();
     const isComplete = status === FileProcessingState.Completed;
     const isError = status === FileProcessingState.Error || status === FileProcessingState.Failed;
     
-    stateRef.current = {
-      status,
-      progress,
-      message,
-      error,
-      startTime: stateRef.current.startTime || now,
-      endTime: (isComplete || isError) ? now : undefined,
-    };
-    
-    // Batch state update with requestAnimationFrame for better performance
+    // Use RAF to avoid flickering - but only when active
     requestAnimationFrame(() => {
       setProcessingState({
-        status: stateRef.current.status,
-        progress: stateRef.current.progress,
-        message: stateRef.current.message,
-        error: stateRef.current.error,
-        startTime: stateRef.current.startTime,
-        endTime: stateRef.current.endTime,
+        status,
+        progress,
+        message,
+        error,
+        startTime: stateRef.current.startTime || now,
+        endTime: (isComplete || isError) ? now : undefined,
       });
     });
-  }, []);
+  }, [isActive]);
 
-  // Enhanced state with computed properties
-  const enhancedState: EnhancedProcessingState = {
+  // Enhanced state with computed properties - use useMemo to prevent recalculation
+  const enhancedState = useMemo<EnhancedProcessingState>(() => ({
     status: processingState.status as FileProcessingState,
     progress: processingState.progress,
     message: processingState.message,
@@ -108,16 +107,16 @@ export function useFileProcessingState(initialState: ProcessingStateOptions) {
       processingState.startTime,
       processingState.endTime || Date.now()
     )
-  };
+  }), [processingState]);
 
-  // Loading indicator state for UI feedback
-  const loadingIndicatorState: LoadingIndicatorState = {
+  // Loading indicator state for UI feedback - also memoized
+  const loadingIndicatorState = useMemo<LoadingIndicatorState>(() => ({
     showGlow: enhancedState.isProcessing || enhancedState.isError,
     glowColor: enhancedState.isError ? 'red' : enhancedState.isComplete ? 'green' : 'blue',
     pulseAnimation: enhancedState.isProcessing,
     progressVisible: enhancedState.isProcessing || enhancedState.isComplete || enhancedState.isError,
     showSpinner: enhancedState.isProcessing && !enhancedState.isComplete && !enhancedState.isError
-  };
+  }), [enhancedState]);
 
   return {
     processingState,

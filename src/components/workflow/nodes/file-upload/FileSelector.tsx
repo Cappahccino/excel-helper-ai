@@ -1,5 +1,5 @@
 
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useCallback } from 'react';
 import { FileText, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -44,9 +44,10 @@ const FileSelector = memo(({
   // Memoize files for stability
   const memoizedFiles = useMemo(() => files || [], [files]);
 
-  // Create a stable handler for file selection
-  const handleSelectFile = React.useCallback((value: string) => {
-    // Prevent rapid re-selection
+  // Create a stable handler for file selection that uses requestAnimationFrame
+  // to batch with UI updates and prevent flicker
+  const handleSelectFile = useCallback((value: string) => {
+    // Skip if already selected to prevent flicker
     if (value === selectedFileId) return;
     
     // Use requestAnimationFrame to batch with other UI updates
@@ -56,8 +57,9 @@ const FileSelector = memo(({
     });
   }, [selectedFileId, onFileSelect, setOpen]);
 
+  // Don't render unnecessarily if nothing has changed
   return (
-    <div className="transition-all duration-300 will-change-transform">
+    <div className="transition-all duration-300 will-change-transform" data-no-capture="true">
       <Label htmlFor="fileSelect" className="text-xs font-medium text-gray-700">
         Select File
       </Label>
@@ -78,6 +80,7 @@ const FileSelector = memo(({
             ref={triggerRef}
             onClick={stopPropagation}
             onMouseDown={stopPropagation}
+            data-no-capture="true"
           >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
@@ -90,6 +93,7 @@ const FileSelector = memo(({
             style={{ zIndex: 9999, pointerEvents: 'auto' }}
             onMouseDown={stopPropagation}
             onClick={stopPropagation}
+            data-no-capture="true"
           >
             {memoizedFiles.length === 0 ? (
               <div className="py-6 px-2 text-center">
@@ -102,6 +106,7 @@ const FileSelector = memo(({
                   key={file.id} 
                   value={file.id}
                   className="flex items-center py-2 px-2"
+                  data-no-capture="true"
                 >
                   <FileText className="mr-2 h-4 w-4 text-blue-500" />
                   <span className="truncate max-w-[180px]">

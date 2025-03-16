@@ -26,15 +26,23 @@ export function debounce<T extends (...args: any[]) => any>(
 export function batchWithRAF<T extends (...args: any[]) => any>(
   fn: T
 ): (...args: Parameters<T>) => void {
+  let rafId: number | null = null;
+  
   return function(...args: Parameters<T>) {
-    requestAnimationFrame(() => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+    }
+    
+    rafId = requestAnimationFrame(() => {
       fn(...args);
+      rafId = null;
     });
   };
 }
 
 /**
  * Creates a throttled function that only executes once per specified interval
+ * with improved handling to prevent duplicated calls
  */
 export function throttle<T extends (...args: any[]) => any>(
   fn: T,
@@ -42,24 +50,52 @@ export function throttle<T extends (...args: any[]) => any>(
 ): (...args: Parameters<T>) => void {
   let lastExecuted = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastArgs: Parameters<T> | null = null;
+  let lastContext: any = null;
   
-  return function(...args: Parameters<T>) {
+  // Clear any pending executions
+  function cancelPending() {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  }
+  
+  // Execute the function with the latest arguments
+  function execute() {
+    if (lastArgs) {
+      const now = Date.now();
+      lastExecuted = now;
+      fn.apply(lastContext, lastArgs);
+      lastArgs = null;
+      lastContext = null;
+    }
+  }
+  
+  const throttled = function(this: any, ...args: Parameters<T>) {
+    // Save context and args for later execution
+    lastContext = this;
+    lastArgs = args;
+    
     const now = Date.now();
     const remaining = interval - (now - lastExecuted);
     
     if (remaining <= 0) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      lastExecuted = now;
-      fn(...args);
+      // Cancel any pending executions
+      cancelPending();
+      // Execute immediately
+      execute();
     } else if (!timeoutId) {
+      // Schedule execution for when the interval has passed
       timeoutId = setTimeout(() => {
-        lastExecuted = Date.now();
         timeoutId = null;
-        fn(...args);
+        execute();
       }, remaining);
     }
   };
+  
+  // Add ability to cancel pending executions
+  (throttled as any).cancel = cancelPending;
+  
+  return throttled;
 }

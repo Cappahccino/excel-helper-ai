@@ -28,16 +28,19 @@ export const useFileUploadNode = (
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   const [fileInfo, setFileInfo] = useState<any>(null);
   
-  // Initialize the file processing state
+  // Check if we have a selected file - only activate processing state if we do
+  const hasSelectedFile = Boolean(selectedFileId);
+  
+  // Initialize the file processing state with conditional activation
   const { 
     processingState, 
     updateProcessingState, 
     enhancedState, 
     loadingIndicatorState 
   } = useFileProcessingState({
-    status: 'pending',
+    status: hasSelectedFile ? 'pending' : 'pending',
     progress: 0
-  });
+  }, hasSelectedFile); // Only activate processing state when we have a file
 
   // Use our queries hook to fetch data
   const {
@@ -50,20 +53,25 @@ export const useFileUploadNode = (
     isLoadingSheetSchema
   } = useFileQueries(workflowId, nodeId, selectedFileId, selectedSheet);
 
-  // Use our realtime hook for live updates
+  // Use our realtime hook for live updates - conditionally activate based on file selection
   const { realtimeEnabled } = useFileRealtime(
-    workflowId, 
-    nodeId, 
+    hasSelectedFile ? workflowId : null, 
+    hasSelectedFile ? nodeId : '', 
     selectedFileId, 
     updateProcessingState, 
     refetch
   );
 
-  // Use our file processing hook
+  // Use our file processing hook with conditional updating
   const { processFile } = useFileProcessing(
     workflowId, 
     nodeId, 
-    updateProcessingState,
+    (status, progress, message, error) => {
+      // Only update processing state when we have a file selected
+      if (hasSelectedFile) {
+        updateProcessingState(status, progress, message, error);
+      }
+    },
     enhancedState
   );
 
@@ -107,6 +115,7 @@ export const useFileUploadNode = (
   }, [selectedFile, selectedSheet, nodeId, config, onChange]);
 
   // Update file info and processing state when the selected file changes
+  // Only process updates when we actually have a file
   useEffect(() => {
     if (selectedFile) {
       setFileInfo(selectedFile);
@@ -139,9 +148,11 @@ export const useFileUploadNode = (
         return;
       }
       
-      updateProcessingState(UIFileProcessingState.Associating, 10, 'Associating file with workflow...');
       setSelectedFileId(fileId);
       setSelectedSheet(undefined);
+      
+      // Only activate processing state after file selection
+      updateProcessingState(UIFileProcessingState.Associating, 10, 'Associating file with workflow...');
       
       await processFile(fileId, onChange, files);
     } catch (error) {
@@ -159,7 +170,7 @@ export const useFileUploadNode = (
     if (!selectedFileId) return;
     updateProcessingState(UIFileProcessingState.Associating, 10, 'Retrying file processing...');
     await handleFileSelection(selectedFileId);
-  }, [selectedFileId, workflowId, nodeId]);
+  }, [selectedFileId, updateProcessingState]);
 
   return {
     selectedFileId,
