@@ -47,8 +47,9 @@ const Canvas = () => {
   const isNewWorkflow = workflowId === 'new';
   const isTemporaryWorkflow = workflowId && workflowId.startsWith('temp-');
   
+  // For new workflows, don't create a temp ID in database yet - will create on save
   const [savingWorkflowId, setSavingWorkflowId] = useTemporaryId('workflow', 
-    isNewWorkflow ? null : workflowId,
+    isNewWorkflow ? 'new' : workflowId,
     isNewWorkflow || isTemporaryWorkflow
   );
   

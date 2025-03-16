@@ -116,8 +116,10 @@ export function useTemporaryId(
   useEffect(() => {
     // Function to sync temporary ID with the database
     const syncTempIdWithDatabase = async () => {
-      // Only sync workflow IDs and only temp IDs
-      if (key !== 'workflow' || !id.startsWith('temp-') || !isTemporaryWorkflowId(id) || syncInProgress.current || isDbSynced) {
+      // Skip sync for routes that don't need db creation, like /canvas/new
+      // Only sync workflow IDs and only temp IDs that are not 'new'
+      if (key !== 'workflow' || !id.startsWith('temp-') || id === 'new' || 
+          !isTemporaryWorkflowId(id) || syncInProgress.current || isDbSynced) {
         setIsInitialized(true);
         return;
       }
@@ -210,7 +212,6 @@ export function useTemporaryId(
               status: 'draft',
               trigger_type: 'manual',
               created_by: user.id,
-              user_id: user.id,
               definition: JSON.stringify({ nodes: [], edges: [] })
             });
             
@@ -250,8 +251,17 @@ export function useTemporaryId(
       }
     };
 
-    // Run the sync operation immediately when the hook is initialized
-    syncTempIdWithDatabase();
+    // Don't auto-sync database for /new routes, as they'll create their workflow on save
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isNewRoute = pathname.endsWith('/new');
+    
+    if (!isNewRoute) {
+      // Run the sync operation immediately when the hook is initialized
+      syncTempIdWithDatabase();
+    } else {
+      console.log('Skipping database sync for /new route - will create on save');
+      setIsInitialized(true);
+    }
   }, [id, key, isDbSynced]);
 
   // Custom setter that updates both state and session storage

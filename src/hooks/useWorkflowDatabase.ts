@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,19 +20,29 @@ export function useWorkflowDatabase(
   const workflow = useWorkflow();
   
   const loadWorkflow = async (workflowId: string, setNodes: (nodes: WorkflowNode[]) => void, setEdges: (edges: any[]) => void) => {
-    if (!workflowId || workflowId === 'new' || workflowId.startsWith('temp-')) return;
+    // Only attempt to load if it's a real workflow ID (not 'new' or temporary)
+    if (!workflowId || workflowId === 'new' || workflowId.startsWith('temp-')) {
+      console.log(`Not loading workflow for ID: ${workflowId} as it's new or temporary`);
+      return;
+    }
     
     try {
       setIsLoading(true);
+      console.log(`Loading workflow with ID: ${workflowId}`);
+      
       const { data, error } = await supabase
         .from('workflows')
         .select('*')
         .eq('id', workflowId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading workflow:', error);
+        throw error;
+      }
       
       if (data) {
+        console.log(`Successfully loaded workflow: ${data.name}`);
         setWorkflowName(data.name || 'New Workflow');
         setWorkflowDescription(data.description || '');
         
