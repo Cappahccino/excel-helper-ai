@@ -118,13 +118,30 @@
   z-index: 9999 !important;
 }
 
-/* Ensure clickable elements within nodes work properly */
+/* Fix for Select component inside React Flow - these are critical fixes */
 .react-flow__node .select-container * {
-  pointer-events: auto;
+  pointer-events: auto !important;
 }
 
-/* Fix for Select component inside React Flow */
 .react-flow__selection {
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
+/* Ensure all popovers and dropdowns in React Flow nodes work properly */
+.react-flow__node [role="dialog"],
+.react-flow__node [role="listbox"],
+.react-flow__node [role="menu"] {
+  pointer-events: auto !important;
+}
+
+/* Make sure dropdown items are clickable */
+.react-flow__node [role="option"] {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Ensure background colors for dropdown components */
+.react-flow__node [data-radix-select-content] {
+  background-color: white !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+}

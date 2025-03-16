@@ -32,8 +32,13 @@ const FileSelector: React.FC<FileSelectorProps> = ({
     onFileSelect(value);
   };
   
+  // Stop propagation on dropdown interaction to prevent React Flow from capturing events
+  const handleInteraction = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+  
   return (
-    <div className="relative z-30">
+    <div className="relative z-30" onMouseDown={handleInteraction}>
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -49,14 +54,17 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           <SelectTrigger 
             id="fileSelect" 
             className="mt-1"
+            onMouseDown={handleInteraction}
           >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
           <SelectContent
-            className="z-50 bg-white"
+            className="z-[9999] bg-white"
             position="popper"
             sideOffset={5}
             align="start"
+            onMouseDown={handleInteraction}
+            onPointerDownOutside={(e) => e.preventDefault()}
           >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">
@@ -69,6 +77,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   key={file.id} 
                   value={file.id}
                   className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
+                  onMouseDown={handleInteraction}
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />

@@ -62,6 +62,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         isProcessing ? 'ring-2 ring-amber-300 ring-opacity-50' : ''
       )}
       onMouseDown={preventBubbling}
+      onClick={preventBubbling}
     >
       <Handle type="target" position={Position.Top} className="w-2 h-2" />
       
@@ -76,7 +77,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           )}
         </div>
         
-        <div className="space-y-4">
+        <div className="space-y-4" onMouseDown={preventBubbling}>
           <FileSelector
             selectedFileId={selectedFileId}
             files={files || []}

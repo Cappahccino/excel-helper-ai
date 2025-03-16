@@ -35,12 +35,17 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
     onSheetSelect(value);
   };
 
+  // Stop propagation on dropdown interaction
+  const handleInteraction = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   if (availableSheets.length === 0) {
     return null;
   }
 
   return (
-    <div className="relative z-20">
+    <div className="relative z-20" onMouseDown={handleInteraction}>
       <Label htmlFor="sheetSelect" className="text-xs font-medium">
         Select Sheet
       </Label>
@@ -53,20 +58,27 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
           onValueChange={handleValueChange}
           disabled={disabled}
         >
-          <SelectTrigger id="sheetSelect" className="mt-1">
+          <SelectTrigger 
+            id="sheetSelect" 
+            className="mt-1"
+            onMouseDown={handleInteraction}
+          >
             <SelectValue placeholder="Choose a sheet..." />
           </SelectTrigger>
           <SelectContent
-            className="z-50 bg-white"
+            className="z-[9999] bg-white"
             position="popper"
             sideOffset={5}
             align="start"
+            onMouseDown={handleInteraction}
+            onPointerDownOutside={(e) => e.preventDefault()}
           >
             {availableSheets.map((sheet) => (
               <SelectItem 
                 key={sheet.index} 
                 value={sheet.name}
                 className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
+                onMouseDown={handleInteraction}
               >
                 <div className="flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5 flex-shrink-0" />
