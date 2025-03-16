@@ -1,6 +1,6 @@
 
 import { v4 as uuidv4 } from 'uuid';
-import { WorkflowNode, NodeType, Edge } from '@/types/workflow';
+import { WorkflowNode, NodeComponentType, NodeType, Edge } from '@/types/workflow';
 
 // Define the node categories
 export type NodeCategory =
@@ -41,11 +41,11 @@ export function createNode(
 
   return {
     id: nodeId,
-    type: type as NodeType,
+    type: type as NodeComponentType, // Fixed this type cast
     position,
     data: {
       label: displayLabel,
-      type: type,
+      type: type as NodeType, // Fixed this type cast
       category: category,
       config: {}
     }

@@ -1,5 +1,5 @@
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { EnhancedProcessingState, LoadingIndicatorState } from '@/types/fileProcessing';
 
@@ -17,7 +17,7 @@ export function useFileProcessingState(initialState: ProcessingStateOptions) {
     progress: number;
     message?: string;
     error?: string;
-    startTime?: number;
+    startTime: number;
     endTime?: number;
   }>({
     status: initialState.status,
@@ -25,15 +25,24 @@ export function useFileProcessingState(initialState: ProcessingStateOptions) {
     message: initialState.message,
     error: initialState.error,
     startTime: Date.now(),
+    endTime: undefined,
   });
 
   // Actual state for re-rendering
-  const [processingState, setProcessingState] = useState({
+  const [processingState, setProcessingState] = useState<{
+    status: string;
+    progress: number;
+    message?: string;
+    error?: string;
+    startTime: number;
+    endTime?: number;
+  }>({
     status: initialState.status,
     progress: initialState.progress || 0,
     message: initialState.message,
     error: initialState.error,
     startTime: Date.now(),
+    endTime: undefined,
   });
 
   // Function to update the processing state with batched updates
@@ -59,7 +68,14 @@ export function useFileProcessingState(initialState: ProcessingStateOptions) {
     
     // Batch state update with requestAnimationFrame for better performance
     requestAnimationFrame(() => {
-      setProcessingState(stateRef.current);
+      setProcessingState({
+        status: stateRef.current.status,
+        progress: stateRef.current.progress,
+        message: stateRef.current.message,
+        error: stateRef.current.error,
+        startTime: stateRef.current.startTime,
+        endTime: stateRef.current.endTime,
+      });
     });
   }, []);
 

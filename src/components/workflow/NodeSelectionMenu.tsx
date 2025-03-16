@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { PlusCircle, FileUp, FileInput, Database, Brain, Bar, Terminal, Zap, Filter, Calculator } from 'lucide-react';
+import { PlusCircle, FileUp, FileInput, Database, Brain, BarChart, Terminal, Zap, Filter, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
@@ -74,7 +74,7 @@ const NodeSelectionMenu: React.FC<NodeSelectionMenuProps> = ({ onAddNode }) => {
         <DropdownMenuGroup>
           <DropdownMenuLabel className="text-xs text-gray-500 font-normal px-2 mt-1">Output</DropdownMenuLabel>
           <DropdownMenuItem onClick={() => onAddNode('outputNode', 'output', 'Output')}>
-            <Bar className="mr-2 h-4 w-4" />
+            <BarChart className="mr-2 h-4 w-4" />
             <span>Output</span>
           </DropdownMenuItem>
         </DropdownMenuGroup>
