@@ -193,7 +193,10 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
+      const formattedWorkflowId = getWorkflowIdForQuery(workflowId);
+      if (!formattedWorkflowId) return;
+      
+      const workflowData = await fetchWorkflowData(formattedWorkflowId);
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -221,7 +224,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', getWorkflowIdForQuery(workflowId));
+          .eq('id', formattedWorkflowId);
       }
     } catch (error) {
       console.error('Error updating node configs:', error);
@@ -234,7 +237,10 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
+      const formattedWorkflowId = getWorkflowIdForQuery(workflowId);
+      if (!formattedWorkflowId) return;
+      
+      const workflowData = await fetchWorkflowData(formattedWorkflowId);
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -256,7 +262,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', getWorkflowIdForQuery(workflowId));
+          .eq('id', formattedWorkflowId);
       }
     } catch (error) {
       console.error('Error updating node positions:', error);
@@ -269,7 +275,10 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
+      const formattedWorkflowId = getWorkflowIdForQuery(workflowId);
+      if (!formattedWorkflowId) return;
+      
+      const workflowData = await fetchWorkflowData(formattedWorkflowId);
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -294,7 +303,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', getWorkflowIdForQuery(workflowId));
+          .eq('id', formattedWorkflowId);
       }
     } catch (error) {
       console.error('Error updating node data:', error);
@@ -307,7 +316,10 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
+      const formattedWorkflowId = getWorkflowIdForQuery(workflowId);
+      if (!formattedWorkflowId) return;
+      
+      const workflowData = await fetchWorkflowData(formattedWorkflowId);
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -332,7 +344,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', getWorkflowIdForQuery(workflowId));
+          .eq('id', formattedWorkflowId);
       }
     } catch (error) {
       console.error('Error updating edge data:', error);
@@ -345,12 +357,15 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
+      const formattedWorkflowId = getWorkflowIdForQuery(workflowId);
+      if (!formattedWorkflowId) return;
+      
       for (const update of updates) {
         // First check if a schema already exists
         const { data: existingSchema } = await supabase
           .from('workflow_file_schemas')
           .select('*')
-          .eq('workflow_id', getWorkflowIdForQuery(workflowId))
+          .eq('workflow_id', formattedWorkflowId)
           .eq('node_id', update.nodeId)
           .maybeSingle();
         
@@ -363,7 +378,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
               data_types: update.schema.dataTypes,
               updated_at: new Date().toISOString()
             })
-            .eq('workflow_id', getWorkflowIdForQuery(workflowId))
+            .eq('workflow_id', formattedWorkflowId)
             .eq('node_id', update.nodeId);
         } else {
           // Insert new schema - require a file_id field based on schema
@@ -373,7 +388,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
           await supabase
             .from('workflow_file_schemas')
             .insert({
-              workflow_id: getWorkflowIdForQuery(workflowId),
+              workflow_id: formattedWorkflowId,
               node_id: update.nodeId,
               file_id: dummyFileId, // Adding required file_id
               columns: update.schema.columns,
@@ -394,12 +409,15 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
+      const formattedWorkflowId = getWorkflowIdForQuery(workflowId);
+      if (!formattedWorkflowId) return;
+      
       for (const update of updates) {
         // Check if a record already exists
         const { data: existingRecord } = await supabase
           .from('workflow_files')
           .select('*')
-          .eq('workflow_id', getWorkflowIdForQuery(workflowId))
+          .eq('workflow_id', formattedWorkflowId)
           .eq('node_id', update.nodeId)
           .maybeSingle();
         
@@ -411,7 +429,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
               metadata: update.metadata,
               updated_at: new Date().toISOString()
             })
-            .eq('workflow_id', getWorkflowIdForQuery(workflowId))
+            .eq('workflow_id', formattedWorkflowId)
             .eq('node_id', update.nodeId);
         } else {
           // Insert new record - require a file_id field based on schema
@@ -420,7 +438,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
           await supabase
             .from('workflow_files')
             .insert({
-              workflow_id: getWorkflowIdForQuery(workflowId),
+              workflow_id: formattedWorkflowId,
               node_id: update.nodeId,
               file_id: dummyFileId, // Adding required file_id
               metadata: update.metadata,
