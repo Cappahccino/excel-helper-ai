@@ -2,6 +2,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
+import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 
 interface NodeProgressProps {
   value: number;
@@ -11,6 +12,7 @@ interface NodeProgressProps {
   processingStatus?: string;
   animated?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  showIcon?: boolean;
 }
 
 const NodeProgress: React.FC<NodeProgressProps> = ({
@@ -21,6 +23,7 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
   processingStatus,
   animated = false,
   size = 'sm',
+  showIcon = false,
 }) => {
   // Map status to color classes
   const statusClasses = {
@@ -37,6 +40,15 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
     md: 'h-2',
     lg: 'h-3'
   }[size];
+  
+  // Icon mapping
+  const statusIcon = {
+    default: <Loader2 className="h-3 w-3 animate-spin" />,
+    success: <Check className="h-3 w-3" />,
+    error: <AlertCircle className="h-3 w-3" />,
+    warning: <Info className="h-3 w-3" />,
+    info: <Database className="h-3 w-3" />
+  }[status];
 
   return (
     <div className={cn("w-full", className)}>
@@ -46,16 +58,31 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
           className={cn("bg-gray-100", heightClass, animated ? 'animate-pulse' : '')}
           indicatorClassName={cn(statusClasses[status], animated ? 'animate-pulse' : '')}
         />
-        {showLabel && (
-          <div className="text-[10px] text-gray-500 mt-0.5 text-right">
-            {Math.round(value)}%
-          </div>
-        )}
-        {processingStatus && (
-          <div className="text-[10px] text-gray-500 mt-0.5">
-            {processingStatus}
-          </div>
-        )}
+        <div className="flex items-center justify-between mt-0.5">
+          {showIcon && (
+            <div className={cn("text-xs", {
+              "text-blue-500": status === 'default',
+              "text-green-500": status === 'success',
+              "text-red-500": status === 'error',
+              "text-amber-500": status === 'warning',
+              "text-sky-500": status === 'info'
+            })}>
+              {statusIcon}
+            </div>
+          )}
+          {processingStatus && (
+            <div className="text-[10px] text-gray-500">
+              {processingStatus}
+            </div>
+          )}
+          {showLabel && (
+            <div className={cn("text-[10px] text-gray-500", {
+              "ml-auto": processingStatus || showIcon
+            })}>
+              {Math.round(value)}%
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

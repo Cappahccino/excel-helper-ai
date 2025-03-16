@@ -9,14 +9,16 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     message: initialState?.message,
     error: initialState?.error,
     startTime: initialState?.startTime,
-    endTime: initialState?.endTime
+    endTime: initialState?.endTime,
+    glowing: initialState?.glowing || false
   });
 
   const updateProcessingState = useCallback((
     status: FileProcessingStatus, 
     progress: number = 0, 
     message?: string,
-    error?: string
+    error?: string,
+    glowing?: boolean
   ) => {
     setProcessingState(prev => ({
       ...prev,
@@ -24,18 +26,30 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
       progress: status === 'completed' ? 100 : progress,
       message,
       error,
-      ...(status === 'completed' ? { endTime: Date.now() } : {}),
+      glowing: glowing !== undefined ? glowing : ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(status),
+      ...(status === 'completed' ? { endTime: Date.now(), glowing: false } : {}),
       ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
     }));
+  }, []);
+
+  const resetProcessingState = useCallback(() => {
+    setProcessingState({
+      status: 'pending',
+      progress: 0,
+      glowing: false
+    });
   }, []);
 
   return {
     processingState,
     updateProcessingState,
+    resetProcessingState,
     // Add helpers for common status checks
     isProcessing: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(processingState.status),
     isComplete: processingState.status === 'completed',
     isError: ['error', 'failed'].includes(processingState.status),
-    isPending: processingState.status === 'pending'
+    isPending: processingState.status === 'pending',
+    // Glowing state for visual effects
+    isGlowing: processingState.glowing
   };
 }

@@ -17,6 +17,7 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
+  glowing?: boolean;
 }
 
 export interface WorkflowUploadResponse {
