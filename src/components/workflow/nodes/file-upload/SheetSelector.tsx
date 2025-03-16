@@ -62,6 +62,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
             id="sheetSelect" 
             className="mt-1"
             onMouseDown={handleInteraction}
+            onClick={handleInteraction}
           >
             <SelectValue placeholder="Choose a sheet..." />
           </SelectTrigger>
@@ -71,7 +72,16 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
             sideOffset={5}
             align="start"
             onMouseDown={handleInteraction}
-            onPointerDownOutside={(e) => e.preventDefault()}
+            onClick={handleInteraction}
+            onInteractOutside={(e) => {
+              // Only prevent outside interactions when selecting a sheet
+              e.preventDefault();
+            }}
+            onPointerDownOutside={(e) => {
+              // This prevents the dropdown from closing when clicking inside the dropdown
+              e.preventDefault();
+            }}
+            forceMount
           >
             {availableSheets.map((sheet) => (
               <SelectItem 
@@ -79,6 +89,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
                 value={sheet.name}
                 className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
                 onMouseDown={handleInteraction}
+                onClick={handleInteraction}
               >
                 <div className="flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5 flex-shrink-0" />

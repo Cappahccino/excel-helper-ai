@@ -55,6 +55,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
             id="fileSelect" 
             className="mt-1"
             onMouseDown={handleInteraction}
+            onClick={handleInteraction}
           >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
@@ -64,7 +65,16 @@ const FileSelector: React.FC<FileSelectorProps> = ({
             sideOffset={5}
             align="start"
             onMouseDown={handleInteraction}
-            onPointerDownOutside={(e) => e.preventDefault()}
+            onClick={handleInteraction}
+            onInteractOutside={(e) => {
+              // Only prevent outside interactions when selecting a file
+              e.preventDefault();
+            }}
+            onPointerDownOutside={(e) => {
+              // This prevents the dropdown from closing when clicking inside the dropdown
+              e.preventDefault();
+            }}
+            forceMount
           >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">
@@ -78,6 +88,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   value={file.id}
                   className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
                   onMouseDown={handleInteraction}
+                  onClick={handleInteraction}
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />
