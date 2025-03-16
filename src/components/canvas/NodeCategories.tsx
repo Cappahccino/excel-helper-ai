@@ -11,12 +11,6 @@ export const nodeCategories = [
         label: 'File Upload',
         description: 'Upload and process Excel, CSV or other file formats',
         icon: Upload
-      },
-      {
-        type: 'directFileUpload',
-        label: 'Direct File Upload',
-        description: 'Directly upload and process files in this node',
-        icon: Upload
       }
     ]
   },
