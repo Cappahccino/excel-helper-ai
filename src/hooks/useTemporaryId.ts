@@ -23,16 +23,28 @@ export function useTemporaryId(
   // Initialize state from session storage or generate a new ID
   const [id, setIdState] = useState<string>(() => {
     try {
+      console.log(`Initializing temporary ID for key ${key}, initialId: ${initialId}, forceTemporary: ${forceTemporary}`);
+      
+      // If initialId is 'new', generate a new temporary ID
+      if (initialId === 'new') {
+        console.log('Generating new ID for "new" workflow');
+        return generateUniqueId(key);
+      }
+      
       // If initialId is provided and not marked as temporary, use it
       if (initialId && !forceTemporary && !isTemporaryWorkflowId(initialId)) {
+        console.log(`Using provided non-temporary ID: ${initialId}`);
         return initialId;
       }
       
       // If initialId is provided and IS marked as temporary, ensure it has temp- prefix
       if (initialId && (forceTemporary || isTemporaryWorkflowId(initialId))) {
         if (!initialId.startsWith('temp-')) {
-          return `temp-${initialId}`;
+          const tempId = `temp-${initialId}`;
+          console.log(`Converting to temporary ID format: ${tempId}`);
+          return tempId;
         }
+        console.log(`Using provided temporary ID: ${initialId}`);
         return initialId;
       }
       
@@ -46,6 +58,7 @@ export function useTemporaryId(
       }
       
       // Generate a new unique temporary ID
+      console.log('Generating new unique temporary ID');
       return generateUniqueId(key);
     } catch (error) {
       console.error('Error initializing temporary ID:', error);
@@ -197,6 +210,7 @@ export function useTemporaryId(
               status: 'draft',
               trigger_type: 'manual',
               created_by: user.id,
+              user_id: user.id,
               definition: JSON.stringify({ nodes: [], edges: [] })
             });
             
@@ -243,6 +257,24 @@ export function useTemporaryId(
   // Custom setter that updates both state and session storage
   const setId = useCallback(async (newId: string | null) => {
     try {
+      console.log(`Setting new ID: ${newId}`);
+      
+      if (newId === 'new') {
+        console.log('Converting "new" to a new temporary ID');
+        const uniqueId = generateUniqueId(key);
+        setIdState(uniqueId);
+        
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(`temp_${key}`, uniqueId);
+        }
+        
+        // Reset initialization state to trigger DB sync
+        setIsDbSynced(false);
+        setIsInitialized(false);
+        initAttempts.current = 0;
+        return;
+      }
+      
       if (newId) {
         // Ensure temp IDs have the proper prefix
         const formattedId = isTemporaryWorkflowId(newId) && !newId.startsWith('temp-') 

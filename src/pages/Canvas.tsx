@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useNodesState, useEdgesState, addEdge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -21,15 +21,19 @@ import { nodeCategories } from '@/components/canvas/NodeCategories';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { checkSchemaPropagationNeeded } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
+import { supabase } from '@/integrations/supabase/client';
 
 declare global {
   interface Window {
     saveWorkflowTimeout?: number;
+    workflowContext?: any;
+    propagateSchemaDirectly?: any;
   }
 }
 
 const Canvas = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
+  const navigate = useNavigate();
   
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -39,6 +43,7 @@ const Canvas = () => {
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   
   const isNewWorkflow = workflowId === 'new';
   const isTemporaryWorkflow = workflowId && workflowId.startsWith('temp-');
@@ -83,6 +88,40 @@ const Canvas = () => {
       console.log(`Workflow status changed to: ${status}`);
     }
   });
+
+  // Check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      
+      if (error || !data.user) {
+        console.log('Not authenticated, redirecting to login');
+        toast.error('Please log in to create or edit workflows');
+        navigate('/auth');
+        return;
+      }
+      
+      setIsAuthenticated(true);
+    };
+    
+    checkAuth();
+  }, [navigate]);
+
+  // Load workflow data if ID is provided and not 'new'
+  useEffect(() => {
+    if (isAuthenticated && workflowId && workflowId !== 'new') {
+      console.log(`Loading workflow data for ID: ${workflowId}`);
+      loadWorkflow(workflowId, setNodes, setEdges);
+    }
+    
+    if (isNewWorkflow) {
+      console.log('Creating new workflow');
+      setWorkflowName('New Workflow');
+      setWorkflowDescription('');
+      setNodes([]);
+      setEdges([]);
+    }
+  }, [workflowId, isAuthenticated, loadWorkflow, setNodes, setEdges]);
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => {
@@ -187,6 +226,27 @@ const Canvas = () => {
     setIsAddingNode(true);
   }, []);
 
+  const handleSaveWorkflow = useCallback(() => {
+    if (!isAuthenticated) {
+      toast.error('Please log in to save your workflow');
+      navigate('/auth');
+      return;
+    }
+    
+    console.log(`Saving workflow with ID: ${savingWorkflowId}, nodes: ${nodes.length}, edges: ${edges.length}`);
+    saveWorkflowToDb(nodes, edges).then(savedId => {
+      if (savedId) {
+        console.log(`Workflow saved successfully with ID: ${savedId}`);
+      } else {
+        console.error('Failed to save workflow');
+      }
+    });
+  }, [isAuthenticated, savingWorkflowId, nodes, edges, saveWorkflowToDb, navigate]);
+
+  if (!isAuthenticated && workflowId !== 'new') {
+    return <div className="flex items-center justify-center h-screen">Checking authentication...</div>;
+  }
+
   return (
     <WorkflowProvider 
       workflowId={savingWorkflowId || undefined}
@@ -197,14 +257,14 @@ const Canvas = () => {
         checkSchemaCompatibility,
       }}
     >
-      <div id="workflow-context-provider" data-context='{"workflowId":"${savingWorkflowId}"}' style={{display: 'none'}}></div>
+      <div id="workflow-context-provider" data-context={JSON.stringify({workflowId: savingWorkflowId})} style={{display: 'none'}}></div>
       <div className="h-screen flex flex-col">
         <WorkflowHeader 
           workflowName={workflowName}
           workflowDescription={workflowDescription}
           onWorkflowNameChange={(e) => setWorkflowName(e.target.value)}
           onWorkflowDescriptionChange={(e) => setWorkflowDescription(e.target.value)}
-          onSave={() => saveWorkflowToDb(nodes, edges)}
+          onSave={handleSaveWorkflow}
           onRun={handleRunWorkflow}
           isSaving={isSaving}
           isRunning={isRunning}
