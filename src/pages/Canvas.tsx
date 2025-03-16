@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -26,7 +27,6 @@ declare global {
   interface Window {
     saveWorkflowTimeout?: number;
     workflowContext?: any;
-    propagateSchemaDirectly?: any;
   }
 }
 
