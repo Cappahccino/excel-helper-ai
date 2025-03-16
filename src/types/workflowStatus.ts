@@ -12,7 +12,8 @@ export enum WorkflowFileStatus {
 }
 
 // Export FileProcessingState for use in other modules
-export { FileProcessingState };
+export type { FileProcessingState };
+export { FileProcessingStates };
 
 // Map database status to UI status
 export const mapWorkflowStatusToProcessingState = (

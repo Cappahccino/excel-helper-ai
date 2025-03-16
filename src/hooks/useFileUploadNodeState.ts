@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -115,61 +114,63 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           return;
         }
         
-        if (fileData && typeof fileData === 'object' && fileData.file_id) {
+        if (fileData && typeof fileData === 'object') {
           // Get file information
-          const { data: fileInfo, error: infoError } = await supabase
-            .from('excel_files')
-            .select('filename, processing_status, error_message, processing_completed_at, processing_started_at')
-            .eq('id', fileData.file_id)
-            .maybeSingle();
-            
-          if (infoError) {
-            console.error('Error fetching file info:', infoError);
-            return;
-          }
-          
-          if (fileInfo) {
-            // Safely parse JSON metadata
-            let metadataObj: Record<string, any> = {};
-            if (fileData.metadata) {
-              if (typeof fileData.metadata === 'string') {
-                try {
-                  metadataObj = JSON.parse(fileData.metadata);
-                } catch (e) {
-                  console.error('Error parsing metadata JSON:', e);
-                }
-              } else if (typeof fileData.metadata === 'object' && fileData.metadata !== null) {
-                metadataObj = fileData.metadata as Record<string, any>;
-              }
+          if (fileData.file_id) {
+            const { data: fileInfo, error: infoError } = await supabase
+              .from('excel_files')
+              .select('filename, processing_status, error_message, processing_completed_at, processing_started_at')
+              .eq('id', fileData.file_id)
+              .maybeSingle();
+              
+            if (infoError) {
+              console.error('Error fetching file info:', infoError);
+              return;
             }
             
-            setFileState(prev => ({
-              ...prev,
-              fileId: fileData.file_id,
-              fileName: fileInfo.filename,
-              metadata: metadataObj,
-              lastUpdated: Date.now()
-            }));
-            
-            setMetadata(metadataObj);
-            
-            // Map database status to our status type
-            const status = mapProcessingStatus(fileInfo.processing_status);
-            
-            // Calculate progress based on status
-            let progress = calculateProgressFromStatus(status);
-            
-            updateProcessingState(
-              status,
-              progress,
-              status === FileProcessingStates.ERROR ? 'Error processing file' : undefined,
-              fileInfo.error_message
-            );
-            
-            // If file is completed, fetch schema
-            if (status === FileProcessingStates.COMPLETED) {
-              const selectedSheet = metadataObj?.selected_sheet;
-              await fetchSchema(fileData.file_id, selectedSheet);
+            if (fileInfo) {
+              // Safely parse JSON metadata
+              let metadataObj: Record<string, any> = {};
+              if (fileData.metadata) {
+                if (typeof fileData.metadata === 'string') {
+                  try {
+                    metadataObj = JSON.parse(fileData.metadata);
+                  } catch (e) {
+                    console.error('Error parsing metadata JSON:', e);
+                  }
+                } else if (typeof fileData.metadata === 'object' && fileData.metadata !== null) {
+                  metadataObj = fileData.metadata as Record<string, any>;
+                }
+              }
+              
+              setFileState(prev => ({
+                ...prev,
+                fileId: fileData.file_id,
+                fileName: fileInfo.filename,
+                metadata: metadataObj,
+                lastUpdated: Date.now()
+              }));
+              
+              setMetadata(metadataObj);
+              
+              // Map database status to our status type
+              const status = mapProcessingStatus(fileInfo.processing_status);
+              
+              // Calculate progress based on status
+              let progress = calculateProgressFromStatus(status);
+              
+              updateProcessingState(
+                status,
+                progress,
+                status === FileProcessingStates.ERROR ? 'Error processing file' : undefined,
+                fileInfo.error_message
+              );
+              
+              // If file is completed, fetch schema
+              if (status === FileProcessingStates.COMPLETED) {
+                const selectedSheet = metadataObj?.selected_sheet;
+                await fetchSchema(fileData.file_id, selectedSheet);
+              }
             }
           }
         }
