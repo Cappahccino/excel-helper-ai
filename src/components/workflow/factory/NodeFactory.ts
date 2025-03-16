@@ -1,6 +1,6 @@
 
 import { v4 as uuidv4 } from 'uuid';
-import { WorkflowNode, NodeComponentType, NodeType, Edge, BaseNodeData } from '@/types/workflow';
+import { WorkflowNode, NodeComponentType, NodeType, Edge, BaseNodeData, WorkflowNodeData } from '@/types/workflow';
 
 // Define the node categories
 export type NodeCategory =
@@ -39,18 +39,134 @@ export function createNode(
   const nodeId = `${type}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const displayLabel = label || NODE_TYPE_NAMES[type] || 'Node';
 
-  const baseData: BaseNodeData = {
-    label: displayLabel,
-    type: type as NodeType,
-    category: category,
-    config: createNodeConfig(type)
-  };
+  // Create the base configuration using the node type
+  const config = createNodeConfig(type);
+
+  // Create the node data based on the node type
+  let nodeData: WorkflowNodeData;
+
+  // Create the specific node data based on type
+  switch (type) {
+    case 'fileUpload':
+      nodeData = {
+        label: displayLabel,
+        type: 'fileUpload',
+        category,
+        config: {
+          ...config,
+          fileId: null,
+          filename: null,
+          hasHeaders: true,
+          delimiter: ','
+        }
+      };
+      break;
+    case 'directUpload':
+      nodeData = {
+        label: displayLabel,
+        type: 'fileUpload', // Use fileUpload type as it's compatible
+        category,
+        config: {
+          ...config,
+          fileId: null,
+          filename: null,
+          hasHeaders: true,
+          delimiter: ','
+        }
+      };
+      break;
+    case 'filtering':
+      nodeData = {
+        label: displayLabel,
+        type: 'filtering',
+        category,
+        config: {
+          ...config,
+          column: '',
+          operator: 'equals',
+          value: '',
+          isCaseSensitive: false
+        }
+      };
+      break;
+    case 'aggregation':
+      nodeData = {
+        label: displayLabel,
+        type: 'aggregation',
+        category,
+        config: {
+          ...config,
+          groupByColumn: '',
+          aggregations: []
+        }
+      };
+      break;
+    case 'aiNode':
+      nodeData = {
+        label: displayLabel,
+        type: 'aiNode',
+        category,
+        config: {
+          ...config,
+          aiProvider: 'openai',
+          modelName: 'gpt-4o',
+          prompt: 'Analyze the following data:'
+        }
+      };
+      break;
+    case 'askAI':
+      nodeData = {
+        label: displayLabel,
+        type: 'askAI',
+        category,
+        config: {
+          ...config,
+          aiProvider: 'openai',
+          modelName: 'gpt-4o',
+          prompt: '',
+          systemMessage: 'You are a helpful assistant.'
+        }
+      };
+      break;
+    case 'outputNode':
+      nodeData = {
+        label: displayLabel,
+        type: 'outputNode',
+        category,
+        config: {
+          ...config,
+          format: 'json',
+          destination: 'download'
+        }
+      };
+      break;
+    case 'dataProcessing':
+      nodeData = {
+        label: displayLabel,
+        type: 'dataProcessing',
+        category,
+        config: {
+          ...config,
+          transformations: []
+        }
+      };
+      break;
+    // Handle other node types with default config
+    default:
+      nodeData = {
+        label: displayLabel,
+        type: type as NodeType,
+        category,
+        config
+      } as WorkflowNodeData;
+      break;
+  }
 
   return {
     id: nodeId,
     type: type as NodeComponentType,
     position,
-    data: baseData
+    data: nodeData
   };
 }
 
