@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import DataPreviewTable from '../ui/DataPreviewTable';
+import NodeProgress from '../ui/NodeProgress';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useDataProcessing';
 
@@ -467,45 +468,6 @@ function NodeConfigForm({ type, config, columns, onConfigChange, validationError
   }
 }
 
-const NodeProgress = ({ value, status, showLabel, animated }: { 
-  value: number; 
-  status: "default" | "success" | "error" | "warning" | "info";
-  showLabel: boolean;
-  animated?: boolean;
-}) => {
-  const statusColors: Record<string, string> = {
-    default: 'bg-blue-600',
-    success: 'bg-green-600',
-    error: 'bg-red-600',
-    warning: 'bg-amber-600',
-    info: 'bg-sky-600'
-  };
-
-  const trackColors: Record<string, string> = {
-    default: 'bg-blue-100',
-    success: 'bg-green-100',
-    error: 'bg-red-100',
-    warning: 'bg-amber-100',
-    info: 'bg-sky-100'
-  };
-
-  return (
-    <div className="space-y-1">
-      <Progress 
-        value={value} 
-        className={`h-1.5 ${trackColors[status]}`}
-        indicatorClassName={`${statusColors[status]} ${animated ? 'animate-pulse' : ''}`}
-      />
-      {showLabel && (
-        <div className="flex justify-between text-[10px] px-0.5">
-          <span className="text-gray-500">Progress</span>
-          <span className="font-medium text-gray-700">{Math.round(value)}%</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
 export default function DataProcessingNode({ id, data, selected, onConfigChange }: { 
   id: string; 
   data: any; 
@@ -792,6 +754,7 @@ export default function DataProcessingNode({ id, data, selected, onConfigChange 
                 value={processingProgress} 
                 status="default" 
                 showLabel={false}
+                processingStatus="processing"
                 animated={true}
               />
             </div>

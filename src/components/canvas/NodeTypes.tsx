@@ -8,12 +8,10 @@ import IntegrationNode from '@/components/workflow/nodes/IntegrationNode';
 import ControlNode from '@/components/workflow/nodes/ControlNode';
 import SpreadsheetGeneratorNode from '@/components/workflow/nodes/SpreadsheetGeneratorNode';
 import UtilityNode from '@/components/workflow/nodes/UtilityNode';
-import EnhancedFileUploadNode from '@/components/workflow/nodes/file-upload/EnhancedFileUploadNode';
+import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 import FilteringNode from '@/components/workflow/nodes/FilteringNode';
 import AggregationNode from '@/components/workflow/nodes/AggregationNode';
 import { NodeTypes } from '@xyflow/react';
-import { createStatusNode } from '@/components/workflow/ui/createStatusNode';
-import { useNodeStatus } from '@/hooks/useNodeStatus';
 
 export const nodeTypes: NodeTypes = {
   dataInput: DataInputNode,
@@ -25,7 +23,7 @@ export const nodeTypes: NodeTypes = {
   controlNode: ControlNode,
   spreadsheetGenerator: SpreadsheetGeneratorNode,
   utilityNode: UtilityNode,
-  fileUpload: EnhancedFileUploadNode,
+  fileUpload: FileUploadNode,
   filtering: FilteringNode,
   aggregation: AggregationNode,
 };
@@ -40,7 +38,7 @@ export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: an
   controlNode: ControlNode,
   spreadsheetGenerator: (props: any) => <SpreadsheetGeneratorNode {...props} onConfigChange={handleNodeConfigUpdate} />,
   utilityNode: UtilityNode,
-  fileUpload: (props: any) => <EnhancedFileUploadNode 
+  fileUpload: (props: any) => <FileUploadNode 
     {...{
       ...props,
       data: {
