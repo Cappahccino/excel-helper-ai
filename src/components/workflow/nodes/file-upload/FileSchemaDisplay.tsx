@@ -1,115 +1,72 @@
 
 import React from 'react';
-import { Database, Table } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
-interface FileSchemaDisplayProps {
-  isLoadingSchema: boolean;
-  isLoadingSheetSchema: boolean;
-  selectedSheet?: string;
-  availableSheets: Array<{
-    name: string;
-    index: number;
-    rowCount?: number;
-    isDefault?: boolean;
-  }>;
-  sheetSchema: any;
-  fileInfo: any;
+export interface FileSchemaDisplayProps {
+  schemaData: {
+    columns: string[];
+    data_types: Record<string, string>;
+    sample_data?: any[];
+  };
+  isLoading?: boolean;
 }
 
-const FileSchemaDisplay: React.FC<FileSchemaDisplayProps> = ({
-  isLoadingSchema,
-  isLoadingSheetSchema,
-  selectedSheet,
-  availableSheets,
-  sheetSchema,
-  fileInfo
-}) => {
-  // If we're loading the schema, show a loading indicator
-  if (isLoadingSchema || isLoadingSheetSchema) {
+const FileSchemaDisplay: React.FC<FileSchemaDisplayProps> = ({ schemaData, isLoading = false }) => {
+  if (isLoading) {
     return (
-      <div className="mt-3 border-t pt-2">
-        <h4 className="text-xs font-semibold mb-1 flex items-center">
-          <Database className="h-3 w-3 mr-1" /> Loading Schema...
-        </h4>
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-full" />
+      <div className="space-y-1">
+        <span className="text-xs text-gray-600 block mb-1">Schema</span>
+        <div className="border rounded-md p-1">
+          <Skeleton className="h-20 w-full" />
         </div>
       </div>
     );
   }
-  
-  // If no sheet is selected, prompt the user
-  if (!selectedSheet && availableSheets.length > 0) {
+
+  if (!schemaData || !schemaData.columns || schemaData.columns.length === 0) {
     return (
-      <div className="mt-3 border-t pt-2">
-        <div className="bg-blue-50 p-2 rounded-md text-xs text-blue-700 border border-blue-100">
-          <p>Please select a sheet to view its schema.</p>
+      <div className="space-y-1">
+        <span className="text-xs text-gray-600 block mb-1">Schema</span>
+        <div className="border rounded-md p-2 text-xs text-gray-500">
+          No schema available
         </div>
       </div>
     );
   }
-  
-  // Use the sheet-specific schema from the query
-  if (sheetSchema) {
-    const columns = sheetSchema.columns.map((name: string, index: number) => ({
-      name,
-      type: sheetSchema.data_types[name] || 'string'
-    }));
-    
-    if (!columns.length) return null;
-    
-    return (
-      <div className="mt-3 border-t pt-2">
-        <h4 className="text-xs font-semibold mb-1 flex items-center">
-          <Table className="h-3 w-3 mr-1" /> Sheet Schema: {selectedSheet}
-        </h4>
-        <div className="max-h-28 overflow-y-auto pr-1 custom-scrollbar">
-          {columns.map((column: any, index: number) => (
-            <div 
-              key={index} 
-              className="text-xs flex gap-2 items-center p-1 border-b border-gray-100 last:border-0"
-            >
-              <span className="font-medium truncate max-w-28">{column.name}</span>
-              <Badge variant="outline" className="h-5 text-[10px]">
-                {column.type}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  
-  // Fallback to file metadata if sheet-specific schema is not available
-  if (!fileInfo?.file_metadata?.column_definitions) return null;
-  
-  const columnDefs = fileInfo.file_metadata.column_definitions;
-  const columns = Object.keys(columnDefs).map(key => ({
-    name: key,
-    type: columnDefs[key] || 'string'
-  }));
-  
-  if (!columns.length) return null;
-  
+
+  // Format the data type for display
+  const formatType = (type: string): string => {
+    if (!type) return 'unknown';
+    return type.toLowerCase().replace('_', ' ');
+  };
+
   return (
-    <div className="mt-3 border-t pt-2">
-      <h4 className="text-xs font-semibold mb-1">File Schema (from metadata)</h4>
-      <div className="max-h-28 overflow-y-auto pr-1 custom-scrollbar">
-        {columns.map((column, index) => (
-          <div 
-            key={index} 
-            className="text-xs flex gap-2 items-center p-1 border-b border-gray-100 last:border-0"
-          >
-            <span className="font-medium truncate max-w-28">{column.name}</span>
-            <Badge variant="outline" className="h-5 text-[10px]">
-              {column.type}
-            </Badge>
-          </div>
-        ))}
+    <div className="space-y-1">
+      <span className="text-xs text-gray-600 block mb-1">Schema</span>
+      <div className="border rounded-md overflow-hidden">
+        <ScrollArea className="h-[120px]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-[10px]">Column</TableHead>
+                <TableHead className="text-[10px]">Type</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {schemaData.columns.map((column, index) => (
+                <TableRow key={index} className={cn(index % 2 === 0 ? 'bg-gray-50' : 'bg-white')}>
+                  <TableCell className="py-1 text-[10px]">{column}</TableCell>
+                  <TableCell className="py-1 text-[10px]">
+                    {formatType(schemaData.data_types[column] || 'unknown')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ScrollArea>
       </div>
     </div>
   );

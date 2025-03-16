@@ -1,123 +1,53 @@
 
-import React, { useEffect } from 'react';
-import { Table, AlertCircle, CheckCircle } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import React from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2 } from 'lucide-react';
 
-interface SheetSelectorProps {
+interface SheetMetadata {
+  name: string;
+  index: number;
+  rowCount?: number;
+  isDefault?: boolean;
+}
+
+export interface SheetSelectorProps {
   selectedSheet?: string;
-  availableSheets: Array<{
-    name: string;
-    index: number;
-    rowCount?: number;
-    isDefault?: boolean;
-  }>;
+  availableSheets: SheetMetadata[];
   onSheetSelect: (sheetName: string) => void;
   isLoading?: boolean;
+  disabled?: boolean;
 }
 
 const SheetSelector: React.FC<SheetSelectorProps> = ({
   selectedSheet,
   availableSheets,
   onSheetSelect,
-  isLoading = false
+  isLoading = false,
+  disabled = false
 }) => {
-  // If there are no available sheets, don't render anything
-  if (!availableSheets.length) {
+  if (availableSheets.length === 0) {
     return null;
   }
-
-  // Auto-select default sheet if no sheet is selected
-  useEffect(() => {
-    if (!selectedSheet && availableSheets.length > 0) {
-      // Find the default sheet, or use the first sheet
-      const defaultSheet = availableSheets.find(sheet => sheet.isDefault) || availableSheets[0];
-      if (defaultSheet) {
-        console.log(`SheetSelector: Auto-selecting default sheet ${defaultSheet.name}`);
-        onSheetSelect(defaultSheet.name);
-      }
-    }
-  }, [selectedSheet, availableSheets, onSheetSelect]);
-
-  const handleSheetSelection = (value: string) => {
-    if (value === selectedSheet) {
-      console.log(`SheetSelector: Sheet ${value} already selected, skipping duplicate selection`);
-      return;
-    }
-    
-    console.log(`SheetSelector: Selected sheet ${value}`);
-    onSheetSelect(value);
-  };
-
+  
   return (
-    <div>
-      <Label htmlFor="sheetSelect" className="text-xs font-medium flex items-center">
-        Select Sheet
-        {isLoading && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <AlertCircle className="h-3.5 w-3.5 ml-1 text-amber-500 animate-pulse" />
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>Updating schema for this sheet...</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {selectedSheet && !isLoading && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <CheckCircle className="h-3.5 w-3.5 ml-1 text-green-500" />
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>Sheet selected and schema available</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </Label>
+    <div className="space-y-1">
+      <div className="flex items-center">
+        <label className="text-xs text-gray-600 block mb-1">Sheet</label>
+        {isLoading && <Loader2 className="ml-2 h-3 w-3 animate-spin text-gray-400" />}
+      </div>
       <Select 
         value={selectedSheet} 
-        onValueChange={handleSheetSelection}
-        disabled={isLoading}
+        onValueChange={onSheetSelect} 
+        disabled={isLoading || disabled}
       >
-        <SelectTrigger id="sheetSelect" className="mt-1">
-          <SelectValue placeholder="Choose a sheet..." />
+        <SelectTrigger className="h-7 text-xs">
+          <SelectValue placeholder="Select a sheet" />
         </SelectTrigger>
         <SelectContent>
           {availableSheets.map((sheet) => (
-            <SelectItem key={sheet.index} value={sheet.name}>
-              <div className="flex items-center gap-2">
-                <Table className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate max-w-[180px]">{sheet.name}</span>
-                {sheet.rowCount !== undefined && sheet.rowCount > 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge variant="outline" className="text-xs">
-                          {sheet.rowCount} rows
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>This sheet contains {sheet.rowCount} rows of data</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                {sheet.isDefault && (
-                  <Badge variant="secondary" className="text-xs ml-1">Default</Badge>
-                )}
-              </div>
+            <SelectItem key={sheet.index} value={sheet.name} className="text-xs">
+              {sheet.name} {sheet.rowCount ? `(${sheet.rowCount} rows)` : ''}
+              {sheet.isDefault ? ' (Default)' : ''}
             </SelectItem>
           ))}
         </SelectContent>

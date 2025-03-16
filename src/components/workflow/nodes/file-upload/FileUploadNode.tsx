@@ -89,8 +89,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
               selectedSheet={selectedSheet}
               availableSheets={availableSheets}
               onSheetSelect={handleSheetSelection}
-              isLoading={isLoadingSelectedFile}
-              disabled={isProcessing}
+              isLoading={fileInfo.isLoading}
             />
           )}
           
@@ -103,7 +102,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
           
           {sheetSchema && selectedSheet && !isLoadingSheetSchema && (
             <FileSchemaDisplay
-              schema={sheetSchema}
+              schemaData={sheetSchema}
               isLoading={isLoadingSchema}
             />
           )}

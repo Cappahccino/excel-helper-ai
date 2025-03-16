@@ -3,11 +3,11 @@ import React from 'react';
 import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
-import { FileProcessingState } from '@/types/workflowStatus';
+import { FileProcessingStatus } from '@/types/fileProcessing';
 import { cn } from '@/lib/utils';
 
 interface FileProcessingStatusProps {
-  status: FileProcessingState;
+  status: FileProcessingStatus;
   progress: number;
   message?: string;
   error?: string;
@@ -24,7 +24,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
   className
 }) => {
   // Status-specific colors for progress
-  const statusMap: Record<FileProcessingState, {
+  const statusMap: Record<FileProcessingStatus, {
     statusComponent: React.ReactNode,
     progressStatus: 'default' | 'success' | 'error' | 'warning' | 'info',
     animated: boolean
@@ -49,6 +49,16 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <Upload className="h-3 w-3 animate-pulse" />
           <span>{message || 'Queuing file...'}</span>
+        </div>
+      ),
+      progressStatus: 'default',
+      animated: true
+    },
+    uploading: {
+      statusComponent: (
+        <div className="flex items-center gap-2 text-xs text-blue-600">
+          <Upload className="h-3 w-3 animate-pulse" />
+          <span>{message || 'Uploading file...'}</span>
         </div>
       ),
       progressStatus: 'default',
@@ -125,8 +135,8 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
   return (
     <div className={cn(className)}>
       {statusComponent}
-      {status !== FileProcessingState.Pending && status !== FileProcessingState.Completed && 
-       status !== FileProcessingState.Error && status !== FileProcessingState.Failed && (
+      {status !== 'pending' && status !== 'completed' && 
+       status !== 'error' && status !== 'failed' && (
         <NodeProgress 
           value={progress} 
           status={progressStatus} 
@@ -136,7 +146,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           animated={animated}
         />
       )}
-      {(status === FileProcessingState.Error || status === FileProcessingState.Failed) && (
+      {(status === 'error' || status === 'failed') && (
         <Button 
           size="sm" 
           variant="outline" 
