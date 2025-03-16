@@ -66,10 +66,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
             align="start"
             onMouseDown={handleInteraction}
             onClick={handleInteraction}
-            onInteractOutside={(e) => {
-              // Only prevent outside interactions when selecting a file
-              e.preventDefault();
-            }}
             onPointerDownOutside={(e) => {
               // This prevents the dropdown from closing when clicking inside the dropdown
               e.preventDefault();
