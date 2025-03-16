@@ -9,22 +9,15 @@ interface SyncButtonProps {
 }
 
 const SyncButton: React.FC<SyncButtonProps> = ({ onClick, disabled }) => {
-  // Handle click with proper event propagation
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onClick();
-  };
-
   return (
     <Button 
       size="sm" 
       variant="outline" 
-      className="w-full text-xs mt-2 relative z-10"
-      onClick={handleClick}
+      className="w-full text-xs mt-2 transition-all duration-300 animate-fade-in shadow-sm border-gray-200 hover:bg-blue-50 hover:border-blue-300 group"
+      onClick={onClick}
       disabled={disabled}
     >
-      <RefreshCw className="h-3.5 w-3.5 mr-2" />
+      <RefreshCw className="h-3 w-3 mr-2 group-hover:rotate-180 transition-transform duration-500" />
       Sync Schema with Connected Nodes
     </Button>
   );

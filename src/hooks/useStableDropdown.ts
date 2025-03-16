@@ -4,14 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 interface UseStableDropdownProps {
   onOpenChange?: (open: boolean) => void;
   preventNodeSelection?: boolean;
-  portalToBody?: boolean;
 }
 
-export function useStableDropdown({ 
-  onOpenChange, 
-  preventNodeSelection = true,
-  portalToBody = true
-}: UseStableDropdownProps = {}) {
+export function useStableDropdown({ onOpenChange, preventNodeSelection = true }: UseStableDropdownProps = {}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -26,48 +21,25 @@ export function useStableDropdown({
     if (!open) return;
 
     const handleOutsideClick = (e: MouseEvent) => {
-      // Check if click is inside trigger or content
-      if (triggerRef.current?.contains(e.target as Node) || 
-          contentRef.current?.contains(e.target as Node)) {
-        return;
+      if (!triggerRef.current?.contains(e.target as Node) && 
+          !contentRef.current?.contains(e.target as Node)) {
+        handleOpenChange(false);
       }
-      
-      handleOpenChange(false);
     };
 
-    // Use capture phase to catch events early
-    document.addEventListener('mousedown', handleOutsideClick, true);
+    document.addEventListener('mousedown', handleOutsideClick);
     
     return () => {
-      document.removeEventListener('mousedown', handleOutsideClick, true);
+      document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, [open, handleOpenChange]);
   
-  // Prevent node selection only when clicking directly on dropdown elements
+  // Prevent node selection when clicking on dropdown elements
   const preventSelection = useCallback((e: React.MouseEvent) => {
     if (preventNodeSelection) {
       e.stopPropagation();
     }
   }, [preventNodeSelection]);
-  
-  // More granular control for event propagation
-  const stopPropagation = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-  }, []);
-
-  // Handle dropdown item selection with proper event handling
-  const handleItemSelect = useCallback((callback?: () => void) => {
-    return (e: React.MouseEvent) => {
-      // Always stop propagation for item selection
-      e.stopPropagation();
-      
-      // Call the provided callback
-      callback?.();
-      
-      // Close the dropdown
-      handleOpenChange(false);
-    };
-  }, [handleOpenChange]);
   
   return {
     open,
@@ -75,8 +47,7 @@ export function useStableDropdown({
     triggerRef,
     contentRef,
     preventSelection,
-    stopPropagation,
-    handleItemSelect,
-    portalToBody
+    // Utility method to prevent event propagation
+    stopPropagation: (e: React.MouseEvent) => e.stopPropagation()
   };
 }
