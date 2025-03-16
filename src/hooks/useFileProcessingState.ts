@@ -13,41 +13,54 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     isLoading: initialState?.isLoading || false
   });
 
+  // Use a ref to track animation frame requests
   const animationFrameRef = useRef<number | null>(null);
+  // Use a ref to track the latest state to avoid stale closures
+  const stateRef = useRef(processingState);
+  
+  // Update the ref whenever the state changes
+  useEffect(() => {
+    stateRef.current = processingState;
+  }, [processingState]);
 
+  // Optimized update function that batches state changes using requestAnimationFrame
   const updateProcessingState = useCallback((
     status: FileProcessingStatus, 
     progress: number = 0, 
     message?: string,
     error?: string
   ) => {
+    // Cancel any pending animation frame to avoid multiple updates
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
 
+    // Schedule the update in the next animation frame for smoother rendering
     animationFrameRef.current = requestAnimationFrame(() => {
-      setProcessingState(prev => {
-        if (prev.status === status && 
-            prev.progress === progress && 
-            prev.message === message && 
-            prev.error === error) {
-          return prev;
-        }
-        
-        return {
-          ...prev,
-          status,
-          progress: status === 'completed' ? 100 : progress,
-          message,
-          error,
-          isLoading: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
-          ...(status === 'completed' ? { endTime: Date.now() } : {}),
-          ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
-        };
-      });
+      const currentState = stateRef.current;
+      
+      // Only update if something actually changed
+      if (currentState.status === status && 
+          currentState.progress === progress && 
+          currentState.message === message && 
+          currentState.error === error) {
+        return;
+      }
+      
+      setProcessingState(prev => ({
+        ...prev,
+        status,
+        progress: status === 'completed' ? 100 : progress,
+        message,
+        error,
+        isLoading: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
+        ...(status === 'completed' ? { endTime: Date.now() } : {}),
+        ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
+      }));
     });
   }, []);
 
+  // Clean up any pending animation frames on unmount
   useEffect(() => {
     return () => {
       if (animationFrameRef.current) {
@@ -56,8 +69,10 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     };
   }, []);
 
+  // For elapsed time calculation
   const [, setUpdateTrigger] = useState(0);
   
+  // Only update the timer if we're in a loading state
   useEffect(() => {
     if (!processingState.isLoading || !processingState.startTime) return;
     
@@ -68,6 +83,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     return () => clearInterval(intervalId);
   }, [processingState.isLoading, processingState.startTime]);
 
+  // Memoize the enhanced state to prevent unnecessary recalculations
   const enhancedState = useMemo<EnhancedProcessingState>(() => {
     const isProcessing = ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(processingState.status);
     const isComplete = processingState.status === 'completed';
@@ -112,6 +128,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     };
   }, [processingState]);
 
+  // Also memoize the loading indicator state
   const loadingIndicatorState = useMemo<LoadingIndicatorState>(() => {
     const { status, progress } = processingState;
     
@@ -127,7 +144,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
       progressVisible: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
       showSpinner: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status)
     };
-  }, [processingState]);
+  }, [processingState.status, processingState.progress]);
 
   return {
     processingState,

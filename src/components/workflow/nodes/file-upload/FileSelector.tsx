@@ -1,5 +1,5 @@
 
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { FileText, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +41,9 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
     closeOnOutsideClick: true
   });
 
+  // Memoize files for stability
+  const memoizedFiles = useMemo(() => files || [], [files]);
+
   return (
     <div 
       className="transition-all duration-300 will-change-transform"
@@ -81,13 +84,13 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
             onMouseDown={preventSelection}
             onClick={preventSelection}
           >
-            {files?.length === 0 ? (
+            {memoizedFiles.length === 0 ? (
               <div className="py-6 px-2 text-center">
                 <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-sm text-gray-500">No files found</p>
               </div>
             ) : (
-              files?.map((file) => (
+              memoizedFiles.map((file) => (
                 <SelectItem 
                   key={file.id} 
                   value={file.id}

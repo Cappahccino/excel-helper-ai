@@ -1,5 +1,5 @@
 
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -39,6 +39,9 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
     closeOnOutsideClick: true
   });
 
+  // Memoize the sheets array for stability
+  const memoizedSheets = useMemo(() => availableSheets || [], [availableSheets]);
+
   return (
     <div className="transition-all duration-300 animate-fade-in will-change-transform">
       <Label htmlFor="sheetSelect" className="text-xs font-medium text-gray-700">
@@ -76,7 +79,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
             onMouseDown={preventSelection}
             onClick={preventSelection}
           >
-            {availableSheets?.map((sheet) => (
+            {memoizedSheets.map((sheet) => (
               <SelectItem 
                 key={sheet.name} 
                 value={sheet.name}
