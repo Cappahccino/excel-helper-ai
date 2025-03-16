@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -89,7 +88,6 @@ const Canvas = () => {
     }
   });
 
-  // Check authentication
   useEffect(() => {
     const checkAuth = async () => {
       const { data, error } = await supabase.auth.getUser();
@@ -107,7 +105,6 @@ const Canvas = () => {
     checkAuth();
   }, [navigate]);
 
-  // Load workflow data if ID is provided and not 'new'
   useEffect(() => {
     if (isAuthenticated && workflowId && workflowId !== 'new') {
       console.log(`Loading workflow data for ID: ${workflowId}`);
@@ -131,7 +128,6 @@ const Canvas = () => {
         updateSchemaPropagationMap(params.source, params.target);
         
         if (savingWorkflowId) {
-          // Safely access workflowContext using optional chaining
           const workflow = window.workflowContext;
           
           if (workflow && workflow.queueSchemaPropagation) {
@@ -195,7 +191,6 @@ const Canvas = () => {
         const workflowContextData = workflowContextElement.getAttribute('data-context');
         if (workflowContextData) {
           try {
-            // Safely assign to window.workflowContext
             window.workflowContext = JSON.parse(workflowContextData);
           } catch (e) {
             console.error('Failed to parse workflow context data', e);
