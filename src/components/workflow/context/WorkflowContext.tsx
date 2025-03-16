@@ -162,10 +162,10 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     } catch (error) {
       console.error(`Error updating metadata for node ${nodeId}:`, error);
     }
-  }, [workflowId, queueStateValue]);
+  }, [workflowId, queueStateUpdate]);
 
   return (
-    <WorkflowContext.provider value={{
+    <WorkflowContext.Provider value={{
      workflowId,
      executionId,
      ...schemaProviderValue,
@@ -174,7 +174,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
      isNodeReadyForPropagation,
      propagateFileSchema,
      getNodeStatus,
-     updateNodeMetadta
+     updateNodeMetadata
     }}>
       {children}
     </WorkflowContext.Provider>  
