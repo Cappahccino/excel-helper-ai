@@ -423,7 +423,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
       const { data, error } = await supabase
         .from('workflows')
         .select('definition')
-        .eq('id', workflowId)
+        .eq('id', safeToString(workflowId))
         .single();
       
       if (error) {
