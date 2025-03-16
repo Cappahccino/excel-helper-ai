@@ -92,7 +92,12 @@ export function useNodeStatus({
           
           // Map database status to our NodeStatus type
           let nodeStatus: NodeStatus = 'idle';
-          let progress = metadata.progress || 0;
+          let progress = 0;
+          
+          // Safely type-check and access the metadata properties
+          if (metadata && typeof metadata === 'object') {
+            progress = typeof metadata.progress === 'number' ? metadata.progress : 0;
+          }
           
           switch (fileStatus) {
             case 'pending':
@@ -115,11 +120,20 @@ export function useNodeStatus({
               nodeStatus = 'idle';
           }
           
+          // Safely extract message and error
+          let message: string | undefined;
+          let errorMsg: string | undefined;
+          
+          if (metadata && typeof metadata === 'object') {
+            message = typeof metadata.message === 'string' ? metadata.message : undefined;
+            errorMsg = typeof metadata.error === 'string' ? metadata.error : undefined;
+          }
+          
           updateNodeStatus(
             nodeStatus, 
             progress, 
-            metadata.message, 
-            metadata.error
+            message, 
+            errorMsg
           );
         }
       } catch (err) {
@@ -146,7 +160,12 @@ export function useNodeStatus({
           
           // Map database status to our NodeStatus type
           let nodeStatus: NodeStatus = 'idle';
-          let progress = metadata.progress || 0;
+          let progress = 0;
+          
+          // Safely type-check and access the metadata properties
+          if (metadata && typeof metadata === 'object') {
+            progress = typeof metadata.progress === 'number' ? metadata.progress : 0;
+          }
           
           switch (fileStatus) {
             case 'pending':
@@ -169,11 +188,20 @@ export function useNodeStatus({
               nodeStatus = 'idle';
           }
           
+          // Safely extract message and error
+          let message: string | undefined;
+          let errorMsg: string | undefined;
+          
+          if (metadata && typeof metadata === 'object') {
+            message = typeof metadata.message === 'string' ? metadata.message : undefined;
+            errorMsg = typeof metadata.error === 'string' ? metadata.error : undefined;
+          }
+          
           updateNodeStatus(
             nodeStatus, 
             progress, 
-            metadata.message, 
-            metadata.error
+            message, 
+            errorMsg
           );
         }
       })

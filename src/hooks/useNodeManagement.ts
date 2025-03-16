@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { WorkflowNode } from '@/types/workflow';
 import { 
@@ -163,9 +164,9 @@ export function useNodeManagement(
    * Check schema compatibility between nodes
    * Implementing to match the expected signature in WorkflowContext
    */
-  const checkSchemaCompatibility = useCallback((sourceSchema: SchemaColumn[], targetSchema: SchemaColumn[]): boolean => {
+  const checkSchemaCompatibility = useCallback((sourceSchema: SchemaColumn[], targetNodeSchema: SchemaColumn[]): boolean => {
     // Original implementation returns a complex object
-    const result = checkSchemaCompatibilityWithDetails(sourceSchema, targetConfig);
+    const result = checkSchemaCompatibilityWithDetails(sourceSchema, targetNodeSchema);
     // But we need to return a boolean to match the interface
     return result.isCompatible;
   }, []);
@@ -173,46 +174,46 @@ export function useNodeManagement(
   /**
    * Enhanced version that provides detailed compatibility information
    */
-  const checkSchemaCompatibilityWithDetails = useCallback((sourceSchema: SchemaColumn[], targetConfig: any): { 
+  const checkSchemaCompatibilityWithDetails = useCallback((sourceSchema: SchemaColumn[], targetSchema: any): { 
     isCompatible: boolean;
     errors: string[];
   } => {
     const errors: string[] = [];
     
     // No configuration needed for compatibility check
-    if (!targetConfig) {
+    if (!targetSchema) {
       return { isCompatible: true, errors: [] };
     }
     
     // If the target has column config, verify it exists in source schema
-    if (targetConfig.column && sourceSchema.length > 0) {
-      const columnExists = sourceSchema.some(col => col.name === targetConfig.column);
+    if (targetSchema.column && sourceSchema.length > 0) {
+      const columnExists = sourceSchema.some(col => col.name === targetSchema.column);
       if (!columnExists) {
-        errors.push(`Column "${targetConfig.column}" does not exist in the source data`);
+        errors.push(`Column "${targetSchema.column}" does not exist in the source data`);
       } else {
         // Column exists, check type compatibility with operation
-        const column = sourceSchema.find(col => col.name === targetConfig.column);
+        const column = sourceSchema.find(col => col.name === targetSchema.column);
         
-        if (targetConfig.operator && column) {
+        if (targetSchema.operator && column) {
           const numericOperators = ['greater-than', 'less-than', 'between'];
           const stringOperators = ['contains', 'starts-with', 'ends-with'];
           
-          if (column.type === 'number' && stringOperators.includes(targetConfig.operator)) {
-            errors.push(`Operator "${targetConfig.operator}" cannot be used with numeric column "${targetConfig.column}"`);
+          if (column.type === 'number' && stringOperators.includes(targetSchema.operator)) {
+            errors.push(`Operator "${targetSchema.operator}" cannot be used with numeric column "${targetSchema.column}"`);
           }
           
-          if (column.type === 'string' && numericOperators.includes(targetConfig.operator)) {
-            errors.push(`Operator "${targetConfig.operator}" cannot be used with text column "${targetConfig.column}"`);
+          if (column.type === 'string' && numericOperators.includes(targetSchema.operator)) {
+            errors.push(`Operator "${targetSchema.operator}" cannot be used with text column "${targetSchema.column}"`);
           }
           
           // Check value compatibility
-          if (targetConfig.value) {
-            if (column.type === 'number' && isNaN(Number(targetConfig.value)) && targetConfig.operator !== 'equals') {
-              errors.push(`Value "${targetConfig.value}" is not a valid number for column "${targetConfig.column}"`);
+          if (targetSchema.value) {
+            if (column.type === 'number' && isNaN(Number(targetSchema.value)) && targetSchema.operator !== 'equals') {
+              errors.push(`Value "${targetSchema.value}" is not a valid number for column "${targetSchema.column}"`);
             }
             
-            if (column.type === 'date' && isNaN(Date.parse(targetConfig.value)) && ['before', 'after', 'between'].includes(targetConfig.operator)) {
-              errors.push(`Value "${targetConfig.value}" is not a valid date for column "${targetConfig.column}"`);
+            if (column.type === 'date' && isNaN(Date.parse(targetSchema.value)) && ['before', 'after', 'between'].includes(targetSchema.operator)) {
+              errors.push(`Value "${targetSchema.value}" is not a valid date for column "${targetSchema.column}"`);
             }
           }
         }
