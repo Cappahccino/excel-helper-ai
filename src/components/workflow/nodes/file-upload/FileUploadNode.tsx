@@ -159,16 +159,16 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
 
   // Get border and shadow styles based on processing state
   const getBorderStyles = () => {
-    if (selected) return 'border-primary';
+    if (selected) return 'border-primary shadow-[0_0_0_1px_hsl(var(--primary))]';
     
     if (enhancedState.isProcessing) {
-      return 'border-blue-300';
+      return 'border-blue-300 shadow-blue-100';
     } else if (enhancedState.isComplete) {
-      return 'border-green-300';
+      return 'border-green-300 shadow-green-100';
     } else if (enhancedState.isError) {
-      return 'border-red-300';
+      return 'border-red-300 shadow-red-100';
     }
-    return 'border-gray-200';
+    return 'border-gray-200 hover:border-gray-300';
   };
 
   // Get glow effect based on state
@@ -178,21 +178,34 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     const color = loadingIndicatorState.glowColor;
     const animation = loadingIndicatorState.pulseAnimation ? 'animate-pulse' : '';
     
-    if (color === 'green') return `shadow-lg shadow-green-100 ${animation}`;
-    if (color === 'red') return `shadow-lg shadow-red-100 ${animation}`;
-    if (color === 'amber') return `shadow-lg shadow-amber-100 ${animation}`;
-    return `shadow-lg shadow-blue-100 ${animation}`;
+    if (color === 'green') return `shadow-lg shadow-green-100/60 ${animation}`;
+    if (color === 'red') return `shadow-lg shadow-red-100/60 ${animation}`;
+    if (color === 'amber') return `shadow-lg shadow-amber-100/60 ${animation}`;
+    return `shadow-lg shadow-blue-100/60 ${animation}`;
   };
 
   return (
-    <div className={cn(
-      "p-4 rounded-md border-2", 
-      getBorderStyles(),
-      getGlowEffect(),
-      "bg-white w-72 transition-all duration-200"
-    )}>
-      <Handle type="target" position={Position.Top} id="in" />
-      <Handle type="source" position={Position.Bottom} id="out" />
+    <div 
+      className={cn(
+        "p-4 rounded-md border-2", 
+        getBorderStyles(),
+        getGlowEffect(),
+        "bg-white w-72 transition-all duration-300 animate-fade-in backdrop-blur-sm",
+        "hover:shadow-md"
+      )}
+    >
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        id="in" 
+        className="w-3 h-3 bg-blue-500 border-2 border-white -top-1.5"
+      />
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        id="out" 
+        className="w-3 h-3 bg-green-500 border-2 border-white -bottom-1.5"
+      />
       
       <FileUploadNodeHeader 
         label={data.label}

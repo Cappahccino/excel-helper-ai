@@ -43,16 +43,20 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
       <div className="relative">
         <Progress 
           value={value} 
-          className={cn("bg-gray-100", heightClass, animated ? 'animate-pulse' : '')}
-          indicatorClassName={cn(statusClasses[status], animated ? 'animate-pulse' : '')}
+          className={cn("bg-gray-100 overflow-hidden rounded-full", heightClass, animated ? 'animate-pulse' : '')}
+          indicatorClassName={cn(
+            statusClasses[status], 
+            animated ? 'animate-pulse' : '',
+            "transition-all duration-500 ease-in-out"
+          )}
         />
         {showLabel && (
-          <div className="text-[10px] text-gray-500 mt-0.5 text-right">
+          <div className="text-[10px] text-gray-500 mt-0.5 text-right transition-opacity duration-300">
             {Math.round(value)}%
           </div>
         )}
         {processingStatus && (
-          <div className="text-[10px] text-gray-500 mt-0.5">
+          <div className="text-[10px] text-gray-500 mt-0.5 transition-opacity duration-300">
             {processingStatus}
           </div>
         )}
