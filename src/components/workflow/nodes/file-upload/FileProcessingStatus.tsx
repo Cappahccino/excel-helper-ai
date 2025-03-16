@@ -21,13 +21,10 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
   onRetry,
 }) => {
   // Status-specific colors for progress
-  const statusMap: Record<FileProcessingState, {
-    statusComponent: React.ReactNode,
-    progressStatus: 'default' | 'success' | 'error' | 'warning' | 'info'
-  }> = {
+  const statusMap = {
     [FileProcessingStates.PENDING]: {
       statusComponent: null,
-      progressStatus: 'default'
+      progressStatus: 'default' as const
     },
     [FileProcessingStates.ASSOCIATING]: {
       statusComponent: (
@@ -36,7 +33,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Associating file...'}</span>
         </div>
       ),
-      progressStatus: 'default'
+      progressStatus: 'default' as const
     },
     [FileProcessingStates.QUEUING]: {
       statusComponent: (
@@ -45,7 +42,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Queuing file...'}</span>
         </div>
       ),
-      progressStatus: 'default'
+      progressStatus: 'default' as const
     },
     [FileProcessingStates.UPLOADING]: {
       statusComponent: (
@@ -54,7 +51,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Uploading file...'}</span>
         </div>
       ),
-      progressStatus: 'default'
+      progressStatus: 'default' as const
     },
     [FileProcessingStates.PROCESSING]: {
       statusComponent: (
@@ -63,7 +60,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Processing file...'}</span>
         </div>
       ),
-      progressStatus: 'default'
+      progressStatus: 'default' as const
     },
     [FileProcessingStates.FETCHING_SCHEMA]: {
       statusComponent: (
@@ -72,7 +69,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Fetching schema...'}</span>
         </div>
       ),
-      progressStatus: 'info'
+      progressStatus: 'info' as const
     },
     [FileProcessingStates.VERIFYING]: {
       statusComponent: (
@@ -81,7 +78,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Verifying data...'}</span>
         </div>
       ),
-      progressStatus: 'warning'
+      progressStatus: 'warning' as const
     },
     [FileProcessingStates.COMPLETED]: {
       statusComponent: (
@@ -90,7 +87,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'File ready'}</span>
         </div>
       ),
-      progressStatus: 'success'
+      progressStatus: 'success' as const
     },
     [FileProcessingStates.FAILED]: {
       statusComponent: (
@@ -101,7 +98,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           </div>
         </div>
       ),
-      progressStatus: 'error'
+      progressStatus: 'error' as const
     },
     [FileProcessingStates.ERROR]: {
       statusComponent: (
@@ -112,7 +109,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           </div>
         </div>
       ),
-      progressStatus: 'error'
+      progressStatus: 'error' as const
     }
   };
   

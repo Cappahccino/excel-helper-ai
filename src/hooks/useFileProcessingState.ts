@@ -29,19 +29,27 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingProg
     }));
   }, []);
 
+  // Create arrays for status checks
+  const processingStatuses: FileProcessingState[] = [
+    FileProcessingStates.UPLOADING, 
+    FileProcessingStates.ASSOCIATING, 
+    FileProcessingStates.PROCESSING, 
+    FileProcessingStates.FETCHING_SCHEMA, 
+    FileProcessingStates.VERIFYING
+  ];
+  
+  const errorStatuses: FileProcessingState[] = [
+    FileProcessingStates.ERROR, 
+    FileProcessingStates.FAILED
+  ];
+
   return {
     processingState,
     updateProcessingState,
     // Add helpers for common status checks
-    isProcessing: [
-      FileProcessingStates.UPLOADING, 
-      FileProcessingStates.ASSOCIATING, 
-      FileProcessingStates.PROCESSING, 
-      FileProcessingStates.FETCHING_SCHEMA, 
-      FileProcessingStates.VERIFYING
-    ].includes(processingState.status),
+    isProcessing: processingStatuses.includes(processingState.status),
     isComplete: processingState.status === FileProcessingStates.COMPLETED,
-    isError: [FileProcessingStates.ERROR, FileProcessingStates.FAILED].includes(processingState.status),
+    isError: errorStatuses.includes(processingState.status),
     isPending: processingState.status === FileProcessingStates.PENDING
   };
 }

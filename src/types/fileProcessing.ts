@@ -17,16 +17,16 @@ export type FileProcessingState = FileProcessingStatus;
 
 // Define a constant object for statuses to use in comparisons
 export const FileProcessingStates = {
-  PENDING: 'pending' as const,
-  ASSOCIATING: 'associating' as const,
-  QUEUING: 'queuing' as const,
-  UPLOADING: 'uploading' as const,
-  PROCESSING: 'processing' as const,
-  FETCHING_SCHEMA: 'fetching_schema' as const,
-  VERIFYING: 'verifying' as const,
-  COMPLETED: 'completed' as const,
-  FAILED: 'failed' as const,
-  ERROR: 'error' as const
+  PENDING: 'pending' as FileProcessingState,
+  ASSOCIATING: 'associating' as FileProcessingState,
+  QUEUING: 'queuing' as FileProcessingState,
+  UPLOADING: 'uploading' as FileProcessingState,
+  PROCESSING: 'processing' as FileProcessingState,
+  FETCHING_SCHEMA: 'fetching_schema' as FileProcessingState,
+  VERIFYING: 'verifying' as FileProcessingState,
+  COMPLETED: 'completed' as FileProcessingState,
+  FAILED: 'failed' as FileProcessingState,
+  ERROR: 'error' as FileProcessingState
 };
 
 export interface FileProcessingProgress {

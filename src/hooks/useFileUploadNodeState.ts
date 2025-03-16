@@ -138,8 +138,8 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
                 } catch (e) {
                   console.error('Error parsing metadata JSON:', e);
                 }
-              } else if (typeof fileData.metadata === 'object') {
-                metadataObj = fileData.metadata;
+              } else if (typeof fileData.metadata === 'object' && fileData.metadata !== null) {
+                metadataObj = fileData.metadata as Record<string, any>;
               }
             }
             
@@ -208,7 +208,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
       async (payload) => {
         console.log(`File association update for node ${nodeId}:`, payload);
         
-        if (payload.new && payload.new.file_id) {
+        if (payload.new && typeof payload.new === 'object' && 'file_id' in payload.new && payload.new.file_id) {
           // Safely parse JSON metadata
           let metadataObj: Record<string, any> = {};
           if (payload.new.metadata) {
@@ -218,14 +218,14 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
               } catch (e) {
                 console.error('Error parsing metadata JSON:', e);
               }
-            } else if (typeof payload.new.metadata === 'object') {
-              metadataObj = payload.new.metadata;
+            } else if (typeof payload.new.metadata === 'object' && payload.new.metadata !== null) {
+              metadataObj = payload.new.metadata as Record<string, any>;
             }
           }
           
           setFileState(prev => ({
             ...prev,
-            fileId: payload.new.file_id,
+            fileId: payload.new.file_id as string,
             metadata: metadataObj,
             lastUpdated: Date.now()
           }));
@@ -234,12 +234,12 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           
           // If this is a new file_id, update the subscription for file processing
           if (fileState.fileId !== payload.new.file_id) {
-            updateFileProcessingSubscription(channel, payload.new.file_id);
+            updateFileProcessingSubscription(channel, payload.new.file_id as string);
           }
           
           // If processing status is in the payload, update it
-          if (payload.new.processing_status) {
-            const status = mapProcessingStatus(payload.new.processing_status);
+          if ('processing_status' in payload.new && payload.new.processing_status) {
+            const status = mapProcessingStatus(payload.new.processing_status as string);
             updateProcessingState(
               status,
               calculateProgressFromStatus(status)
@@ -247,7 +247,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           }
           
           // Get complete file info
-          fetchFileInfoAndUpdate(payload.new.file_id);
+          fetchFileInfoAndUpdate(payload.new.file_id as string);
         } else if (payload.eventType === 'DELETE') {
           // File association was removed
           setFileState(prev => ({
@@ -307,23 +307,31 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
       (payload) => {
         console.log(`File processing update for ${fileId}:`, payload);
         
-        if (payload.new) {
+        if (payload.new && typeof payload.new === 'object') {
           // Get the new processing status
-          const newStatus = mapProcessingStatus(payload.new.processing_status);
+          const newStatus = mapProcessingStatus(
+            'processing_status' in payload.new ? payload.new.processing_status as string : ''
+          );
           
           // Calculate progress
           let progress = calculateProgressFromStatus(newStatus);
           
           // If file has upload_progress, use that for more accurate progress
-          if (payload.new.upload_progress !== null && payload.new.upload_progress !== undefined) {
+          if ('upload_progress' in payload.new && 
+              payload.new.upload_progress !== null && 
+              payload.new.upload_progress !== undefined) {
             if (newStatus === FileProcessingStates.UPLOADING || newStatus === FileProcessingStates.PROCESSING) {
-              progress = Math.max(10, Math.min(90, payload.new.upload_progress));
+              progress = Math.max(10, Math.min(90, Number(payload.new.upload_progress)));
             }
           }
           
           // If processing has chunks info, use that for more accurate progress
-          if (newStatus === FileProcessingStates.PROCESSING && payload.new.processed_chunks && payload.new.total_chunks) {
-            const chunkProgress = (payload.new.processed_chunks / payload.new.total_chunks) * 100;
+          if (newStatus === FileProcessingStates.PROCESSING && 
+              'processed_chunks' in payload.new && 
+              'total_chunks' in payload.new &&
+              payload.new.processed_chunks && 
+              payload.new.total_chunks) {
+            const chunkProgress = (Number(payload.new.processed_chunks) / Number(payload.new.total_chunks)) * 100;
             progress = Math.max(30, Math.min(90, chunkProgress));
           }
           
@@ -331,21 +339,25 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
             newStatus,
             progress,
             getProcessingMessage(newStatus),
-            payload.new.error_message
+            'error_message' in payload.new ? payload.new.error_message as string : undefined
           );
           
           setFileState(prev => ({
             ...prev,
-            fileName: payload.new.filename,
+            fileName: 'filename' in payload.new ? payload.new.filename as string : prev.fileName,
             lastUpdated: Date.now()
           }));
           
           // Show toast for completed processing
           if (newStatus === FileProcessingStates.COMPLETED && processingState.status !== FileProcessingStates.COMPLETED) {
-            toast.success(`File "${payload.new.filename}" processed successfully`);
+            toast.success(`File "${payload.new.filename || 'Unknown'}" processed successfully`);
             
             // Fetch schema when processing completes
-            fetchSchema(fileId, metadata?.selected_sheet);
+            if (fileId && metadata?.selected_sheet) {
+              fetchSchema(fileId, metadata.selected_sheet);
+            } else if (fileId) {
+              fetchSchema(fileId);
+            }
           }
           
           // Show toast for errors
