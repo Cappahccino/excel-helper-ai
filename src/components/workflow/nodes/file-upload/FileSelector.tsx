@@ -26,8 +26,14 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   onFileSelect,
   disabled
 }) => {
+  // Handle file selection with a dedicated handler to prevent event bubbling
+  const handleValueChange = (value: string) => {
+    // Ensure we're not propagating events to parent elements
+    onFileSelect(value);
+  };
+  
   return (
-    <div>
+    <div className="relative z-30">
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -37,13 +43,21 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       ) : (
         <Select 
           value={selectedFileId} 
-          onValueChange={onFileSelect}
+          onValueChange={handleValueChange}
           disabled={disabled}
         >
-          <SelectTrigger id="fileSelect" className="mt-1">
+          <SelectTrigger 
+            id="fileSelect" 
+            className="mt-1"
+          >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent
+            className="z-50 bg-white"
+            position="popper"
+            sideOffset={5}
+            align="start"
+          >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">
                 <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
@@ -51,7 +65,11 @@ const FileSelector: React.FC<FileSelectorProps> = ({
               </div>
             ) : (
               files?.map((file) => (
-                <SelectItem key={file.id} value={file.id}>
+                <SelectItem 
+                  key={file.id} 
+                  value={file.id}
+                  className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
+                >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate max-w-[180px]">{file.filename}</span>

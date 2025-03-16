@@ -48,6 +48,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
     availableSheets.find(s => s.name === selectedSheet) : 
     undefined;
 
+  // Use stopPropagation on all mousedown events within the node
+  const preventBubbling = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <div 
       className={cn(
@@ -56,6 +61,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, data, selected }) =
         isGlowing ? 'animate-pulse shadow-lg shadow-amber-200' : '',
         isProcessing ? 'ring-2 ring-amber-300 ring-opacity-50' : ''
       )}
+      onMouseDown={preventBubbling}
     >
       <Handle type="target" position={Position.Top} className="w-2 h-2" />
       

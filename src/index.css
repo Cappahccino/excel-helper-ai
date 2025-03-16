@@ -107,3 +107,24 @@
     border-radius: 3px;
   }
 }
+
+/* Override for React Flow Nodes */
+.react-flow__node {
+  pointer-events: all;
+}
+
+/* Ensure Radix UI Select Components appear above React Flow elements */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
+/* Ensure clickable elements within nodes work properly */
+.react-flow__node .select-container * {
+  pointer-events: auto;
+}
+
+/* Fix for Select component inside React Flow */
+.react-flow__selection {
+  pointer-events: none;
+}
+

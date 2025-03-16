@@ -1,20 +1,26 @@
 
 import React from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Layers } from 'lucide-react';
 
-interface SheetMetadata {
-  name: string;
-  index: number;
-  rowCount?: number;
-  isDefault?: boolean;
-}
-
-export interface SheetSelectorProps {
+interface SheetSelectorProps {
   selectedSheet?: string;
-  availableSheets: SheetMetadata[];
+  availableSheets: Array<{
+    name: string;
+    index: number;
+    rowCount?: number;
+    isDefault?: boolean;
+  }>;
   onSheetSelect: (sheetName: string) => void;
-  isLoading?: boolean;
+  isLoading: boolean;
   disabled?: boolean;
 }
 
@@ -22,36 +28,65 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   selectedSheet,
   availableSheets,
   onSheetSelect,
-  isLoading = false,
+  isLoading,
   disabled = false
 }) => {
+  const handleValueChange = (value: string) => {
+    onSheetSelect(value);
+  };
+
   if (availableSheets.length === 0) {
     return null;
   }
-  
+
   return (
-    <div className="space-y-1">
-      <div className="flex items-center">
-        <label className="text-xs text-gray-600 block mb-1">Sheet</label>
-        {isLoading && <Loader2 className="ml-2 h-3 w-3 animate-spin text-gray-400" />}
-      </div>
-      <Select 
-        value={selectedSheet} 
-        onValueChange={onSheetSelect} 
-        disabled={isLoading || disabled}
-      >
-        <SelectTrigger className="h-7 text-xs">
-          <SelectValue placeholder="Select a sheet" />
-        </SelectTrigger>
-        <SelectContent>
-          {availableSheets.map((sheet) => (
-            <SelectItem key={sheet.index} value={sheet.name} className="text-xs">
-              {sheet.name} {sheet.rowCount ? `(${sheet.rowCount} rows)` : ''}
-              {sheet.isDefault ? ' (Default)' : ''}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className="relative z-20">
+      <Label htmlFor="sheetSelect" className="text-xs font-medium">
+        Select Sheet
+      </Label>
+      
+      {isLoading ? (
+        <Skeleton className="h-9 w-full mt-1" />
+      ) : (
+        <Select 
+          value={selectedSheet} 
+          onValueChange={handleValueChange}
+          disabled={disabled}
+        >
+          <SelectTrigger id="sheetSelect" className="mt-1">
+            <SelectValue placeholder="Choose a sheet..." />
+          </SelectTrigger>
+          <SelectContent
+            className="z-50 bg-white"
+            position="popper"
+            sideOffset={5}
+            align="start"
+          >
+            {availableSheets.map((sheet) => (
+              <SelectItem 
+                key={sheet.index} 
+                value={sheet.name}
+                className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>{sheet.name}</span>
+                  {sheet.rowCount && (
+                    <span className="text-xs text-gray-500 ml-auto">
+                      {sheet.rowCount} rows
+                    </span>
+                  )}
+                  {sheet.isDefault && (
+                    <span className="text-xs text-green-600 ml-auto">
+                      Default
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </div>
   );
 };
