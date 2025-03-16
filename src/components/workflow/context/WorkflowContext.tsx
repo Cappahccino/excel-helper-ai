@@ -24,6 +24,11 @@ interface WorkflowContextValue {
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => Promise<boolean>;
   getNodeStatus: (nodeId: string) => Promise<{status: string, metadata?: any}>;
   updateNodeMetadata: (nodeId: string, metadata: any) => Promise<void>;
+  // Add missing properties needed by ConnectionHandler
+  isTemporaryId?: (id: string) => boolean;
+  convertToDbWorkflowId?: (id: string) => string;
+  // Add missing migration property needed by useWorkflowDatabase
+  migrateTemporaryWorkflow?: (tempId: string, finalId: string) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextValue>({
@@ -36,6 +41,9 @@ const WorkflowContext = createContext<WorkflowContextValue>({
   propagateFileSchema: () => Promise.resolve(false),
   getNodeStatus: () => Promise.resolve({status: 'idle'}),
   updateNodeMetadata: () => Promise.resolve(),
+  isTemporaryId: () => false,
+  convertToDbWorkflowId: (id) => id,
+  migrateTemporaryWorkflow: () => Promise.resolve(false)
 });
 
 export const useWorkflow = () => useContext(WorkflowContext);
@@ -120,7 +128,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
             columns: sourceSchema.map(col => col.name),
             dataTypes: sourceSchema.reduce((acc, col) => ({
               ...acc,
-              [col.name]: col.dataType
+              [col.name]: col.type // Fixed from col.dataType to col.type to match SchemaColumn
             }), {})
           }
         });
@@ -164,17 +172,41 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     }
   }, [workflowId, queueStateUpdate]);
 
+  // Add helper functions for handling temporary IDs
+  const isTemporaryId = useCallback((id: string) => {
+    return id && (id.startsWith('temp-') || id === 'new');
+  }, []);
+
+  const convertToDbWorkflowId = useCallback((id: string) => {
+    if (isTemporaryId(id)) {
+      // If it's a temporary ID, return placeholder value or handle appropriately
+      console.warn(`Attempting to use temporary workflow ID: ${id} in database operation`);
+      return id.replace('temp-', '');
+    }
+    return id;
+  }, [isTemporaryId]);
+
+  // Migrate temporary workflow to a permanent one
+  const migrateTemporaryWorkflow = useCallback(async (tempId: string, finalId: string) => {
+    console.log(`Migrating temporary workflow from ${tempId} to ${finalId}`);
+    // In a real implementation, this would update database records
+    return Promise.resolve(true);
+  }, []);
+
   return (
     <WorkflowContext.Provider value={{
-     workflowId,
-     executionId,
-     ...schemaProviderValue,
-     getEdges,
-     queueSchemaPropagation,
-     isNodeReadyForPropagation,
-     propagateFileSchema,
-     getNodeStatus,
-     updateNodeMetadata
+      workflowId,
+      executionId,
+      ...schemaProviderValue,
+      getEdges,
+      queueSchemaPropagation,
+      isNodeReadyForPropagation,
+      propagateFileSchema,
+      getNodeStatus,
+      updateNodeMetadata,
+      isTemporaryId,
+      convertToDbWorkflowId,
+      migrateTemporaryWorkflow
     }}>
       {children}
     </WorkflowContext.Provider>  

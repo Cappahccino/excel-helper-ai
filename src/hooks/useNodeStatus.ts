@@ -68,8 +68,14 @@ export function useNodeStatus({
     // Initial status check
     const fetchNodeStatus = async () => {
       try {
+        // Fix: Use type-safe table name - ensure tableName is a valid table
+        if (tableName !== 'workflow_files') {
+          console.error(`Table ${tableName} is not implemented for status tracking`);
+          return;
+        }
+
         const { data, error } = await supabase
-          .from(tableName)
+          .from('workflow_files')
           .select('status, metadata')
           .eq('workflow_id', workflowId)
           .eq('node_id', nodeId)

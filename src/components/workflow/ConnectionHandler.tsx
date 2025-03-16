@@ -13,7 +13,11 @@ interface ConnectionHandlerProps {
 
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
   const reactFlowInstance = useReactFlow();
-  const { propagateFileSchema, isTemporaryId, convertToDbWorkflowId } = useWorkflow();
+  const { 
+    propagateFileSchema, 
+    isTemporaryId = () => false, 
+    convertToDbWorkflowId = (id) => id 
+  } = useWorkflow();
   const [retryMap, setRetryMap] = useState<Record<string, { attempts: number, maxAttempts: number, lastAttempt: number }>>({});
   
   const edgesRef = useRef<Edge[]>([]);

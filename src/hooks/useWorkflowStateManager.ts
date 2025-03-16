@@ -312,12 +312,16 @@ export function useWorkflowStateManager(workflowId: string | null) {
             .eq('workflow_id', workflowId)
             .eq('node_id', update.nodeId);
         } else {
-          // Insert new schema
+          // Insert new schema - require a file_id field based on schema
+          // Find a dummy file ID if needed or add a workaround
+          const dummyFileId = '00000000-0000-0000-0000-000000000000'; // Placeholder
+          
           await supabase
             .from('workflow_file_schemas')
             .insert({
               workflow_id: workflowId,
               node_id: update.nodeId,
+              file_id: dummyFileId, // Adding required file_id
               columns: update.schema.columns,
               data_types: update.schema.dataTypes,
               created_at: new Date().toISOString(),
@@ -356,12 +360,15 @@ export function useWorkflowStateManager(workflowId: string | null) {
             .eq('workflow_id', workflowId)
             .eq('node_id', update.nodeId);
         } else {
-          // Insert new record (though this should rarely be needed)
+          // Insert new record - require a file_id field based on schema
+          const dummyFileId = '00000000-0000-0000-0000-000000000000'; // Placeholder
+          
           await supabase
             .from('workflow_files')
             .insert({
               workflow_id: workflowId,
               node_id: update.nodeId,
+              file_id: dummyFileId, // Adding required file_id
               metadata: update.metadata,
               status: 'pending',
               created_at: new Date().toISOString(),

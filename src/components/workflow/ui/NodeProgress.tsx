@@ -5,18 +5,20 @@ import { Progress } from '@/components/ui/progress';
 
 type ProgressStatus = 'default' | 'success' | 'error' | 'warning' | 'info';
 
-interface NodeProgressProps {
+export interface NodeProgressProps {
   value: number;
   status?: ProgressStatus;
   showLabel?: boolean;
   className?: string;
+  animated?: boolean; // Added for animation support
 }
 
 const NodeProgress: React.FC<NodeProgressProps> = ({
   value,
   status = 'default',
   showLabel = false,
-  className
+  className,
+  animated = false
 }) => {
   const statusColors: Record<ProgressStatus, string> = {
     default: 'bg-blue-600',
@@ -39,7 +41,7 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
       <Progress 
         value={value} 
         className={cn('h-1.5', trackColors[status])}
-        indicatorClassName={statusColors[status]}
+        indicatorClassName={cn(statusColors[status], animated && 'animate-pulse')}
       />
       {showLabel && (
         <div className="flex justify-between text-[10px] px-0.5">

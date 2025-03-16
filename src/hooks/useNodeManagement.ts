@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { WorkflowNode } from '@/types/workflow';
 import { 
@@ -162,8 +161,19 @@ export function useNodeManagement(
   
   /**
    * Check schema compatibility between nodes
+   * Implementing to match the expected signature in WorkflowContext
    */
-  const checkSchemaCompatibility = useCallback((sourceSchema: SchemaColumn[], targetConfig: any): { 
+  const checkSchemaCompatibility = useCallback((sourceSchema: SchemaColumn[], targetSchema: SchemaColumn[]): boolean => {
+    // Original implementation returns a complex object
+    const result = checkSchemaCompatibilityWithDetails(sourceSchema, targetConfig);
+    // But we need to return a boolean to match the interface
+    return result.isCompatible;
+  }, []);
+
+  /**
+   * Enhanced version that provides detailed compatibility information
+   */
+  const checkSchemaCompatibilityWithDetails = useCallback((sourceSchema: SchemaColumn[], targetConfig: any): { 
     isCompatible: boolean;
     errors: string[];
   } => {
@@ -211,7 +221,7 @@ export function useNodeManagement(
     
     return { isCompatible: errors.length === 0, errors };
   }, []);
-  
+
   const triggerSchemaUpdate = useCallback((sourceNodeId: string) => {
     // Get all dependent nodes for the source node
     const mapping = schemaPropagationMap[sourceNodeId];
@@ -256,6 +266,7 @@ export function useNodeManagement(
     getNodeSchema,
     updateNodeSchema,
     checkSchemaCompatibility,
+    checkSchemaCompatibilityWithDetails,
     pendingSchemaUpdates,
     schemaCache
   };
