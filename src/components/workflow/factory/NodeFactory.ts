@@ -1,6 +1,6 @@
 
 import { v4 as uuidv4 } from 'uuid';
-import { WorkflowNode, NodeComponentType, NodeType, Edge } from '@/types/workflow';
+import { WorkflowNode, NodeComponentType, NodeType, Edge, BaseNodeData } from '@/types/workflow';
 
 // Define the node categories
 export type NodeCategory =
@@ -39,16 +39,18 @@ export function createNode(
   const nodeId = `${type}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const displayLabel = label || NODE_TYPE_NAMES[type] || 'Node';
 
+  const baseData: BaseNodeData = {
+    label: displayLabel,
+    type: type as NodeType,
+    category: category,
+    config: createNodeConfig(type)
+  };
+
   return {
     id: nodeId,
-    type: type as NodeComponentType, // Fixed this type cast
+    type: type as NodeComponentType,
     position,
-    data: {
-      label: displayLabel,
-      type: type as NodeType, // Fixed this type cast
-      category: category,
-      config: {}
-    }
+    data: baseData
   };
 }
 
