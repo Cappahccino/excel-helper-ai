@@ -42,16 +42,24 @@ export function batchWithRAF<T extends (...args: any[]) => any>(
 
 /**
  * Creates a throttled function that only executes once per specified interval
- * with improved handling to prevent duplicated calls
+ * with improved handling to prevent flickering during React Flow operations
  */
 export function throttle<T extends (...args: any[]) => any>(
   fn: T,
-  interval = 100
+  interval = 100,
+  options: {
+    leading?: boolean;
+    trailing?: boolean;
+    noInitialExecution?: boolean;
+  } = {}
 ): (...args: Parameters<T>) => void {
-  let lastExecuted = 0;
+  const { leading = true, trailing = true, noInitialExecution = false } = options;
+  
+  let lastExecuted = noInitialExecution ? Date.now() : 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastArgs: Parameters<T> | null = null;
   let lastContext: any = null;
+  let isExecuting = false;
   
   // Clear any pending executions
   function cancelPending() {
@@ -63,16 +71,27 @@ export function throttle<T extends (...args: any[]) => any>(
   
   // Execute the function with the latest arguments
   function execute() {
-    if (lastArgs) {
-      const now = Date.now();
-      lastExecuted = now;
+    if (!lastArgs) return;
+    
+    isExecuting = true;
+    const now = Date.now();
+    lastExecuted = now;
+    
+    try {
       fn.apply(lastContext, lastArgs);
-      lastArgs = null;
-      lastContext = null;
+    } catch (error) {
+      console.error("Error in throttled function:", error);
     }
+    
+    lastArgs = null;
+    lastContext = null;
+    isExecuting = false;
   }
   
   const throttled = function(this: any, ...args: Parameters<T>) {
+    // If already executing, skip scheduling to prevent re-entrancy
+    if (isExecuting) return;
+    
     // Save context and args for later execution
     lastContext = this;
     lastArgs = args;
@@ -83,9 +102,12 @@ export function throttle<T extends (...args: any[]) => any>(
     if (remaining <= 0) {
       // Cancel any pending executions
       cancelPending();
-      // Execute immediately
-      execute();
-    } else if (!timeoutId) {
+      
+      // Execute immediately if leading is enabled
+      if (leading) {
+        execute();
+      }
+    } else if (trailing && !timeoutId) {
       // Schedule execution for when the interval has passed
       timeoutId = setTimeout(() => {
         timeoutId = null;

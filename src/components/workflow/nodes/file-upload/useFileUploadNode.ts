@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { FileProcessingState as UIFileProcessingState } from '@/types/workflowStatus';
 import { useFileProcessingState } from '@/hooks/useFileProcessingState';
@@ -22,11 +22,19 @@ export const useFileUploadNode = (
   config: any,
   onChange: ((nodeId: string, config: any) => void) | undefined
 ) => {
+  // Use refs to track stable values without causing re-renders
+  const configRef = useRef(config);
+  configRef.current = config;
+  
   const [selectedFileId, setSelectedFileId] = useState<string | undefined>(config?.fileId);
   const [selectedSheet, setSelectedSheet] = useState<string | undefined>(config?.selectedSheet);
   const [availableSheets, setAvailableSheets] = useState<SheetMetadata[]>([]);
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   const [fileInfo, setFileInfo] = useState<any>(null);
+  
+  // Additional refs for selection stability
+  const fileSelectionInProgressRef = useRef(false);
+  const pendingFileIdRef = useRef<string | undefined>(undefined);
   
   // Check if we have a selected file - only activate processing state if we do
   const hasSelectedFile = Boolean(selectedFileId);
@@ -38,11 +46,11 @@ export const useFileUploadNode = (
     enhancedState, 
     loadingIndicatorState 
   } = useFileProcessingState({
-    status: hasSelectedFile ? 'pending' : 'pending',
+    status: hasSelectedFile ? UIFileProcessingState.Pending : UIFileProcessingState.Pending,
     progress: 0
   }, hasSelectedFile); // Only activate processing state when we have a file
 
-  // Use our queries hook to fetch data
+  // Use our queries hook to fetch data with stabilized deps
   const {
     files,
     isLoadingFiles,
@@ -58,7 +66,12 @@ export const useFileUploadNode = (
     hasSelectedFile ? workflowId : null, 
     hasSelectedFile ? nodeId : '', 
     selectedFileId, 
-    updateProcessingState, 
+    (status, progress, message, error) => {
+      // Only update if not in the middle of selection
+      if (!fileSelectionInProgressRef.current) {
+        updateProcessingState(status, progress, message, error);
+      }
+    }, 
     refetch
   );
 
@@ -68,7 +81,7 @@ export const useFileUploadNode = (
     nodeId, 
     (status, progress, message, error) => {
       // Only update processing state when we have a file selected
-      if (hasSelectedFile) {
+      if (hasSelectedFile && !fileSelectionInProgressRef.current) {
         updateProcessingState(status, progress, message, error);
       }
     },
@@ -81,42 +94,49 @@ export const useFileUploadNode = (
   // Use our file association utilities
   const { formatFileSize } = useFileAssociation();
 
-  // Extract sheet metadata from the selected file
+  // Extract sheet metadata from the selected file with more robustness
   useEffect(() => {
     if (selectedFile?.file_metadata) {
       const metadata = selectedFile.file_metadata;
       
       let sheets: SheetMetadata[] = [];
       
-      if (metadata.sheets_metadata && Array.isArray(metadata.sheets_metadata)) {
-        sheets = metadata.sheets_metadata.map((sheet: any) => ({
-          name: sheet.name,
-          index: sheet.index,
-          rowCount: sheet.row_count || sheet.rowCount || 0,
-          isDefault: sheet.is_default || sheet.isDefault || false
-        }));
-      }
-      
-      console.log('Available sheets:', sheets);
-      setAvailableSheets(sheets);
-      
-      if (!selectedSheet && sheets.length > 0) {
-        const defaultSheet = sheets.find(s => s.isDefault) || sheets[0];
-        setSelectedSheet(defaultSheet.name);
-        
-        if (onChange) {
-          onChange(nodeId, { 
-            ...config,
-            selectedSheet: defaultSheet.name
-          });
+      try {
+        if (metadata.sheets_metadata && Array.isArray(metadata.sheets_metadata)) {
+          sheets = metadata.sheets_metadata.map((sheet: any) => ({
+            name: sheet.name,
+            index: sheet.index,
+            rowCount: sheet.row_count || sheet.rowCount || 0,
+            isDefault: sheet.is_default || sheet.isDefault || false
+          }));
         }
+        
+        console.log('Available sheets:', sheets);
+        setAvailableSheets(sheets);
+        
+        if (!selectedSheet && sheets.length > 0) {
+          const defaultSheet = sheets.find(s => s.isDefault) || sheets[0];
+          setSelectedSheet(defaultSheet.name);
+          
+          if (onChange && !fileSelectionInProgressRef.current) {
+            onChange(nodeId, { 
+              ...configRef.current,
+              selectedSheet: defaultSheet.name
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error processing sheet metadata:", error);
       }
     }
-  }, [selectedFile, selectedSheet, nodeId, config, onChange]);
+  }, [selectedFile, selectedSheet, nodeId, onChange]);
 
   // Update file info and processing state when the selected file changes
   // Only process updates when we actually have a file
   useEffect(() => {
+    // Skip processing during file selection changes
+    if (fileSelectionInProgressRef.current) return;
+    
     if (selectedFile) {
       setFileInfo(selectedFile);
       
@@ -140,14 +160,20 @@ export const useFileUploadNode = (
     }
   }, [selectedFile, updateProcessingState]);
 
-  const handleFileSelection = async (fileId: string) => {
-    if (!fileId) return;
+  const handleFileSelection = useCallback(async (fileId: string) => {
+    if (!fileId || fileSelectionInProgressRef.current) return;
     
     try {
+      // Skip if same file and already processed
       if (fileId === selectedFileId && fileInfo && fileInfo.processing_status === WorkflowFileStatus.Completed) {
         return;
       }
       
+      // Set flags to prevent re-renders during selection
+      fileSelectionInProgressRef.current = true;
+      pendingFileIdRef.current = fileId;
+      
+      // Update state in sequence to reduce UI flicker
       setSelectedFileId(fileId);
       setSelectedSheet(undefined);
       
@@ -155,22 +181,43 @@ export const useFileUploadNode = (
       updateProcessingState(UIFileProcessingState.Associating, 10, 'Associating file with workflow...');
       
       await processFile(fileId, onChange, files);
+      
+      // Clear selection flags - set a timeout to ensure state updates have propagated
+      setTimeout(() => {
+        fileSelectionInProgressRef.current = false;
+        pendingFileIdRef.current = undefined;
+      }, 250);
     } catch (error) {
       console.error('Error in file selection:', error);
+      // Ensure flags are cleared even on error
+      fileSelectionInProgressRef.current = false;
+      pendingFileIdRef.current = undefined;
     }
-  };
+  }, [selectedFileId, fileInfo, updateProcessingState, processFile, onChange, files]);
 
   const handleSheetSelection = useCallback(async (sheetName: string) => {
+    if (fileSelectionInProgressRef.current) return;
+    
     console.log(`Setting selected sheet to: ${sheetName}`);
     setSelectedSheet(sheetName);
-    await selectSheet(sheetName, config, onChange);
-  }, [config, onChange, selectSheet]);
+    await selectSheet(sheetName, configRef.current, onChange);
+  }, [selectSheet, onChange]);
 
   const handleRetry = useCallback(async () => {
-    if (!selectedFileId) return;
+    if (!selectedFileId || fileSelectionInProgressRef.current) return;
+    
+    fileSelectionInProgressRef.current = true;
     updateProcessingState(UIFileProcessingState.Associating, 10, 'Retrying file processing...');
-    await handleFileSelection(selectedFileId);
-  }, [selectedFileId, updateProcessingState]);
+    
+    try {
+      await processFile(selectedFileId, onChange, files);
+    } finally {
+      // Ensure flag is cleared
+      setTimeout(() => {
+        fileSelectionInProgressRef.current = false;
+      }, 250);
+    }
+  }, [selectedFileId, updateProcessingState, processFile, onChange, files]);
 
   return {
     selectedFileId,

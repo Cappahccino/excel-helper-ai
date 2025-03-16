@@ -1,5 +1,5 @@
 
-import React, { memo, useMemo, useCallback } from 'react';
+import React, { memo, useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { FileText, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,29 +37,52 @@ const FileSelector = memo(({
     stopPropagation
   } = useStableDropdown({
     preventNodeSelection: true,
-    debounceDelay: 100,
+    debounceDelay: 150,
     closeOnOutsideClick: true
   });
+  
+  // Track internal file selection to avoid unnecessary re-renders
+  const [internalSelectedId, setInternalSelectedId] = useState<string | undefined>(selectedFileId);
+  const isSelectionChangePending = useRef(false);
+  
+  // Sync internal selection with prop
+  useEffect(() => {
+    if (selectedFileId !== internalSelectedId && !isSelectionChangePending.current) {
+      setInternalSelectedId(selectedFileId);
+    }
+  }, [selectedFileId, internalSelectedId]);
 
   // Memoize files for stability
   const memoizedFiles = useMemo(() => files || [], [files]);
 
-  // Create a stable handler for file selection that uses requestAnimationFrame
-  // to batch with UI updates and prevent flicker
+  // Create a stable handler for file selection with better state management
   const handleSelectFile = useCallback((value: string) => {
     // Skip if already selected to prevent flicker
-    if (value === selectedFileId) return;
+    if (value === internalSelectedId) {
+      setOpen(false);
+      return;
+    }
     
-    // Use requestAnimationFrame to batch with other UI updates
-    requestAnimationFrame(() => {
+    // Update internal state immediately to prevent visual delay
+    setInternalSelectedId(value);
+    isSelectionChangePending.current = true;
+    
+    // Set a timeout to handle the actual selection outside of the dropdown context
+    setTimeout(() => {
       onFileSelect(value);
       setOpen(false);
-    });
-  }, [selectedFileId, onFileSelect, setOpen]);
+      isSelectionChangePending.current = false;
+    }, 50);
+  }, [internalSelectedId, onFileSelect, setOpen]);
 
   // Don't render unnecessarily if nothing has changed
   return (
-    <div className="transition-all duration-300 will-change-transform" data-no-capture="true">
+    <div 
+      className="transition-all duration-300 will-change-transform" 
+      data-no-capture="true"
+      onMouseDown={stopPropagation}
+      onClick={stopPropagation}
+    >
       <Label htmlFor="fileSelect" className="text-xs font-medium text-gray-700">
         Select File
       </Label>
@@ -70,7 +93,7 @@ const FileSelector = memo(({
         <Select 
           open={open}
           onOpenChange={setOpen}
-          value={selectedFileId} 
+          value={internalSelectedId} 
           onValueChange={handleSelectFile}
           disabled={disabled}
         >
@@ -121,7 +144,7 @@ const FileSelector = memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison to prevent unnecessary re-renders
+  // Improved comparison that also checks for disabled state
   return (
     prevProps.selectedFileId === nextProps.selectedFileId &&
     prevProps.isLoadingFiles === nextProps.isLoadingFiles &&

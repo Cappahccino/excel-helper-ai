@@ -19,6 +19,7 @@ export function useStableSelection({
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const lastClickTime = useRef<number>(0);
   const isSelected = useRef<boolean>(false);
+  const preventSelectionToggle = useRef<boolean>(false);
   
   // Create a stable event handler with memoization
   const handleContainerClick = useCallback((e: MouseEvent) => {
@@ -29,11 +30,17 @@ export function useStableSelection({
     
     // Avoid handling the same click multiple times or handling too rapidly
     const now = Date.now();
-    if (now - lastClickTime.current < 150) {
+    if (now - lastClickTime.current < 250) {
       e.stopPropagation();
       return;
     }
     lastClickTime.current = now;
+    
+    // Prevent selection toggle during active operations
+    if (preventSelectionToggle.current) {
+      e.stopPropagation();
+      return;
+    }
     
     // Only handle clicks directly on the container, not on children with specific data attributes
     if (e.currentTarget === nodeRef.current && preventBubbling) {
@@ -54,6 +61,19 @@ export function useStableSelection({
       }
     };
   }, [preventBubbling]);
+  
+  // Lock selection state temporarily
+  const lockSelection = useCallback((durationMs = 250) => {
+    preventSelectionToggle.current = true;
+    setTimeout(() => {
+      preventSelectionToggle.current = false;
+    }, durationMs);
+  }, []);
+  
+  // Set selection state directly
+  const setSelected = useCallback((selected: boolean) => {
+    isSelected.current = selected;
+  }, []);
 
   // Attach and clean up event listeners
   useEffect(() => {
@@ -61,16 +81,23 @@ export function useStableSelection({
     if (!node) return;
     
     // Add explicit click handler
-    node.addEventListener('click', handleContainerClick);
+    node.addEventListener('click', handleContainerClick, { capture: true });
+    
+    // Set a strong pointer-events style to ensure proper event capture
+    const originalPointerEvents = node.style.pointerEvents;
+    node.style.pointerEvents = 'auto';
     
     return () => {
-      node.removeEventListener('click', handleContainerClick);
+      node.removeEventListener('click', handleContainerClick, { capture: true });
+      node.style.pointerEvents = originalPointerEvents;
     };
   }, [handleContainerClick]);
 
   return {
     nodeRef,
     preventClick,
-    isSelected
+    isSelected,
+    lockSelection,
+    setSelected
   };
 }
