@@ -8,10 +8,16 @@ interface WorkflowIdDisplayProps {
 const WorkflowIdDisplay: React.FC<WorkflowIdDisplayProps> = ({ workflowId }) => {
   if (!workflowId) return null;
   
+  // Format the ID to be shorter for display
+  const formattedId = workflowId.startsWith('temp-') 
+    ? `temp-${workflowId.substring(5, 13)}...` 
+    : `${workflowId.substring(0, 8)}...`;
+  
   return (
-    <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis transition-opacity duration-300 hover:text-gray-600 animate-fade-in">
-      {workflowId.startsWith('temp-') ? 'Temporary workflow: ' : 'Workflow: '}
-      {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
+    <div className="mt-2 pt-2 border-t border-gray-100">
+      <p className="text-[9px] text-gray-400 font-mono">
+        Workflow: {formattedId}
+      </p>
     </div>
   );
 };
