@@ -3,13 +3,13 @@ import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { FileProcessingState } from '@/types/workflowStatus';
 import { useFileUploadNode } from './useFileUploadNode';
 import { useWorkflow } from '../../context/WorkflowContext';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
 import FileInfoDisplay from './FileInfoDisplay';
+import { cn } from '@/lib/utils';
 
 interface FileUploadNodeProps {
   id: string;
@@ -49,7 +49,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     isLoadingSchema,
     isLoadingSheetSchema,
     sheetSchema,
-    processingState,
+    enhancedState,
+    loadingIndicatorState,
     realtimeEnabled,
     fileInfo,
     refetch,
@@ -67,8 +68,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       }
 
       // Check if this node is not ready for propagation yet
-      if (processingState.status !== FileProcessingState.Completed) {
-        console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${processingState.status}`);
+      if (!enhancedState.isComplete) {
+        console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${enhancedState.status}`);
         return;
       }
 
@@ -124,11 +125,11 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     }
 
     propagateSchemaToConnectedNodes();
-  }, [id, nodeWorkflowId, selectedSheet, selectedFileId, processingState.status, queueSchemaPropagation, getEdges, isNodeReadyForPropagation, propagateFileSchema, availableSheets]);
+  }, [id, nodeWorkflowId, selectedSheet, selectedFileId, enhancedState.status, enhancedState.isComplete, queueSchemaPropagation, getEdges, isNodeReadyForPropagation, propagateFileSchema, availableSheets]);
 
   // Manual sync button handler
   const handleForceSyncSchema = async () => {
-    if (!nodeWorkflowId || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
+    if (!nodeWorkflowId || !selectedFileId || !enhancedState.isComplete) {
       console.log("Cannot sync schema - file not ready");
       return;
     }
@@ -154,15 +155,57 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     }
   };
 
+  // Get border and shadow styles based on processing state
+  const getBorderStyles = () => {
+    if (selected) return 'border-primary';
+    
+    if (enhancedState.isProcessing) {
+      return 'border-blue-300';
+    } else if (enhancedState.isComplete) {
+      return 'border-green-300';
+    } else if (enhancedState.isError) {
+      return 'border-red-300';
+    }
+    return 'border-gray-200';
+  };
+
+  // Get glow effect based on state
+  const getGlowEffect = () => {
+    if (!loadingIndicatorState.showGlow) return '';
+    
+    const color = loadingIndicatorState.glowColor;
+    const animation = loadingIndicatorState.pulseAnimation ? 'animate-pulse' : '';
+    
+    if (color === 'green') return `shadow-lg shadow-green-100 ${animation}`;
+    if (color === 'red') return `shadow-lg shadow-red-100 ${animation}`;
+    if (color === 'amber') return `shadow-lg shadow-amber-100 ${animation}`;
+    return `shadow-lg shadow-blue-100 ${animation}`;
+  };
+
   return (
-    <div className={`p-4 rounded-md border-2 ${selected ? 'border-primary' : 'border-gray-200'} bg-white shadow-md w-72`}>
+    <div className={cn(
+      "p-4 rounded-md border-2", 
+      getBorderStyles(),
+      getGlowEffect(),
+      "bg-white w-72 transition-all duration-200"
+    )}>
       <Handle type="target" position={Position.Top} id="in" />
       <Handle type="source" position={Position.Bottom} id="out" />
       
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-md bg-blue-100">
-            <FileText className="h-4 w-4 text-blue-600" />
+          <div className={cn(
+            "p-1.5 rounded-md", 
+            enhancedState.isProcessing ? "bg-blue-100" : 
+            enhancedState.isComplete ? "bg-green-100" : 
+            enhancedState.isError ? "bg-red-100" : "bg-blue-100"
+          )}>
+            <FileText className={cn(
+              "h-4 w-4", 
+              enhancedState.isProcessing ? "text-blue-600" : 
+              enhancedState.isComplete ? "text-green-600" : 
+              enhancedState.isError ? "text-red-600" : "text-blue-600"
+            )} />
           </div>
           <h3 className="font-medium text-sm">{data.label || 'File Upload'}</h3>
         </div>
@@ -176,13 +219,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           <Button 
             variant="ghost" 
             size="sm" 
-            className="h-6 w-6 p-0" 
+            className={cn(
+              "h-6 w-6 p-0",
+              enhancedState.isProcessing && "text-blue-500"
+            )}
             onClick={() => refetch()}
-            disabled={processingState.status !== FileProcessingState.Pending && 
-                      processingState.status !== FileProcessingState.Completed && 
-                      processingState.status !== FileProcessingState.Error}
+            disabled={enhancedState.isProcessing}
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
+            <RefreshCw className={cn(
+              "h-3.5 w-3.5", 
+              isLoadingFiles || enhancedState.isProcessing ? "animate-spin" : ""
+            )} />
           </Button>
         </div>
       </div>
@@ -193,12 +240,10 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           files={files || []}
           isLoadingFiles={isLoadingFiles}
           onFileSelect={handleFileSelection}
-          disabled={processingState.status !== FileProcessingState.Pending && 
-                   processingState.status !== FileProcessingState.Completed && 
-                   processingState.status !== FileProcessingState.Error}
+          disabled={enhancedState.isProcessing}
         />
         
-        {selectedFileId && processingState.status === FileProcessingState.Completed && availableSheets.length > 0 && (
+        {selectedFileId && enhancedState.isComplete && availableSheets.length > 0 && (
           <SheetSelector
             selectedSheet={selectedSheet}
             availableSheets={availableSheets}
@@ -208,17 +253,15 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
         )}
         
         <FileProcessingStatus
-          status={processingState.status}
-          progress={processingState.progress}
-          message={processingState.message}
-          error={processingState.error}
+          state={enhancedState}
+          loadingState={loadingIndicatorState}
           onRetry={handleRetry}
         />
         
         <FileInfoDisplay
           fileInfo={fileInfo}
           selectedFileId={selectedFileId}
-          processingState={processingState}
+          processingState={enhancedState}
           isLoadingSelectedFile={isLoadingSelectedFile}
           selectedSheet={selectedSheet}
           availableSheets={availableSheets}
@@ -234,7 +277,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           </div>
         )}
         
-        {selectedFileId && processingState.status === FileProcessingState.Completed && (
+        {selectedFileId && enhancedState.isComplete && (
           <Button 
             size="sm" 
             variant="outline" 

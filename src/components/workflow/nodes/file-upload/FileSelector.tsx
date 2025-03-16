@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useStableDropdown } from '@/hooks/useStableDropdown';
 
 interface FileSelectorProps {
   selectedFileId?: string;
@@ -26,8 +27,17 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   onFileSelect,
   disabled
 }) => {
+  const {
+    open,
+    setOpen,
+    triggerRef,
+    contentRef,
+    preventSelection,
+    stopPropagation
+  } = useStableDropdown();
+
   return (
-    <div>
+    <div onClick={preventSelection}>
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -36,14 +46,30 @@ const FileSelector: React.FC<FileSelectorProps> = ({
         <Skeleton className="h-9 w-full mt-1" />
       ) : (
         <Select 
+          open={open}
+          onOpenChange={setOpen}
           value={selectedFileId} 
-          onValueChange={onFileSelect}
+          onValueChange={(value) => {
+            onFileSelect(value);
+            setOpen(false);
+          }}
           disabled={disabled}
         >
-          <SelectTrigger id="fileSelect" className="mt-1">
+          <SelectTrigger 
+            id="fileSelect" 
+            className="mt-1 relative z-50 bg-white"
+            ref={triggerRef}
+            onClick={stopPropagation}
+          >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent
+            ref={contentRef}
+            className="z-[9999] bg-white shadow-lg"
+            position="popper"
+            sideOffset={5}
+            onClick={stopPropagation}
+          >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">
                 <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
@@ -51,7 +77,11 @@ const FileSelector: React.FC<FileSelectorProps> = ({
               </div>
             ) : (
               files?.map((file) => (
-                <SelectItem key={file.id} value={file.id}>
+                <SelectItem 
+                  key={file.id} 
+                  value={file.id}
+                  className="cursor-pointer"
+                >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate max-w-[180px]">{file.filename}</span>

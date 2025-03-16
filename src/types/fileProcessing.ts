@@ -17,6 +17,25 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
+  isLoading?: boolean;
+}
+
+export interface EnhancedProcessingState extends FileProcessingState {
+  isProcessing: boolean;
+  isComplete: boolean;
+  isError: boolean;
+  isPending: boolean;
+  displayMessage: string;
+  elapsedTimeMs?: number;
+  processingDuration?: string;
+}
+
+export interface LoadingIndicatorState {
+  showGlow: boolean;
+  glowColor: string;
+  pulseAnimation: boolean;
+  progressVisible: boolean;
+  showSpinner: boolean;
 }
 
 export interface WorkflowUploadResponse {

@@ -4,22 +4,23 @@ import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from '
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
 import { FileProcessingState } from '@/types/workflowStatus';
+import { Spinner } from '@/components/ui/spinner';
+import { EnhancedProcessingState, LoadingIndicatorState } from '@/types/fileProcessing';
 
 interface FileProcessingStatusProps {
-  status: FileProcessingState;
-  progress: number;
-  message?: string;
-  error?: string;
+  state: EnhancedProcessingState;
+  loadingState: LoadingIndicatorState;
   onRetry: () => void;
 }
 
 const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
-  status,
-  progress,
-  message,
-  error,
+  state,
+  loadingState,
   onRetry,
 }) => {
+  const { status, progress, error, processingDuration } = state;
+  const { showSpinner, pulseAnimation, progressVisible } = loadingState;
+  
   // Status-specific colors for progress
   const statusMap: Record<FileProcessingState, {
     statusComponent: React.ReactNode,
@@ -32,8 +33,9 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     associating: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          <span>{message || 'Associating file...'}</span>
+          {showSpinner && <Spinner variant="circle" className="h-3 w-3" />}
+          <span>{state.displayMessage || 'Associating file...'}</span>
+          {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
         </div>
       ),
       progressStatus: 'default'
@@ -41,8 +43,9 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     queuing: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
-          <Upload className="h-3 w-3 animate-pulse" />
-          <span>{message || 'Queuing file...'}</span>
+          <Upload className={`h-3 w-3 ${pulseAnimation ? 'animate-pulse' : ''}`} />
+          <span>{state.displayMessage || 'Queuing file...'}</span>
+          {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
         </div>
       ),
       progressStatus: 'default'
@@ -51,7 +54,8 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <RefreshCw className="h-3 w-3 animate-spin" />
-          <span>{message || 'Processing file...'}</span>
+          <span>{state.displayMessage || 'Processing file...'}</span>
+          {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
         </div>
       ),
       progressStatus: 'default'
@@ -59,8 +63,9 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     fetching_schema: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-sky-600">
-          <Database className="h-3 w-3 animate-pulse" />
-          <span>{message || 'Fetching schema...'}</span>
+          <Database className={`h-3 w-3 ${pulseAnimation ? 'animate-pulse' : ''}`} />
+          <span>{state.displayMessage || 'Fetching schema...'}</span>
+          {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
         </div>
       ),
       progressStatus: 'info'
@@ -69,7 +74,8 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-amber-600">
           <RefreshCw className="h-3 w-3 animate-spin" />
-          <span>{message || 'Verifying data...'}</span>
+          <span>{state.displayMessage || 'Verifying data...'}</span>
+          {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
         </div>
       ),
       progressStatus: 'warning'
@@ -78,7 +84,8 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-green-600">
           <Check className="h-3 w-3" />
-          <span>{message || 'File ready'}</span>
+          <span>{state.displayMessage || 'File ready'}</span>
+          {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
         </div>
       ),
       progressStatus: 'success'
@@ -107,21 +114,21 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     }
   };
   
-  const { statusComponent, progressStatus } = statusMap[status];
+  const { statusComponent, progressStatus } = statusMap[status as FileProcessingState];
   
   return (
     <>
       {statusComponent}
-      {status !== FileProcessingState.Pending && status !== FileProcessingState.Completed && 
-       status !== FileProcessingState.Error && status !== FileProcessingState.Failed && (
+      {progressVisible && (
         <NodeProgress 
           value={progress} 
           status={progressStatus} 
           showLabel={true} 
           className="mt-2" 
+          animated={pulseAnimation}
         />
       )}
-      {(status === FileProcessingState.Error || status === FileProcessingState.Failed) && (
+      {state.isError && (
         <Button 
           size="sm" 
           variant="outline" 
