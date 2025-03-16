@@ -1,10 +1,10 @@
 
 import { useState, useCallback } from 'react';
-import { FileProcessingState, FileProcessingProgress } from '@/types/fileProcessing';
+import { FileProcessingState, FileProcessingProgress, FileProcessingStates } from '@/types/fileProcessing';
 
 export function useFileProcessingState(initialState?: Partial<FileProcessingProgress>) {
   const [processingState, setProcessingState] = useState<FileProcessingProgress>({
-    status: initialState?.status || 'pending',
+    status: initialState?.status || FileProcessingStates.PENDING,
     progress: initialState?.progress || 0,
     message: initialState?.message,
     error: initialState?.error,
@@ -21,11 +21,11 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingProg
     setProcessingState(prev => ({
       ...prev,
       status,
-      progress: status === 'completed' ? 100 : progress,
+      progress: status === FileProcessingStates.COMPLETED ? 100 : progress,
       message,
       error,
-      ...(status === 'completed' ? { endTime: Date.now() } : {}),
-      ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
+      ...(status === FileProcessingStates.COMPLETED ? { endTime: Date.now() } : {}),
+      ...(status === FileProcessingStates.ASSOCIATING && !prev.startTime ? { startTime: Date.now() } : {})
     }));
   }, []);
 
@@ -33,9 +33,15 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingProg
     processingState,
     updateProcessingState,
     // Add helpers for common status checks
-    isProcessing: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(processingState.status),
-    isComplete: processingState.status === 'completed',
-    isError: ['error', 'failed'].includes(processingState.status),
-    isPending: processingState.status === 'pending'
+    isProcessing: [
+      FileProcessingStates.UPLOADING, 
+      FileProcessingStates.ASSOCIATING, 
+      FileProcessingStates.PROCESSING, 
+      FileProcessingStates.FETCHING_SCHEMA, 
+      FileProcessingStates.VERIFYING
+    ].includes(processingState.status),
+    isComplete: processingState.status === FileProcessingStates.COMPLETED,
+    isError: [FileProcessingStates.ERROR, FileProcessingStates.FAILED].includes(processingState.status),
+    isPending: processingState.status === FileProcessingStates.PENDING
   };
 }

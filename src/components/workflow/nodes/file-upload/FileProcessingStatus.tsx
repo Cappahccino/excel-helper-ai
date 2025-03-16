@@ -3,7 +3,7 @@ import React from 'react';
 import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
-import { FileProcessingState } from '@/types/fileProcessing';
+import { FileProcessingState, FileProcessingStates } from '@/types/fileProcessing';
 
 interface FileProcessingStatusProps {
   status: FileProcessingState;
@@ -25,11 +25,11 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     statusComponent: React.ReactNode,
     progressStatus: 'default' | 'success' | 'error' | 'warning' | 'info'
   }> = {
-    pending: {
+    [FileProcessingStates.PENDING]: {
       statusComponent: null,
       progressStatus: 'default'
     },
-    associating: {
+    [FileProcessingStates.ASSOCIATING]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -38,7 +38,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'default'
     },
-    queuing: {
+    [FileProcessingStates.QUEUING]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <Upload className="h-3 w-3 animate-pulse" />
@@ -47,7 +47,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'default'
     },
-    uploading: {
+    [FileProcessingStates.UPLOADING]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <Upload className="h-3 w-3 animate-pulse" />
@@ -56,7 +56,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'default'
     },
-    processing: {
+    [FileProcessingStates.PROCESSING]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-blue-600">
           <RefreshCw className="h-3 w-3 animate-spin" />
@@ -65,7 +65,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'default'
     },
-    fetching_schema: {
+    [FileProcessingStates.FETCHING_SCHEMA]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-sky-600">
           <Database className="h-3 w-3 animate-pulse" />
@@ -74,7 +74,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'info'
     },
-    verifying: {
+    [FileProcessingStates.VERIFYING]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-amber-600">
           <RefreshCw className="h-3 w-3 animate-spin" />
@@ -83,7 +83,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'warning'
     },
-    completed: {
+    [FileProcessingStates.COMPLETED]: {
       statusComponent: (
         <div className="flex items-center gap-2 text-xs text-green-600">
           <Check className="h-3 w-3" />
@@ -92,7 +92,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'success'
     },
-    failed: {
+    [FileProcessingStates.FAILED]: {
       statusComponent: (
         <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2">
           <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
@@ -103,7 +103,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       ),
       progressStatus: 'error'
     },
-    error: {
+    [FileProcessingStates.ERROR]: {
       statusComponent: (
         <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2">
           <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
@@ -121,8 +121,8 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
   return (
     <>
       {statusComponent}
-      {status !== 'pending' && status !== 'completed' && 
-       status !== 'error' && status !== 'failed' && (
+      {status !== FileProcessingStates.PENDING && status !== FileProcessingStates.COMPLETED && 
+       status !== FileProcessingStates.ERROR && status !== FileProcessingStates.FAILED && (
         <NodeProgress 
           value={progress} 
           status={progressStatus} 
@@ -130,7 +130,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           className="mt-2" 
         />
       )}
-      {(status === 'error' || status === 'failed') && (
+      {(status === FileProcessingStates.ERROR || status === FileProcessingStates.FAILED) && (
         <Button 
           size="sm" 
           variant="outline" 

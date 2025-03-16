@@ -6,7 +6,8 @@ import {
   FileProcessingState, 
   FileProcessingProgress, 
   FileNodeState, 
-  FileSchemaState 
+  FileSchemaState,
+  FileProcessingStates
 } from '@/types/fileProcessing';
 import { useFileProcessingState } from './useFileProcessingState';
 
@@ -52,7 +53,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
     if (!workflowId || !nodeId) return;
     
     try {
-      updateProcessingState('fetching_schema', 70, 'Fetching schema...');
+      updateProcessingState(FileProcessingStates.FETCHING_SCHEMA, 70, 'Fetching schema...');
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
@@ -73,7 +74,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         // Schema found
         const newSchema: FileSchemaState = {
           columns: data.columns,
-          dataTypes: data.data_types,
+          dataTypes: data.data_types || {},
           sampleData: data.sample_data,
           sheetName: data.sheet_name,
           totalRows: data.total_rows,
@@ -128,9 +129,19 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           }
           
           if (fileInfo) {
-            const metadataObj = typeof fileData.metadata === 'string' 
-              ? JSON.parse(fileData.metadata) 
-              : fileData.metadata || {};
+            // Safely parse JSON metadata
+            let metadataObj: Record<string, any> = {};
+            if (fileData.metadata) {
+              if (typeof fileData.metadata === 'string') {
+                try {
+                  metadataObj = JSON.parse(fileData.metadata);
+                } catch (e) {
+                  console.error('Error parsing metadata JSON:', e);
+                }
+              } else if (typeof fileData.metadata === 'object') {
+                metadataObj = fileData.metadata;
+              }
+            }
             
             setFileState(prev => ({
               ...prev,
@@ -151,12 +162,12 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
             updateProcessingState(
               status,
               progress,
-              status === 'error' ? 'Error processing file' : undefined,
+              status === FileProcessingStates.ERROR ? 'Error processing file' : undefined,
               fileInfo.error_message
             );
             
             // If file is completed, fetch schema
-            if (status === 'completed') {
+            if (status === FileProcessingStates.COMPLETED) {
               const selectedSheet = metadataObj?.selected_sheet;
               await fetchSchema(fileData.file_id, selectedSheet);
             }
@@ -198,9 +209,19 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         console.log(`File association update for node ${nodeId}:`, payload);
         
         if (payload.new && payload.new.file_id) {
-          const metadataObj = typeof payload.new.metadata === 'string' 
-            ? JSON.parse(payload.new.metadata) 
-            : payload.new.metadata || {};
+          // Safely parse JSON metadata
+          let metadataObj: Record<string, any> = {};
+          if (payload.new.metadata) {
+            if (typeof payload.new.metadata === 'string') {
+              try {
+                metadataObj = JSON.parse(payload.new.metadata);
+              } catch (e) {
+                console.error('Error parsing metadata JSON:', e);
+              }
+            } else if (typeof payload.new.metadata === 'object') {
+              metadataObj = payload.new.metadata;
+            }
+          }
           
           setFileState(prev => ({
             ...prev,
@@ -241,7 +262,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           setSchema(undefined);
           setMetadata(undefined);
           
-          updateProcessingState('pending', 0);
+          updateProcessingState(FileProcessingStates.PENDING, 0);
         }
       }
     );
@@ -295,13 +316,13 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           
           // If file has upload_progress, use that for more accurate progress
           if (payload.new.upload_progress !== null && payload.new.upload_progress !== undefined) {
-            if (newStatus === 'uploading' || newStatus === 'processing') {
+            if (newStatus === FileProcessingStates.UPLOADING || newStatus === FileProcessingStates.PROCESSING) {
               progress = Math.max(10, Math.min(90, payload.new.upload_progress));
             }
           }
           
           // If processing has chunks info, use that for more accurate progress
-          if (newStatus === 'processing' && payload.new.processed_chunks && payload.new.total_chunks) {
+          if (newStatus === FileProcessingStates.PROCESSING && payload.new.processed_chunks && payload.new.total_chunks) {
             const chunkProgress = (payload.new.processed_chunks / payload.new.total_chunks) * 100;
             progress = Math.max(30, Math.min(90, chunkProgress));
           }
@@ -320,7 +341,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           }));
           
           // Show toast for completed processing
-          if (newStatus === 'completed' && processingState.status !== 'completed') {
+          if (newStatus === FileProcessingStates.COMPLETED && processingState.status !== FileProcessingStates.COMPLETED) {
             toast.success(`File "${payload.new.filename}" processed successfully`);
             
             // Fetch schema when processing completes
@@ -328,7 +349,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
           }
           
           // Show toast for errors
-          if (newStatus === 'error' && processingState.status !== 'error') {
+          if (newStatus === FileProcessingStates.ERROR && processingState.status !== FileProcessingStates.ERROR) {
             toast.error(`Error processing file: ${payload.new.error_message || 'Unknown error'}`);
           }
         }
@@ -367,7 +388,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         );
         
         // If file is completed, fetch schema
-        if (status === 'completed') {
+        if (status === FileProcessingStates.COMPLETED) {
           await fetchSchema(fileId, metadata?.selected_sheet);
         }
       }
@@ -385,7 +406,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
     
     try {
       // Update state to show uploading
-      updateProcessingState('uploading', 10, 'Uploading file...');
+      updateProcessingState(FileProcessingStates.UPLOADING, 10, 'Uploading file...');
       
       // Generate unique file path
       const filePath = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9-_.]/g, '_')}`;
@@ -400,13 +421,13 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         
       if (uploadError) {
         console.error('Error uploading file:', uploadError);
-        updateProcessingState('error', 0, 'Upload failed', uploadError.message);
+        updateProcessingState(FileProcessingStates.ERROR, 0, 'Upload failed', uploadError.message);
         toast.error(`Failed to upload file: ${uploadError.message}`);
         return false;
       }
       
       // Update progress
-      updateProcessingState('associating', 30, 'Creating file record...');
+      updateProcessingState(FileProcessingStates.ASSOCIATING, 30, 'Creating file record...');
       
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -431,7 +452,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         
       if (dbError) {
         console.error('Error creating file record:', dbError);
-        updateProcessingState('error', 0, 'File record creation failed', dbError.message);
+        updateProcessingState(FileProcessingStates.ERROR, 0, 'File record creation failed', dbError.message);
         toast.error(`Failed to create file record: ${dbError.message}`);
         return false;
       }
@@ -444,7 +465,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         lastUpdated: Date.now()
       }));
       
-      updateProcessingState('associating', 50, 'Associating with workflow...');
+      updateProcessingState(FileProcessingStates.ASSOCIATING, 50, 'Associating with workflow...');
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
@@ -465,13 +486,13 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         
       if (associationError) {
         console.error('Error associating file with node:', associationError);
-        updateProcessingState('error', 0, 'Association failed', associationError.message);
+        updateProcessingState(FileProcessingStates.ERROR, 0, 'Association failed', associationError.message);
         toast.error(`Failed to associate file with node: ${associationError.message}`);
         return false;
       }
       
       // Trigger file processing
-      updateProcessingState('queuing', 60, 'Queuing file for processing...');
+      updateProcessingState(FileProcessingStates.QUEUING, 60, 'Queuing file for processing...');
       
       const { error: processingError } = await supabase.functions.invoke('processFile', {
         body: { 
@@ -488,14 +509,14 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
       }
       
       // Update state to processing
-      updateProcessingState('processing', 70, 'Processing file...');
+      updateProcessingState(FileProcessingStates.PROCESSING, 70, 'Processing file...');
       
       toast.success(`File "${file.name}" uploaded and being processed`);
       return true;
     } catch (error) {
       console.error('Error in uploadFile:', error);
       updateProcessingState(
-        'error', 
+        FileProcessingStates.ERROR, 
         0, 
         'Upload failed',
         error instanceof Error ? error.message : 'Unknown error occurred'
@@ -531,7 +552,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
       setFileState({
         nodeId,
         processingState: {
-          status: 'pending',
+          status: FileProcessingStates.PENDING,
           progress: 0
         },
         lastUpdated: Date.now()
@@ -540,7 +561,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
       setSchema(undefined);
       setMetadata(undefined);
       
-      updateProcessingState('pending', 0);
+      updateProcessingState(FileProcessingStates.PENDING, 0);
       
       toast.success('File removed successfully');
       return true;
@@ -601,50 +622,50 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
   
   // Helper function to map database status to our status type
   const mapProcessingStatus = (status: string | null): FileProcessingState => {
-    if (!status) return 'pending';
+    if (!status) return FileProcessingStates.PENDING;
     
     switch (status) {
       case 'pending':
-        return 'pending';
+        return FileProcessingStates.PENDING;
       case 'queued':
-        return 'queuing';
+        return FileProcessingStates.QUEUING;
       case 'uploading':
-        return 'uploading';
+        return FileProcessingStates.UPLOADING;
       case 'processing':
-        return 'processing';
+        return FileProcessingStates.PROCESSING;
       case 'fetching_schema':
-        return 'fetching_schema';
+        return FileProcessingStates.FETCHING_SCHEMA;
       case 'verifying':
-        return 'verifying';
+        return FileProcessingStates.VERIFYING;
       case 'completed':
-        return 'completed';
+        return FileProcessingStates.COMPLETED;
       case 'error':
       case 'failed':
-        return 'error';
+        return FileProcessingStates.ERROR;
       default:
-        return 'pending';
+        return FileProcessingStates.PENDING;
     }
   };
   
   // Helper function to calculate progress from status
   const calculateProgressFromStatus = (status: FileProcessingState): number => {
     switch (status) {
-      case 'uploading':
+      case FileProcessingStates.UPLOADING:
         return 20;
-      case 'associating':
+      case FileProcessingStates.ASSOCIATING:
         return 40;
-      case 'queuing':
+      case FileProcessingStates.QUEUING:
         return 60;
-      case 'processing':
+      case FileProcessingStates.PROCESSING:
         return 70;
-      case 'fetching_schema':
+      case FileProcessingStates.FETCHING_SCHEMA:
         return 80;
-      case 'verifying':
+      case FileProcessingStates.VERIFYING:
         return 90;
-      case 'completed':
+      case FileProcessingStates.COMPLETED:
         return 100;
-      case 'error':
-      case 'failed':
+      case FileProcessingStates.ERROR:
+      case FileProcessingStates.FAILED:
         return 0;
       default:
         return 0;
@@ -654,23 +675,23 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
   // Helper function to get processing message
   const getProcessingMessage = (status: FileProcessingState): string | undefined => {
     switch (status) {
-      case 'uploading':
+      case FileProcessingStates.UPLOADING:
         return 'Uploading file...';
-      case 'associating':
+      case FileProcessingStates.ASSOCIATING:
         return 'Associating file...';
-      case 'queuing':
+      case FileProcessingStates.QUEUING:
         return 'Queuing file for processing...';
-      case 'processing':
+      case FileProcessingStates.PROCESSING:
         return 'Processing file...';
-      case 'fetching_schema':
+      case FileProcessingStates.FETCHING_SCHEMA:
         return 'Fetching schema...';
-      case 'verifying':
+      case FileProcessingStates.VERIFYING:
         return 'Verifying file...';
-      case 'completed':
+      case FileProcessingStates.COMPLETED:
         return 'File ready';
-      case 'error':
+      case FileProcessingStates.ERROR:
         return 'Error processing file';
-      case 'failed':
+      case FileProcessingStates.FAILED:
         return 'File processing failed';
       default:
         return undefined;
@@ -685,7 +706,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
     uploadFile,
     removeFile,
     updateSelectedSheet,
-    isUploading: processingState.status === 'uploading',
+    isUploading: processingState.status === FileProcessingStates.UPLOADING,
     isProcessing,
     isComplete,
     isError,

@@ -1,4 +1,5 @@
 
+// Define literal string types for file processing statuses
 export type FileProcessingStatus = 
   | 'pending' 
   | 'associating'
@@ -11,7 +12,22 @@ export type FileProcessingStatus =
   | 'failed'
   | 'error';
 
+// Define the state type as an alias to the status type
 export type FileProcessingState = FileProcessingStatus;
+
+// Define a constant object for statuses to use in comparisons
+export const FileProcessingStates = {
+  PENDING: 'pending' as const,
+  ASSOCIATING: 'associating' as const,
+  QUEUING: 'queuing' as const,
+  UPLOADING: 'uploading' as const,
+  PROCESSING: 'processing' as const,
+  FETCHING_SCHEMA: 'fetching_schema' as const,
+  VERIFYING: 'verifying' as const,
+  COMPLETED: 'completed' as const,
+  FAILED: 'failed' as const,
+  ERROR: 'error' as const
+};
 
 export interface FileProcessingProgress {
   status: FileProcessingState;

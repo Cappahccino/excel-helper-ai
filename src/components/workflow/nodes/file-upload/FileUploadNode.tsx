@@ -1,8 +1,10 @@
+
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFileUploadNodeState } from '@/hooks/useFileUploadNodeState';
+import { FileProcessingStates } from '@/types/fileProcessing';
 import { useWorkflow } from '../../context/WorkflowContext';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
@@ -132,7 +134,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
 
   // Handler for file selection
   const handleFileSelection = async (fileId: string) => {
-    if (processingState.status === 'completed' && fileState.fileId === fileId) {
+    if (processingState.status === FileProcessingStates.COMPLETED && fileState.fileId === fileId) {
       console.log('File already selected and processed');
       return;
     }
