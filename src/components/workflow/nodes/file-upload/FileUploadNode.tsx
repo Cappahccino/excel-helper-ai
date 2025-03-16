@@ -1,15 +1,17 @@
 
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileText, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useFileUploadNode } from './useFileUploadNode';
+import { cn } from '@/lib/utils';
 import { useWorkflow } from '../../context/WorkflowContext';
+import { useFileUploadNode } from './useFileUploadNode';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
 import FileInfoDisplay from './FileInfoDisplay';
-import { cn } from '@/lib/utils';
+import FileUploadNodeHeader from './FileUploadNodeHeader';
+import SyncButton from './SyncButton';
+import WorkflowIdDisplay from './WorkflowIdDisplay';
+import FileUploadHelpMessage from './FileUploadHelpMessage';
 
 interface FileUploadNodeProps {
   id: string;
@@ -192,47 +194,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       <Handle type="target" position={Position.Top} id="in" />
       <Handle type="source" position={Position.Bottom} id="out" />
       
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className={cn(
-            "p-1.5 rounded-md", 
-            enhancedState.isProcessing ? "bg-blue-100" : 
-            enhancedState.isComplete ? "bg-green-100" : 
-            enhancedState.isError ? "bg-red-100" : "bg-blue-100"
-          )}>
-            <FileText className={cn(
-              "h-4 w-4", 
-              enhancedState.isProcessing ? "text-blue-600" : 
-              enhancedState.isComplete ? "text-green-600" : 
-              enhancedState.isError ? "text-red-600" : "text-blue-600"
-            )} />
-          </div>
-          <h3 className="font-medium text-sm">{data.label || 'File Upload'}</h3>
-        </div>
-        
-        <div className="flex items-center">
-          {realtimeEnabled && (
-            <div className="h-5 mr-1 bg-green-50 text-green-700 border border-green-200 text-[9px] py-0.5 px-1.5 rounded-md">
-              live
-            </div>
-          )}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className={cn(
-              "h-6 w-6 p-0",
-              enhancedState.isProcessing && "text-blue-500"
-            )}
-            onClick={() => refetch()}
-            disabled={enhancedState.isProcessing}
-          >
-            <RefreshCw className={cn(
-              "h-3.5 w-3.5", 
-              isLoadingFiles || enhancedState.isProcessing ? "animate-spin" : ""
-            )} />
-          </Button>
-        </div>
-      </div>
+      <FileUploadNodeHeader 
+        label={data.label}
+        isProcessing={enhancedState.isProcessing}
+        isComplete={enhancedState.isComplete}
+        isError={enhancedState.isError}
+        realtimeEnabled={realtimeEnabled}
+        refetch={refetch}
+      />
       
       <div className="space-y-3">
         <FileSelector
@@ -271,29 +240,13 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           formatFileSize={formatFileSize}
         />
         
-        {!selectedFileId && !isLoadingFiles && (
-          <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-700 border border-blue-100">
-            <p>Select a file to use in this workflow. You can upload files in the Files section.</p>
-          </div>
-        )}
+        {!selectedFileId && !isLoadingFiles && <FileUploadHelpMessage />}
         
         {selectedFileId && enhancedState.isComplete && (
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="w-full text-xs mt-2" 
-            onClick={handleForceSyncSchema}
-          >
-            Sync Schema with Connected Nodes
-          </Button>
+          <SyncButton onClick={handleForceSyncSchema} disabled={false} />
         )}
         
-        {nodeWorkflowId && (
-          <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
-            {nodeWorkflowId.startsWith('temp-') ? 'Temporary workflow: ' : 'Workflow: '}
-            {nodeWorkflowId.length > 20 ? `${nodeWorkflowId.substring(0, 20)}...` : nodeWorkflowId}
-          </div>
-        )}
+        <WorkflowIdDisplay workflowId={nodeWorkflowId} />
       </div>
     </div>
   );
