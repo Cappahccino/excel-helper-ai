@@ -3,60 +3,50 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 
+type ProgressStatus = 'default' | 'success' | 'error' | 'warning' | 'info';
+
 interface NodeProgressProps {
   value: number;
-  status?: 'default' | 'success' | 'error' | 'warning' | 'info';
+  status?: ProgressStatus;
   showLabel?: boolean;
   className?: string;
-  processingStatus?: string;
-  animated?: boolean;
-  size?: 'sm' | 'md' | 'lg';
 }
 
 const NodeProgress: React.FC<NodeProgressProps> = ({
   value,
   status = 'default',
   showLabel = false,
-  className,
-  processingStatus,
-  animated = false,
-  size = 'sm',
+  className
 }) => {
-  // Map status to color classes
-  const statusClasses = {
-    default: 'bg-blue-500',
-    success: 'bg-green-500',
-    error: 'bg-red-500',
-    warning: 'bg-amber-500',
-    info: 'bg-sky-500',
+  const statusColors: Record<ProgressStatus, string> = {
+    default: 'bg-blue-600',
+    success: 'bg-green-600',
+    error: 'bg-red-600',
+    warning: 'bg-amber-600',
+    info: 'bg-sky-600'
   };
 
-  // Height based on size
-  const heightClass = {
-    sm: 'h-1.5',
-    md: 'h-2',
-    lg: 'h-3'
-  }[size];
+  const trackColors: Record<ProgressStatus, string> = {
+    default: 'bg-blue-100',
+    success: 'bg-green-100',
+    error: 'bg-red-100',
+    warning: 'bg-amber-100',
+    info: 'bg-sky-100'
+  };
 
   return (
-    <div className={cn("w-full", className)}>
-      <div className="relative">
-        <Progress 
-          value={value} 
-          className={cn("bg-gray-100", heightClass, animated ? 'animate-pulse' : '')}
-          indicatorClassName={cn(statusClasses[status], animated ? 'animate-pulse' : '')}
-        />
-        {showLabel && (
-          <div className="text-[10px] text-gray-500 mt-0.5 text-right">
-            {Math.round(value)}%
-          </div>
-        )}
-        {processingStatus && (
-          <div className="text-[10px] text-gray-500 mt-0.5">
-            {processingStatus}
-          </div>
-        )}
-      </div>
+    <div className={cn('space-y-1', className)}>
+      <Progress 
+        value={value} 
+        className={cn('h-1.5', trackColors[status])}
+        indicatorClassName={statusColors[status]}
+      />
+      {showLabel && (
+        <div className="flex justify-between text-[10px] px-0.5">
+          <span className="text-gray-500">Progress</span>
+          <span className="font-medium text-gray-700">{Math.round(value)}%</span>
+        </div>
+      )}
     </div>
   );
 };
