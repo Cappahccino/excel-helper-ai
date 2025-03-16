@@ -8,8 +8,7 @@ export type FileProcessingStatus =
   | 'verifying'
   | 'completed' 
   | 'failed'
-  | 'error'
-  | 'queuing';  // Added this to match FileProcessingState.Queuing
+  | 'error';
 
 export interface FileProcessingState {
   status: FileProcessingStatus;
@@ -18,25 +17,6 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
-  isLoading?: boolean;
-}
-
-export interface EnhancedProcessingState extends FileProcessingState {
-  isProcessing: boolean;
-  isComplete: boolean;
-  isError: boolean;
-  isPending: boolean;
-  displayMessage: string;
-  elapsedTimeMs?: number;
-  processingDuration?: string;
-}
-
-export interface LoadingIndicatorState {
-  showGlow: boolean;
-  glowColor: string;
-  pulseAnimation: boolean;
-  progressVisible: boolean;
-  showSpinner: boolean;
 }
 
 export interface WorkflowUploadResponse {
