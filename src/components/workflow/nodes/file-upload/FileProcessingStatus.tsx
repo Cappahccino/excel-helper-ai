@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
@@ -13,7 +13,8 @@ interface FileProcessingStatusProps {
   onRetry: () => void;
 }
 
-const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
+// Use memo to prevent unnecessary re-renders
+const FileProcessingStatus: React.FC<FileProcessingStatusProps> = memo(({
   state,
   loadingState,
   onRetry,
@@ -32,7 +33,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     associating: {
       statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-blue-600 animate-fade-in p-1.5 rounded hover:bg-blue-50 transition-colors">
+        <div className="flex items-center gap-2 text-xs text-blue-600 animate-fade-in p-1.5 rounded hover:bg-blue-50 transition-colors will-change-transform">
           {showSpinner && <Spinner variant="circle" className="h-3 w-3" />}
           <span>{state.displayMessage || 'Associating file...'}</span>
           {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
@@ -42,7 +43,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     queuing: {
       statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-blue-600 animate-fade-in p-1.5 rounded hover:bg-blue-50 transition-colors">
+        <div className="flex items-center gap-2 text-xs text-blue-600 animate-fade-in p-1.5 rounded hover:bg-blue-50 transition-colors will-change-transform">
           <Upload className={`h-3 w-3 ${pulseAnimation ? 'animate-pulse' : ''}`} />
           <span>{state.displayMessage || 'Queuing file...'}</span>
           {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
@@ -52,7 +53,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     processing: {
       statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-blue-600 animate-fade-in p-1.5 rounded hover:bg-blue-50 transition-colors">
+        <div className="flex items-center gap-2 text-xs text-blue-600 animate-fade-in p-1.5 rounded hover:bg-blue-50 transition-colors will-change-transform">
           <RefreshCw className="h-3 w-3 animate-spin" />
           <span>{state.displayMessage || 'Processing file...'}</span>
           {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
@@ -62,7 +63,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     fetching_schema: {
       statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-sky-600 animate-fade-in p-1.5 rounded hover:bg-sky-50 transition-colors">
+        <div className="flex items-center gap-2 text-xs text-sky-600 animate-fade-in p-1.5 rounded hover:bg-sky-50 transition-colors will-change-transform">
           <Database className={`h-3 w-3 ${pulseAnimation ? 'animate-pulse' : ''}`} />
           <span>{state.displayMessage || 'Fetching schema...'}</span>
           {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
@@ -72,7 +73,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     verifying: {
       statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-amber-600 animate-fade-in p-1.5 rounded hover:bg-amber-50 transition-colors">
+        <div className="flex items-center gap-2 text-xs text-amber-600 animate-fade-in p-1.5 rounded hover:bg-amber-50 transition-colors will-change-transform">
           <RefreshCw className="h-3 w-3 animate-spin" />
           <span>{state.displayMessage || 'Verifying data...'}</span>
           {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
@@ -82,7 +83,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     completed: {
       statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-green-600 animate-fade-in p-1.5 rounded hover:bg-green-50 transition-colors">
+        <div className="flex items-center gap-2 text-xs text-green-600 animate-fade-in p-1.5 rounded hover:bg-green-50 transition-colors will-change-transform">
           <Check className="h-3 w-3" />
           <span>{state.displayMessage || 'File ready'}</span>
           {processingDuration && <span className="ml-auto text-[10px] text-gray-400">{processingDuration}</span>}
@@ -92,7 +93,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     failed: {
       statusComponent: (
-        <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2 animate-fade-in shadow-sm hover:bg-red-100 transition-colors">
+        <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2 animate-fade-in shadow-sm hover:bg-red-100 transition-colors will-change-transform">
           <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
           <div>
             <span className="font-medium">Error:</span> {error || 'Processing failed'}
@@ -103,7 +104,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
     },
     error: {
       statusComponent: (
-        <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2 animate-fade-in shadow-sm hover:bg-red-100 transition-colors">
+        <div className="bg-red-50 p-2 rounded-md border border-red-100 text-xs text-red-600 flex items-start gap-2 animate-fade-in shadow-sm hover:bg-red-100 transition-colors will-change-transform">
           <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
           <div>
             <span className="font-medium">Error:</span> {error || 'Unknown error occurred'}
@@ -140,6 +141,9 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
       )}
     </>
   );
-};
+});
+
+// Add display name for debugging
+FileProcessingStatus.displayName = 'FileProcessingStatus';
 
 export default FileProcessingStatus;

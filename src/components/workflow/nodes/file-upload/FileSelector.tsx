@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { FileText, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,7 +20,8 @@ interface FileSelectorProps {
   disabled: boolean;
 }
 
-const FileSelector: React.FC<FileSelectorProps> = ({
+// Use memo to prevent unnecessary re-renders
+const FileSelector: React.FC<FileSelectorProps> = memo(({
   selectedFileId,
   files,
   isLoadingFiles,
@@ -38,8 +39,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
 
   return (
     <div 
-      className="transition-all duration-300"
-      // Don't prevent selection on the entire container
+      className="transition-all duration-300 will-change-transform"
     >
       <Label htmlFor="fileSelect" className="text-xs font-medium text-gray-700">
         Select File
@@ -104,6 +104,9 @@ const FileSelector: React.FC<FileSelectorProps> = ({
       )}
     </div>
   );
-};
+});
+
+// Add display name for debugging
+FileSelector.displayName = 'FileSelector';
 
 export default FileSelector;

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,7 +19,8 @@ interface SheetSelectorProps {
   isLoading: boolean;
 }
 
-const SheetSelector: React.FC<SheetSelectorProps> = ({
+// Use memo to prevent unnecessary re-renders
+const SheetSelector: React.FC<SheetSelectorProps> = memo(({
   selectedSheet,
   availableSheets,
   onSheetSelect,
@@ -35,7 +36,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   } = useStableDropdown();
 
   return (
-    <div className="transition-all duration-300 animate-fade-in">
+    <div className="transition-all duration-300 animate-fade-in will-change-transform">
       <Label htmlFor="sheetSelect" className="text-xs font-medium text-gray-700">
         Select Sheet
       </Label>
@@ -102,6 +103,9 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
       )}
     </div>
   );
-};
+});
+
+// Add display name for debugging
+SheetSelector.displayName = 'SheetSelector';
 
 export default SheetSelector;

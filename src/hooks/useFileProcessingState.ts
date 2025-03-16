@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { FileProcessingStatus, FileProcessingState, EnhancedProcessingState, LoadingIndicatorState } from '@/types/fileProcessing';
 
 export function useFileProcessingState(initialState?: Partial<FileProcessingState>) {
@@ -12,25 +13,49 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     isLoading: initialState?.isLoading || false
   });
 
+  const animationFrameRef = useRef<number | null>(null);
+
   const updateProcessingState = useCallback((
     status: FileProcessingStatus, 
     progress: number = 0, 
     message?: string,
     error?: string
   ) => {
-    setProcessingState(prev => ({
-      ...prev,
-      status,
-      progress: status === 'completed' ? 100 : progress,
-      message,
-      error,
-      isLoading: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
-      ...(status === 'completed' ? { endTime: Date.now() } : {}),
-      ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
-    }));
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    animationFrameRef.current = requestAnimationFrame(() => {
+      setProcessingState(prev => {
+        if (prev.status === status && 
+            prev.progress === progress && 
+            prev.message === message && 
+            prev.error === error) {
+          return prev;
+        }
+        
+        return {
+          ...prev,
+          status,
+          progress: status === 'completed' ? 100 : progress,
+          message,
+          error,
+          isLoading: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying', 'queuing'].includes(status),
+          ...(status === 'completed' ? { endTime: Date.now() } : {}),
+          ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
+        };
+      });
+    });
   }, []);
 
-  // Calculate elapsed time for currently running processes
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
   const [, setUpdateTrigger] = useState(0);
   
   useEffect(() => {
@@ -90,7 +115,6 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
   const loadingIndicatorState = useMemo<LoadingIndicatorState>(() => {
     const { status, progress } = processingState;
     
-    // Configure visual indicators based on the current status
     let glowColor = 'blue';
     if (status === 'completed') glowColor = 'green';
     else if (['error', 'failed'].includes(status)) glowColor = 'red';
@@ -110,7 +134,6 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingStat
     updateProcessingState,
     enhancedState,
     loadingIndicatorState,
-    // Helper methods for common status checks
     isProcessing: enhancedState.isProcessing,
     isComplete: enhancedState.isComplete,
     isError: enhancedState.isError,

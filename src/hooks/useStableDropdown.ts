@@ -1,20 +1,34 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDebounce } from './useDebounce';
 
 interface UseStableDropdownProps {
   onOpenChange?: (open: boolean) => void;
   preventNodeSelection?: boolean;
+  debounceDelay?: number;
 }
 
-export function useStableDropdown({ onOpenChange, preventNodeSelection = true }: UseStableDropdownProps = {}) {
-  const [open, setOpen] = useState(false);
+export function useStableDropdown({ 
+  onOpenChange, 
+  preventNodeSelection = true,
+  debounceDelay = 50 
+}: UseStableDropdownProps = {}) {
+  const [open, setOpenState] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   
+  // Debounce the open state changes to reduce flickering
+  const debouncedOpen = useDebounce(open, debounceDelay);
+  
+  useEffect(() => {
+    onOpenChange?.(debouncedOpen);
+  }, [debouncedOpen, onOpenChange]);
+  
+  // Controlled handler for open state
   const handleOpenChange = useCallback((newOpen: boolean) => {
-    setOpen(newOpen);
-    onOpenChange?.(newOpen);
-  }, [onOpenChange]);
+    if (newOpen === open) return; // Skip if no change
+    setOpenState(newOpen);
+  }, [open]);
   
   // Handle outside clicks to close the dropdown
   useEffect(() => {
