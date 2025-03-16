@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useStableDropdown } from '@/hooks/useStableDropdown';
 
 interface FileSelectorProps {
   selectedFileId?: string;
@@ -26,19 +27,19 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   onFileSelect,
   disabled
 }) => {
+  const {
+    stopPropagation,
+    dropdownRef,
+    triggerRef
+  } = useStableDropdown();
+  
   // Handle file selection with a dedicated handler to prevent event bubbling
   const handleValueChange = (value: string) => {
-    // Ensure we're not propagating events to parent elements
     onFileSelect(value);
   };
   
-  // Stop propagation on dropdown interaction to prevent React Flow from capturing events
-  const handleInteraction = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
-  
   return (
-    <div className="relative z-30" onMouseDown={handleInteraction}>
+    <div className="relative z-30" onMouseDown={stopPropagation}>
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -54,18 +55,20 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           <SelectTrigger 
             id="fileSelect" 
             className="mt-1"
-            onMouseDown={handleInteraction}
-            onClick={handleInteraction}
+            onMouseDown={stopPropagation}
+            onClick={stopPropagation}
+            ref={triggerRef}
           >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
           <SelectContent
+            ref={dropdownRef}
             className="z-[9999] bg-white"
             position="popper"
             sideOffset={5}
             align="start"
-            onMouseDown={handleInteraction}
-            onClick={handleInteraction}
+            onMouseDown={stopPropagation}
+            onClick={stopPropagation}
             onPointerDownOutside={(e) => {
               // This prevents the dropdown from closing when clicking inside the dropdown
               e.preventDefault();
@@ -82,8 +85,8 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   key={file.id} 
                   value={file.id}
                   className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
-                  onMouseDown={handleInteraction}
-                  onClick={handleInteraction}
+                  onMouseDown={stopPropagation}
+                  onClick={stopPropagation}
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />

@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Layers } from 'lucide-react';
+import { useStableDropdown } from '@/hooks/useStableDropdown';
 
 interface SheetSelectorProps {
   selectedSheet?: string;
@@ -31,13 +32,14 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   isLoading,
   disabled = false
 }) => {
+  const {
+    stopPropagation,
+    dropdownRef,
+    triggerRef
+  } = useStableDropdown();
+
   const handleValueChange = (value: string) => {
     onSheetSelect(value);
-  };
-
-  // Stop propagation on dropdown interaction
-  const handleInteraction = (e: React.MouseEvent) => {
-    e.stopPropagation();
   };
 
   if (availableSheets.length === 0) {
@@ -45,7 +47,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   }
 
   return (
-    <div className="relative z-20" onMouseDown={handleInteraction}>
+    <div className="relative z-20" onMouseDown={stopPropagation}>
       <Label htmlFor="sheetSelect" className="text-xs font-medium">
         Select Sheet
       </Label>
@@ -61,18 +63,20 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
           <SelectTrigger 
             id="sheetSelect" 
             className="mt-1"
-            onMouseDown={handleInteraction}
-            onClick={handleInteraction}
+            onMouseDown={stopPropagation}
+            onClick={stopPropagation}
+            ref={triggerRef}
           >
             <SelectValue placeholder="Choose a sheet..." />
           </SelectTrigger>
           <SelectContent
+            ref={dropdownRef}
             className="z-[9999] bg-white"
             position="popper"
             sideOffset={5}
             align="start"
-            onMouseDown={handleInteraction}
-            onClick={handleInteraction}
+            onMouseDown={stopPropagation}
+            onClick={stopPropagation}
             onPointerDownOutside={(e) => {
               // This prevents the dropdown from closing when clicking inside the dropdown
               e.preventDefault();
@@ -83,8 +87,8 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
                 key={sheet.index} 
                 value={sheet.name}
                 className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
-                onMouseDown={handleInteraction}
-                onClick={handleInteraction}
+                onMouseDown={stopPropagation}
+                onClick={stopPropagation}
               >
                 <div className="flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5 flex-shrink-0" />

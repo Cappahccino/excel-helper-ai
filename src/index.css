@@ -1,3 +1,4 @@
+
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
@@ -159,5 +160,24 @@
 
 /* Ensure dropdown click events are correctly handled */
 .react-flow__node [data-radix-select-content] * {
+  pointer-events: auto !important;
+}
+
+/* New styles to improve dropdown behavior in React Flow */
+[data-radix-popper-content-wrapper] {
+  pointer-events: auto !important;
+}
+
+.react-flow__node [data-radix-select-viewport] {
+  pointer-events: auto !important;
+}
+
+/* Improve focus behavior for dropdowns */
+.react-flow__node [data-radix-select-content]:focus-within {
+  outline: none !important;
+}
+
+/* Ensure dropdown doesn't close when clicking inside React Flow nodes */
+.react-flow__node [data-radix-select-content] [role="option"]:active {
   pointer-events: auto !important;
 }
