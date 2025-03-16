@@ -234,6 +234,19 @@ export interface FilteringNodeData extends BaseNodeData {
   onChange?: (nodeId: string, config: any) => void;
 }
 
+export interface DirectFileUploadNodeData extends BaseNodeData {
+  type: 'directFileUpload';
+  config: {
+    fileId?: string;
+    filename?: string;
+    hasHeaders?: boolean;
+    delimiter?: string;
+    selectedSheet?: string;
+  };
+  onChange?: (nodeId: string, config: any) => void;
+  workflowId?: string;
+}
+
 // A union of all possible node data types
 export type WorkflowNodeData = 
   | DataInputNodeData 
@@ -244,7 +257,8 @@ export type WorkflowNodeData =
   | ControlNodeData 
   | SpreadsheetGeneratorNodeData
   | UtilityNodeData
-  | FileUploadNodeData;
+  | FileUploadNodeData
+  | DirectFileUploadNodeData;
 
 // Define our WorkflowNode type that extends ReactFlow's Node type
 export interface WorkflowNode extends Omit<ReactFlowNode, 'data'> {

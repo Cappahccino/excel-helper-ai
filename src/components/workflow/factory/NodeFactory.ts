@@ -4,6 +4,7 @@ import { NodeType, WorkflowNode, NodeComponentType, WorkflowNodeData } from '@/t
 // Map of node type to visual component type
 const nodeTypeComponentMap: Record<string, NodeComponentType> = {
   'fileUpload': 'fileUpload',
+  'directFileUpload': 'directFileUpload',
   'filtering': 'filtering',
   'aggregation': 'aggregation',
   'dataProcessing': 'dataProcessing',
@@ -16,6 +17,10 @@ const nodeTypeComponentMap: Record<string, NodeComponentType> = {
 // Default configurations for different node types
 const defaultConfigs: Record<string, any> = {
   fileUpload: {
+    fileId: null,
+    hasHeaders: true
+  },
+  directFileUpload: {
     fileId: null,
     hasHeaders: true
   },

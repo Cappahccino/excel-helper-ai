@@ -11,6 +11,7 @@ import UtilityNode from '@/components/workflow/nodes/UtilityNode';
 import FileUploadNode from '@/components/workflow/nodes/FileUploadNode';
 import FilteringNode from '@/components/workflow/nodes/FilteringNode';
 import AggregationNode from '@/components/workflow/nodes/AggregationNode';
+import DirectFileUploadNode from '@/components/workflow/nodes/DirectFileUploadNode';
 import { NodeTypes } from '@xyflow/react';
 
 export const nodeTypes: NodeTypes = {
@@ -24,6 +25,7 @@ export const nodeTypes: NodeTypes = {
   spreadsheetGenerator: SpreadsheetGeneratorNode,
   utilityNode: UtilityNode,
   fileUpload: FileUploadNode,
+  directFileUpload: DirectFileUploadNode,
   filtering: FilteringNode,
   aggregation: AggregationNode,
 };
@@ -39,6 +41,16 @@ export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: an
   spreadsheetGenerator: (props: any) => <SpreadsheetGeneratorNode {...props} onConfigChange={handleNodeConfigUpdate} />,
   utilityNode: UtilityNode,
   fileUpload: (props: any) => <FileUploadNode 
+    {...{
+      ...props,
+      data: {
+        ...props.data,
+        workflowId: workflowId,
+        onChange: handleNodeConfigUpdate
+      }
+    }} 
+  />,
+  directFileUpload: (props: any) => <DirectFileUploadNode 
     {...{
       ...props,
       data: {
