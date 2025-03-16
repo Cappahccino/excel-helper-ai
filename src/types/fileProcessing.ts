@@ -1,9 +1,7 @@
 
-// Define literal string types for file processing statuses
 export type FileProcessingStatus = 
   | 'pending' 
   | 'associating'
-  | 'queuing'
   | 'uploading' 
   | 'processing' 
   | 'fetching_schema'
@@ -12,25 +10,8 @@ export type FileProcessingStatus =
   | 'failed'
   | 'error';
 
-// Define the state type as an alias to the status type
-export type FileProcessingState = FileProcessingStatus;
-
-// Define a constant object for statuses to use in comparisons
-export const FileProcessingStates = {
-  PENDING: 'pending' as FileProcessingState,
-  ASSOCIATING: 'associating' as FileProcessingState,
-  QUEUING: 'queuing' as FileProcessingState,
-  UPLOADING: 'uploading' as FileProcessingState,
-  PROCESSING: 'processing' as FileProcessingState,
-  FETCHING_SCHEMA: 'fetching_schema' as FileProcessingState,
-  VERIFYING: 'verifying' as FileProcessingState,
-  COMPLETED: 'completed' as FileProcessingState,
-  FAILED: 'failed' as FileProcessingState,
-  ERROR: 'error' as FileProcessingState
-};
-
-export interface FileProcessingProgress {
-  status: FileProcessingState;
+export interface FileProcessingState {
+  status: FileProcessingStatus;
   progress: number;
   message?: string;
   error?: string;
@@ -61,23 +42,4 @@ export type FileUploadRPCFunction = {
     p_workflow_id: string;
     p_node_id: string;
   }) => Promise<{ data: boolean; error: any }>;
-}
-
-export interface FileSchemaState {
-  columns: string[];
-  dataTypes: Record<string, string>;
-  sampleData?: any[];
-  sheetName?: string;
-  totalRows?: number;
-  hasHeaders: boolean;
-}
-
-export interface FileNodeState {
-  nodeId: string;
-  fileId?: string;
-  fileName?: string;
-  processingState: FileProcessingProgress;
-  schema?: FileSchemaState;
-  metadata?: Record<string, any>;
-  lastUpdated: number;
 }

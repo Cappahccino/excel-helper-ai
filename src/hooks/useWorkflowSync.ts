@@ -19,7 +19,6 @@ export function useWorkflowSync(
   const [pendingChanges, setPendingChanges] = useState<boolean>(false);
   const changesQueuedAt = useRef<number>(0);
   const initialSyncDone = useRef<boolean>(false);
-  const syncInProgressRef = useRef<boolean>(false);
   
   // Function to convert temporary workflow ID to database format
   const getDbWorkflowId = useCallback((id: string | null): string | null => {
@@ -37,14 +36,6 @@ export function useWorkflowSync(
       setPendingChanges(false);
       return;
     }
-    
-    // Prevent concurrent syncs
-    if (syncInProgressRef.current && !force) {
-      console.log('Sync already in progress, queuing changes');
-      return;
-    }
-    
-    syncInProgressRef.current = true;
     
     try {
       const dbWorkflowId = getDbWorkflowId(workflowId);
@@ -81,8 +72,6 @@ export function useWorkflowSync(
       }
     } catch (error) {
       console.error('Error in syncWorkflowDefinition:', error);
-    } finally {
-      syncInProgressRef.current = false;
     }
   }, [workflowId, nodes, edges, getDbWorkflowId]);
 
@@ -103,19 +92,17 @@ export function useWorkflowSync(
     
     // Don't sync if we've synced recently (within 5 seconds)
     const timeSinceLastSync = Date.now() - lastSyncRef.current;
-    if (timeSinceLastSync < 5000 && !pendingChanges) {
+    if (timeSinceLastSync < 5000) {
+      syncTimeoutRef.current = setTimeout(debouncedSync, 5000 - timeSinceLastSync);
       return;
     }
     
-    // Use a longer delay for initial sync after changes
-    const delay = pendingChanges && lastSyncRef.current === 0 ? 3000 : 2000;
-    
     syncTimeoutRef.current = setTimeout(() => {
-      if (pendingChanges && !syncInProgressRef.current && !isSaving) {
+      if (pendingChanges) {
         syncWorkflowDefinition();
       }
-    }, delay);
-  }, [syncWorkflowDefinition, pendingChanges, isSaving]);
+    }, 2000);
+  }, [syncWorkflowDefinition, pendingChanges]);
 
   // Sync workflow definition whenever nodes or edges change
   useEffect(() => {

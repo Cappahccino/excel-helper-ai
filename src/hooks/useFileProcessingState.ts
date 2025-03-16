@@ -1,10 +1,10 @@
 
 import { useState, useCallback } from 'react';
-import { FileProcessingState, FileProcessingProgress, FileProcessingStates } from '@/types/fileProcessing';
+import { FileProcessingStatus, FileProcessingState } from '@/types/fileProcessing';
 
-export function useFileProcessingState(initialState?: Partial<FileProcessingProgress>) {
-  const [processingState, setProcessingState] = useState<FileProcessingProgress>({
-    status: initialState?.status || FileProcessingStates.PENDING,
+export function useFileProcessingState(initialState?: Partial<FileProcessingState>) {
+  const [processingState, setProcessingState] = useState<FileProcessingState>({
+    status: initialState?.status || 'pending',
     progress: initialState?.progress || 0,
     message: initialState?.message,
     error: initialState?.error,
@@ -13,7 +13,7 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingProg
   });
 
   const updateProcessingState = useCallback((
-    status: FileProcessingState, 
+    status: FileProcessingStatus, 
     progress: number = 0, 
     message?: string,
     error?: string
@@ -21,35 +21,21 @@ export function useFileProcessingState(initialState?: Partial<FileProcessingProg
     setProcessingState(prev => ({
       ...prev,
       status,
-      progress: status === FileProcessingStates.COMPLETED ? 100 : progress,
+      progress: status === 'completed' ? 100 : progress,
       message,
       error,
-      ...(status === FileProcessingStates.COMPLETED ? { endTime: Date.now() } : {}),
-      ...(status === FileProcessingStates.ASSOCIATING && !prev.startTime ? { startTime: Date.now() } : {})
+      ...(status === 'completed' ? { endTime: Date.now() } : {}),
+      ...(status === 'associating' && !prev.startTime ? { startTime: Date.now() } : {})
     }));
   }, []);
-
-  // Create arrays for status checks
-  const processingStatuses: FileProcessingState[] = [
-    FileProcessingStates.UPLOADING, 
-    FileProcessingStates.ASSOCIATING, 
-    FileProcessingStates.PROCESSING, 
-    FileProcessingStates.FETCHING_SCHEMA, 
-    FileProcessingStates.VERIFYING
-  ];
-  
-  const errorStatuses: FileProcessingState[] = [
-    FileProcessingStates.ERROR, 
-    FileProcessingStates.FAILED
-  ];
 
   return {
     processingState,
     updateProcessingState,
     // Add helpers for common status checks
-    isProcessing: processingStatuses.includes(processingState.status),
-    isComplete: processingState.status === FileProcessingStates.COMPLETED,
-    isError: errorStatuses.includes(processingState.status),
-    isPending: processingState.status === FileProcessingStates.PENDING
+    isProcessing: ['uploading', 'associating', 'processing', 'fetching_schema', 'verifying'].includes(processingState.status),
+    isComplete: processingState.status === 'completed',
+    isError: ['error', 'failed'].includes(processingState.status),
+    isPending: processingState.status === 'pending'
   };
 }
