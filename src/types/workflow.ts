@@ -71,7 +71,8 @@ export type NodeComponentType =
   | 'utilityNode'
   | 'fileUpload'
   | 'filtering'
-  | 'aggregation';
+  | 'aggregation'
+  | 'directFileUpload';
 
 // Define FileProcessingState type for FileUploadNode
 export type FileProcessingState = 

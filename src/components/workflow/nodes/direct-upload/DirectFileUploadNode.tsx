@@ -5,8 +5,8 @@ import { FileText, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useWorkflow } from '../../context/WorkflowContext';
 import { useDirectFileUpload } from '@/hooks/useDirectFileUpload';
-import { FileProcessingStatus } from '@/types/fileProcessing';
-import FileProcessingStatus from '../file-upload/FileProcessingStatus';
+import { FileProcessingStatus as ProcessingStatusType } from '@/types/fileProcessing';
+import FileProcessingStatusComponent from '../file-upload/FileProcessingStatus';
 import NodeProgress from '../../ui/NodeProgress';
 
 interface DirectFileUploadNodeProps {
@@ -157,8 +157,8 @@ const DirectFileUploadNode: React.FC<DirectFileUploadNodeProps> = ({ id, selecte
               </Button>
             </div>
             
-            <FileProcessingStatus
-              status={processingState.status}
+            <FileProcessingStatusComponent
+              status={processingState.status as ProcessingStatusType}
               progress={processingState.progress}
               message={processingState.message}
               error={processingState.error}
@@ -233,8 +233,8 @@ const DirectFileUploadNode: React.FC<DirectFileUploadNodeProps> = ({ id, selecte
             )}
             
             {isError && (
-              <FileProcessingStatus
-                status={processingState.status as FileProcessingStatus}
+              <FileProcessingStatusComponent
+                status={processingState.status as ProcessingStatusType}
                 progress={processingState.progress}
                 message={processingState.message}
                 error={processingState.error}
