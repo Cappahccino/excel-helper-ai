@@ -33,11 +33,13 @@ const FileSelector: React.FC<FileSelectorProps> = ({
     triggerRef,
     contentRef,
     preventSelection,
-    stopPropagation
+    stopPropagation,
+    handleItemSelect,
+    portalToBody
   } = useStableDropdown();
 
   return (
-    <div onClick={preventSelection}>
+    <div onClick={preventSelection} className="relative">
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -57,7 +59,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
         >
           <SelectTrigger 
             id="fileSelect" 
-            className="mt-1 relative z-50 bg-white"
+            className="mt-1 relative bg-white"
             ref={triggerRef}
             onClick={stopPropagation}
           >
@@ -65,7 +67,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           </SelectTrigger>
           <SelectContent
             ref={contentRef}
-            className="z-[9999] bg-white shadow-lg"
+            className="bg-white shadow-lg z-[9999]"
             position="popper"
             sideOffset={5}
             onClick={stopPropagation}
@@ -81,8 +83,16 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   key={file.id} 
                   value={file.id}
                   className="cursor-pointer"
+                  onSelect={stopPropagation}
                 >
-                  <div className="flex items-center gap-2">
+                  <div 
+                    className="flex items-center gap-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFileSelect(file.id);
+                      setOpen(false);
+                    }}
+                  >
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate max-w-[180px]">{file.filename}</span>
                   </div>

@@ -9,7 +9,7 @@ const WorkflowIdDisplay: React.FC<WorkflowIdDisplayProps> = ({ workflowId }) => 
   if (!workflowId) return null;
   
   return (
-    <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis">
+    <div className="mt-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis pointer-events-none">
       {workflowId.startsWith('temp-') ? 'Temporary workflow: ' : 'Workflow: '}
       {workflowId.length > 20 ? `${workflowId.substring(0, 20)}...` : workflowId}
     </div>

@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { FileSpreadsheet } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -11,11 +10,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useStableDropdown } from '@/hooks/useStableDropdown';
+import { FileSpreadsheet } from 'lucide-react';
 
 interface SheetSelectorProps {
   selectedSheet?: string;
-  availableSheets: { name: string; index: number; rowCount?: number; isDefault?: boolean }[];
-  onSheetSelect: (sheet: string) => void;
+  availableSheets: { name: string; index: number }[];
+  onSheetSelect: (sheetName: string) => void;
   isLoading: boolean;
 }
 
@@ -35,7 +35,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   } = useStableDropdown();
 
   return (
-    <div onClick={preventSelection}>
+    <div onClick={preventSelection} className="relative">
       <Label htmlFor="sheetSelect" className="text-xs font-medium">
         Select Sheet
       </Label>
@@ -54,7 +54,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
         >
           <SelectTrigger 
             id="sheetSelect" 
-            className="mt-1 relative z-50 bg-white"
+            className="mt-1 relative bg-white"
             ref={triggerRef}
             onClick={stopPropagation}
           >
@@ -62,32 +62,27 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
           </SelectTrigger>
           <SelectContent
             ref={contentRef}
-            className="z-[9999] bg-white shadow-lg"
+            className="bg-white shadow-lg z-[9999]"
             position="popper"
             sideOffset={5}
             onClick={stopPropagation}
           >
-            {availableSheets?.map((sheet) => (
+            {availableSheets.map((sheet) => (
               <SelectItem 
                 key={sheet.name} 
                 value={sheet.name}
                 className="cursor-pointer"
               >
-                <div className="flex items-center gap-2">
+                <div 
+                  className="flex items-center gap-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSheetSelect(sheet.name);
+                    setOpen(false);
+                  }}
+                >
                   <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="truncate max-w-[180px]">{sheet.name}</span>
-                    {sheet.rowCount !== undefined && (
-                      <span className="text-[10px] text-gray-500">
-                        {sheet.rowCount.toLocaleString()} rows
-                      </span>
-                    )}
-                  </div>
-                  {sheet.isDefault && (
-                    <span className="ml-auto text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
-                      default
-                    </span>
-                  )}
+                  <span className="truncate max-w-[180px]">{sheet.name}</span>
                 </div>
               </SelectItem>
             ))}
