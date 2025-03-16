@@ -35,7 +35,11 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
     contentRef,
     preventSelection,
     stopPropagation
-  } = useStableDropdown();
+  } = useStableDropdown({
+    preventNodeSelection: true,
+    debounceDelay: 100,
+    closeOnOutsideClick: true
+  });
 
   return (
     <div 
@@ -62,7 +66,8 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
             id="fileSelect" 
             className="mt-1 relative bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-blue-200"
             ref={triggerRef}
-            onClick={stopPropagation}
+            onClick={preventSelection}
+            onMouseDown={preventSelection}
           >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
@@ -72,7 +77,9 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
             position="popper"
             sideOffset={5}
             align="start"
-            style={{ zIndex: 9999 }}
+            style={{ zIndex: 9999, pointerEvents: 'auto' }}
+            onMouseDown={preventSelection}
+            onClick={preventSelection}
           >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">
@@ -85,6 +92,9 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
                   key={file.id} 
                   value={file.id}
                   className="cursor-pointer transition-colors hover:bg-blue-50 focus:bg-blue-50"
+                  onMouseDown={(e) => {
+                    stopPropagation(e);
+                  }}
                   onClick={(e) => {
                     // Handle item selection explicitly
                     stopPropagation(e);

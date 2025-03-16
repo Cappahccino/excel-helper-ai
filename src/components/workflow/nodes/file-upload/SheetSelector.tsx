@@ -33,7 +33,11 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
     contentRef,
     preventSelection,
     stopPropagation
-  } = useStableDropdown();
+  } = useStableDropdown({
+    preventNodeSelection: true,
+    debounceDelay: 100,
+    closeOnOutsideClick: true
+  });
 
   return (
     <div className="transition-all duration-300 animate-fade-in will-change-transform">
@@ -57,7 +61,8 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
             id="sheetSelect" 
             className="mt-1 relative bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-green-200"
             ref={triggerRef}
-            onClick={stopPropagation}
+            onClick={preventSelection}
+            onMouseDown={preventSelection}
           >
             <SelectValue placeholder="Choose a sheet..." />
           </SelectTrigger>
@@ -67,13 +72,18 @@ const SheetSelector: React.FC<SheetSelectorProps> = memo(({
             position="popper"
             sideOffset={5}
             align="start"
-            style={{ zIndex: 9999 }}
+            style={{ zIndex: 9999, pointerEvents: 'auto' }}
+            onMouseDown={preventSelection}
+            onClick={preventSelection}
           >
             {availableSheets?.map((sheet) => (
               <SelectItem 
                 key={sheet.name} 
                 value={sheet.name}
                 className="cursor-pointer transition-colors hover:bg-green-50 focus:bg-green-50"
+                onMouseDown={(e) => {
+                  stopPropagation(e);
+                }}
                 onClick={(e) => {
                   stopPropagation(e);
                   onSheetSelect(sheet.name);

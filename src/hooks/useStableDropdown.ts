@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDebounce } from './useDebounce';
 
@@ -6,55 +5,79 @@ interface UseStableDropdownProps {
   onOpenChange?: (open: boolean) => void;
   preventNodeSelection?: boolean;
   debounceDelay?: number;
+  closeOnOutsideClick?: boolean;
 }
 
 export function useStableDropdown({ 
   onOpenChange, 
   preventNodeSelection = true,
-  debounceDelay = 50 
+  debounceDelay = 50,
+  closeOnOutsideClick = true
 }: UseStableDropdownProps = {}) {
   const [open, setOpenState] = useState(false);
+  const internalStateRef = useRef(open);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const mouseDownInsideRef = useRef(false);
   
   // Debounce the open state changes to reduce flickering
   const debouncedOpen = useDebounce(open, debounceDelay);
   
+  // Keep internal state ref in sync with actual state
   useEffect(() => {
-    onOpenChange?.(debouncedOpen);
+    internalStateRef.current = open;
+  }, [open]);
+  
+  useEffect(() => {
+    if (onOpenChange) {
+      onOpenChange(debouncedOpen);
+    }
   }, [debouncedOpen, onOpenChange]);
   
   // Controlled handler for open state
   const handleOpenChange = useCallback((newOpen: boolean) => {
-    if (newOpen === open) return; // Skip if no change
-    setOpenState(newOpen);
-  }, [open]);
+    if (newOpen === internalStateRef.current) return; // Skip if no change using ref
+    internalStateRef.current = newOpen; // Update ref immediately
+    setOpenState(newOpen); // Update state (will trigger re-render)
+  }, []);
   
   // Handle outside clicks to close the dropdown
   useEffect(() => {
-    if (!open) return;
+    if (!closeOnOutsideClick) return;
 
-    const handleOutsideClick = (e: MouseEvent) => {
-      // Only close if clicking outside both the trigger and content
-      if (!triggerRef.current?.contains(e.target as Node) && 
-          !contentRef.current?.contains(e.target as Node)) {
-        handleOpenChange(false);
-      }
+    const handleMouseDown = (e: MouseEvent) => {
+      mouseDownInsideRef.current = 
+        !!triggerRef.current?.contains(e.target as Node) || 
+        !!contentRef.current?.contains(e.target as Node);
     };
 
-    // Use mousedown for better interaction with ReactFlow
-    document.addEventListener('mousedown', handleOutsideClick);
+    const handleMouseUp = (e: MouseEvent) => {
+      // Only close if both mousedown and mouseup happened outside
+      if (!mouseDownInsideRef.current && 
+          !triggerRef.current?.contains(e.target as Node) && 
+          !contentRef.current?.contains(e.target as Node)) {
+        if (internalStateRef.current) {
+          handleOpenChange(false);
+        }
+      }
+      // Reset the flag for next interaction
+      mouseDownInsideRef.current = false;
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
     
     return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [open, handleOpenChange]);
+  }, [closeOnOutsideClick, handleOpenChange]);
   
-  // This function now takes the correct event type and doesn't use stopPropagation by default
+  // Enhanced event handling to prevent React Flow node selection
   const preventSelection = useCallback((e: React.SyntheticEvent) => {
     if (preventNodeSelection) {
-      // Only prevent default, don't stop propagation by default
-      e.preventDefault();
+      e.stopPropagation(); // Stop propagation to prevent React Flow node selection
+      e.preventDefault();   // Prevent default browser behavior
     }
   }, [preventNodeSelection]);
   
@@ -64,7 +87,6 @@ export function useStableDropdown({
     triggerRef,
     contentRef,
     preventSelection,
-    // More controlled stopPropagation function - explicitly stops propagation only when needed
     stopPropagation: (e: React.SyntheticEvent) => {
       e.stopPropagation();
       e.preventDefault();
