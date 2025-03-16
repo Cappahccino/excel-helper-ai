@@ -23,7 +23,34 @@ function safeToString(value: any): string {
   if (value === null || value === undefined) {
     return '';
   }
+  
+  // Handle different types appropriately
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    try {
+      // Try to convert to JSON string
+      return JSON.stringify(value);
+    } catch (e) {
+      console.error('Error converting object to string:', e);
+      return '';
+    }
+  }
+  
+  // Fallback for any other types
   return String(value);
+}
+
+// Helper function to check if a value is a valid workflowId
+function isValidWorkflowId(value: any): boolean {
+  return value !== null && 
+         value !== undefined && 
+         value !== 'new' &&
+         value !== '';
 }
 
 export function useWorkflowStateManager(workflowId: string | null) {
@@ -60,7 +87,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Process the pending updates
   const processUpdates = useCallback(async () => {
-    if (!workflowId || workflowId === 'new' || isProcessingUpdate || pendingUpdates.length === 0) {
+    if (!isValidWorkflowId(workflowId) || isProcessingUpdate || pendingUpdates.length === 0) {
       return;
     }
     
@@ -144,10 +171,10 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Update node configurations
   const updateNodeConfigs = async (updates: { nodeId: string, config: any }[]) => {
-    if (!workflowId || updates.length === 0) return;
+    if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(workflowId);
+      const workflowData = await fetchWorkflowData(safeToString(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -185,10 +212,10 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Update node positions
   const updateNodePositions = async (updates: { nodeId: string, position: { x: number, y: number } }[]) => {
-    if (!workflowId || updates.length === 0) return;
+    if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(workflowId);
+      const workflowData = await fetchWorkflowData(safeToString(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -220,10 +247,10 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Update node data
   const updateNodeData = async (updates: { nodeId: string, data: any }[]) => {
-    if (!workflowId || updates.length === 0) return;
+    if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(workflowId);
+      const workflowData = await fetchWorkflowData(safeToString(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -258,10 +285,10 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Update edge data
   const updateEdgeData = async (updates: { edgeId: string, data: any }[]) => {
-    if (!workflowId || updates.length === 0) return;
+    if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(workflowId);
+      const workflowData = await fetchWorkflowData(safeToString(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -296,7 +323,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Update file schema for nodes
   const updateFileSchema = async (updates: { nodeId: string, schema: any }[]) => {
-    if (!workflowId || updates.length === 0) return;
+    if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
       for (const update of updates) {
@@ -345,7 +372,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Update node metadata in workflow_files table
   const updateNodeMetadata = async (updates: { nodeId: string, metadata: any }[]) => {
-    if (!workflowId || updates.length === 0) return;
+    if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
       for (const update of updates) {
@@ -396,7 +423,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
       const { data, error } = await supabase
         .from('workflows')
         .select('definition')
-        .eq('id', safeToString(workflowId))
+        .eq('id', workflowId)
         .single();
       
       if (error) {
