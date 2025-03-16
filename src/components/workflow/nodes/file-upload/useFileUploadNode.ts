@@ -1,10 +1,14 @@
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { useFileUploadNodeState } from '@/hooks/useFileUploadNodeState';
-import { type FileProcessingState, FileProcessingStates } from '@/types/fileProcessing';
+import { type FileProcessingState } from '@/types/fileProcessing';
 
 export function useFileUploadNode(workflowId: string | null | undefined, nodeId: string) {
   const fileUploadState = useFileUploadNodeState({ workflowId, nodeId });
+  
+  // Handle case when metadata might be undefined
+  const selectedSheet = fileUploadState.metadata?.selected_sheet;
+  const availableSheets = fileUploadState.metadata?.sheets || [];
   
   return {
     fileId: fileUploadState.fileState.fileId,
@@ -13,15 +17,18 @@ export function useFileUploadNode(workflowId: string | null | undefined, nodeId:
     uploadProgress: fileUploadState.processingState.progress,
     errorMessage: fileUploadState.processingState.error,
     schema: fileUploadState.schema,
-    selectedSheet: fileUploadState.metadata?.selected_sheet,
-    availableSheets: fileUploadState.metadata?.sheets_metadata || [],
+    selectedSheet,
+    availableSheets,
     lastUpdated: fileUploadState.fileState.lastUpdated,
-    isLoading: false, // This is not provided by useFileUploadNodeState, defaulting to false
+    isLoading: false, // Not provided by useFileUploadNodeState, defaulting to false
     isUploading: fileUploadState.isUploading,
     isProcessing: fileUploadState.isProcessing,
     isFileReady: fileUploadState.isComplete,
     hasError: fileUploadState.isError,
-    fetchFileState: () => {}, // This function doesn't exist in useFileUploadNodeState, implementing a no-op
+    fetchFileState: useCallback(() => {
+      // This is a no-op function since useFileUploadNodeState doesn't expose this
+      console.log('fetchFileState called but not implemented');
+    }, []),
     updateSelectedSheet: fileUploadState.updateSelectedSheet,
   };
 }

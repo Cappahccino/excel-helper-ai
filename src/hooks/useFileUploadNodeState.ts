@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -116,11 +117,12 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
         
         if (fileData && typeof fileData === 'object') {
           // Get file information
-          if (fileData.file_id) {
+          const fileId = fileData.file_id;
+          if (fileId) {
             const { data: fileInfo, error: infoError } = await supabase
               .from('excel_files')
               .select('filename, processing_status, error_message, processing_completed_at, processing_started_at')
-              .eq('id', fileData.file_id)
+              .eq('id', fileId)
               .maybeSingle();
               
             if (infoError) {
@@ -145,7 +147,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
               
               setFileState(prev => ({
                 ...prev,
-                fileId: fileData.file_id,
+                fileId: fileId,
                 fileName: fileInfo.filename,
                 metadata: metadataObj,
                 lastUpdated: Date.now()
@@ -167,9 +169,9 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
               );
               
               // If file is completed, fetch schema
-              if (status === FileProcessingStates.COMPLETED) {
+              if (status === FileProcessingStates.COMPLETED && fileId) {
                 const selectedSheet = metadataObj?.selected_sheet;
-                await fetchSchema(fileData.file_id, selectedSheet);
+                await fetchSchema(fileId, selectedSheet);
               }
             }
           }
@@ -595,7 +597,7 @@ export function useFileUploadNodeState({ workflowId, nodeId }: UseFileUploadNode
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
       // Get current metadata
-      const currentMetadata = { ...metadata } || {};
+      const currentMetadata = metadata || {};
       
       // Update metadata with selected sheet
       const updatedMetadata = {
