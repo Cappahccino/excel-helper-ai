@@ -88,7 +88,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   <div 
                     className="flex items-center gap-2"
                     onClick={() => {
-                      // Removed event parameter to avoid type mismatch
                       onFileSelect(file.id);
                       setOpen(false);
                     }}
