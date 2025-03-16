@@ -8,8 +8,7 @@ export type FileProcessingStatus =
   | 'verifying'
   | 'completed' 
   | 'failed'
-  | 'error'
-  | 'queuing';
+  | 'error';
 
 export interface FileProcessingState {
   status: FileProcessingStatus;
@@ -18,7 +17,6 @@ export interface FileProcessingState {
   error?: string;
   startTime?: number;
   endTime?: number;
-  glowing?: boolean;
 }
 
 export interface WorkflowUploadResponse {

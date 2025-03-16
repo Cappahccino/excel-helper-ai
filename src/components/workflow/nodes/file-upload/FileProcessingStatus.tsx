@@ -3,16 +3,14 @@ import React from 'react';
 import { Loader2, Upload, RefreshCw, Database, AlertCircle, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NodeProgress from '../../ui/NodeProgress';
-import type { FileProcessingStatus } from '@/types/fileProcessing';
-import { cn } from '@/lib/utils';
+import { FileProcessingState } from '@/types/workflowStatus';
 
 interface FileProcessingStatusProps {
-  status: FileProcessingStatus;
+  status: FileProcessingState;
   progress: number;
   message?: string;
   error?: string;
   onRetry: () => void;
-  className?: string;
 }
 
 const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
@@ -21,18 +19,15 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
   message,
   error,
   onRetry,
-  className
 }) => {
   // Status-specific colors for progress
-  const statusMap: Record<FileProcessingStatus, {
+  const statusMap: Record<FileProcessingState, {
     statusComponent: React.ReactNode,
-    progressStatus: 'default' | 'success' | 'error' | 'warning' | 'info',
-    animated: boolean
+    progressStatus: 'default' | 'success' | 'error' | 'warning' | 'info'
   }> = {
     pending: {
       statusComponent: null,
-      progressStatus: 'default',
-      animated: false
+      progressStatus: 'default'
     },
     associating: {
       statusComponent: (
@@ -41,8 +36,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Associating file...'}</span>
         </div>
       ),
-      progressStatus: 'default',
-      animated: true
+      progressStatus: 'default'
     },
     queuing: {
       statusComponent: (
@@ -51,18 +45,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Queuing file...'}</span>
         </div>
       ),
-      progressStatus: 'default',
-      animated: true
-    },
-    uploading: {
-      statusComponent: (
-        <div className="flex items-center gap-2 text-xs text-blue-600">
-          <Upload className="h-3 w-3 animate-pulse" />
-          <span>{message || 'Uploading file...'}</span>
-        </div>
-      ),
-      progressStatus: 'default',
-      animated: true
+      progressStatus: 'default'
     },
     processing: {
       statusComponent: (
@@ -71,8 +54,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Processing file...'}</span>
         </div>
       ),
-      progressStatus: 'default',
-      animated: true
+      progressStatus: 'default'
     },
     fetching_schema: {
       statusComponent: (
@@ -81,8 +63,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Fetching schema...'}</span>
         </div>
       ),
-      progressStatus: 'info',
-      animated: true
+      progressStatus: 'info'
     },
     verifying: {
       statusComponent: (
@@ -91,8 +72,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'Verifying data...'}</span>
         </div>
       ),
-      progressStatus: 'warning',
-      animated: true
+      progressStatus: 'warning'
     },
     completed: {
       statusComponent: (
@@ -101,8 +81,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <span>{message || 'File ready'}</span>
         </div>
       ),
-      progressStatus: 'success',
-      animated: false
+      progressStatus: 'success'
     },
     failed: {
       statusComponent: (
@@ -113,8 +92,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           </div>
         </div>
       ),
-      progressStatus: 'error',
-      animated: false
+      progressStatus: 'error'
     },
     error: {
       statusComponent: (
@@ -125,28 +103,25 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           </div>
         </div>
       ),
-      progressStatus: 'error',
-      animated: false
+      progressStatus: 'error'
     }
   };
   
-  const { statusComponent, progressStatus, animated } = statusMap[status];
+  const { statusComponent, progressStatus } = statusMap[status];
   
   return (
-    <div className={cn(className)}>
+    <>
       {statusComponent}
-      {status !== 'pending' && status !== 'completed' && 
-       status !== 'error' && status !== 'failed' && (
+      {status !== FileProcessingState.Pending && status !== FileProcessingState.Completed && 
+       status !== FileProcessingState.Error && status !== FileProcessingState.Failed && (
         <NodeProgress 
           value={progress} 
           status={progressStatus} 
-          showLabel={true}
-          showIcon={true}
+          showLabel={true} 
           className="mt-2" 
-          animated={animated}
         />
       )}
-      {(status === 'error' || status === 'failed') && (
+      {(status === FileProcessingState.Error || status === FileProcessingState.Failed) && (
         <Button 
           size="sm" 
           variant="outline" 
@@ -156,7 +131,7 @@ const FileProcessingStatus: React.FC<FileProcessingStatusProps> = ({
           <RefreshCw className="h-3 w-3 mr-1" /> Retry
         </Button>
       )}
-    </div>
+    </>
   );
 };
 

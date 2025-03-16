@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Table, AlertCircle, CheckCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -9,8 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Layers } from 'lucide-react';
-import { useStableDropdown } from '@/hooks/useStableDropdown';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface SheetSelectorProps {
   selectedSheet?: string;
@@ -21,94 +21,107 @@ interface SheetSelectorProps {
     isDefault?: boolean;
   }>;
   onSheetSelect: (sheetName: string) => void;
-  isLoading: boolean;
-  disabled?: boolean;
+  isLoading?: boolean;
 }
 
 const SheetSelector: React.FC<SheetSelectorProps> = ({
   selectedSheet,
   availableSheets,
   onSheetSelect,
-  isLoading,
-  disabled = false
+  isLoading = false
 }) => {
-  const {
-    stopPropagation,
-    dropdownRef,
-    triggerRef
-  } = useStableDropdown();
-
-  const handleValueChange = (value: string) => {
-    onSheetSelect(value);
-  };
-
-  if (availableSheets.length === 0) {
+  // If there are no available sheets, don't render anything
+  if (!availableSheets.length) {
     return null;
   }
 
+  // Auto-select default sheet if no sheet is selected
+  useEffect(() => {
+    if (!selectedSheet && availableSheets.length > 0) {
+      // Find the default sheet, or use the first sheet
+      const defaultSheet = availableSheets.find(sheet => sheet.isDefault) || availableSheets[0];
+      if (defaultSheet) {
+        console.log(`SheetSelector: Auto-selecting default sheet ${defaultSheet.name}`);
+        onSheetSelect(defaultSheet.name);
+      }
+    }
+  }, [selectedSheet, availableSheets, onSheetSelect]);
+
+  const handleSheetSelection = (value: string) => {
+    if (value === selectedSheet) {
+      console.log(`SheetSelector: Sheet ${value} already selected, skipping duplicate selection`);
+      return;
+    }
+    
+    console.log(`SheetSelector: Selected sheet ${value}`);
+    onSheetSelect(value);
+  };
+
   return (
-    <div className="relative z-20" onMouseDown={stopPropagation}>
-      <Label htmlFor="sheetSelect" className="text-xs font-medium">
+    <div>
+      <Label htmlFor="sheetSelect" className="text-xs font-medium flex items-center">
         Select Sheet
+        {isLoading && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertCircle className="h-3.5 w-3.5 ml-1 text-amber-500 animate-pulse" />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Updating schema for this sheet...</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {selectedSheet && !isLoading && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <CheckCircle className="h-3.5 w-3.5 ml-1 text-green-500" />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Sheet selected and schema available</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </Label>
-      
-      {isLoading ? (
-        <Skeleton className="h-9 w-full mt-1" />
-      ) : (
-        <Select 
-          value={selectedSheet} 
-          onValueChange={handleValueChange}
-          disabled={disabled}
-        >
-          <SelectTrigger 
-            id="sheetSelect" 
-            className="mt-1"
-            onMouseDown={stopPropagation}
-            onClick={stopPropagation}
-            ref={triggerRef}
-          >
-            <SelectValue placeholder="Choose a sheet..." />
-          </SelectTrigger>
-          <SelectContent
-            ref={dropdownRef}
-            className="z-[9999] bg-white"
-            position="popper"
-            sideOffset={5}
-            align="start"
-            onMouseDown={stopPropagation}
-            onClick={stopPropagation}
-            onPointerDownOutside={(e) => {
-              // This prevents the dropdown from closing when clicking inside the dropdown
-              e.preventDefault();
-            }}
-          >
-            {availableSheets.map((sheet) => (
-              <SelectItem 
-                key={sheet.index} 
-                value={sheet.name}
-                className="focus:bg-gray-100 focus:text-gray-900 cursor-pointer"
-                onMouseDown={stopPropagation}
-                onClick={stopPropagation}
-              >
-                <div className="flex items-center gap-2">
-                  <Layers className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span>{sheet.name}</span>
-                  {sheet.rowCount && (
-                    <span className="text-xs text-gray-500 ml-auto">
-                      {sheet.rowCount} rows
-                    </span>
-                  )}
-                  {sheet.isDefault && (
-                    <span className="text-xs text-green-600 ml-auto">
-                      Default
-                    </span>
-                  )}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+      <Select 
+        value={selectedSheet} 
+        onValueChange={handleSheetSelection}
+        disabled={isLoading}
+      >
+        <SelectTrigger id="sheetSelect" className="mt-1">
+          <SelectValue placeholder="Choose a sheet..." />
+        </SelectTrigger>
+        <SelectContent>
+          {availableSheets.map((sheet) => (
+            <SelectItem key={sheet.index} value={sheet.name}>
+              <div className="flex items-center gap-2">
+                <Table className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate max-w-[180px]">{sheet.name}</span>
+                {sheet.rowCount !== undefined && sheet.rowCount > 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="text-xs">
+                          {sheet.rowCount} rows
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>This sheet contains {sheet.rowCount} rows of data</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {sheet.isDefault && (
+                  <Badge variant="secondary" className="text-xs ml-1">Default</Badge>
+                )}
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 };

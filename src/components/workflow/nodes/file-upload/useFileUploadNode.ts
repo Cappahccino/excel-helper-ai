@@ -2,8 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
-import { WorkflowFileStatus, FileProcessingState } from '@/types/workflowStatus';
-import { useFileProcessingState } from '@/hooks/useFileProcessingState';
+import { FileProcessingState } from '@/types/workflowStatus';
+import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 
 interface SheetMetadata {
@@ -29,19 +29,37 @@ export const useFileUploadNode = (
   const [availableSheets, setAvailableSheets] = useState<SheetMetadata[]>([]);
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   
-  const {
-    processingState,
-    updateProcessingState,
-    resetProcessingState,
-    isProcessing,
-    isComplete,
-    isError,
-    isPending,
-    isGlowing
-  } = useFileProcessingState();
+  const [processingState, setProcessingState] = useState<{
+    status: FileProcessingState;
+    progress: number;
+    message?: string;
+    error?: string;
+    startTime?: number;
+    endTime?: number;
+  }>({
+    status: FileProcessingState.Pending,
+    progress: 0
+  });
   
   const [fileInfo, setFileInfo] = useState<any>(null);
   const [realtimeEnabled, setRealtimeEnabled] = useState(false);
+
+  const updateProcessingState = useCallback((
+    status: FileProcessingState, 
+    progress: number = 0, 
+    message?: string,
+    error?: string
+  ) => {
+    setProcessingState(prev => ({
+      ...prev,
+      status,
+      progress: status === FileProcessingState.Completed ? 100 : progress,
+      message,
+      error,
+      ...(status === FileProcessingState.Completed ? { endTime: Date.now() } : {}),
+      ...(status === FileProcessingState.Associating && !prev.startTime ? { startTime: Date.now() } : {})
+    }));
+  }, []);
 
   const { data: files, isLoading: isLoadingFiles, refetch } = useQuery({
     queryKey: ['excel-files-for-workflow'],
@@ -146,14 +164,14 @@ export const useFileUploadNode = (
           const processingStatus = updatedFile.processing_status as string;
           
           if (processingStatus === WorkflowFileStatus.Completed) {
-            updateProcessingState('completed', 100, 'File processed successfully', undefined, false);
+            updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
             refetch();
           } else if (processingStatus === WorkflowFileStatus.Processing) {
-            updateProcessingState('processing', 50, 'Processing file data...', undefined, true);
+            updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
           } else if (processingStatus === WorkflowFileStatus.Failed || 
                      processingStatus === WorkflowFileStatus.Error) {
             const errorMessage = updatedFile.processing_error || 'File processing failed';
-            updateProcessingState('error', 0, 'Error', errorMessage, false);
+            updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
           }
         }
       )
@@ -207,31 +225,27 @@ export const useFileUploadNode = (
 
   useEffect(() => {
     if (selectedFile) {
-      setFileInfo({
-        ...selectedFile,
-        isLoading: isLoadingSelectedFile
-      });
+      setFileInfo(selectedFile);
       
       const processingStatus = selectedFile.processing_status as string;
       
       if (processingStatus === WorkflowFileStatus.Completed) {
-        updateProcessingState('completed', 100, undefined, undefined, false);
+        updateProcessingState(FileProcessingState.Completed, 100);
       } else if (processingStatus === WorkflowFileStatus.Processing) {
-        updateProcessingState('processing', 50, 'Processing file data...', undefined, true);
+        updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
       } else if (
         processingStatus === WorkflowFileStatus.Failed || 
         processingStatus === WorkflowFileStatus.Error
       ) {
         updateProcessingState(
-          'error', 
+          FileProcessingState.Error, 
           0, 
           'Error', 
-          selectedFile.error_message || 'File processing failed',
-          false
+          selectedFile.error_message || 'File processing failed'
         );
       }
     }
-  }, [selectedFile, updateProcessingState, isLoadingSelectedFile]);
+  }, [selectedFile, updateProcessingState]);
 
   const formatFileSize = (sizeInBytes: number): string => {
     if (sizeInBytes < 1024) return `${sizeInBytes} B`;
@@ -346,13 +360,13 @@ export const useFileUploadNode = (
         return;
       }
       
-      updateProcessingState('associating', 10, 'Associating file with workflow...', undefined, true);
+      updateProcessingState(FileProcessingState.Associating, 10, 'Associating file with workflow...');
       setSelectedFileId(fileId);
       
       setSelectedSheet(undefined);
       
       if (!workflowId) {
-        updateProcessingState('error', 0, 'Error', 'No workflow ID available. Please save the workflow first.', false);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', 'No workflow ID available. Please save the workflow first.');
         toast.error('Cannot associate file with workflow yet. Please save the workflow.');
         return;
       }
@@ -371,7 +385,7 @@ export const useFileUploadNode = (
         
       if (fileError) {
         console.error('Error fetching file data:', fileError);
-        updateProcessingState('error', 0, 'Error', `File data error: ${fileError.message}`, false);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', `File data error: ${fileError.message}`);
         toast.error('Failed to get file information');
         throw fileError;
       }
@@ -384,18 +398,18 @@ export const useFileUploadNode = (
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        updateProcessingState('error', 0, 'Error', 'User not authenticated', false);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', 'User not authenticated');
         toast.error('You must be logged in to use this feature');
         throw new Error('User not authenticated');
       }
       
-      updateProcessingState('associating', 30, 'Creating database association...', undefined, true);
+      updateProcessingState(FileProcessingState.Associating, 30, 'Creating database association...');
       
       try {
         const result = await associateFileWithWorkflow(fileId);
         if (!result) {
           console.error('File association failed');
-          updateProcessingState('error', 0, 'Error', 'File association failed', false);
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', 'File association failed');
           toast.error('Failed to associate file with workflow node');
           return;
         }
@@ -403,12 +417,12 @@ export const useFileUploadNode = (
         console.log('File association successful');
       } catch (assocError) {
         console.error('Error in association:', assocError);
-        updateProcessingState('error', 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`, false);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
         toast.error('Failed to associate file with workflow node');
         return;
       }
       
-      updateProcessingState('queuing', 40, 'Submitting for processing...', undefined, true);
+      updateProcessingState(FileProcessingState.Queuing, 40, 'Submitting for processing...');
       try {
         const response = await supabase.functions.invoke('processFile', {
           body: {
@@ -420,7 +434,7 @@ export const useFileUploadNode = (
         
         if (response.error) {
           console.error('Error invoking processFile function:', response.error);
-          updateProcessingState('error', 0, 'Error', `Processing error: ${response.error.message}`, false);
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', `Processing error: ${response.error.message}`);
           toast.error('Failed to queue file for processing');
           throw response.error;
         }
@@ -428,12 +442,12 @@ export const useFileUploadNode = (
         const responseData = response.data;
         if (responseData && responseData.error) {
           console.error('Process file returned error:', responseData.error);
-          updateProcessingState('error', 0, 'Error', `Process error: ${responseData.error}`, false);
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', `Process error: ${responseData.error}`);
           toast.error(responseData.error);
           return;
         }
         
-        updateProcessingState('fetching_schema', 60, 'Retrieving file schema...', undefined, true);
+        updateProcessingState(FileProcessingState.FetchingSchema, 60, 'Retrieving file schema...');
         
         if (onChange) {
           onChange(nodeId, { 
@@ -446,19 +460,19 @@ export const useFileUploadNode = (
         toast.success('File processing started');
         
         setTimeout(() => {
-          if (processingState.status !== 'completed' && processingState.status !== 'error') {
-            updateProcessingState('verifying', 80, 'Verifying data...', undefined, true);
+          if (processingState.status !== FileProcessingState.Completed && processingState.status !== FileProcessingState.Error) {
+            updateProcessingState(FileProcessingState.Verifying, 80, 'Verifying data...');
           }
         }, 2000);
       } catch (fnError) {
         console.error('Function call failed:', fnError);
-        updateProcessingState('error', 0, 'Error', `API error: ${fnError.message}`, false);
+        updateProcessingState(FileProcessingState.Error, 0, 'Error', `API error: ${fnError.message}`);
         toast.error('Error processing file. Please try again.');
       }
     } catch (error) {
       console.error('Error associating file with workflow node:', error);
       toast.error('Failed to associate file with workflow');
-      updateProcessingState('error', 0, 'Error', `Error: ${error.message}`, false);
+      updateProcessingState(FileProcessingState.Error, 0, 'Error', `Error: ${error.message}`);
     }
   };
 
@@ -539,9 +553,9 @@ export const useFileUploadNode = (
 
   const handleRetry = useCallback(async () => {
     if (!selectedFileId) return;
-    updateProcessingState('associating', 10, 'Retrying file processing...', undefined, true);
+    updateProcessingState(FileProcessingState.Associating, 10, 'Retrying file processing...');
     await handleFileSelection(selectedFileId);
-  }, [selectedFileId, handleFileSelection, updateProcessingState]);
+  }, [selectedFileId, workflowId, nodeId]);
 
   return {
     selectedFileId,
@@ -560,11 +574,7 @@ export const useFileUploadNode = (
     formatFileSize,
     handleFileSelection,
     handleSheetSelection,
-    handleRetry,
-    isProcessing,
-    isComplete,
-    isError,
-    isPending,
-    isGlowing
+    handleRetry
   };
 };
+

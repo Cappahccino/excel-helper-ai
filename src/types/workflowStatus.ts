@@ -9,18 +9,18 @@ export enum WorkflowFileStatus {
   Error = 'error'
 }
 
-// Define our file processing state type for UI representation
-export type FileProcessingState =
-  | 'pending'
-  | 'associating' 
-  | 'queuing'
-  | 'uploading'
-  | 'processing'
-  | 'fetching_schema'
-  | 'verifying'
-  | 'completed'
-  | 'failed'
-  | 'error';
+// Define our file processing state enum for UI representation
+export enum FileProcessingState {
+  Pending = 'pending',
+  Associating = 'associating', 
+  Queuing = 'queuing',
+  Processing = 'processing',
+  FetchingSchema = 'fetching_schema',
+  Verifying = 'verifying',
+  Completed = 'completed',
+  Failed = 'failed',
+  Error = 'error'
+}
 
 // Map database status to UI status
 export const mapWorkflowStatusToProcessingState = (
@@ -28,18 +28,18 @@ export const mapWorkflowStatusToProcessingState = (
 ): FileProcessingState => {
   switch (dbStatus) {
     case WorkflowFileStatus.Pending:
-      return 'pending';
+      return FileProcessingState.Pending;
     case WorkflowFileStatus.Queued:
-      return 'queuing';
+      return FileProcessingState.Queuing;
     case WorkflowFileStatus.Processing:
-      return 'processing';
+      return FileProcessingState.Processing;
     case WorkflowFileStatus.Completed:
-      return 'completed';
+      return FileProcessingState.Completed;
     case WorkflowFileStatus.Failed:
-      return 'failed';
+      return FileProcessingState.Failed;
     case WorkflowFileStatus.Error:
-      return 'error';
+      return FileProcessingState.Error;
     default:
-      return 'pending';
+      return FileProcessingState.Pending;
   }
 };
