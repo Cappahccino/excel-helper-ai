@@ -21,12 +21,14 @@ export function useStableDropdown({ onOpenChange, preventNodeSelection = true }:
     if (!open) return;
 
     const handleOutsideClick = (e: MouseEvent) => {
+      // Only close if clicking outside both the trigger and content
       if (!triggerRef.current?.contains(e.target as Node) && 
           !contentRef.current?.contains(e.target as Node)) {
         handleOpenChange(false);
       }
     };
 
+    // Use mousedown for better interaction with ReactFlow
     document.addEventListener('mousedown', handleOutsideClick);
     
     return () => {
@@ -34,10 +36,11 @@ export function useStableDropdown({ onOpenChange, preventNodeSelection = true }:
     };
   }, [open, handleOpenChange]);
   
-  // Prevent node selection when clicking on dropdown elements
-  const preventSelection = useCallback((e: React.MouseEvent) => {
+  // This function now takes the correct event type and doesn't use stopPropagation by default
+  const preventSelection = useCallback((e: React.SyntheticEvent) => {
     if (preventNodeSelection) {
-      e.stopPropagation();
+      // Only prevent default, don't stop propagation by default
+      e.preventDefault();
     }
   }, [preventNodeSelection]);
   
@@ -47,7 +50,10 @@ export function useStableDropdown({ onOpenChange, preventNodeSelection = true }:
     triggerRef,
     contentRef,
     preventSelection,
-    // Utility method to prevent event propagation
-    stopPropagation: (e: React.MouseEvent) => e.stopPropagation()
+    // More controlled stopPropagation function - explicitly stops propagation only when needed
+    stopPropagation: (e: React.SyntheticEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+    }
   };
 }

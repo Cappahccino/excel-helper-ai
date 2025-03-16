@@ -37,7 +37,10 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   } = useStableDropdown();
 
   return (
-    <div onClick={preventSelection} className="transition-all duration-300">
+    <div 
+      className="transition-all duration-300"
+      // Don't prevent selection on the entire container
+    >
       <Label htmlFor="fileSelect" className="text-xs font-medium text-gray-700">
         Select File
       </Label>
@@ -57,7 +60,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
         >
           <SelectTrigger 
             id="fileSelect" 
-            className="mt-1 relative z-50 bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-blue-200"
+            className="mt-1 relative bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-blue-200"
             ref={triggerRef}
             onClick={stopPropagation}
           >
@@ -65,10 +68,11 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           </SelectTrigger>
           <SelectContent
             ref={contentRef}
-            className="z-[9999] bg-white shadow-lg border border-gray-200 animate-fade-in"
+            className="bg-white shadow-lg border border-gray-200 animate-fade-in"
             position="popper"
             sideOffset={5}
-            onClick={stopPropagation}
+            align="start"
+            style={{ zIndex: 9999 }}
           >
             {files?.length === 0 ? (
               <div className="py-6 px-2 text-center">
@@ -81,6 +85,12 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   key={file.id} 
                   value={file.id}
                   className="cursor-pointer transition-colors hover:bg-blue-50 focus:bg-blue-50"
+                  onClick={(e) => {
+                    // Handle item selection explicitly
+                    stopPropagation(e);
+                    onFileSelect(file.id);
+                    setOpen(false);
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0 text-blue-500" />

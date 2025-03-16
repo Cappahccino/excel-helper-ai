@@ -35,7 +35,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
   } = useStableDropdown();
 
   return (
-    <div onClick={preventSelection} className="transition-all duration-300 animate-fade-in">
+    <div className="transition-all duration-300 animate-fade-in">
       <Label htmlFor="sheetSelect" className="text-xs font-medium text-gray-700">
         Select Sheet
       </Label>
@@ -54,7 +54,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
         >
           <SelectTrigger 
             id="sheetSelect" 
-            className="mt-1 relative z-50 bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-green-200"
+            className="mt-1 relative bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-green-200"
             ref={triggerRef}
             onClick={stopPropagation}
           >
@@ -62,16 +62,22 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
           </SelectTrigger>
           <SelectContent
             ref={contentRef}
-            className="z-[9999] bg-white shadow-lg animate-fade-in border border-gray-200"
+            className="bg-white shadow-lg animate-fade-in border border-gray-200"
             position="popper"
             sideOffset={5}
-            onClick={stopPropagation}
+            align="start"
+            style={{ zIndex: 9999 }}
           >
             {availableSheets?.map((sheet) => (
               <SelectItem 
                 key={sheet.name} 
                 value={sheet.name}
                 className="cursor-pointer transition-colors hover:bg-green-50 focus:bg-green-50"
+                onClick={(e) => {
+                  stopPropagation(e);
+                  onSheetSelect(sheet.name);
+                  setOpen(false);
+                }}
               >
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0 text-green-600" />
