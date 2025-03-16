@@ -72,6 +72,16 @@ function isValidWorkflowId(value: WorkflowId): boolean {
          value !== '';
 }
 
+// Helper function to safely stringify objects for database operations
+function safeJsonStringify(value: any): string {
+  try {
+    return JSON.stringify(value) || '{}';
+  } catch (e) {
+    console.error('Error stringifying value:', e);
+    return '{}';
+  }
+}
+
 export function useWorkflowStateManager(workflowId: WorkflowId) {
   const [pendingUpdates, setPendingUpdates] = useState<UpdateOperation[]>([]);
   const [isProcessingUpdate, setIsProcessingUpdate] = useState(false);
@@ -221,7 +231,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: JSON.stringify(definition),
+            definition: safeJsonStringify(definition),
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
@@ -259,7 +269,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: JSON.stringify(definition),
+            definition: safeJsonStringify(definition),
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
@@ -300,7 +310,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: JSON.stringify(definition),
+            definition: safeJsonStringify(definition),
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
@@ -341,7 +351,7 @@ export function useWorkflowStateManager(workflowId: WorkflowId) {
         await supabase
           .from('workflows')
           .update({ 
-            definition: JSON.stringify(definition),
+            definition: safeJsonStringify(definition),
             updated_at: new Date().toISOString()
           })
           .eq('id', formattedWorkflowId);
