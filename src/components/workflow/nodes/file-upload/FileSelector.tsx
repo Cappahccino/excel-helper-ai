@@ -87,8 +87,8 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                 >
                   <div 
                     className="flex items-center gap-2"
-                    onClick={(e: React.SyntheticEvent<HTMLDivElement>) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onFileSelect(file.id);
                       setOpen(false);
                     }}
