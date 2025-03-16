@@ -20,14 +20,14 @@ interface FileSelectorProps {
   disabled: boolean;
 }
 
-// Use memo to prevent unnecessary re-renders
-const FileSelector: React.FC<FileSelectorProps> = memo(({
+// Use memo with a custom comparison function to prevent unnecessary re-renders
+const FileSelector = memo(({
   selectedFileId,
   files,
   isLoadingFiles,
   onFileSelect,
   disabled
-}) => {
+}: FileSelectorProps) => {
   const {
     open,
     setOpen,
@@ -44,10 +44,20 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
   // Memoize files for stability
   const memoizedFiles = useMemo(() => files || [], [files]);
 
+  // Create a stable handler for file selection
+  const handleSelectFile = React.useCallback((value: string) => {
+    // Prevent rapid re-selection
+    if (value === selectedFileId) return;
+    
+    // Use requestAnimationFrame to batch with other UI updates
+    requestAnimationFrame(() => {
+      onFileSelect(value);
+      setOpen(false);
+    });
+  }, [selectedFileId, onFileSelect, setOpen]);
+
   return (
-    <div 
-      className="transition-all duration-300 will-change-transform"
-    >
+    <div className="transition-all duration-300 will-change-transform">
       <Label htmlFor="fileSelect" className="text-xs font-medium text-gray-700">
         Select File
       </Label>
@@ -59,18 +69,15 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
           open={open}
           onOpenChange={setOpen}
           value={selectedFileId} 
-          onValueChange={(value) => {
-            onFileSelect(value);
-            setOpen(false);
-          }}
+          onValueChange={handleSelectFile}
           disabled={disabled}
         >
           <SelectTrigger 
             id="fileSelect" 
             className="mt-1 relative bg-white transition-all duration-200 border-gray-200 hover:border-gray-300 focus:ring-1 focus:ring-blue-200"
             ref={triggerRef}
-            onClick={preventSelection}
-            onMouseDown={preventSelection}
+            onClick={stopPropagation}
+            onMouseDown={stopPropagation}
           >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
@@ -81,34 +88,25 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
             sideOffset={5}
             align="start"
             style={{ zIndex: 9999, pointerEvents: 'auto' }}
-            onMouseDown={preventSelection}
-            onClick={preventSelection}
+            onMouseDown={stopPropagation}
+            onClick={stopPropagation}
           >
             {memoizedFiles.length === 0 ? (
               <div className="py-6 px-2 text-center">
-                <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No files found</p>
+                <AlertCircle className="mx-auto h-6 w-6 text-gray-400 mb-2" />
+                <p className="text-sm text-gray-500">No files available</p>
               </div>
             ) : (
               memoizedFiles.map((file) => (
                 <SelectItem 
                   key={file.id} 
                   value={file.id}
-                  className="cursor-pointer transition-colors hover:bg-blue-50 focus:bg-blue-50"
-                  onMouseDown={(e) => {
-                    stopPropagation(e);
-                  }}
-                  onClick={(e) => {
-                    // Handle item selection explicitly
-                    stopPropagation(e);
-                    onFileSelect(file.id);
-                    setOpen(false);
-                  }}
+                  className="flex items-center py-2 px-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5 flex-shrink-0 text-blue-500" />
-                    <span className="truncate max-w-[180px]">{file.filename}</span>
-                  </div>
+                  <FileText className="mr-2 h-4 w-4 text-blue-500" />
+                  <span className="truncate max-w-[180px]">
+                    {file.filename || 'Unnamed file'}
+                  </span>
                 </SelectItem>
               ))
             )}
@@ -117,9 +115,17 @@ const FileSelector: React.FC<FileSelectorProps> = memo(({
       )}
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return (
+    prevProps.selectedFileId === nextProps.selectedFileId &&
+    prevProps.isLoadingFiles === nextProps.isLoadingFiles &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.files.length === nextProps.files.length &&
+    JSON.stringify(prevProps.files.map(f => f.id)) === JSON.stringify(nextProps.files.map(f => f.id))
+  );
 });
 
-// Add display name for debugging
 FileSelector.displayName = 'FileSelector';
 
 export default FileSelector;

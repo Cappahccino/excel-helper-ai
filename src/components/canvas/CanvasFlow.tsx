@@ -6,6 +6,7 @@ import { Plus, FileText } from 'lucide-react';
 import ConnectionHandler from '@/components/workflow/ConnectionHandler';
 import { getNodeTypes } from './NodeTypes';
 import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
+import { throttle } from '@/utils/stableBatchedUpdates';
 
 interface CanvasFlowProps {
   nodes: any[];
@@ -37,12 +38,27 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
   setShowLogPanel
 }) => {
   const [isLogDialogOpen, setIsLogDialogOpen] = useState(false);
+  const [lastNodeClickTime, setLastNodeClickTime] = useState(0);
 
-  // Node click handler that doesn't automatically show logs
-  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // Just pass the click to the parent handler
-    onNodeClick(event, node);
-  }, [onNodeClick]);
+  // Node click handler with throttling to prevent flickering
+  const handleNodeClick = useCallback(
+    throttle((event: React.MouseEvent, node: Node) => {
+      // Skip if this is the same node clicked within 100ms
+      const now = Date.now();
+      if (now - lastNodeClickTime < 100 && event.currentTarget.getAttribute('data-id') === node.id) {
+        return;
+      }
+      setLastNodeClickTime(now);
+      
+      // Only handle the click if it's directly on the node, not on child elements
+      // that might have their own click handlers (like dropdowns)
+      if (event.currentTarget === event.target || 
+         (event.target as HTMLElement).getAttribute('data-no-capture') !== 'true') {
+        onNodeClick(event, node);
+      }
+    }, 50),
+    [onNodeClick, lastNodeClickTime]
+  );
 
   return (
     <ReactFlow
@@ -97,4 +113,4 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
   );
 };
 
-export default CanvasFlow;
+export default React.memo(CanvasFlow);

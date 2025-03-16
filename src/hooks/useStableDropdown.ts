@@ -1,102 +1,58 @@
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useDebounce } from './useDebounce';
+import { useCallback, useState, useRef } from 'react';
 
-interface UseStableDropdownProps {
-  onOpenChange?: (open: boolean) => void;
+interface UseStableDropdownOptions {
   preventNodeSelection?: boolean;
   debounceDelay?: number;
   closeOnOutsideClick?: boolean;
 }
 
-export function useStableDropdown({ 
-  onOpenChange, 
+/**
+ * A hook that provides stable dropdown behavior within React Flow nodes
+ * to prevent flickering and handle event propagation correctly
+ */
+export function useStableDropdown({
   preventNodeSelection = true,
   debounceDelay = 50,
   closeOnOutsideClick = true
-}: UseStableDropdownProps = {}) {
-  // Use state with a ref to track the "real" value to avoid race conditions
-  const [open, setOpenState] = useState(false);
-  const internalStateRef = useRef(open);
+}: UseStableDropdownOptions = {}) {
+  const [openState, setOpenState] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const mouseDownInsideRef = useRef(false);
-  const dropdownClickTimeRef = useRef(0);
+  const dropdownClickTimeRef = useRef<number>(0);
+  const internalStateRef = useRef<boolean>(false);
   
-  // Debounce the open state changes to reduce flickering
-  const debouncedOpen = useDebounce(open, debounceDelay);
-  
-  // Keep internal state ref in sync with actual state
-  useEffect(() => {
-    internalStateRef.current = open;
-  }, [open]);
-  
-  // Notify parent of open state changes using the debounced value
-  useEffect(() => {
-    if (onOpenChange) {
-      onOpenChange(debouncedOpen);
-    }
-  }, [debouncedOpen, onOpenChange]);
-  
-  // Controlled handler for open state that works with the ref for stability
+  // Create a stable handler for opening/closing dropdown
   const handleOpenChange = useCallback((newOpen: boolean) => {
-    if (newOpen === internalStateRef.current) return; // Skip if no change using ref
+    // Skip if no actual change
+    if (newOpen === internalStateRef.current) return;
     
-    // Use RAF to avoid flickering due to React's batching
-    requestAnimationFrame(() => {
-      internalStateRef.current = newOpen; // Update ref immediately
-      setOpenState(newOpen); // Update state (will trigger re-render)
-      
-      // Track timestamp of dropdown click to help with click coordination
-      if (newOpen) {
-        dropdownClickTimeRef.current = Date.now();
-      }
-    });
+    // Update internal ref immediately to prevent double toggling
+    internalStateRef.current = newOpen;
+    
+    // Update state in the next frame to avoid React batching issues
+    setOpenState(newOpen);
+    
+    // Track click time for dropdown
+    if (newOpen) {
+      dropdownClickTimeRef.current = Date.now();
+    }
   }, []);
   
-  // Enhanced outside click detection using mousedown/mouseup pattern
-  useEffect(() => {
-    if (!closeOnOutsideClick) return;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      // Track if mousedown happened inside our elements
-      mouseDownInsideRef.current = 
-        !!triggerRef.current?.contains(e.target as Node) || 
-        !!contentRef.current?.contains(e.target as Node);
-    };
-
-    const handleMouseUp = (e: MouseEvent) => {
-      // Only close if both mousedown and mouseup happened outside
-      if (!mouseDownInsideRef.current && 
-          !triggerRef.current?.contains(e.target as Node) && 
-          !contentRef.current?.contains(e.target as Node)) {
-        
-        // Add a small delay to avoid race conditions with click events
-        const timeSinceOpen = Date.now() - dropdownClickTimeRef.current;
-        if (internalStateRef.current && timeSinceOpen > 50) {
-          handleOpenChange(false);
-        }
-      }
-      // Reset the flag for next interaction
-      mouseDownInsideRef.current = false;
-    };
-
-    document.addEventListener('mousedown', handleMouseDown, { capture: true });
-    document.addEventListener('mouseup', handleMouseUp, { capture: true });
-    
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown, { capture: true });
-      document.removeEventListener('mouseup', handleMouseUp, { capture: true });
-    };
-  }, [closeOnOutsideClick, handleOpenChange]);
+  // Prevent event bubbling to avoid ReactFlow node selection
+  const stopPropagation = useCallback((e: React.SyntheticEvent) => {
+    if (preventNodeSelection) {
+      e.stopPropagation();
+    }
+  }, [preventNodeSelection]);
   
-  // Enhanced event handling to prevent React Flow node selection
+  // Prevent selection for specific events (click, mousedown)
   const preventSelection = useCallback((e: React.SyntheticEvent) => {
     if (preventNodeSelection) {
-      // Use stopPropagation to prevent the event from reaching React Flow
-      e.stopPropagation(); 
+      // Always stop propagation
+      e.stopPropagation();
       
-      // For mouse events, we want to ensure the dropdown control is prioritized
+      // For mouse events, prevent default behavior
       if (e.type === 'mousedown' || e.type === 'click') {
         e.preventDefault();
       }
@@ -104,14 +60,14 @@ export function useStableDropdown({
   }, [preventNodeSelection]);
   
   return {
-    open,
+    open: openState,
     setOpen: handleOpenChange,
     triggerRef,
     contentRef,
+    stopPropagation,
     preventSelection,
-    stopPropagation: (e: React.SyntheticEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-    }
+    closeDropdown: useCallback(() => handleOpenChange(false), [handleOpenChange]),
+    openDropdown: useCallback(() => handleOpenChange(true), [handleOpenChange]),
+    dropdownClickTime: dropdownClickTimeRef
   };
 }

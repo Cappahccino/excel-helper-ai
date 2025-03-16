@@ -1,9 +1,10 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { useWorkflow } from '../../context/WorkflowContext';
 import { useFileUploadNode } from './useFileUploadNode';
+import { useStableSelection } from '@/hooks/useStableSelection';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
@@ -30,7 +31,8 @@ interface FileUploadNodeProps {
   };
 }
 
-const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) => {
+// Use React.memo to prevent unnecessary re-renders
+const FileUploadNode = React.memo(({ id, selected, data }: FileUploadNodeProps) => {
   const { 
     workflowId, 
     queueSchemaPropagation,
@@ -62,75 +64,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
 
-  // Propagate schema when sheet changes or when file processing completes
-  useEffect(() => {
-    async function propagateSchemaToConnectedNodes() {
-      if (!nodeWorkflowId || !selectedFileId) {
-        return;
-      }
+  // Use our stable selection hook
+  const { nodeRef, preventClick } = useStableSelection({
+    nodeId: id,
+    preventBubbling: true
+  });
 
-      // Check if this node is not ready for propagation yet
-      if (!enhancedState.isComplete) {
-        console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${enhancedState.status}`);
-        return;
-      }
-
-      if (!selectedSheet && availableSheets.length > 0) {
-        console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
-        return;
-      }
-
-      try {
-        console.log(`FileUploadNode ${id}: Checking readiness for schema propagation`);
-        
-        // Get the edges to find connected nodes
-        const edges = await getEdges(nodeWorkflowId);
-        const connectedNodes = edges
-          .filter(edge => edge.source === id)
-          .map(edge => edge.target);
-
-        if (connectedNodes.length === 0) {
-          console.log(`FileUploadNode ${id}: No connected nodes found to propagate schema to`);
-          return;
-        }
-
-        console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
-        
-        // Force check readiness
-        const isReady = await isNodeReadyForPropagation(id);
-        
-        if (!isReady) {
-          console.log(`FileUploadNode ${id}: Not ready for schema propagation yet per readiness check`);
-          return;
-        }
-        
-        console.log(`FileUploadNode ${id}: Ready to propagate schema with sheet ${selectedSheet || 'default'} to connected nodes`);
-        
-        // Try to propagate schema to all connected nodes
-        for (const targetNodeId of connectedNodes) {
-          console.log(`FileUploadNode ${id}: Directly propagating schema to node ${targetNodeId} with sheet ${selectedSheet || 'Sheet1'}`);
-          
-          // Use direct propagation first for immediate update
-          const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
-          
-          if (success) {
-            console.log(`FileUploadNode ${id}: Successfully propagated schema to ${targetNodeId}`);
-          } else {
-            console.log(`FileUploadNode ${id}: Failed direct propagation, queueing schema propagation to node ${targetNodeId}`);
-            // Fall back to queued propagation if direct fails
-            queueSchemaPropagation(id, targetNodeId, selectedSheet);
-          }
-        }
-      } catch (error) {
-        console.error(`FileUploadNode ${id}: Error propagating schema to connected nodes:`, error);
-      }
-    }
-
-    propagateSchemaToConnectedNodes();
-  }, [id, nodeWorkflowId, selectedSheet, selectedFileId, enhancedState.status, enhancedState.isComplete, queueSchemaPropagation, getEdges, isNodeReadyForPropagation, propagateFileSchema, availableSheets]);
-
-  // Manual sync button handler
-  const handleForceSyncSchema = async () => {
+  // Stable handler for forcing schema sync
+  const handleForceSyncSchema = useCallback(async () => {
     if (!nodeWorkflowId || !selectedFileId || !enhancedState.isComplete) {
       console.log("Cannot sync schema - file not ready");
       return;
@@ -155,7 +96,107 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     } catch (error) {
       console.error("Error syncing schema:", error);
     }
-  };
+  }, [nodeWorkflowId, selectedFileId, enhancedState.isComplete, getEdges, id, propagateFileSchema, selectedSheet]);
+
+  // Stable file selection handler
+  const handleStableFileSelect = useCallback((fileId: string) => {
+    // Prevent multiple rapid selections
+    if (fileId === selectedFileId && fileInfo?.processing_status === 'completed') {
+      return;
+    }
+    
+    // Use requestAnimationFrame to batch UI updates
+    requestAnimationFrame(() => {
+      handleFileSelection(fileId);
+    });
+  }, [selectedFileId, fileInfo, handleFileSelection]);
+
+  // Propagate schema when sheet changes or when file processing completes
+  useEffect(() => {
+    let isMounted = true;
+    
+    async function propagateSchemaToConnectedNodes() {
+      if (!nodeWorkflowId || !selectedFileId || !isMounted) {
+        return;
+      }
+
+      // Check if this node is not ready for propagation yet
+      if (!enhancedState.isComplete) {
+        console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${enhancedState.status}`);
+        return;
+      }
+
+      if (!selectedSheet && availableSheets.length > 0) {
+        console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
+        return;
+      }
+
+      try {
+        console.log(`FileUploadNode ${id}: Checking readiness for schema propagation`);
+        
+        // Get the edges to find connected nodes
+        const edges = await getEdges(nodeWorkflowId);
+        const connectedNodes = edges
+          .filter(edge => edge.source === id)
+          .map(edge => edge.target);
+
+        if (connectedNodes.length === 0 || !isMounted) {
+          console.log(`FileUploadNode ${id}: No connected nodes found to propagate schema to`);
+          return;
+        }
+
+        console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
+        
+        // Force check readiness
+        const isReady = await isNodeReadyForPropagation(id);
+        
+        if (!isReady || !isMounted) {
+          console.log(`FileUploadNode ${id}: Not ready for schema propagation yet per readiness check`);
+          return;
+        }
+        
+        console.log(`FileUploadNode ${id}: Ready to propagate schema with sheet ${selectedSheet || 'default'} to connected nodes`);
+        
+        // Try to propagate schema to all connected nodes
+        for (const targetNodeId of connectedNodes) {
+          if (!isMounted) break;
+          
+          console.log(`FileUploadNode ${id}: Directly propagating schema to node ${targetNodeId} with sheet ${selectedSheet || 'Sheet1'}`);
+          
+          // Use direct propagation first for immediate update
+          const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
+          
+          if (success) {
+            console.log(`FileUploadNode ${id}: Successfully propagated schema to ${targetNodeId}`);
+          } else if (isMounted) {
+            console.log(`FileUploadNode ${id}: Failed direct propagation, queueing schema propagation to node ${targetNodeId}`);
+            // Fall back to queued propagation if direct fails
+            queueSchemaPropagation(id, targetNodeId, selectedSheet);
+          }
+        }
+      } catch (error) {
+        console.error(`FileUploadNode ${id}: Error propagating schema to connected nodes:`, error);
+      }
+    }
+
+    propagateSchemaToConnectedNodes();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    id, 
+    nodeWorkflowId, 
+    selectedSheet, 
+    selectedFileId, 
+    enhancedState.status, 
+    enhancedState.isComplete, 
+    queueSchemaPropagation, 
+    getEdges, 
+    isNodeReadyForPropagation, 
+    propagateFileSchema, 
+    availableSheets
+  ]);
 
   // Get border and shadow styles based on processing state
   const getBorderStyles = () => {
@@ -186,6 +227,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
 
   return (
     <div 
+      ref={nodeRef}
       className={cn(
         "p-4 rounded-md border-2", 
         getBorderStyles(),
@@ -193,6 +235,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
         "bg-white w-72 transition-all duration-300 animate-fade-in backdrop-blur-sm",
         "hover:shadow-md"
       )}
+      onClick={preventClick}
     >
       <Handle 
         type="target" 
@@ -221,7 +264,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           selectedFileId={selectedFileId}
           files={files || []}
           isLoadingFiles={isLoadingFiles}
-          onFileSelect={handleFileSelection}
+          onFileSelect={handleStableFileSelect}
           disabled={enhancedState.isProcessing}
         />
         
@@ -263,6 +306,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       </div>
     </div>
   );
-};
+});
+
+FileUploadNode.displayName = 'FileUploadNode';
 
 export default FileUploadNode;
