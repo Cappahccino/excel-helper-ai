@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Json } from '@/types/common';
 
 export type UpdateType = 
   | 'node_config' 
@@ -16,6 +17,16 @@ export interface UpdateOperation {
   data: any;
   priority?: number;
   timestamp: number;
+}
+
+// Define a type for valid workflow ID values
+export type WorkflowId = string | number | null | undefined;
+
+// Properly handle workflow ID validation
+function isValidWorkflowIdString(value: WorkflowId): value is string {
+  return typeof value === 'string' && 
+         value !== '' &&
+         value !== 'new';
 }
 
 // Helper function to safely convert a value to a string
@@ -45,15 +56,23 @@ function safeToString(value: any): string {
   return String(value);
 }
 
+// Helper function that validates and formats workflow ID for database queries
+function getWorkflowIdForQuery(workflowId: WorkflowId): string {
+  if (!isValidWorkflowIdString(workflowId)) {
+    return '';  // Return empty string for invalid IDs (will be filtered by isValidWorkflowId check)
+  }
+  return safeToString(workflowId);
+}
+
 // Helper function to check if a value is a valid workflowId
-function isValidWorkflowId(value: any): boolean {
+function isValidWorkflowId(value: WorkflowId): boolean {
   return value !== null && 
          value !== undefined && 
          value !== 'new' &&
          value !== '';
 }
 
-export function useWorkflowStateManager(workflowId: string | null) {
+export function useWorkflowStateManager(workflowId: WorkflowId) {
   const [pendingUpdates, setPendingUpdates] = useState<UpdateOperation[]>([]);
   const [isProcessingUpdate, setIsProcessingUpdate] = useState(false);
   const lastProcessedTimestamp = useRef<number>(0);
@@ -174,7 +193,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(safeToString(workflowId));
+      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -202,7 +221,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', safeToString(workflowId));
+          .eq('id', getWorkflowIdForQuery(workflowId));
       }
     } catch (error) {
       console.error('Error updating node configs:', error);
@@ -215,7 +234,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(safeToString(workflowId));
+      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -237,7 +256,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', safeToString(workflowId));
+          .eq('id', getWorkflowIdForQuery(workflowId));
       }
     } catch (error) {
       console.error('Error updating node positions:', error);
@@ -250,7 +269,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(safeToString(workflowId));
+      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -275,7 +294,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', safeToString(workflowId));
+          .eq('id', getWorkflowIdForQuery(workflowId));
       }
     } catch (error) {
       console.error('Error updating node data:', error);
@@ -288,7 +307,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
     if (!isValidWorkflowId(workflowId) || updates.length === 0) return;
     
     try {
-      const workflowData = await fetchWorkflowData(safeToString(workflowId));
+      const workflowData = await fetchWorkflowData(getWorkflowIdForQuery(workflowId));
       if (!workflowData) return;
       
       let definition = JSON.parse(workflowData.definition || '{"nodes": [], "edges": []}');
@@ -313,7 +332,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
             definition: JSON.stringify(definition),
             updated_at: new Date().toISOString()
           })
-          .eq('id', safeToString(workflowId));
+          .eq('id', getWorkflowIdForQuery(workflowId));
       }
     } catch (error) {
       console.error('Error updating edge data:', error);
@@ -331,7 +350,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
         const { data: existingSchema } = await supabase
           .from('workflow_file_schemas')
           .select('*')
-          .eq('workflow_id', safeToString(workflowId))
+          .eq('workflow_id', getWorkflowIdForQuery(workflowId))
           .eq('node_id', update.nodeId)
           .maybeSingle();
         
@@ -344,7 +363,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
               data_types: update.schema.dataTypes,
               updated_at: new Date().toISOString()
             })
-            .eq('workflow_id', safeToString(workflowId))
+            .eq('workflow_id', getWorkflowIdForQuery(workflowId))
             .eq('node_id', update.nodeId);
         } else {
           // Insert new schema - require a file_id field based on schema
@@ -354,7 +373,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
           await supabase
             .from('workflow_file_schemas')
             .insert({
-              workflow_id: safeToString(workflowId),
+              workflow_id: getWorkflowIdForQuery(workflowId),
               node_id: update.nodeId,
               file_id: dummyFileId, // Adding required file_id
               columns: update.schema.columns,
@@ -380,7 +399,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
         const { data: existingRecord } = await supabase
           .from('workflow_files')
           .select('*')
-          .eq('workflow_id', safeToString(workflowId))
+          .eq('workflow_id', getWorkflowIdForQuery(workflowId))
           .eq('node_id', update.nodeId)
           .maybeSingle();
         
@@ -392,7 +411,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
               metadata: update.metadata,
               updated_at: new Date().toISOString()
             })
-            .eq('workflow_id', safeToString(workflowId))
+            .eq('workflow_id', getWorkflowIdForQuery(workflowId))
             .eq('node_id', update.nodeId);
         } else {
           // Insert new record - require a file_id field based on schema
@@ -401,7 +420,7 @@ export function useWorkflowStateManager(workflowId: string | null) {
           await supabase
             .from('workflow_files')
             .insert({
-              workflow_id: safeToString(workflowId),
+              workflow_id: getWorkflowIdForQuery(workflowId),
               node_id: update.nodeId,
               file_id: dummyFileId, // Adding required file_id
               metadata: update.metadata,
@@ -419,11 +438,13 @@ export function useWorkflowStateManager(workflowId: string | null) {
 
   // Helper to fetch workflow data
   const fetchWorkflowData = async (workflowId: string) => {
+    if (!workflowId) return null;
+    
     try {
       const { data, error } = await supabase
         .from('workflows')
         .select('definition')
-        .eq('id', safeToString(workflowId))
+        .eq('id', workflowId)
         .single();
       
       if (error) {
