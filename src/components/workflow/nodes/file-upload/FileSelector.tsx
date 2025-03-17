@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { FileText, AlertCircle } from 'lucide-react';
+import { FileText, AlertCircle, Loader2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -38,10 +38,17 @@ const FileSelector: React.FC<FileSelectorProps> = ({
         <Select 
           value={selectedFileId} 
           onValueChange={onFileSelect}
-          disabled={disabled}
+          disabled={disabled || isLoadingFiles}
         >
           <SelectTrigger id="fileSelect" className="mt-1">
-            <SelectValue placeholder="Choose a file..." />
+            {isLoadingFiles ? (
+              <div className="flex items-center">
+                <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                <span>Loading files...</span>
+              </div>
+            ) : (
+              <SelectValue placeholder="Choose a file..." />
+            )}
           </SelectTrigger>
           <SelectContent>
             {files?.length === 0 ? (

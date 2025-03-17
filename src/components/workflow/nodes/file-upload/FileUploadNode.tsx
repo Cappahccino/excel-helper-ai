@@ -10,6 +10,7 @@ import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
 import FileInfoDisplay from './FileInfoDisplay';
+import { toast } from 'sonner';
 
 interface FileUploadNodeProps {
   id: string;
@@ -129,28 +130,39 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
   // Manual sync button handler
   const handleForceSyncSchema = async () => {
     if (!nodeWorkflowId || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
-      console.log("Cannot sync schema - file not ready");
+      toast.error("Cannot sync schema - file not ready");
       return;
     }
 
     try {
+      toast.info("Syncing schema to connected nodes...");
+      
       const edges = await getEdges(nodeWorkflowId);
       const connectedNodes = edges
         .filter(edge => edge.source === id)
         .map(edge => edge.target);
       
       if (connectedNodes.length === 0) {
-        console.log("No connected nodes to sync schema with");
+        toast.warning("No connected nodes to sync schema with");
         return;
       }
       
       console.log(`Manually syncing schema to ${connectedNodes.length} connected nodes`);
       
+      let successCount = 0;
       for (const targetNodeId of connectedNodes) {
-        await propagateFileSchema(id, targetNodeId, selectedSheet);
+        const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
+        if (success) successCount++;
+      }
+      
+      if (successCount > 0) {
+        toast.success(`Schema synced to ${successCount} node${successCount !== 1 ? 's' : ''}`);
+      } else {
+        toast.error("Failed to sync schema to any nodes");
       }
     } catch (error) {
       console.error("Error syncing schema:", error);
+      toast.error("Error syncing schema: " + (error as Error).message);
     }
   };
 
