@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw, MessageSquare } from 'lucide-react';
@@ -7,6 +6,7 @@ import { FileProcessingState } from '@/types/workflowStatus';
 import { useFileUploadNode } from './useFileUploadNode';
 import { useWorkflow } from '../../context/WorkflowContext';
 import { useSchemaConnection } from '@/hooks/useSchemaConnection';
+import { toast } from '@/hooks/use-toast';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
@@ -53,7 +53,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
 
-  // Use the schema connection hook as a source node
   const {
     targetNodes,
     setSelectedSheet: setSchemaSelectedSheet,
@@ -62,7 +61,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
   
   const [showLogDialog, setShowLogDialog] = React.useState(false);
 
-  // Debug logging
   useEffect(() => {
     console.log(`FileUploadNode ${id}: Processing state is ${processingState.status}`);
     console.log(`FileUploadNode ${id}: Has ${targetNodes.length} target nodes`);
@@ -71,26 +69,21 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     console.log(`FileUploadNode ${id}: Has ${availableSheets.length} available sheets`);
   }, [id, processingState.status, targetNodes.length, selectedFileId, selectedSheet, availableSheets.length]);
 
-  // Propagate schema when sheet changes or when file processing completes
   useEffect(() => {
     if (!nodeWorkflowId || !selectedFileId) return;
     
-    // Don't try to propagate if file is not fully processed
     if (processingState.status !== FileProcessingState.Completed) {
       console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${processingState.status}`);
       return;
     }
     
-    // Don't try to propagate if no sheet is selected but sheets are available
     if (!selectedSheet && availableSheets.length > 0) {
       console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
       return;
     }
     
-    // Set the selected sheet in the schema connection hook
     setSchemaSelectedSheet(selectedSheet || null);
     
-    // Propagate schema to target nodes
     if (targetNodes.length > 0) {
       console.log(`FileUploadNode ${id}: Propagating schema with sheet ${selectedSheet || 'default'} to ${targetNodes.length} nodes`);
       propagateSchema();
@@ -107,26 +100,37 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     propagateSchema
   ]);
 
-  // Manual sync button handler
   const handleForceSyncSchema = async () => {
     if (!nodeWorkflowId || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
       console.log("Cannot sync schema - file not ready");
-      toast.error("File not ready for schema sync");
+      toast({
+        title: "Error",
+        description: "File not ready for schema sync",
+        variant: "destructive"
+      });
       return;
     }
     
     try {
       console.log(`Manually syncing schema to target nodes`);
-      toast.promise(
-        propagateSchema(),
-        {
-          loading: 'Syncing schema to connected nodes...',
-          success: 'Schema synced successfully',
-          error: 'Failed to sync schema'
-        }
-      );
+      toast({
+        title: "Syncing",
+        description: "Syncing schema to connected nodes...",
+      });
+      
+      await propagateSchema();
+      
+      toast({
+        title: "Success",
+        description: "Schema synced successfully",
+      });
     } catch (error) {
       console.error("Error syncing schema:", error);
+      toast({
+        title: "Error",
+        description: "Failed to sync schema",
+        variant: "destructive"
+      });
     }
   };
 
