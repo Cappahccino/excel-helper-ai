@@ -62,6 +62,15 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
   
   const [showLogDialog, setShowLogDialog] = React.useState(false);
 
+  // Debug logging
+  useEffect(() => {
+    console.log(`FileUploadNode ${id}: Processing state is ${processingState.status}`);
+    console.log(`FileUploadNode ${id}: Has ${targetNodes.length} target nodes`);
+    console.log(`FileUploadNode ${id}: Selected file: ${selectedFileId || 'none'}`);
+    console.log(`FileUploadNode ${id}: Selected sheet: ${selectedSheet || 'none'}`);
+    console.log(`FileUploadNode ${id}: Has ${availableSheets.length} available sheets`);
+  }, [id, processingState.status, targetNodes.length, selectedFileId, selectedSheet, availableSheets.length]);
+
   // Propagate schema when sheet changes or when file processing completes
   useEffect(() => {
     if (!nodeWorkflowId || !selectedFileId) return;
@@ -102,12 +111,20 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
   const handleForceSyncSchema = async () => {
     if (!nodeWorkflowId || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
       console.log("Cannot sync schema - file not ready");
+      toast.error("File not ready for schema sync");
       return;
     }
     
     try {
       console.log(`Manually syncing schema to target nodes`);
-      await propagateSchema();
+      toast.promise(
+        propagateSchema(),
+        {
+          loading: 'Syncing schema to connected nodes...',
+          success: 'Schema synced successfully',
+          error: 'Failed to sync schema'
+        }
+      );
     } catch (error) {
       console.error("Error syncing schema:", error);
     }
@@ -195,9 +212,9 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           formatFileSize={formatFileSize}
         />
         
-        {!selectedFileId && !isLoadingFiles && (
+        {!selectedFileId && !isLoadingFiles && files && files.length === 0 && (
           <div className="bg-blue-50 p-3 rounded-md text-xs text-blue-700 border border-blue-100">
-            <p>Select a file to use in this workflow. You can upload files in the Files section.</p>
+            <p>No files found. You can upload files in the Files section.</p>
           </div>
         )}
         

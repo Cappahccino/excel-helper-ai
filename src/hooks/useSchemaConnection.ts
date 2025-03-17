@@ -29,6 +29,7 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
   const lastPropagationAttempt = useRef<number>(0);
   const propagationChannel = useRef<any>(null);
   const isInitialized = useRef(false);
+  const pendingSchemaUpdates = useRef<Map<string, number>>(new Map());
   
   // Clean up function for subscriptions
   const cleanupSubscriptions = useCallback(() => {
@@ -133,6 +134,11 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
         if (!isSourceReady) {
           console.log(`Source node ${sourceNodeId} not ready for propagation`);
           setConnectionState('connecting');
+          
+          // Schedule a retry
+          const now = Date.now();
+          pendingSchemaUpdates.current.set(sourceNodeId, now);
+          
           return null;
         }
         
@@ -140,6 +146,17 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
         if (forceRefresh) {
           clearSchemaCache({ workflowId, nodeId });
         }
+        
+        // Add debouncing for propagation
+        const now = Date.now();
+        const timeSinceLastAttempt = now - lastPropagationAttempt.current;
+        
+        if (timeSinceLastAttempt < 2000 && !forceRefresh) {
+          console.log(`Debouncing schema propagation, last attempt was ${timeSinceLastAttempt}ms ago`);
+          return null;
+        }
+        
+        lastPropagationAttempt.current = now;
         
         // Propagate schema directly
         const propagated = await propagateSchemaDirectly(
@@ -153,6 +170,12 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
           console.error(`Failed to propagate schema from ${sourceNodeId} to ${nodeId}`);
           setConnectionState('error');
           setError('Failed to propagate schema from source node');
+          
+          // Schedule a retry if this wasn't a forced refresh
+          if (!forceRefresh) {
+            pendingSchemaUpdates.current.set(sourceNodeId, now);
+          }
+          
           return null;
         }
         
@@ -242,11 +265,32 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
     
     isInitialized.current = true;
     
+    // Process any pending schema updates
+    const checkPendingUpdates = () => {
+      if (pendingSchemaUpdates.current.size > 0) {
+        const now = Date.now();
+        
+        pendingSchemaUpdates.current.forEach((timestamp, sourceId) => {
+          const delay = Math.min(10000, Math.pow(2, pendingSchemaUpdates.current.size) * 500);
+          
+          if (now - timestamp > delay) {
+            console.log(`Processing pending schema update for source ${sourceId}`);
+            getSchema(true);
+            pendingSchemaUpdates.current.delete(sourceId);
+          }
+        });
+      }
+    };
+    
+    // Check for pending updates every 5 seconds
+    const intervalId = setInterval(checkPendingUpdates, 5000);
+    
     return () => {
       cleanupSubscriptions();
       isInitialized.current = false;
+      clearInterval(intervalId);
     };
-  }, [workflowId, nodeId, isSource, findSourceNode, findTargetNodes, cleanupSubscriptions]);
+  }, [workflowId, nodeId, isSource, findSourceNode, findTargetNodes, cleanupSubscriptions, getSchema]);
   
   // Setup subscriptions for edge changes
   useEffect(() => {
@@ -262,14 +306,20 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
         const targets = await findTargetNodes();
         
         if (targets.length > 0) {
-          // Propagate schema to new target nodes
-          propagateSchema();
+          // Propagate schema to new target nodes with a small delay
+          setTimeout(() => {
+            propagateSchema();
+          }, 500);
         }
       } else if (!isSource && sourceId) {
         // If this is a target node, get schema from new source
         setSourceNodeId(sourceId);
         setConnectionState('connecting');
-        getSchema(true);
+        
+        // Get schema with a small delay to allow database to update
+        setTimeout(() => {
+          getSchema(true);
+        }, 800);
       }
     };
     
@@ -292,8 +342,10 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
               const targetId = payload.new.target_node_id;
               console.log(`New edge created: ${nodeId} -> ${targetId}`);
               setTargetNodes(prev => [...prev, targetId]);
-              // Propagate schema to new target
-              propagateSchemaDirectly(workflowId, nodeId, targetId, selectedSheet || undefined);
+              // Propagate schema to new target with a delay
+              setTimeout(() => {
+                propagateSchemaDirectly(workflowId, nodeId, targetId, selectedSheet || undefined);
+              }, 500);
             } else {
               // New edge with this node as target
               const sourceId = payload.new.source_node_id;
@@ -312,6 +364,7 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
               setSourceNodeId(null);
               setConnectionState('disconnected');
               setSchema([]);
+              clearSchemaCache({ workflowId, nodeId });
             }
           }
         }
@@ -337,15 +390,17 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'workflow_file_schemas',
           filter: `node_id=eq.${sourceNodeId}`
         },
         (payload) => {
           console.log(`Schema change detected for source node ${sourceNodeId}`);
-          // Source schema has changed - refresh our schema
-          getSchema(true);
+          // Source schema has changed - refresh our schema with a small delay
+          setTimeout(() => {
+            getSchema(true);
+          }, 800);
         }
       )
       .subscribe();
@@ -359,31 +414,42 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
   useEffect(() => {
     if (isSource || !sourceNodeId || connectionState !== 'connecting') return;
     
-    // Only check if source is ready if we're in connecting state
-    const checkSourceReadiness = async () => {
-      if (!workflowId) return;
+    // Only check for schema propagation if we're in the connecting state
+    console.log(`Checking if source node ${sourceNodeId} is ready for schema propagation`);
+    
+    const checkSourceReady = async () => {
+      const isReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId);
       
-      try {
-        const isReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId);
-        
-        if (isReady) {
-          console.log(`Source node ${sourceNodeId} is now ready, getting schema`);
-          getSchema(false);
-        }
-      } catch (error) {
-        console.error('Error checking source readiness:', error);
+      if (isReady) {
+        console.log(`Source node ${sourceNodeId} is ready, refreshing schema`);
+        getSchema(true);
+      } else {
+        console.log(`Source node ${sourceNodeId} not ready yet`);
       }
     };
     
-    // Try immediately and then set interval
-    checkSourceReadiness();
-    
-    const intervalId = setInterval(checkSourceReadiness, 5000);
+    // Check immediately and then every 5 seconds
+    checkSourceReady();
+    const intervalId = setInterval(checkSourceReady, 5000);
     
     return () => {
       clearInterval(intervalId);
     };
-  }, [sourceNodeId, connectionState, isSource, workflowId, getSchema]);
+  }, [workflowId, sourceNodeId, connectionState, isSource, getSchema]);
+  
+  // Regularly sync target nodes if this is a source node
+  useEffect(() => {
+    if (!isSource || targetNodes.length === 0) return;
+    
+    // Re-sync source to target nodes every 20 seconds
+    const intervalId = setInterval(() => {
+      propagateSchema();
+    }, 20000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isSource, targetNodes, propagateSchema]);
   
   return {
     sourceNodeId,
@@ -392,11 +458,9 @@ export function useSchemaConnection(nodeId: string, isSource: boolean = false) {
     schema,
     isLoading,
     error,
-    selectedSheet,
-    setSelectedSheet,
-    findSourceNode,
-    findTargetNodes,
     getSchema,
-    propagateSchema
+    propagateSchema,
+    setSelectedSheet,
+    selectedSheet
   };
 }

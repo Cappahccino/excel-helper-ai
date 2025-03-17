@@ -5,12 +5,34 @@ import { toast } from 'sonner';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
+import { ExcelFile } from '@/types/files';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface SheetMetadata {
   name: string;
   index: number;
   rowCount?: number;
   isDefault?: boolean;
+}
+
+interface FileUploadNodeState {
+  selectedFileId?: string;
+  selectedSheet?: string;
+  availableSheets: SheetMetadata[];
+  files: ExcelFile[] | undefined;
+  isLoadingFiles: boolean;
+  isLoadingSelectedFile: boolean;
+  processingState: {
+    status: FileProcessingState;
+    progress: number;
+    message?: string;
+    error?: string;
+    startTime?: number;
+    endTime?: number;
+  };
+  realtimeEnabled: boolean;
+  fileInfo: any;
+  sheetSchema: any;
 }
 
 export const useFileUploadNode = (
@@ -42,6 +64,10 @@ export const useFileUploadNode = (
   
   const [fileInfo, setFileInfo] = useState<any>(null);
   const [realtimeEnabled, setRealtimeEnabled] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // Debounce the selected file ID to prevent rapid changes
+  const debouncedFileId = useDebounce(selectedFileId, 300);
 
   const updateProcessingState = useCallback((
     status: FileProcessingState, 
@@ -60,55 +86,103 @@ export const useFileUploadNode = (
     }));
   }, []);
 
-  const { data: files, isLoading: isLoadingFiles, refetch } = useQuery({
-    queryKey: ['excel-files-for-workflow'],
+  // Query to fetch the list of available files
+  const { 
+    data: files, 
+    isLoading: isLoadingFiles, 
+    refetch: refetchFiles,
+    error: filesError
+  } = useQuery({
+    queryKey: ['excel-files-for-workflow', retryCount],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('excel_files')
-        .select('*')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+      try {
+        console.log('Fetching list of Excel files');
+        
+        const { data, error } = await supabase
+          .from('excel_files')
+          .select('*')
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false });
 
-      if (error) {
-        toast.error('Failed to load files');
-        throw error;
+        if (error) {
+          console.error('Failed to load files:', error);
+          toast.error('Failed to load files');
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          console.log('No files found');
+        } else {
+          console.log(`Found ${data.length} files`);
+        }
+
+        return data || [];
+      } catch (error) {
+        console.error('Error in excel-files-for-workflow query:', error);
+        return [];
       }
-
-      return data || [];
     },
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    staleTime: 30000, // 30 seconds
+    retry: 3,
+    retryDelay: attempt => Math.min(attempt > 1 ? 2000 : 1000, 30000),
   });
 
-  const { data: selectedFile, isLoading: isLoadingSelectedFile } = useQuery({
-    queryKey: ['excel-file-info', selectedFileId],
+  // Query to fetch information about the selected file
+  const { 
+    data: selectedFile, 
+    isLoading: isLoadingSelectedFile,
+    refetch: refetchSelectedFile
+  } = useQuery({
+    queryKey: ['excel-file-info', debouncedFileId, retryCount],
     queryFn: async () => {
-      if (!selectedFileId) return null;
+      if (!debouncedFileId) return null;
 
-      const { data, error } = await supabase
-        .from('excel_files')
-        .select('*, file_metadata(*)')
-        .eq('id', selectedFileId)
-        .maybeSingle();
+      try {
+        console.log(`Fetching info for file ${debouncedFileId}`);
 
-      if (error) {
-        console.error('Error fetching file info:', error);
+        const { data, error } = await supabase
+          .from('excel_files')
+          .select('*, file_metadata(*)')
+          .eq('id', debouncedFileId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error fetching file info:', error);
+          return null;
+        }
+
+        if (!data) {
+          console.log(`No data found for file ${debouncedFileId}`);
+          return null;
+        }
+
+        console.log('File info loaded successfully');
+        return data;
+      } catch (error) {
+        console.error('Error in excel-file-info query:', error);
         return null;
       }
-
-      return data;
     },
-    enabled: !!selectedFileId,
+    enabled: !!debouncedFileId,
+    staleTime: 30000,
+    retry: 3,
+    retryDelay: attempt => Math.min(attempt > 1 ? 2000 : 1000, 30000),
   });
 
   // Simple query for sheet schema to display in UI
   const { data: sheetSchema } = useQuery({
-    queryKey: ['basic-sheet-schema', workflowId, nodeId, selectedSheet],
+    queryKey: ['basic-sheet-schema', workflowId, nodeId, selectedSheet, retryCount],
     queryFn: async () => {
       if (!workflowId || !nodeId || !selectedSheet) return null;
       
       try {
+        console.log(`Fetching schema for node ${nodeId}, sheet ${selectedSheet}`);
+        
         const dbWorkflowId = convertToDbWorkflowId(workflowId);
         
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('workflow_file_schemas')
           .select('columns, data_types')
           .eq('workflow_id', dbWorkflowId)
@@ -116,6 +190,17 @@ export const useFileUploadNode = (
           .eq('sheet_name', selectedSheet)
           .maybeSingle();
           
+        if (error) {
+          console.error('Error fetching sheet schema:', error);
+          return null;
+        }
+        
+        if (!data) {
+          console.log(`No schema found for sheet ${selectedSheet}`);
+          return null;
+        }
+        
+        console.log(`Schema found for sheet ${selectedSheet} with ${data.columns?.length || 0} columns`);
         return data;
       } catch (error) {
         console.error('Error in basic sheet schema query:', error);
@@ -123,58 +208,68 @@ export const useFileUploadNode = (
       }
     },
     enabled: !!workflowId && !!nodeId && !!selectedSheet,
+    staleTime: 30000,
+    retry: 3,
   });
 
+  // Setup realtime subscription for workflow file updates
   useEffect(() => {
     if (!workflowId || !selectedFileId || !nodeId) return;
     
     console.log('Setting up realtime subscription for workflow file updates');
     const dbWorkflowId = convertToDbWorkflowId(workflowId);
     
-    const channel = supabase
-      .channel(`workflow_file_updates_${nodeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workflow_files',
-          filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${nodeId} AND file_id=eq.${selectedFileId}`
-        },
-        (payload) => {
-          console.log('Received realtime update for workflow file:', payload);
-          const updatedFile = payload.new;
-          
-          const processingStatus = updatedFile.processing_status as string;
-          
-          if (processingStatus === WorkflowFileStatus.Completed) {
-            updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
-            refetch();
-          } else if (processingStatus === WorkflowFileStatus.Processing) {
-            updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
-          } else if (processingStatus === WorkflowFileStatus.Failed || 
-                     processingStatus === WorkflowFileStatus.Error) {
-            const errorMessage = updatedFile.processing_error || 'File processing failed';
-            updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
+    try {
+      const channel = supabase
+        .channel(`workflow_file_updates_${nodeId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'workflow_files',
+            filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${nodeId} AND file_id=eq.${selectedFileId}`
+          },
+          (payload) => {
+            console.log('Received realtime update for workflow file:', payload);
+            const updatedFile = payload.new;
+            
+            const processingStatus = updatedFile.processing_status as string;
+            
+            if (processingStatus === WorkflowFileStatus.Completed) {
+              updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
+              refetchSelectedFile();
+            } else if (processingStatus === WorkflowFileStatus.Processing) {
+              updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
+            } else if (processingStatus === WorkflowFileStatus.Failed || 
+                      processingStatus === WorkflowFileStatus.Error) {
+              const errorMessage = updatedFile.processing_error || 'File processing failed';
+              updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
+            }
           }
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Successfully subscribed to workflow file updates');
-          setRealtimeEnabled(true);
-        } else {
-          console.error('Failed to subscribe to workflow file updates:', status);
-          setRealtimeEnabled(false);
-        }
-      });
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to workflow file updates');
+            setRealtimeEnabled(true);
+          } else {
+            console.error('Failed to subscribe to workflow file updates:', status);
+            setRealtimeEnabled(false);
+          }
+        });
     
-    return () => {
-      console.log('Cleaning up realtime subscription');
-      supabase.removeChannel(channel);
-    };
-  }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetch]);
+      return () => {
+        console.log('Cleaning up realtime subscription');
+        supabase.removeChannel(channel);
+      };
+    } catch (error) {
+      console.error('Error setting up realtime subscription:', error);
+      setRealtimeEnabled(false);
+      return () => {};
+    }
+  }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetchSelectedFile]);
 
+  // Process metadata and set available sheets
   useEffect(() => {
     if (selectedFile?.file_metadata) {
       const metadata = selectedFile.file_metadata;
@@ -207,6 +302,7 @@ export const useFileUploadNode = (
     }
   }, [selectedFile, selectedSheet, nodeId, config, onChange]);
 
+  // Update file info and processing state when selected file changes
   useEffect(() => {
     if (selectedFile) {
       setFileInfo(selectedFile);
@@ -231,12 +327,14 @@ export const useFileUploadNode = (
     }
   }, [selectedFile, updateProcessingState]);
 
+  // Helper function to format file size
   const formatFileSize = (sizeInBytes: number): string => {
     if (sizeInBytes < 1024) return `${sizeInBytes} B`;
     if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`;
     return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // Associate file with workflow in the database
   const associateFileWithWorkflow = async (fileId: string): Promise<boolean> => {
     console.log('Associating file with workflow - Started');
     console.log('File ID:', fileId);
@@ -303,7 +401,7 @@ export const useFileUploadNode = (
             workflow_id: dbWorkflowId,
             node_id: nodeId,
             file_id: fileId,
-            status: WorkflowFileStatus.Queued,
+            processing_status: WorkflowFileStatus.Queued,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }, {
@@ -326,6 +424,7 @@ export const useFileUploadNode = (
     }
   };
 
+  // Handler for file selection in the dropdown
   const handleFileSelection = async (fileId: string) => {
     if (!fileId) return;
     
@@ -363,7 +462,7 @@ export const useFileUploadNode = (
       updateProcessingState(FileProcessingState.Processing, 40, 'Processing file data...');
       
       // Fetch the updated file info
-      refetch();
+      refetchSelectedFile();
       
     } catch (error) {
       console.error('Error selecting file:', error);
@@ -372,6 +471,7 @@ export const useFileUploadNode = (
     }
   };
 
+  // Handler for sheet selection in the dropdown
   const handleSheetSelection = (sheet: string) => {
     setSelectedSheet(sheet);
     
@@ -384,21 +484,33 @@ export const useFileUploadNode = (
     }
   };
 
+  // Handler for retrying file association after an error
   const handleRetry = async () => {
     if (!selectedFileId || !workflowId) return;
     
     updateProcessingState(FileProcessingState.Associating, 10, 'Retrying file association...');
     
     try {
+      setRetryCount(prev => prev + 1);
       await associateFileWithWorkflow(selectedFileId);
       updateProcessingState(FileProcessingState.Processing, 40, 'Processing file data...');
-      refetch();
+      refetchSelectedFile();
     } catch (error) {
       console.error('Error retrying file association:', error);
       updateProcessingState(FileProcessingState.Error, 0, 'Error', error.message || 'Failed to retry file association');
       toast.error('Failed to retry file association');
     }
   };
+
+  // Combined refetch function for all data
+  const refetch = useCallback(() => {
+    console.log('Refetching all data');
+    refetchFiles();
+    if (selectedFileId) {
+      refetchSelectedFile();
+    }
+    setRetryCount(prev => prev + 1);
+  }, [refetchFiles, refetchSelectedFile, selectedFileId]);
 
   return {
     selectedFileId,
