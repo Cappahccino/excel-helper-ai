@@ -20,26 +20,22 @@ interface WorkflowLogPanelProps {
   workflowId: string | null;
   executionId: string | null;
   selectedNodeId?: string | null;
-  nodeId?: string;  // Added to support direct nodeId passing
-  isOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
   trigger?: React.ReactNode;
-  maxHeight?: string; // Added to support max height customization
 }
 
 const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({ 
   workflowId, 
   executionId, 
   selectedNodeId,
-  nodeId, // Added nodeId prop
-  isOpen = true, // Default to true if used as inline component
-  onOpenChange = () => {}, // Default no-op
-  trigger,
-  maxHeight
+  isOpen,
+  onOpenChange,
+  trigger
 }) => {
   const [logs, setLogs] = useState<any[]>([]);
   const [nodeOptions, setNodeOptions] = useState<{id: string, type: string}[]>([]);
-  const [filteredNodeId, setFilteredNodeId] = useState<string | null>(nodeId || selectedNodeId || null);
+  const [filteredNodeId, setFilteredNodeId] = useState<string | null>(selectedNodeId || null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('all');
@@ -164,51 +160,8 @@ const WorkflowLogPanel: React.FC<WorkflowLogPanelProps> = ({
     );
   };
   
-  // When used as an inline component
-  if (!trigger) {
-    return (
-      <div style={{ maxHeight: maxHeight || '400px' }} className="overflow-hidden flex flex-col">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-sm font-medium">Execution Logs</h3>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={fetchLogs} 
-            disabled={isLoading}
-            className="h-6 w-6 p-0"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        
-        {error ? (
-          <div className="flex items-center justify-center h-full text-red-500 text-xs">
-            <AlertTriangle className="mr-1 h-3 w-3" />
-            {error}
-          </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center h-full text-xs">
-            <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-            Loading logs...
-          </div>
-        ) : filteredLogs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-500 text-xs">
-            <FileText className="mr-1 h-3 w-3" />
-            No logs available
-          </div>
-        ) : (
-          <ScrollArea className="h-full pr-2">
-            {filteredLogs.map(renderLogContent)}
-          </ScrollArea>
-        )}
-      </div>
-    );
-  }
-  
-  // When used as a dialog
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Workflow Execution Logs</DialogTitle>
