@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -86,6 +87,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
   const [loadingOperation, setLoadingOperation] = useState<'initial' | 'refresh' | 'manual' | null>(null);
+  const [hasInitialized, setHasInitialized] = useState<boolean>(false);
   
   const workflow = useWorkflow();
 
@@ -445,24 +447,21 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [isLoading, id, loadingError]);
 
+  // Initial setup - only run once to find source node
   useEffect(() => {
-    if (selected && workflow.workflowId) {
-      console.log(`Node ${id} selected, loading schema`);
-      loadSchema(false);
+    if (workflow.workflowId && id && !hasInitialized) {
+      console.log(`FilteringNode ${id}: Initial setup`);
+      findSourceNode().then(sourceId => {
+        if (sourceId) {
+          // Just set the source node ID but don't automatically load schema
+          console.log(`FilteringNode ${id}: Found source node ${sourceId} but not loading schema yet`);
+          setHasInitialized(true);
+        } else {
+          setHasInitialized(true);
+        }
+      });
     }
-  }, [selected, workflow.workflowId, loadSchema]);
-
-  useEffect(() => {
-    if (sourceNodeId && columns.length === 0 && !isLoading) {
-      loadSchema(false);
-    }
-  }, [sourceNodeId, columns.length, isLoading, loadSchema]);
-
-  useEffect(() => {
-    if (workflow.workflowId && id && !sourceNodeId) {
-      findSourceNode();
-    }
-  }, [workflow.workflowId, id, sourceNodeId, findSourceNode]);
+  }, [workflow.workflowId, id, findSourceNode, hasInitialized]);
 
   // Clean up all timeouts on unmount
   useEffect(() => {
@@ -493,11 +492,22 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           if (payload.eventType === 'INSERT') {
             const sourceId = payload.new.source_node_id;
             setSourceNodeId(sourceId);
+            
+            // When a new edge is added, load the schema
             findSourceNode().then(() => {
+              console.log(`New connection detected, loading schema for node ${id}`);
               loadSchema(true);
             });
           } else if (payload.eventType === 'DELETE' && payload.old.target_node_id === id) {
-            findSourceNode();
+            // When an edge is removed, update the source node but don't load schema
+            findSourceNode().then(sourceId => {
+              if (!sourceId) {
+                // Clear columns if no source node
+                setColumns([]);
+                setSchemaSource(null);
+                setLoadingError('No input connection found. Connect a data source to this node.');
+              }
+            });
           }
         }
       )
