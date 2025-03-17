@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -16,6 +15,7 @@ import { toast } from 'sonner';
 import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 import { useSchemaConnection, ConnectionState } from '@/hooks/useSchemaConnection';
 import { useDebounce } from '@/hooks/useDebounce';
+import { supabase } from '@/integrations/supabase/client';
 
 const OPERATORS = {
   string: [
@@ -72,7 +72,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
   
-  // Use our new schema connection hook
   const {
     connectionState,
     schema,
@@ -82,7 +81,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     refreshSchema
   } = useSchemaConnection(workflowId, id, sourceNodeId);
 
-  // Find source node for this filtering node
   const findSourceNode = useCallback(async () => {
     if (!workflowId || !id) return null;
     
@@ -107,14 +105,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id, workflowId]);
 
-  // Find source node on initialization
   useEffect(() => {
     if (workflowId && id && !sourceNodeId) {
       findSourceNode();
     }
   }, [workflowId, id, sourceNodeId, findSourceNode]);
 
-  // Set up subscription to detect edge changes
   useEffect(() => {
     if (!workflowId || !id) return;
     
@@ -147,7 +143,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     };
   }, [workflowId, id]);
 
-  // Validate the configuration against the current schema
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
       setValidationErrors([]);
@@ -181,7 +176,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return errors.length === 0;
   }, []);
 
-  // Update the available operators based on column type
   const updateOperatorsForColumn = useCallback((columnName?: string, schemaColumns?: SchemaColumn[]) => {
     if (!columnName || !schemaColumns) {
       setOperators(OPERATORS.default);
@@ -211,34 +205,28 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, []);
 
-  // Update operators when schema or selected column changes
   useEffect(() => {
     updateOperatorsForColumn(data.config.column, schema);
     validateConfiguration(data.config, schema);
   }, [schema, data.config.column, updateOperatorsForColumn, validateConfiguration, data.config]);
 
-  // Handle config changes from UI
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
       const newConfig = { ...data.config, [key]: value };
       data.onChange(id, newConfig);
     }
   };
-  
-  // Helper function to determine if a type is textual
+
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
 
-  // Get the type of the currently selected column
   const selectedColumnType = data.config.column 
     ? schema.find(col => col.name === data.config.column)?.type || 'unknown'
     : 'unknown';
 
-  // Only show case sensitivity option for text columns
   const showCaseSensitiveOption = isTextType(selectedColumnType);
 
-  // Generate appropriate placeholder text for the value input
   const getValuePlaceholder = () => {
     const type = selectedColumnType;
     const operator = data.config.operator;
@@ -270,7 +258,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return 'Value to match';
   };
 
-  // Get connection status icon and info
   const getConnectionStatusInfo = () => {
     switch(connectionState) {
       case ConnectionState.CONNECTED:
@@ -306,7 +293,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         <CardTitle className="text-sm font-medium">{data.label || 'Filter Data'}</CardTitle>
         
         <div className="ml-auto flex items-center gap-1">
-          {/* Schema refresh button */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -331,7 +317,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             </Tooltip>
           </TooltipProvider>
           
-          {/* Logs button */}
           {workflow.executionId && (
             <TooltipProvider>
               <Tooltip>
@@ -352,7 +337,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             </TooltipProvider>
           )}
           
-          {/* Connection status indicator */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -366,7 +350,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             </Tooltip>
           </TooltipProvider>
           
-          {/* Loading indicator */}
           {isLoading && (
             <TooltipProvider>
               <Tooltip>
@@ -384,7 +367,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
-        {/* Error message */}
         {error && (
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
             <div className="flex">
@@ -405,7 +387,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </div>
         )}
         
-        {/* Column selector */}
         <div className="space-y-1.5">
           <Label htmlFor="column" className="text-xs">Column</Label>
           <Select
@@ -442,7 +423,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           )}
         </div>
         
-        {/* Operator selector */}
         <div className="space-y-1.5">
           <Label htmlFor="operator" className="text-xs">Operator</Label>
           <Select
@@ -463,7 +443,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </Select>
         </div>
         
-        {/* Value input */}
         <div className="space-y-1.5">
           <Label htmlFor="value" className="text-xs">Value</Label>
           <Input
@@ -476,7 +455,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           />
         </div>
         
-        {/* Case sensitivity toggle */}
         {showCaseSensitiveOption && (
           <div className="flex items-center space-x-2 pt-1">
             <Switch
@@ -490,7 +468,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </div>
         )}
         
-        {/* Validation errors */}
         {validationErrors.length > 0 && (
           <div className="bg-red-50 p-2 rounded-md border border-red-200 text-xs text-red-600">
             <div className="flex items-start">

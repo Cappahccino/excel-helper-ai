@@ -26,6 +26,14 @@ interface FileMetadata {
   [key: string]: any;
 }
 
+// Type definition for sheet metadata
+export interface SheetMetadata {
+  name: string;
+  index: number;
+  rowCount: number;
+  isDefault: boolean;
+}
+
 // Schema cache with expiration for better performance
 const schemaCache = new Map<string, SchemaCacheEntry>();
 
@@ -159,5 +167,191 @@ export async function getNodeSelectedSheet(workflowId: string, nodeId: string): 
   } catch (error) {
     console.error('Error in getNodeSelectedSheet:', error);
     return null;
+  }
+}
+
+/**
+ * Get available sheets for a node
+ */
+export async function getNodeSheets(workflowId: string, nodeId: string): Promise<SheetMetadata[] | null> {
+  try {
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    // First, try to get from workflow_files metadata
+    const { data: fileData, error: fileError } = await supabase
+      .from('workflow_files')
+      .select('metadata, file_id')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .maybeSingle();
+    
+    if (fileError) {
+      console.error('Error fetching workflow file:', fileError);
+      return null;
+    }
+    
+    if (fileData?.metadata && typeof fileData.metadata === 'object') {
+      const metadata = fileData.metadata as FileMetadata;
+      
+      if (metadata.sheets && Array.isArray(metadata.sheets)) {
+        // Convert to consistent format
+        return metadata.sheets.map(sheet => ({
+          name: sheet.name,
+          index: sheet.index,
+          rowCount: sheet.rowCount || sheet.row_count || 0,
+          isDefault: sheet.isDefault || sheet.is_default || false
+        }));
+      }
+    }
+    
+    // If no metadata in workflow_files, try from file_metadata
+    if (fileData?.file_id) {
+      const { data: metaData, error: metaError } = await supabase
+        .from('file_metadata')
+        .select('sheets_metadata')
+        .eq('file_id', fileData.file_id)
+        .maybeSingle();
+        
+      if (metaError) {
+        console.error('Error fetching file metadata:', metaError);
+        return null;
+      }
+      
+      if (metaData?.sheets_metadata && Array.isArray(metaData.sheets_metadata)) {
+        // Convert to consistent format
+        return metaData.sheets_metadata.map((sheet: any) => ({
+          name: sheet.name,
+          index: sheet.index,
+          rowCount: sheet.row_count || sheet.rowCount || 0,
+          isDefault: sheet.is_default || sheet.isDefault || false
+        }));
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error in getNodeSheets:', error);
+    return null;
+  }
+}
+
+/**
+ * Set selected sheet for a node
+ */
+export async function setNodeSelectedSheet(
+  workflowId: string, 
+  nodeId: string, 
+  sheetName: string
+): Promise<boolean> {
+  try {
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    // Get current metadata
+    const { data: fileData, error: fileError } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .maybeSingle();
+      
+    if (fileError) {
+      console.error('Error fetching workflow file:', fileError);
+      return false;
+    }
+    
+    // Update metadata with selected sheet
+    const currentMetadata = fileData?.metadata && typeof fileData.metadata === 'object' 
+      ? fileData.metadata 
+      : {};
+      
+    const updatedMetadata = {
+      ...currentMetadata,
+      selected_sheet: sheetName
+    };
+    
+    // Save updated metadata
+    const { error: updateError } = await supabase
+      .from('workflow_files')
+      .update({ 
+        metadata: updatedMetadata,
+        updated_at: new Date().toISOString()
+      })
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId);
+      
+    if (updateError) {
+      console.error('Error updating selected sheet:', updateError);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in setNodeSelectedSheet:', error);
+    return false;
+  }
+}
+
+/**
+ * Validate node sheet schema
+ */
+export async function validateNodeSheetSchema(
+  workflowId: string, 
+  nodeId: string, 
+  sheetName?: string
+): Promise<{ isValid: boolean, message?: string }> {
+  try {
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    // Get the sheet name if not provided
+    let effectiveSheetName = sheetName;
+    if (!effectiveSheetName) {
+      effectiveSheetName = await getNodeSelectedSheet(workflowId, nodeId) || 'Sheet1';
+    }
+    
+    // Check if schema exists for this sheet
+    const { data: schema, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('columns, data_types')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .eq('sheet_name', effectiveSheetName)
+      .maybeSingle();
+      
+    if (error) {
+      return { 
+        isValid: false, 
+        message: `Error validating schema: ${error.message}` 
+      };
+    }
+    
+    if (!schema) {
+      return { 
+        isValid: false, 
+        message: `No schema found for sheet "${effectiveSheetName}"` 
+      };
+    }
+    
+    if (!schema.columns || !Array.isArray(schema.columns) || schema.columns.length === 0) {
+      return { 
+        isValid: false, 
+        message: `No columns defined in schema for sheet "${effectiveSheetName}"` 
+      };
+    }
+    
+    return { 
+      isValid: true 
+    };
+  } catch (error) {
+    console.error('Error in validateNodeSheetSchema:', error);
+    return { 
+      isValid: false, 
+      message: `Validation error: ${(error as Error).message}` 
+    };
   }
 }
