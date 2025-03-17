@@ -59,6 +59,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
             className="w-full max-h-[300px] overflow-y-auto z-50 bg-white" 
             position="popper"
             sideOffset={5}
+            align="start"
           >
             {sortedFiles?.length === 0 ? (
               <div className="py-6 px-2 text-center">
