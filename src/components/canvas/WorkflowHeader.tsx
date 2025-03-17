@@ -20,7 +20,6 @@ interface WorkflowHeaderProps {
   migrationError: string | null;
   optimisticSave: boolean;
   subscriptionStatus: string | null;
-  hasUnsavedChanges?: boolean;
 }
 
 const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
@@ -36,8 +35,7 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   savingWorkflowId,
   migrationError,
   optimisticSave,
-  subscriptionStatus,
-  hasUnsavedChanges = false
+  subscriptionStatus
 }) => {
   return (
     <div className="border-b p-4 flex justify-between items-center">
@@ -111,16 +109,9 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           </TooltipProvider>
         )}
         
-        {hasUnsavedChanges && (
-          <div className="px-3 py-1 text-sm rounded-full bg-amber-100 text-amber-800 flex items-center">
-            <span className="mr-2 h-2 w-2 rounded-full bg-amber-500"></span>
-            Unsaved Changes
-          </div>
-        )}
-        
         <Button 
           onClick={onSave} 
-          disabled={isSaving || (!hasUnsavedChanges && optimisticSave)}
+          disabled={isSaving}
           className={`flex items-center ${optimisticSave ? 'bg-green-500 hover:bg-green-600' : ''}`}
           aria-label="Save workflow"
         >

@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { WorkflowNode, Edge } from '@/types/workflow';
 import { toast } from 'sonner';
@@ -16,9 +16,6 @@ export function useWorkflowSync(
 ) {
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSyncRef = useRef<number>(0);
-  const [pendingChanges, setPendingChanges] = useState<boolean>(false);
-  const changesQueuedAt = useRef<number>(0);
-  const initialSyncDone = useRef<boolean>(false);
   
   // Function to convert temporary workflow ID to database format
   const getDbWorkflowId = useCallback((id: string | null): string | null => {
@@ -27,15 +24,8 @@ export function useWorkflowSync(
   }, []);
 
   // Synchronize workflow definition with nodes and edges
-  const syncWorkflowDefinition = useCallback(async (force: boolean = false) => {
+  const syncWorkflowDefinition = useCallback(async () => {
     if (!workflowId) return;
-    
-    // Skip for new workflows until they're saved
-    if (workflowId === 'new') {
-      console.log('Skipping sync for new workflow that has not been saved yet');
-      setPendingChanges(false);
-      return;
-    }
     
     try {
       const dbWorkflowId = getDbWorkflowId(workflowId);
@@ -67,22 +57,12 @@ export function useWorkflowSync(
         } else {
           console.log(`Synchronized workflow definition for ${workflowId}`);
           lastSyncRef.current = Date.now();
-          setPendingChanges(false);
         }
       }
     } catch (error) {
       console.error('Error in syncWorkflowDefinition:', error);
     }
   }, [workflowId, nodes, edges, getDbWorkflowId]);
-
-  // Queue changes for synchronization - this marks that changes need to be saved
-  // but doesn't immediately trigger a save
-  const queueChangesForSync = useCallback(() => {
-    if (!workflowId || workflowId === 'new') return;
-    
-    changesQueuedAt.current = Date.now();
-    setPendingChanges(true);
-  }, [workflowId]);
 
   // Debounced synchronization to avoid too many database calls
   const debouncedSync = useCallback(() => {
@@ -98,27 +78,14 @@ export function useWorkflowSync(
     }
     
     syncTimeoutRef.current = setTimeout(() => {
-      if (pendingChanges) {
-        syncWorkflowDefinition();
-      }
-    }, 2000);
-  }, [syncWorkflowDefinition, pendingChanges]);
+      syncWorkflowDefinition();
+    }, 1000);
+  }, [syncWorkflowDefinition]);
 
   // Sync workflow definition whenever nodes or edges change
   useEffect(() => {
     if (isSaving) return; // Don't sync while saving (avoid conflicts)
     
-    // Don't sync for brand new workflows until they are saved
-    if (workflowId === 'new') return;
-    
-    // Skip the first change for existing workflows to avoid unnecessary sync on mount
-    if (!initialSyncDone.current) {
-      initialSyncDone.current = true;
-      return;
-    }
-    
-    // Mark changes for sync but don't sync immediately
-    queueChangesForSync();
     debouncedSync();
     
     return () => {
@@ -126,7 +93,7 @@ export function useWorkflowSync(
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, [nodes, edges, debouncedSync, isSaving, workflowId, queueChangesForSync]);
+  }, [nodes, edges, debouncedSync, isSaving]);
 
   // Force sync when the component unmounts
   useEffect(() => {
@@ -134,18 +101,12 @@ export function useWorkflowSync(
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
-      
-      if (pendingChanges && workflowId && workflowId !== 'new') {
-        console.log('Forcing workflow sync on unmount');
-        syncWorkflowDefinition(true);
-      }
+      syncWorkflowDefinition();
     };
-  }, [syncWorkflowDefinition, pendingChanges, workflowId]);
+  }, [syncWorkflowDefinition]);
 
   return {
     syncWorkflowDefinition,
-    hasPendingChanges: pendingChanges,
-    queueChangesForSync,
     lastSync: lastSyncRef.current
   };
 }

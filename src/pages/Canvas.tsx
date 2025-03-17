@@ -43,7 +43,6 @@ const Canvas = () => {
   const [showLogPanel, setShowLogPanel] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [stateModifiedSinceLastSave, setStateModifiedSinceLastSave] = useState<boolean>(false);
   
   const isNewWorkflow = workflowId === 'new';
   const isTemporaryWorkflow = workflowId && workflowId.startsWith('temp-');
@@ -68,12 +67,7 @@ const Canvas = () => {
     runWorkflow
   } = useWorkflowDatabase(savingWorkflowId, setSavingWorkflowId);
 
-  // Use enhanced sync hook
-  const {
-    syncWorkflowDefinition,
-    hasPendingChanges,
-    queueChangesForSync
-  } = useWorkflowSync(savingWorkflowId, nodes, edges, isSaving);
+  useWorkflowSync(savingWorkflowId, nodes, edges, isSaving);
 
   const {
     selectedNodeId,
@@ -85,14 +79,7 @@ const Canvas = () => {
     getNodeSchema,
     updateNodeSchema,
     checkSchemaCompatibility
-  } = useNodeManagement(
-    setNodes, 
-    // Pass a throttled/debounced save function that only marks changes as pending
-    () => {
-      setStateModifiedSinceLastSave(true);
-      queueChangesForSync();
-    }
-  );
+  } = useNodeManagement(setNodes, () => saveWorkflowToDb(nodes, edges));
 
   const { status: executionStatus, subscriptionStatus } = useWorkflowRealtime({
     executionId,
@@ -123,8 +110,6 @@ const Canvas = () => {
     if (isAuthenticated && workflowId && workflowId !== 'new') {
       console.log(`Loading workflow data for ID: ${workflowId}`);
       loadWorkflow(workflowId, setNodes, setEdges);
-      // Reset the modified state after loading
-      setStateModifiedSinceLastSave(false);
     }
     
     if (isNewWorkflow) {
@@ -133,12 +118,9 @@ const Canvas = () => {
       setWorkflowDescription('');
       setNodes([]);
       setEdges([]);
-      // Reset the modified state for new workflows
-      setStateModifiedSinceLastSave(false);
     }
   }, [workflowId, isAuthenticated, loadWorkflow, setNodes, setEdges]);
 
-  // Modified onConnect with improved schema propagation handling
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => {
       const newEdges = addEdge(params, eds);
@@ -146,11 +128,7 @@ const Canvas = () => {
       if (params.source && params.target) {
         updateSchemaPropagationMap(params.source, params.target);
         
-        // Mark state as modified but don't trigger immediate save
-        setStateModifiedSinceLastSave(true);
-        queueChangesForSync();
-        
-        if (savingWorkflowId && savingWorkflowId !== 'new') {
+        if (savingWorkflowId) {
           const workflow = window.workflowContext;
           
           if (workflow && workflow.queueSchemaPropagation) {
@@ -205,7 +183,7 @@ const Canvas = () => {
       
       return newEdges;
     });
-  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate, savingWorkflowId, queueChangesForSync]);
+  }, [setEdges, updateSchemaPropagationMap, triggerSchemaUpdate, savingWorkflowId]);
 
   useEffect(() => {
     if (window) {
@@ -223,67 +201,21 @@ const Canvas = () => {
     }
   }, []);
 
-  // Custom handler for nodes changes
-  const handleNodesChange = useCallback((changes) => {
-    onNodesChange(changes);
-    
-    // Only mark as modified for meaningful changes, not just selection changes
-    const meaningfulChanges = changes.some(change => 
-      change.type === 'dimensions' || 
-      change.type === 'position' || 
-      change.type === 'add' || 
-      change.type === 'remove'
-    );
-    
-    if (meaningfulChanges) {
-      setStateModifiedSinceLastSave(true);
-      queueChangesForSync();
-    }
-  }, [onNodesChange, queueChangesForSync]);
-
-  // Custom handler for edges changes
-  const handleEdgesChange = useCallback((changes) => {
-    onEdgesChange(changes);
-    
-    // Mark as modified for meaningful changes
-    const meaningfulChanges = changes.some(change => 
-      change.type === 'add' || 
-      change.type === 'remove'
-    );
-    
-    if (meaningfulChanges) {
-      setStateModifiedSinceLastSave(true);
-      queueChangesForSync();
-    }
-  }, [onEdgesChange, queueChangesForSync]);
-
   const getNodeSchemaAdapter = useCallback((nodeId: string): SchemaColumn[] => {
     return getNodeSchema(nodeId) || [];
   }, [getNodeSchema]);
 
   const updateNodeSchemaAdapter = useCallback((nodeId: string, schema: SchemaColumn[]): void => {
     updateNodeSchema(nodeId, schema);
-    // Mark as modified when schemas change
-    setStateModifiedSinceLastSave(true);
-    queueChangesForSync();
-  }, [updateNodeSchema, queueChangesForSync]);
+  }, [updateNodeSchema]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
     setSelectedNodeId(node.id);
   }, [setSelectedNodeId]);
 
   const handleRunWorkflow = useCallback(() => {
-    // Always save before running if there are changes
-    if (stateModifiedSinceLastSave || hasPendingChanges) {
-      saveWorkflowToDb(nodes, edges).then(savedId => {
-        if (savedId) {
-          runWorkflow(savedId, nodes, edges, setIsRunning, setExecutionId);
-        }
-      });
-    } else {
-      runWorkflow(savingWorkflowId, nodes, edges, setIsRunning, setExecutionId);
-    }
-  }, [savingWorkflowId, nodes, edges, runWorkflow, saveWorkflowToDb, stateModifiedSinceLastSave, hasPendingChanges]);
+    runWorkflow(savingWorkflowId, nodes, edges, setIsRunning, setExecutionId);
+  }, [savingWorkflowId, nodes, edges, runWorkflow]);
 
   const handleAddNodeClick = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -301,7 +233,6 @@ const Canvas = () => {
     saveWorkflowToDb(nodes, edges).then(savedId => {
       if (savedId) {
         console.log(`Workflow saved successfully with ID: ${savedId}`);
-        setStateModifiedSinceLastSave(false);
       } else {
         console.error('Failed to save workflow');
       }
@@ -338,7 +269,6 @@ const Canvas = () => {
           migrationError={migrationError}
           optimisticSave={optimisticSave}
           subscriptionStatus={subscriptionStatus}
-          hasUnsavedChanges={stateModifiedSinceLastSave || hasPendingChanges}
         />
         
         <div className="flex-1 flex">
@@ -353,8 +283,8 @@ const Canvas = () => {
                 <CanvasFlow 
                   nodes={nodes}
                   edges={edges}
-                  onNodesChange={handleNodesChange}
-                  onEdgesChange={handleEdgesChange}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
                   onNodeClick={onNodeClick}
                   handleNodeConfigUpdate={handleNodeConfigUpdate}
@@ -385,9 +315,6 @@ const Canvas = () => {
           onAddNode={(nodeType, nodeCategory, nodeLabel) => {
             handleAddNode(nodeType as any, nodeCategory, nodeLabel);
             toast.success(`Added ${nodeLabel} node to canvas`);
-            // Mark as modified when adding nodes
-            setStateModifiedSinceLastSave(true);
-            queueChangesForSync();
           }}
           nodeCategories={nodeCategories}
         />
