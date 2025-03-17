@@ -87,13 +87,8 @@ const FileSelector: React.FC<FileSelectorProps> = ({
               const selectContent = document.querySelector('[data-radix-select-content]');
               const fileUploadNode = document.querySelector('.react-flow__node');
               
+              // If clicking inside the dropdown content or the file upload node, prevent closing
               if (selectContent?.contains(target) || fileUploadNode?.contains(target)) {
-                e.preventDefault();
-              }
-            }}
-            onInteractOutside={(e) => {
-              const fileUploadNode = document.querySelector('.react-flow__node');
-              if (fileUploadNode?.contains(e.target as Node)) {
                 e.preventDefault();
               }
             }}
