@@ -1,15 +1,19 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
 
+// Improved type definitions for metadata objects
+interface SheetInfo {
+  name: string;
+  index: number;
+  rowCount?: number;
+  isDefault?: boolean;
+}
+
 interface NodeMetadata {
   selected_sheet?: string;
-  sheets?: Array<{
-    name: string;
-    index: number;
-    rowCount?: number;
-    isDefault?: boolean;
-  }>;
+  sheets?: SheetInfo[];
   [key: string]: any;
 }
 
@@ -249,14 +253,15 @@ export async function synchronizeNodesSheetSelection(
       return false;
     }
     
-    const metadata = sourceNodeConfig.metadata as NodeMetadata;
+    const sourceMetadata = sourceNodeConfig.metadata as NodeMetadata;
     
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || !metadata.selected_sheet) {
+    // Verify that sourceMetadata is an object and not an array
+    if (!sourceMetadata || typeof sourceMetadata !== 'object' || Array.isArray(sourceMetadata) || !sourceMetadata.selected_sheet) {
       console.log(`No selected sheet found for source node ${sourceNodeId}`);
       return false;
     }
     
-    const selectedSheet = metadata.selected_sheet;
+    const selectedSheet = sourceMetadata.selected_sheet;
     
     const { data: targetNodeConfig } = await supabase
       .from('workflow_files')
@@ -265,12 +270,10 @@ export async function synchronizeNodesSheetSelection(
       .eq('node_id', targetNodeId)
       .maybeSingle();
       
-    let targetMetadata: NodeMetadata;
+    let targetMetadata: NodeMetadata = {};
     
     if (targetNodeConfig?.metadata && typeof targetNodeConfig.metadata === 'object' && !Array.isArray(targetNodeConfig.metadata)) {
       targetMetadata = { ...targetNodeConfig.metadata as NodeMetadata };
-    } else {
-      targetMetadata = {};
     }
     
     targetMetadata.selected_sheet = selectedSheet;
@@ -291,5 +294,136 @@ export async function synchronizeNodesSheetSelection(
   } catch (error) {
     console.error('Error in synchronizeNodesSheetSelection:', error);
     return false;
+  }
+}
+
+/**
+ * New: Propagate schema with retry logic
+ */
+export async function propagateSchemaWithRetry(
+  workflowId: string,
+  sourceNodeId: string,
+  targetNodeId: string,
+  options: {
+    maxRetries?: number;
+    sheetName?: string;
+    forceRefresh?: boolean;
+  } = {}
+): Promise<boolean> {
+  const { maxRetries = 3, sheetName, forceRefresh = false } = options;
+  let attempts = 0;
+  
+  while (attempts < maxRetries) {
+    attempts++;
+    try {
+      console.log(`Schema propagation attempt ${attempts}/${maxRetries}: ${sourceNodeId} → ${targetNodeId}`);
+      
+      const success = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
+      
+      if (success) {
+        console.log(`Schema propagation successful on attempt ${attempts}`);
+        
+        // Also sync sheet selection if schema propagation was successful
+        await synchronizeNodesSheetSelection(workflowId, sourceNodeId, targetNodeId)
+          .catch(err => console.error('Error syncing sheet selection:', err));
+          
+        return true;
+      }
+      
+      // If not successful and forceRefresh is enabled, try to trigger file processing
+      if (forceRefresh && attempts === 1) {
+        console.log('Force refresh requested, triggering file processing...');
+        
+        const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+        
+        // Get file ID from source node
+        const { data: fileData } = await supabase
+          .from('workflow_files')
+          .select('file_id')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', sourceNodeId)
+          .maybeSingle();
+          
+        if (fileData?.file_id) {
+          console.log(`Refreshing file processing for ${fileData.file_id}`);
+          
+          try {
+            // Trigger file processing
+            await supabase.functions.invoke('processFile', {
+              body: { 
+                fileId: fileData.file_id, 
+                workflowId, 
+                nodeId: sourceNodeId 
+              }
+            });
+            
+            // Wait a bit for processing to complete
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (err) {
+            console.error('Error triggering file processing:', err);
+          }
+        }
+      }
+      
+      // Small delay before retry with exponential backoff
+      const delay = Math.min(1000 * Math.pow(2, attempts - 1), 5000);
+      console.log(`Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    } catch (error) {
+      console.error(`Error in schema propagation attempt ${attempts}:`, error);
+      
+      // Small delay before retry with exponential backoff
+      const delay = Math.min(1000 * Math.pow(2, attempts - 1), 5000);
+      if (attempts < maxRetries) {
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  console.error(`Schema propagation failed after ${attempts} attempts`);
+  return false;
+}
+
+/**
+ * New: Validate schema for filtering operations
+ */
+export function validateSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn[] {
+  if (!schema || !Array.isArray(schema)) return [];
+  
+  // Add metadata to help with filtering UI
+  return schema.map(column => {
+    // Normalize column types for filtering operations
+    let normalizedType = column.type;
+    
+    // Handle type normalization
+    if (normalizedType === 'text') normalizedType = 'string';
+    if (normalizedType === 'integer' || normalizedType === 'float') normalizedType = 'number';
+    if (normalizedType === 'datetime' || normalizedType === 'timestamp') normalizedType = 'date';
+    
+    return {
+      name: column.name,
+      type: normalizedType as any
+    };
+  });
+}
+
+/**
+ * New: Get schema with validation for filtering operations
+ */
+export async function getSchemaForFiltering(
+  workflowId: string,
+  nodeId: string,
+  options: {
+    sheetName?: string;
+    forceRefresh?: boolean;
+  } = {}
+): Promise<SchemaColumn[]> {
+  try {
+    const schema = await forceSchemaRefresh(workflowId, nodeId, options.sheetName);
+    return validateSchemaForFiltering(schema);
+  } catch (error) {
+    console.error('Error getting schema for filtering:', error);
+    return [];
   }
 }

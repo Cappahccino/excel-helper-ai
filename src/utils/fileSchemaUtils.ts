@@ -2,6 +2,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
+import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from './schemaCache';
 
 // Type definitions for schema cache
 interface SchemaCacheEntry {
@@ -34,9 +35,6 @@ export interface SheetMetadata {
   isDefault: boolean;
 }
 
-// Schema cache with expiration for better performance
-const schemaCache = new Map<string, SchemaCacheEntry>();
-
 // Default time-to-live for cache entries in milliseconds (5 minutes)
 const DEFAULT_CACHE_TTL = 5 * 60 * 1000;
 
@@ -55,13 +53,6 @@ export function convertToSchemaColumns(schema: any): SchemaColumn[] {
 }
 
 /**
- * Generate a unique cache key for schema cache
- */
-function generateCacheKey(workflowId: string, nodeId: string, sheetName?: string): string {
-  return `${workflowId}:${nodeId}:${sheetName || 'default'}`;
-}
-
-/**
  * Get schema for a specific node
  */
 export async function getNodeSchema(
@@ -74,13 +65,22 @@ export async function getNodeSchema(
   }
 ): Promise<any> {
   const { forceRefresh = false, maxCacheAge = DEFAULT_CACHE_TTL, sheetName } = options || {};
-  const cacheKey = generateCacheKey(workflowId, nodeId, sheetName);
   
-  // Try cache first
+  // Try cache first when not forcing refresh
   if (!forceRefresh) {
-    const cached = schemaCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < maxCacheAge) {
-      return cached.schema;
+    const cachedSchema = getSchemaFromCache(workflowId, nodeId, {
+      maxAge: maxCacheAge,
+      sheetName
+    });
+    
+    if (cachedSchema) {
+      return {
+        columns: cachedSchema.map(col => col.name),
+        data_types: cachedSchema.reduce((acc, col) => {
+          acc[col.name] = col.type;
+          return acc;
+        }, {} as Record<string, string>)
+      };
     }
   }
   
@@ -112,13 +112,14 @@ export async function getNodeSchema(
       return null;
     }
     
-    // Cache the result
-    schemaCache.set(cacheKey, {
-      schema: data,
-      timestamp: Date.now(),
-      source: 'database',
-      sheetName
-    });
+    // Cache the schema
+    const schema = convertToSchemaColumns(data);
+    if (schema.length > 0) {
+      cacheSchema(workflowId, nodeId, schema, {
+        source: 'database',
+        sheetName
+      });
+    }
     
     return data;
   } catch (error) {
@@ -144,7 +145,7 @@ export async function getNodeSelectedSheet(workflowId: string, nodeId: string): 
       .eq('node_id', nodeId)
       .maybeSingle();
       
-    if (fileData?.metadata && typeof fileData.metadata === 'object') {
+    if (fileData?.metadata && typeof fileData.metadata === 'object' && !Array.isArray(fileData.metadata)) {
       const metadata = fileData.metadata as FileMetadata;
       if (metadata.selected_sheet) {
         return metadata.selected_sheet;
@@ -192,7 +193,7 @@ export async function getNodeSheets(workflowId: string, nodeId: string): Promise
       return null;
     }
     
-    if (fileData?.metadata && typeof fileData.metadata === 'object') {
+    if (fileData?.metadata && typeof fileData.metadata === 'object' && !Array.isArray(fileData.metadata)) {
       const metadata = fileData.metadata as FileMetadata;
       
       if (metadata.sheets && Array.isArray(metadata.sheets)) {
@@ -264,7 +265,7 @@ export async function setNodeSelectedSheet(
     }
     
     // Update metadata with selected sheet
-    const currentMetadata = fileData?.metadata && typeof fileData.metadata === 'object' 
+    const currentMetadata = fileData?.metadata && typeof fileData.metadata === 'object' && !Array.isArray(fileData.metadata)
       ? fileData.metadata 
       : {};
       
@@ -287,6 +288,9 @@ export async function setNodeSelectedSheet(
       console.error('Error updating selected sheet:', updateError);
       return false;
     }
+    
+    // Invalidate the schema cache for this node
+    invalidateSchemaCache(workflowId, nodeId);
     
     return true;
   } catch (error) {
@@ -353,5 +357,64 @@ export async function validateNodeSheetSchema(
       isValid: false, 
       message: `Validation error: ${(error as Error).message}` 
     };
+  }
+}
+
+/**
+ * Trigger schema refresh from file source
+ */
+export async function triggerSchemaRefresh(
+  workflowId: string,
+  nodeId: string,
+  options?: {
+    sheetName?: string,
+    forceProcessing?: boolean
+  }
+): Promise<boolean> {
+  try {
+    const { sheetName, forceProcessing = false } = options || {};
+    
+    // Normalize workflow ID
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    // Get file ID associated with this node  
+    const { data: fileData, error: fileError } = await supabase
+      .from('workflow_files')
+      .select('file_id')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .maybeSingle();
+      
+    if (fileError || !fileData?.file_id) {
+      console.error('Error getting file ID:', fileError || 'No file ID found');
+      return false;
+    }
+    
+    // Invalidate cache
+    invalidateSchemaCache(workflowId, nodeId, sheetName);
+    
+    if (forceProcessing) {
+      // Trigger file processing to refresh schema
+      const { error: processError } = await supabase.functions.invoke('processFile', {
+        body: {
+          fileId: fileData.file_id,
+          workflowId,
+          nodeId,
+          requestedSheetName: sheetName
+        }
+      });
+      
+      if (processError) {
+        console.error('Error triggering file processing:', processError);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in triggerSchemaRefresh:', error);
+    return false;
   }
 }
