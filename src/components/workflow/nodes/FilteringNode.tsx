@@ -90,11 +90,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   
   const workflow = useWorkflow();
 
-  // Reference to track loading start time
   const loadingStartTime = useRef<number | null>(null);
-  // Reference for loading timeout
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Reference for recovery timeout
   const recoveryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
@@ -195,7 +192,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id]);
 
-  // Helper function to clear all timeouts
   const clearAllTimeouts = useCallback(() => {
     if (loadingTimeoutRef.current) {
       clearTimeout(loadingTimeoutRef.current);
@@ -208,17 +204,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, []);
 
-  // Enhanced loading state handler with progressive timeouts
   const handleLoadingState = useCallback(() => {
     clearAllTimeouts();
     
-    // Set initial timeout (15 seconds) to show warning
     loadingTimeoutRef.current = setTimeout(() => {
       if (isLoading) {
         console.log(`FilteringNode ${id}: Schema loading taking longer than expected`);
         setLoadingError('Schema loading is taking longer than expected. This may be because the source node is still processing data or there was an error.');
         
-        // Set recovery timeout (additional 15 seconds) to force reset loading state
         recoveryTimeoutRef.current = setTimeout(() => {
           if (isLoading) {
             console.log(`FilteringNode ${id}: Schema loading timed out, forcing reset`);
@@ -228,13 +221,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               id: "loading-timeout"
             });
           }
-        }, 15000); // Additional 15 seconds (30 seconds total)
+        }, 15000);
       }
-    }, 15000); // Initial 15 seconds
+    }, 15000);
     
-    // Track loading start time for debugging
     loadingStartTime.current = Date.now();
-    
   }, [id, isLoading, clearAllTimeouts]);
 
   const loadSchema = useCallback(async (forceRefresh = false) => {
@@ -245,7 +236,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     setLoadingError(null);
     setLoadingAttempts(prev => prev + 1);
     
-    // Set loading operation type based on context
     if (forceRefresh && isRefreshing) {
       setLoadingOperation('refresh');
     } else if (forceRefresh) {
@@ -254,11 +244,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       setLoadingOperation('initial');
     }
     
-    // Setup enhanced loading timeouts
     handleLoadingState();
     
     try {
-      // First attempt: try to get schema directly for this node, considering the sheet if provided
       const sheetName = sourceNodeSheet || 'Sheet1';
       
       let schema = forceRefresh
@@ -289,7 +277,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return;
       }
       
-      // Second attempt: find source node and get its schema
       const sourceId = sourceNodeId || await findSourceNode();
       
       if (!sourceId) {
@@ -302,11 +289,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return;
       }
       
-      // Get the sheet name from the source node
       const effectiveSheetName = sourceNodeSheet || await getNodeSelectedSheet(workflow.workflowId, sourceId) || 'Sheet1';
       setSourceNodeSheet(effectiveSheetName);
       
-      // Check if source node is ready for schema propagation
       const isSourceReady = await isNodeReadyForSchemaPropagation(workflow.workflowId, sourceId);
       if (!isSourceReady) {
         setLoadingError('Source node is not ready. The connected file may still be processing or has no schema available.');
@@ -319,7 +304,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       console.log(`FilteringNode ${id}: Getting schema from source node ${sourceId} for sheet ${effectiveSheetName}`);
       
-      // Try to refresh the source schema first with multiple retries
       try {
         const refreshedSchema = await retryOperation(
           async () => {
@@ -331,7 +315,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               return schema;
             } catch (error) {
               console.error(`Error refreshing schema: ${error.message}`);
-              throw error; // Rethrow to trigger retry
+              throw error;
             }
           },
           {
@@ -349,7 +333,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         if (refreshedSchema && refreshedSchema.length > 0) {
           console.log(`FilteringNode ${id}: Retrieved refreshed schema from source node:`, refreshedSchema);
           
-          // Try to propagate the schema to this node with retries
           const propagated = await retryOperation(
             () => propagateSchemaDirectly(workflow.workflowId, sourceId, id, effectiveSheetName),
             {
@@ -365,7 +348,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           });
           
           if (propagated) {
-            // Fetch our own schema after propagation
             const ownSchema = await getNodeSchema(workflow.workflowId, id, { 
               forceRefresh: true,
               sheetName: effectiveSheetName 
@@ -386,7 +368,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             }
           }
           
-          // If propagation or fetching own schema failed, use the source schema directly
           setColumns(refreshedSchema);
           setSchemaSource('source');
           updateOperatorsForColumn(data.config.column, refreshedSchema);
@@ -400,10 +381,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         }
       } catch (refreshError) {
         console.error(`Error in schema refresh/propagation flow: ${refreshError.message}`);
-        // Continue to fallback approach
       }
       
-      // Last attempt: direct schema extraction from source
       setLoadingError('Schema could not be automatically propagated. Click "Manual Refresh" to try again.');
       setIsLoading(false);
       setIsRefreshing(false);
@@ -432,35 +411,28 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     clearAllTimeouts
   ]);
 
-  // Enforce loading state timeout if loading gets stuck
   useEffect(() => {
     if (isLoading) {
-      // Set a timeout to force clear loading state after 30 seconds
       const forceResetTimeout = setTimeout(() => {
         console.log(`FilteringNode ${id}: Force resetting loading state (safety mechanism)`);
         setIsLoading(false);
         setIsRefreshing(false);
         setLoadingOperation(null);
-        // Only show toast if not already showing an error
         if (!loadingError) {
           toast.warning("Schema loading timed out, please try reconnecting the nodes", {
             id: "loading-force-timeout"
           });
         }
-      }, 30000); // 30 second timeout (absolute maximum)
+      }, 30000);
       
       return () => clearTimeout(forceResetTimeout);
     }
   }, [isLoading, id, loadingError]);
 
-  // Initial setup - only run once to find source node
   useEffect(() => {
     if (workflow.workflowId && id && !hasInitialized) {
-      console.log(`FilteringNode ${id}: Initial setup`);
       findSourceNode().then(sourceId => {
         if (sourceId) {
-          // Just set the source node ID but don't automatically load schema
-          console.log(`FilteringNode ${id}: Found source node ${sourceId} but not loading schema yet`);
           setHasInitialized(true);
         } else {
           setHasInitialized(true);
@@ -469,18 +441,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow.workflowId, id, findSourceNode, hasInitialized]);
 
-  // Clean up all timeouts on unmount
   useEffect(() => {
     return () => {
       clearAllTimeouts();
     };
   }, [clearAllTimeouts]);
 
-  // Set up subscription to detect edge changes
   useEffect(() => {
     if (!workflow.workflowId || !id) return;
-    
-    console.log(`Setting up subscription to detect edges changes for node ${id}`);
     
     const channel = supabase
       .channel(`edge_changes_${id}`)
@@ -499,10 +467,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             const sourceId = payload.new.source_node_id;
             setSourceNodeId(sourceId);
             
-            // When a new edge is added, load the schema from the source node
             findSourceNode().then(async (foundSourceId) => {
               if (foundSourceId) {
-                // Get the sheet name from the source node first
                 const sheet = await getNodeSelectedSheet(workflow.workflowId!, foundSourceId);
                 if (sheet) {
                   setSourceNodeSheet(sheet);
@@ -512,15 +478,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   console.log(`New connection detected from node ${foundSourceId} using default sheet`);
                 }
                 
-                // Load the schema with the associated sheet
                 loadSchema(true);
               }
             });
           } else if (payload.eventType === 'DELETE' && payload.old.target_node_id === id) {
-            // When an edge is removed, update the source node but don't load schema
             findSourceNode().then(sourceId => {
               if (!sourceId) {
-                // Clear columns if no source node
                 setColumns([]);
                 setSourceNodeSheet(null);
                 setSchemaSource(null);
@@ -537,11 +500,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     };
   }, [workflow.workflowId, id, findSourceNode, loadSchema]);
 
-  // Set up subscription to detect schema changes in source node
   useEffect(() => {
     if (!workflow.workflowId || !sourceNodeId) return;
-    
-    console.log(`Setting up subscription to detect schema changes for source node ${sourceNodeId}`);
     
     const dbWorkflowId = workflow.workflowId.startsWith('temp-')
       ? workflow.workflowId.substring(5)
@@ -560,7 +520,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         (payload) => {
           console.log(`Schema change detected for source node ${sourceNodeId}:`, payload);
           
-          // Check if it's the relevant sheet that changed
           const payloadSheetName = (payload.new as any).sheet_name;
           const currentSheetName = sourceNodeSheet;
           
@@ -579,11 +538,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     };
   }, [workflow.workflowId, sourceNodeId, id, loadSchema, sourceNodeSheet]);
 
-  // Also subscribe to file metadata changes to detect sheet selection changes
   useEffect(() => {
     if (!workflow.workflowId || !sourceNodeId) return;
-    
-    console.log(`Setting up subscription to detect sheet selection changes for source node ${sourceNodeId}`);
     
     const dbWorkflowId = workflow.workflowId.startsWith('temp-')
       ? workflow.workflowId.substring(5)
@@ -635,7 +591,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       data.onChange(id, newConfig);
     }
   };
-  
+
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
@@ -683,7 +639,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     loadSchema(true);
   };
 
-  // Manual force schema propagation
   const handleManualPropagation = async () => {
     if (!workflow.workflowId || !sourceNodeId) {
       toast.error("No source node available");
@@ -695,16 +650,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     toast.info("Manually propagating schema from source node...");
     
     try {
-      // Setup loading timeout for manual propagation
       handleLoadingState();
       
-      // First get the current sheet from the source node
       const sheet = sourceNodeSheet || await getNodeSelectedSheet(workflow.workflowId, sourceNodeId) || 'Sheet1';
       setSourceNodeSheet(sheet);
       
       console.log(`Manual propagation using sheet: ${sheet}`);
       
-      // Force propagate with multiple retries
       const success = await retryOperation(
         () => propagateSchemaDirectly(workflow.workflowId, sourceNodeId, id, sheet),
         {
@@ -718,7 +670,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       if (success) {
         toast.success("Schema propagated successfully");
-        // Refresh our view of the schema
         loadSchema(true);
       } else {
         toast.error("Failed to propagate schema");
@@ -735,7 +686,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
-  // Get loading status message based on operation type
   const getLoadingStatusMessage = () => {
     if (!isLoading) return null;
     
@@ -875,7 +825,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </div>
         )}
         
-        
         <div className="space-y-1.5">
           <Label htmlFor="column" className="text-xs">Column</Label>
           <Select
@@ -895,3 +844,107 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                 columns.map((column) => (
                   <SelectItem key={column.name} value={column.name}>
                     <div className="flex items-center">
+                      <span>{column.name}</span>
+                      <Badge variant="outline" className="ml-2 text-[0.6rem] px-1 bg-gray-100">
+                        {column.type}
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {data.config.column && (
+          <div className="space-y-1.5">
+            <Label htmlFor="operator" className="text-xs">Operator</Label>
+            <Select
+              value={data.config.operator || 'equals'}
+              onValueChange={(value) => handleConfigChange('operator', value)}
+              disabled={isLoading || !data.config.column}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select operator" />
+              </SelectTrigger>
+              <SelectContent>
+                {operators.map((op) => (
+                  <SelectItem key={op.value} value={op.value}>
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
+        {data.config.column && data.config.operator && (
+          <div className="space-y-1.5">
+            <Label htmlFor="value" className="text-xs">Value</Label>
+            <Input
+              id="value"
+              type="text"
+              value={data.config.value || ''}
+              onChange={(e) => handleConfigChange('value', e.target.value)}
+              placeholder={getValuePlaceholder()}
+              className="h-8 text-xs"
+              disabled={isLoading}
+            />
+          </div>
+        )}
+        
+        {showCaseSensitiveOption && data.config.column && data.config.operator && (
+          <div className="flex items-center space-x-2 pt-1">
+            <Switch
+              id="case-sensitive"
+              checked={data.config.isCaseSensitive || false}
+              onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
+              disabled={isLoading}
+            />
+            <Label htmlFor="case-sensitive" className="text-xs font-normal">
+              Case sensitive
+            </Label>
+          </div>
+        )}
+        
+        {validationErrors.length > 0 && (
+          <div className="rounded-md bg-red-50 p-2 text-xs text-red-800 border border-red-200 mt-2">
+            {validationErrors.map((error, i) => (
+              <div key={i} className="flex items-start space-x-1">
+                <X className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                <p>{error}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {showLogs && workflow.executionId && (
+          <div className="mt-4">
+            <WorkflowLogPanel
+              workflowId={workflow.workflowId}
+              executionId={workflow.executionId}
+              nodeId={id}
+              maxHeight="150px"
+            />
+          </div>
+        )}
+      </CardContent>
+      
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input"
+        style={{ background: '#555', width: 8, height: 8 }}
+      />
+      
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="output"
+        style={{ background: '#555', width: 8, height: 8 }}
+      />
+    </Card>
+  );
+};
+
+export default FilteringNode;
