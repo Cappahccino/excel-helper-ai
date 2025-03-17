@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
@@ -11,6 +10,7 @@ export interface SchemaCacheEntry {
   schema: SchemaColumn[];
   timestamp: number;
   source: 'db' | 'propagation' | 'manual';
+  sheetName?: string; // Add sheet name to cache to properly handle multi-sheet files
 }
 
 /**
@@ -36,6 +36,11 @@ export function useSchemaManagement() {
     retryCount: number;
   }>>({});
 
+  // Create a unique cache key that includes both nodeId and sheetName
+  const getCacheKey = useCallback((nodeId: string, sheetName?: string): string => {
+    return sheetName ? `${nodeId}:${sheetName}` : nodeId;
+  }, []);
+
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
@@ -44,7 +49,8 @@ export function useSchemaManagement() {
    * Fetch schema from the database for a specific node
    */
   const fetchSchemaFromDb = useCallback(async (workflowId: string, nodeId: string, sheetName?: string): Promise<SchemaColumn[] | null> => {
-    setIsLoading(prev => ({ ...prev, [nodeId]: true }));
+    const cacheKey = getCacheKey(nodeId, sheetName);
+    setIsLoading(prev => ({ ...prev, [cacheKey]: true }));
     
     try {
       console.log(`Fetching schema from DB for node ${nodeId} in workflow ${workflowId}${sheetName ? `, sheet ${sheetName}` : ''}`);
@@ -66,7 +72,7 @@ export function useSchemaManagement() {
         console.error('Error fetching schema:', error);
         setValidationErrors(prev => ({
           ...prev,
-          [nodeId]: [{ code: 'fetch_error', message: `Failed to fetch schema: ${error.message}` }]
+          [cacheKey]: [{ code: 'fetch_error', message: `Failed to fetch schema: ${error.message}` }]
         }));
         return null;
       }
@@ -86,13 +92,14 @@ export function useSchemaManagement() {
         };
       });
       
-      // Update cache
+      // Update cache with sheet name
       setSchemaCache(prev => ({
         ...prev,
-        [nodeId]: {
+        [cacheKey]: {
           schema,
           timestamp: Date.now(),
-          source: 'db'
+          source: 'db',
+          sheetName
         }
       }));
       
@@ -102,9 +109,9 @@ export function useSchemaManagement() {
       toast.error('Failed to load schema information');
       return null;
     } finally {
-      setIsLoading(prev => ({ ...prev, [nodeId]: false }));
+      setIsLoading(prev => ({ ...prev, [cacheKey]: false }));
     }
-  }, []);
+  }, [getCacheKey]);
 
   /**
    * Get schema for a node, either from cache or from DB
@@ -119,23 +126,24 @@ export function useSchemaManagement() {
     }
   ): Promise<SchemaColumn[]> => {
     const { forceRefresh = false, maxCacheAge = 5 * 60 * 1000, sheetName } = options || {};
+    const cacheKey = getCacheKey(nodeId, sheetName);
     
     // Check cache first unless force refresh is requested
-    if (!forceRefresh && schemaCache[nodeId]) {
-      const cacheEntry = schemaCache[nodeId];
+    if (!forceRefresh && schemaCache[cacheKey]) {
+      const cacheEntry = schemaCache[cacheKey];
       const cacheAge = Date.now() - cacheEntry.timestamp;
       
       if (cacheAge < maxCacheAge) {
-        console.log(`Using cached schema for node ${nodeId}, age: ${cacheAge}ms`);
+        console.log(`Using cached schema for node ${nodeId}${sheetName ? `, sheet ${sheetName}` : ''}, age: ${cacheAge}ms`);
         return cacheEntry.schema;
       }
     }
     
     // Otherwise fetch from database
-    console.log(`Fetching fresh schema for node ${nodeId} (forceRefresh: ${forceRefresh})`);
+    console.log(`Fetching fresh schema for node ${nodeId} (forceRefresh: ${forceRefresh})${sheetName ? `, sheet ${sheetName}` : ''}`);
     const schema = await fetchSchemaFromDb(workflowId, nodeId, sheetName);
     return schema || [];
-  }, [fetchSchemaFromDb, schemaCache]);
+  }, [fetchSchemaFromDb, schemaCache, getCacheKey]);
 
   /**
    * Update schema for a node in both cache and DB
@@ -152,21 +160,23 @@ export function useSchemaManagement() {
     }
   ): Promise<boolean> => {
     const { updateDb = true, source = 'manual', fileId, sheetName = 'Sheet1' } = options || {};
+    const cacheKey = getCacheKey(nodeId, sheetName);
     
     try {
       // Update local cache
       setSchemaCache(prev => ({
         ...prev,
-        [nodeId]: {
+        [cacheKey]: {
           schema,
           timestamp: Date.now(),
-          source
+          source,
+          sheetName
         }
       }));
       
       // Clear any validation errors
       setValidationErrors(prev => {
-        const { [nodeId]: _, ...rest } = prev;
+        const { [cacheKey]: _, ...rest } = prev;
         return rest;
       });
       
@@ -203,14 +213,14 @@ export function useSchemaManagement() {
         }
       }
       
-      console.log(`Schema for node ${nodeId} updated successfully`);
+      console.log(`Schema for node ${nodeId}, sheet ${sheetName} updated successfully`);
       return true;
     } catch (err) {
       console.error('Error in updateNodeSchema:', err);
       toast.error('Failed to update schema');
       return false;
     }
-  }, []);
+  }, [getCacheKey]);
 
   /**
    * Fetch and propagate schema from source node to target node
@@ -221,11 +231,14 @@ export function useSchemaManagement() {
     targetNodeId: string,
     sheetName?: string
   ): Promise<boolean> => {
-    setIsLoading(prev => ({ ...prev, [targetNodeId]: true }));
+    const sourceCacheKey = getCacheKey(sourceNodeId, sheetName);
+    const targetCacheKey = getCacheKey(targetNodeId, sheetName);
+    
+    setIsLoading(prev => ({ ...prev, [targetCacheKey]: true }));
     
     try {
       // First, try to get the schema from cache
-      let sourceSchema = schemaCache[sourceNodeId]?.schema;
+      let sourceSchema = schemaCache[sourceCacheKey]?.schema;
       
       // If not in cache, fetch from DB with specific sheet if provided
       if (!sourceSchema || sourceSchema.length === 0) {
@@ -303,7 +316,7 @@ export function useSchemaManagement() {
       if (!sourceSchema || sourceSchema.length === 0) {
         setValidationErrors(prev => ({
           ...prev,
-          [targetNodeId]: [{ 
+          [targetCacheKey]: [{ 
             code: 'source_schema_missing', 
             message: 'Source node does not have a valid schema' 
           }]
@@ -314,10 +327,11 @@ export function useSchemaManagement() {
       }
       
       // Update target schema with the same sheet name
+      const effectiveSheetName = sheetName || 'Sheet1';
       const result = await updateNodeSchema(workflowId, targetNodeId, sourceSchema, {
         updateDb: true,
         source: 'propagation',
-        sheetName: sheetName || 'Sheet1'
+        sheetName: effectiveSheetName
       });
       
       if (result) {
@@ -330,9 +344,9 @@ export function useSchemaManagement() {
       toast.error('Failed to propagate schema between nodes');
       return false;
     } finally {
-      setIsLoading(prev => ({ ...prev, [targetNodeId]: false }));
+      setIsLoading(prev => ({ ...prev, [targetCacheKey]: false }));
     }
-  }, [fetchSchemaFromDb, schemaCache, updateNodeSchema]);
+  }, [fetchSchemaFromDb, schemaCache, updateNodeSchema, getCacheKey]);
 
   /**
    * Propagate schema from source node to target node with transform function
@@ -344,8 +358,10 @@ export function useSchemaManagement() {
     transform?: (schema: SchemaColumn[]) => SchemaColumn[],
     sheetName?: string
   ): Promise<boolean> => {
+    const targetCacheKey = getCacheKey(targetNodeId, sheetName);
+    
     try {
-      setIsLoading(prev => ({ ...prev, [targetNodeId]: true }));
+      setIsLoading(prev => ({ ...prev, [targetCacheKey]: true }));
       
       // Get source schema
       const sourceSchema = await getNodeSchema(workflowId, sourceNodeId, { sheetName });
@@ -354,7 +370,7 @@ export function useSchemaManagement() {
         console.warn(`No schema available from source node ${sourceNodeId}`);
         setValidationErrors(prev => ({
           ...prev,
-          [targetNodeId]: [{ 
+          [targetCacheKey]: [{ 
             code: 'source_schema_missing', 
             message: 'Source node does not have a valid schema' 
           }]
@@ -366,10 +382,11 @@ export function useSchemaManagement() {
       const targetSchema = transform ? transform(sourceSchema) : sourceSchema;
       
       // Update target schema
+      const effectiveSheetName = sheetName || 'Sheet1';
       await updateNodeSchema(workflowId, targetNodeId, targetSchema, {
         updateDb: true,
         source: 'propagation',
-        sheetName
+        sheetName: effectiveSheetName
       });
       
       return true;
@@ -378,9 +395,9 @@ export function useSchemaManagement() {
       toast.error('Failed to propagate schema between nodes');
       return false;
     } finally {
-      setIsLoading(prev => ({ ...prev, [targetNodeId]: false }));
+      setIsLoading(prev => ({ ...prev, [targetCacheKey]: false }));
     }
-  }, [getNodeSchema, updateNodeSchema]);
+  }, [getNodeSchema, updateNodeSchema, getCacheKey]);
 
   /**
    * Validate node configuration against schema
@@ -486,14 +503,54 @@ export function useSchemaManagement() {
   /**
    * Clear schema cache for a specific node or all nodes
    */
-  const clearSchemaCache = useCallback((nodeId?: string) => {
-    if (nodeId) {
+  const clearSchemaCache = useCallback((nodeId?: string, sheetName?: string) => {
+    if (nodeId && sheetName) {
+      // Clear specific node+sheet combination
+      const cacheKey = getCacheKey(nodeId, sheetName);
       setSchemaCache(prev => {
-        const { [nodeId]: _, ...rest } = prev;
+        const { [cacheKey]: _, ...rest } = prev;
         return rest;
       });
+    } else if (nodeId) {
+      // Clear all entries for a specific node (across all sheets)
+      setSchemaCache(prev => {
+        const newCache = { ...prev };
+        Object.keys(newCache).forEach(key => {
+          if (key.startsWith(`${nodeId}:`) || key === nodeId) {
+            delete newCache[key];
+          }
+        });
+        return newCache;
+      });
     } else {
+      // Clear all cache
       setSchemaCache({});
+    }
+  }, [getCacheKey]);
+
+  /**
+   * Get all sheets available for a specific node
+   */
+  const getNodeSheets = useCallback(async (
+    workflowId: string,
+    nodeId: string
+  ): Promise<string[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('workflow_file_schemas')
+        .select('sheet_name')
+        .eq('workflow_id', workflowId)
+        .eq('node_id', nodeId);
+        
+      if (error) {
+        console.error('Error fetching node sheets:', error);
+        return [];
+      }
+      
+      return data.map(item => item.sheet_name).filter(Boolean);
+    } catch (err) {
+      console.error('Error in getNodeSheets:', err);
+      return [];
     }
   }, []);
 
@@ -504,9 +561,109 @@ export function useSchemaManagement() {
     fetchAndPropagateSchema,
     validateNodeConfig,
     clearSchemaCache,
+    getNodeSheets,
     schemaCache,
     isLoading,
     validationErrors,
     extractionStatus
   };
 }
+
+// This is where the validateNodeConfig function would remain unchanged
+function validateNodeConfig(
+  config: any,
+  schema: SchemaColumn[]
+): {
+  isValid: boolean;
+  errors: SchemaValidationError[];
+} {
+  const errors: SchemaValidationError[] = [];
+  
+  if (!config) {
+    return { isValid: true, errors: [] };
+    }
+    
+    // Check if columns referenced in config exist in schema
+    if (config.column && schema.length > 0) {
+      const column = schema.find(col => col.name === config.column);
+      
+      if (!column) {
+        errors.push({
+          code: 'column_not_found',
+          message: `Column "${config.column}" does not exist in the data`,
+          field: 'column',
+          suggestion: `Available columns: ${schema.map(c => c.name).join(', ')}`
+        });
+      } else {
+        // Check type compatibility with operator
+        if (config.operator) {
+          const numericOperators = ['greater-than', 'less-than', 'between'];
+          const stringOperators = ['contains', 'starts-with', 'ends-with'];
+          
+          if (column.type === 'number' && stringOperators.includes(config.operator)) {
+            errors.push({
+              code: 'incompatible_operator',
+              message: `Operator "${config.operator}" cannot be used with numeric column "${config.column}"`,
+              field: 'operator',
+              suggestion: 'Use equals, not-equals, greater-than, or less-than for numbers'
+            });
+          }
+          
+          if (isTextType(column.type) && numericOperators.includes(config.operator)) {
+            errors.push({
+              code: 'incompatible_operator',
+              message: `Operator "${config.operator}" cannot be used with text column "${config.column}"`,
+              field: 'operator',
+              suggestion: 'Use equals, not-equals, contains, starts-with, or ends-with for text'
+            });
+          }
+          
+          // Check value compatibility
+          if (config.value !== undefined && config.value !== null) {
+            if (column.type === 'number' && isNaN(Number(config.value)) && config.operator !== 'equals') {
+              errors.push({
+                code: 'invalid_value_type',
+                message: `Value "${config.value}" is not a valid number for column "${config.column}"`,
+                field: 'value',
+                suggestion: 'Enter a numeric value'
+              });
+            }
+            
+            if (column.type === 'date' && isNaN(Date.parse(config.value)) && ['before', 'after', 'between'].includes(config.operator)) {
+              errors.push({
+                code: 'invalid_value_type',
+                message: `Value "${config.value}" is not a valid date for column "${config.column}"`,
+                field: 'value',
+                suggestion: 'Enter a valid date'
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // For aggregation operations
+    if (config.function && config.column && schema.length > 0) {
+      const column = schema.find(col => col.name === config.column);
+      
+      if (!column) {
+        errors.push({
+          code: 'column_not_found',
+          message: `Column "${config.column}" does not exist in the data`,
+          field: 'column'
+        });
+      } else if (['sum', 'avg', 'min', 'max'].includes(config.function) && column.type !== 'number') {
+        errors.push({
+          code: 'incompatible_function',
+          message: `Function "${config.function}" can only be used with numeric columns`,
+          field: 'function',
+          suggestion: 'Use count function for non-numeric columns'
+        });
+      }
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
