@@ -258,10 +258,12 @@ export async function synchronizeNodesSheetSelection(
       return false;
     }
     
-    const sourceMetadata = sourceNodeConfig.metadata as Record<string, any>;
-    const selectedSheet = sourceMetadata.selected_sheet;
-    
-    if (!selectedSheet) {
+    // Ensure metadata is an object
+    const sourceMetadata = typeof sourceNodeConfig.metadata === 'object' 
+      ? sourceNodeConfig.metadata 
+      : {};
+      
+    if (!sourceMetadata || !sourceMetadata.selected_sheet) {
       console.log(`No selected sheet found for source node ${sourceNodeId}`);
       return false;
     }
@@ -274,15 +276,17 @@ export async function synchronizeNodesSheetSelection(
       .eq('node_id', targetNodeId)
       .maybeSingle();
       
-    const targetMetadata = targetNodeConfig?.metadata || {};
-    const updatedMetadata = {
-      ...targetMetadata,
-      selected_sheet: selectedSheet
-    };
+    // Create a new metadata object to avoid using spread on a null object
+    const targetMetadata = targetNodeConfig?.metadata && typeof targetNodeConfig.metadata === 'object' 
+      ? {...targetNodeConfig.metadata} 
+      : {};
+    
+    // Update the selected sheet
+    targetMetadata.selected_sheet = sourceMetadata.selected_sheet;
     
     const { error } = await supabase
       .from('workflow_files')
-      .update({ metadata: updatedMetadata })
+      .update({ metadata: targetMetadata })
       .eq('workflow_id', dbWorkflowId)
       .eq('node_id', targetNodeId);
       
