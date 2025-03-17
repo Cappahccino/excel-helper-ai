@@ -23,28 +23,16 @@ export function useTemporaryId(
   // Initialize state from session storage or generate a new ID
   const [id, setIdState] = useState<string>(() => {
     try {
-      console.log(`Initializing temporary ID for key ${key}, initialId: ${initialId}, forceTemporary: ${forceTemporary}`);
-      
-      // If initialId is 'new', generate a new temporary ID
-      if (initialId === 'new') {
-        console.log('Generating new ID for "new" workflow');
-        return generateUniqueId(key);
-      }
-      
       // If initialId is provided and not marked as temporary, use it
       if (initialId && !forceTemporary && !isTemporaryWorkflowId(initialId)) {
-        console.log(`Using provided non-temporary ID: ${initialId}`);
         return initialId;
       }
       
       // If initialId is provided and IS marked as temporary, ensure it has temp- prefix
       if (initialId && (forceTemporary || isTemporaryWorkflowId(initialId))) {
         if (!initialId.startsWith('temp-')) {
-          const tempId = `temp-${initialId}`;
-          console.log(`Converting to temporary ID format: ${tempId}`);
-          return tempId;
+          return `temp-${initialId}`;
         }
-        console.log(`Using provided temporary ID: ${initialId}`);
         return initialId;
       }
       
@@ -58,7 +46,6 @@ export function useTemporaryId(
       }
       
       // Generate a new unique temporary ID
-      console.log('Generating new unique temporary ID');
       return generateUniqueId(key);
     } catch (error) {
       console.error('Error initializing temporary ID:', error);
@@ -116,10 +103,8 @@ export function useTemporaryId(
   useEffect(() => {
     // Function to sync temporary ID with the database
     const syncTempIdWithDatabase = async () => {
-      // Skip sync for routes that don't need db creation, like /canvas/new
-      // Only sync workflow IDs and only temp IDs that are not 'new'
-      if (key !== 'workflow' || !id.startsWith('temp-') || id === 'new' || 
-          !isTemporaryWorkflowId(id) || syncInProgress.current || isDbSynced) {
+      // Only sync workflow IDs and only temp IDs
+      if (key !== 'workflow' || !id.startsWith('temp-') || !isTemporaryWorkflowId(id) || syncInProgress.current || isDbSynced) {
         setIsInitialized(true);
         return;
       }
@@ -251,40 +236,13 @@ export function useTemporaryId(
       }
     };
 
-    // Don't auto-sync database for /new routes, as they'll create their workflow on save
-    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-    const isNewRoute = pathname.endsWith('/new');
-    
-    if (!isNewRoute) {
-      // Run the sync operation immediately when the hook is initialized
-      syncTempIdWithDatabase();
-    } else {
-      console.log('Skipping database sync for /new route - will create on save');
-      setIsInitialized(true);
-    }
+    // Run the sync operation immediately when the hook is initialized
+    syncTempIdWithDatabase();
   }, [id, key, isDbSynced]);
 
   // Custom setter that updates both state and session storage
   const setId = useCallback(async (newId: string | null) => {
     try {
-      console.log(`Setting new ID: ${newId}`);
-      
-      if (newId === 'new') {
-        console.log('Converting "new" to a new temporary ID');
-        const uniqueId = generateUniqueId(key);
-        setIdState(uniqueId);
-        
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(`temp_${key}`, uniqueId);
-        }
-        
-        // Reset initialization state to trigger DB sync
-        setIsDbSynced(false);
-        setIsInitialized(false);
-        initAttempts.current = 0;
-        return;
-      }
-      
       if (newId) {
         // Ensure temp IDs have the proper prefix
         const formattedId = isTemporaryWorkflowId(newId) && !newId.startsWith('temp-') 

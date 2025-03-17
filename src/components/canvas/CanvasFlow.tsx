@@ -1,11 +1,10 @@
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Panel, Node } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Plus, FileText } from 'lucide-react';
 import ConnectionHandler from '@/components/workflow/ConnectionHandler';
 import { getNodeTypes } from './NodeTypes';
-import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 
 interface CanvasFlowProps {
   nodes: any[];
@@ -36,14 +35,6 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
   showLogPanel,
   setShowLogPanel
 }) => {
-  const [isLogDialogOpen, setIsLogDialogOpen] = useState(false);
-
-  // Node click handler that doesn't automatically show logs
-  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // Just pass the click to the parent handler
-    onNodeClick(event, node);
-  }, [onNodeClick]);
-
   return (
     <ReactFlow
       nodes={nodes}
@@ -51,7 +42,7 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
-      onNodeClick={handleNodeClick}
+      onNodeClick={onNodeClick}
       nodeTypes={getNodeTypes(handleNodeConfigUpdate, workflowId)}
       fitView
       attributionPosition="top-right"
@@ -63,36 +54,24 @@ const CanvasFlow: React.FC<CanvasFlowProps> = ({
       <MiniMap nodeClassName={node => String(node.type)} />
       <Background />
       <Panel position="top-right">
-        <div className="flex items-center gap-2">
-          <Button 
-            onClick={onAddNodeClick} 
-            className="flex items-center"
+        <Button 
+          onClick={onAddNodeClick} 
+          className="flex items-center"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Add Node
+        </Button>
+        {executionId && (
+          <Button
+            variant="outline"
+            onClick={() => setShowLogPanel(!showLogPanel)}
+            className="ml-2 flex items-center"
           >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Node
+            <FileText className="mr-2 h-4 w-4" />
+            {showLogPanel ? 'Hide Logs' : 'Show Logs'}
           </Button>
-          
-          {executionId && (
-            <Button
-              variant="outline"
-              className="flex items-center"
-              onClick={() => setIsLogDialogOpen(true)}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              View Logs
-            </Button>
-          )}
-        </div>
+        )}
       </Panel>
-
-      {executionId && (
-        <WorkflowLogPanel
-          workflowId={workflowId}
-          executionId={executionId}
-          isOpen={isLogDialogOpen}
-          onOpenChange={setIsLogDialogOpen}
-        />
-      )}
     </ReactFlow>
   );
 };

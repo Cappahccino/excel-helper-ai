@@ -1,18 +1,15 @@
-import React, { createContext, useContext, ReactNode, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { supabase, convertToDbWorkflowId, isTemporaryWorkflowId } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Json } from '@/types/workflow';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
-import { propagateSchemaDirectly, synchronizeNodesSheetSelection, isNodeReadyForSchemaPropagation } from '@/utils/schemaPropagation';
+import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 import { retryOperation } from '@/utils/retryUtils';
 import { 
   getNodeSchema as fetchNodeSchema, 
   getNodeSheets as fetchNodeSheets, 
-  setNodeSelectedSheet as updateNodeSelectedSheet,
-  validateNodeSheetSchema
+  setNodeSelectedSheet as updateNodeSelectedSheet 
 } from '@/utils/fileSchemaUtils';
-import { useSchemaPropagationQueue, PropagationTask } from '@/hooks/useSchemaPropagationQueue';
-import { toast } from 'sonner';
 
 export interface WorkflowFileSchema {
   columns: string[];
@@ -35,109 +32,41 @@ interface SchemaContextValue {
   };
 }
 
-interface FileMetadata {
-  selected_sheet?: string;
-  sheets?: Array<{
-    name: string;
-    index: number;
-    rowCount?: number;
-    isDefault?: boolean;
-  }>;
-  [key: string]: any;
-}
-
 interface WorkflowContextValue {
   workflowId?: string;
-  executionId?: string | null;
   isTemporaryId: (id: string) => boolean;
   convertToDbWorkflowId: (id: string) => string;
   propagateFileSchema: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => Promise<boolean>;
-  queueSchemaPropagation: (sourceNodeId: string, targetNodeId: string, sheetName?: string) => string;
-  propagationQueue: PropagationTask[];
-  isPropagating: boolean;
   getEdges: (workflowId: string) => Promise<any[]>;
-  isNodeReadyForPropagation: (nodeId: string) => Promise<boolean>;
   schema?: SchemaContextValue;
   getFileSchema?: (nodeId: string, sheetName?: string) => Promise<WorkflowFileSchema | null>;
   migrateTemporaryWorkflow?: (temporaryId: string, permanentId: string) => Promise<boolean>;
   getNodeSheets?: (nodeId: string) => Promise<SheetMetadata[] | null>;
   setNodeSelectedSheet?: (nodeId: string, sheetName: string) => Promise<boolean>;
-  validateNodeSheetSchema?: (nodeId: string, sheetName?: string) => Promise<{ isValid: boolean, message?: string }>;
-  syncSheetSelection?: (sourceNodeId: string, targetNodeId) => Promise<boolean>;
 }
 
 const WorkflowContext = createContext<WorkflowContextValue>({
   isTemporaryId: () => false,
   convertToDbWorkflowId: (id) => id,
   propagateFileSchema: async () => false,
-  queueSchemaPropagation: () => '',
-  propagationQueue: [],
-  isPropagating: false,
   getEdges: async () => [],
-  isNodeReadyForPropagation: async () => false,
 });
 
 interface WorkflowProviderProps {
   children: ReactNode;
   workflowId?: string;
-  executionId?: string | null;
   schemaProviderValue?: SchemaContextValue;
 }
 
 export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({ 
   children, 
   workflowId,
-  executionId,
   schemaProviderValue
 }) => {
   const [schemaCache, setSchemaCache] = useState<Record<string, { 
     schema: any, 
     timestamp: number 
   }>>({});
-
-  const { 
-    addToQueue, 
-    queue: propagationQueue, 
-    isProcessing: isPropagating, 
-    setPropagateFunction
-  } = useSchemaPropagationQueue(workflowId);
-
-  const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
-    try {
-      if (!workflowId) return [];
-      
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      console.log(`Getting edges for workflow ${dbWorkflowId}`);
-      
-      const result = await retryOperation(
-        async () => {
-          const { data, error } = await supabase
-            .from('workflow_edges')
-            .select('*')
-            .eq('workflow_id', dbWorkflowId);
-            
-          if (error) throw error;
-          return data || [];
-        },
-        {
-          maxRetries: 3,
-          delay: 500
-        }
-      );
-      
-      console.log(`Found ${result.length} edges for workflow ${dbWorkflowId}`);
-      
-      return result.map(edge => ({
-        id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
-        source: edge.source_node_id,
-        target: edge.target_node_id,
-        ...(edge.metadata ? edge.metadata as object : {})
-      }));
-    } catch (err) {
-      console.error('Error getting workflow edges:', err);
-      return [];
-    }
-  }, []);
 
   const isFileNode = useCallback((nodeId: string): Promise<boolean> => {
     return new Promise(async (resolve) => {
@@ -180,7 +109,7 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       console.log(`Getting file schema for node ${nodeId} in workflow ${dbWorkflowId}, sheet ${sheetName || 'default'}`);
       
       const schema = await fetchNodeSchema(dbWorkflowId, nodeId, { 
-        sheetName: sheetName
+        sheetName: sheetName || 'Sheet1' 
       });
       
       return schema;
@@ -209,58 +138,9 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
       
       const dbWorkflowId = convertToDbWorkflowId(workflowId);
       
-      console.log(`Setting selected sheet ${sheetName} for node ${nodeId}`);
-      
-      const result = await updateNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
-      
-      if (result) {
-        const edges = await getEdges(workflowId);
-        const targetNodeIds = edges
-          .filter(edge => edge.source === nodeId)
-          .map(edge => edge.target);
-          
-        console.log(`Found ${targetNodeIds.length} connected nodes to update with new sheet selection`);
-        
-        for (const targetNodeId of targetNodeIds) {
-          console.log(`Propagating schema to ${targetNodeId} with sheet ${sheetName}`);
-          await propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName);
-        }
-      }
-      
-      return result;
+      return await updateNodeSelectedSheet(dbWorkflowId, nodeId, sheetName);
     } catch (err) {
       console.error('Error setting selected sheet:', err);
-      return false;
-    }
-  }, [workflowId, getEdges]);
-
-  const validateSheetSchema = useCallback(async (
-    nodeId: string, 
-    sheetName?: string
-  ): Promise<{ isValid: boolean, message?: string }> => {
-    try {
-      if (!workflowId) return { isValid: false, message: 'No workflow ID' };
-      
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      return await validateNodeSheetSchema(dbWorkflowId, nodeId, sheetName);
-    } catch (err) {
-      console.error('Error validating node sheet schema:', err);
-      return { isValid: false, message: err.message };
-    }
-  }, [workflowId]);
-
-  const isNodeReadyForPropagation = useCallback(async (nodeId: string): Promise<boolean> => {
-    if (!workflowId) {
-      console.log(`Cannot check readiness - no workflow ID for node ${nodeId}`);
-      return false;
-    }
-    
-    try {
-      console.log(`Checking if node ${nodeId} is ready for propagation in workflow ${workflowId}`);
-      return await isNodeReadyForSchemaPropagation(workflowId, nodeId);
-    } catch (error) {
-      console.error(`Error checking if node ${nodeId} is ready for propagation:`, error);
       return false;
     }
   }, [workflowId]);
@@ -271,205 +151,127 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
     sheetName?: string
   ): Promise<boolean> => {
     try {
-      if (!workflowId) {
-        console.error('Cannot propagate schema: no workflow ID provided');
-        return false;
-      }
+      if (!workflowId) return false;
 
       console.log(`Attempting to propagate schema from ${sourceNodeId} to ${targetNodeId}, sheet ${sheetName || 'default'}`);
       
-      const isSourceReady = await isNodeReadyForPropagation(sourceNodeId);
-      if (!isSourceReady) {
-        console.log(`Source node ${sourceNodeId} is not ready for schema propagation`);
-        return false;
+      if (!sheetName) {
+        const sourceSheets = await getNodeSheets(sourceNodeId);
+        const defaultSheet = sourceSheets?.find(sheet => sheet.isDefault);
+        sheetName = defaultSheet?.name || 'Sheet1';
       }
       
-      const directResult = await retryOperation(
-        async () => propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName),
-        {
-          maxRetries: 2,
-          delay: 500,
-          onRetry: (error, attempt) => {
-            console.log(`Retry attempt ${attempt} for direct propagation: ${error.message}`);
-          }
-        }
-      );
+      const directResult = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
       
       if (directResult) {
-        console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}, sheet ${sheetName || 'default'}`);
-        toast.success("Schema propagated successfully", {
-          id: "schema-propagation-success",
-          duration: 2000
-        });
+        console.log(`Direct schema propagation successful for ${sourceNodeId} -> ${targetNodeId}, sheet ${sheetName}`);
         return true;
       }
       
       console.log(`Direct propagation failed, trying alternative approach`);
       
-      if (!sheetName) {
-        console.log(`Attempting to synchronize sheet selection between ${sourceNodeId} and ${targetNodeId}`);
-        const syncResult = await synchronizeNodesSheetSelection(workflowId, sourceNodeId, targetNodeId);
-        if (syncResult) {
-          console.log(`Successfully synchronized sheet selection between nodes`);
-          return true;
-        }
+      const isSource = await isFileNode(sourceNodeId);
+      
+      if (!isSource) {
+        console.log(`Source node ${sourceNodeId} is not a file node`);
+        return false;
       }
       
-      console.log(`Attempting fallback schema propagation method`);
+      const sourceSchema = await getFileSchema(sourceNodeId, sheetName);
       
-      try {
-        const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      if (!sourceSchema) {
+        console.log(`No schema found for source node ${sourceNodeId}, sheet ${sheetName}`);
+        return false;
+      }
+      
+      console.log(`Found schema for source node ${sourceNodeId}, sheet ${sheetName}:`, sourceSchema);
+      
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      const { data: fileData } = await supabase
+        .from('workflow_files')
+        .select('file_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', sourceNodeId)
+        .maybeSingle();
         
-        let effectiveSheetName = sheetName;
-        if (!effectiveSheetName) {
-          const { data: sourceNodeConfig } = await supabase
-            .from('workflow_files')
-            .select('metadata')
-            .eq('workflow_id', dbWorkflowId)
-            .eq('node_id', sourceNodeId)
-            .maybeSingle();
-            
-          const metadata = sourceNodeConfig?.metadata as FileMetadata | null;
-          effectiveSheetName = metadata?.selected_sheet || 'Sheet1';
-          console.log(`Retrieved effective sheet name from source node: ${effectiveSheetName}`);
-        }
-        
-        const { data: sourceFile } = await supabase
-          .from('workflow_files')
-          .select('file_id, processing_status')
-          .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', sourceNodeId)
-          .maybeSingle();
-          
-        if (sourceFile?.processing_status !== 'completed') {
-          console.log(`Source file is not fully processed yet (status: ${sourceFile?.processing_status})`);
-          return false;
-        }
-        
-        const { data: targetFile } = await supabase
-          .from('workflow_files')
-          .select('file_id, metadata')
-          .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', targetNodeId)
-          .maybeSingle();
-        
-        const fileId = sourceFile?.file_id || '00000000-0000-0000-0000-000000000000';
-        
-        console.log(`Using file ID ${fileId} for schema propagation, sheet ${effectiveSheetName}`);
-        
-        const { data: schemaData } = await supabase
-          .from('workflow_file_schemas')
-          .select('columns, data_types, file_id, has_headers')
-          .eq('workflow_id', dbWorkflowId)
-          .eq('node_id', sourceNodeId)
-          .eq('sheet_name', effectiveSheetName)
-          .maybeSingle();
-          
-        if (!schemaData) {
-          console.log(`No schema found for source node ${sourceNodeId}, sheet ${effectiveSheetName}`);
-          return false;
-        }
-        
-        console.log(`Found schema for source node with ${schemaData.columns.length} columns`);
-        
-        if (!targetFile) {
-          console.log(`Creating new file association for target node ${targetNodeId}`);
-          const { error: fileCreateError } = await supabase
-            .from('workflow_files')
-            .insert({
+      const fileId = fileData?.file_id || '00000000-0000-0000-0000-000000000000';
+      
+      console.log(`Using file ID ${fileId} for schema propagation, sheet ${sheetName}`);
+      
+      const result = await retryOperation(
+        async () => {
+          const { error } = await supabase
+            .from('workflow_file_schemas')
+            .upsert({
               workflow_id: dbWorkflowId,
               node_id: targetNodeId,
               file_id: fileId,
-              processing_status: 'completed',
-              metadata: {
-                selected_sheet: effectiveSheetName
-              }
+              sheet_name: sheetName,
+              columns: sourceSchema.columns,
+              data_types: sourceSchema.types,
+              has_headers: true,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'workflow_id,node_id,sheet_name'
             });
             
-          if (fileCreateError) {
-            console.error(`Error creating file association:`, fileCreateError);
-            return false;
-          }
-        } else {
-          const updatedMetadata = typeof targetFile.metadata === 'object' && targetFile.metadata !== null 
-            ? { ...targetFile.metadata as object, selected_sheet: effectiveSheetName }
-            : { selected_sheet: effectiveSheetName };
-            
-          const { error: fileUpdateError } = await supabase
-            .from('workflow_files')
-            .update({
-              file_id: fileId,
-              processing_status: 'completed',
-              metadata: updatedMetadata
-            })
-            .eq('workflow_id', dbWorkflowId)
-            .eq('node_id', targetNodeId);
-            
-          if (fileUpdateError) {
-            console.error(`Error updating file association:`, fileUpdateError);
-            return false;
+          if (error) throw error;
+          return { success: true };
+        },
+        {
+          maxRetries: 3,
+          delay: 500,
+          onRetry: (err, attempt) => {
+            console.log(`Retry ${attempt}/3 updating target schema: ${err.message}`);
           }
         }
-        
-        console.log(`Updating schema for target node ${targetNodeId}, sheet ${effectiveSheetName}`);
-        const { error: schemaUpdateError } = await supabase
-          .from('workflow_file_schemas')
-          .upsert({
-            workflow_id: dbWorkflowId,
-            node_id: targetNodeId,
-            file_id: fileId,
-            sheet_name: effectiveSheetName,
-            columns: schemaData.columns,
-            data_types: schemaData.data_types,
-            has_headers: schemaData.has_headers,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'workflow_id,node_id,sheet_name'
-          });
-          
-        if (schemaUpdateError) {
-          console.error(`Error updating schema:`, schemaUpdateError);
-          return false;
-        }
-        
-        console.log(`Successfully propagated schema to target node ${targetNodeId}`);
-        return true;
-      } catch (fallbackError) {
-        console.error('Error during fallback schema propagation:', fallbackError);
-        return false;
-      }
+      );
+      
+      console.log(`Successfully propagated schema to target node ${targetNodeId}, sheet ${sheetName}`);
+      return true;
     } catch (err) {
       console.error('Error propagating file schema:', err);
       return false;
     }
-  }, [isNodeReadyForPropagation, workflowId]);
+  }, [isFileNode, getFileSchema, workflowId, getNodeSheets]);
 
-  useEffect(() => {
-    setPropagateFunction(propagateFileSchema);
-  }, [propagateFileSchema, setPropagateFunction]);
-
-  const queueSchemaPropagation = useCallback((
-    sourceNodeId: string, 
-    targetNodeId: string, 
-    sheetName?: string
-  ): string => {
-    console.log(`Queueing schema propagation from ${sourceNodeId} to ${targetNodeId} with sheet ${sheetName || 'default'}`);
-    return addToQueue(sourceNodeId, targetNodeId, sheetName);
-  }, [addToQueue]);
-
-  const syncSheetSelection = useCallback(async (
-    sourceNodeId: string, 
-    targetNodeId: string
-  ): Promise<boolean> => {
+  const getEdges = useCallback(async (workflowId: string): Promise<any[]> => {
     try {
-      if (!workflowId) return false;
+      if (!workflowId) return [];
       
-      return await synchronizeNodesSheetSelection(workflowId, sourceNodeId, targetNodeId);
+      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      console.log(`Getting edges for workflow ${dbWorkflowId}`);
+      
+      const result = await retryOperation(
+        async () => {
+          const { data, error } = await supabase
+            .from('workflow_edges')
+            .select('*')
+            .eq('workflow_id', dbWorkflowId);
+            
+          if (error) throw error;
+          return data || [];
+        },
+        {
+          maxRetries: 2,
+          delay: 300
+        }
+      );
+      
+      console.log(`Found ${result.length} edges for workflow ${dbWorkflowId}`);
+      
+      return result.map(edge => ({
+        id: edge.edge_id || `${edge.source_node_id}-${edge.target_node_id}`,
+        source: edge.source_node_id,
+        target: edge.target_node_id,
+        ...(edge.metadata ? edge.metadata as object : {})
+      }));
     } catch (err) {
-      console.error('Error synchronizing sheet selection:', err);
-      return false;
+      console.error('Error getting workflow edges:', err);
+      return [];
     }
-  }, [workflowId]);
+  }, []);
 
   const migrateTemporaryWorkflow = useCallback(async (temporaryId: string, permanentId: string): Promise<boolean> => {
     try {
@@ -513,21 +315,14 @@ export const WorkflowProvider: React.FC<WorkflowProviderProps> = ({
 
   const value: WorkflowContextValue = {
     workflowId,
-    executionId,
     isTemporaryId: isTemporaryWorkflowId,
     convertToDbWorkflowId,
     propagateFileSchema,
-    queueSchemaPropagation,
-    propagationQueue,
-    isPropagating,
     getEdges,
-    isNodeReadyForPropagation,
     getFileSchema,
     migrateTemporaryWorkflow,
     getNodeSheets,
     setNodeSelectedSheet,
-    validateNodeSheetSchema: validateSheetSchema,
-    syncSheetSelection,
     schema: schemaProviderValue
   };
 
