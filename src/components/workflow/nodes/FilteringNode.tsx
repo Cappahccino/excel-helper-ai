@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -25,6 +26,7 @@ import {
   isNodeReadyForSchemaPropagation
 } from '@/utils/schemaPropagation';
 import { retryOperation, withTimeout } from '@/utils/retryUtils';
+import { useDebounce } from '@/hooks/useDebounce';
 
 const OPERATORS = {
   string: [
@@ -86,8 +88,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
   const [loadingOperation, setLoadingOperation] = useState<'initial' | 'refresh' | 'manual' | null>(null);
+  const [connectionMade, setConnectionMade] = useState<boolean>(false);
   
   const workflow = useWorkflow();
+  const initialLoadCompleted = useRef(false);
 
   // Reference to track loading start time
   const loadingStartTime = useRef<number | null>(null);
@@ -184,6 +188,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           }
         }
         
+        // New connection has been made
+        if (!connectionMade) {
+          setConnectionMade(true);
+        }
+        
         return sources[0];
       }
       
@@ -192,7 +201,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.error('Error finding source node:', error);
       return null;
     }
-  }, [workflow, id]);
+  }, [workflow, id, connectionMade]);
 
   // Helper function to clear all timeouts
   const clearAllTimeouts = useCallback(() => {
@@ -445,19 +454,24 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [isLoading, id, loadingError]);
 
+  // REMOVED: We don't want to load schema when node is selected
+  // useEffect(() => {
+  //   if (selected && workflow.workflowId) {
+  //     console.log(`Node ${id} selected, loading schema`);
+  //     loadSchema(false);
+  //   }
+  // }, [selected, workflow.workflowId, loadSchema]);
+
+  // Only load schema when we detect a new source node and we haven't loaded anything yet
   useEffect(() => {
-    if (selected && workflow.workflowId) {
-      console.log(`Node ${id} selected, loading schema`);
+    if (connectionMade && sourceNodeId && columns.length === 0 && !isLoading && !initialLoadCompleted.current) {
+      console.log(`New connection detected for node ${id}, loading schema`);
+      initialLoadCompleted.current = true;
       loadSchema(false);
     }
-  }, [selected, workflow.workflowId, loadSchema]);
+  }, [sourceNodeId, columns.length, isLoading, loadSchema, id, connectionMade]);
 
-  useEffect(() => {
-    if (sourceNodeId && columns.length === 0 && !isLoading) {
-      loadSchema(false);
-    }
-  }, [sourceNodeId, columns.length, isLoading, loadSchema]);
-
+  // Find source node on initialization (but don't load schema yet)
   useEffect(() => {
     if (workflow.workflowId && id && !sourceNodeId) {
       findSourceNode();
@@ -494,6 +508,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             const sourceId = payload.new.source_node_id;
             setSourceNodeId(sourceId);
             findSourceNode().then(() => {
+              // New connection detected - trigger schema load
+              setConnectionMade(true);
+              initialLoadCompleted.current = false;
               loadSchema(true);
             });
           } else if (payload.eventType === 'DELETE' && payload.old.target_node_id === id) {
@@ -530,6 +547,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         },
         (payload) => {
           console.log(`Schema change detected for source node ${sourceNodeId}:`, payload);
+          // Source schema has changed - refresh our schema
           loadSchema(true);
         }
       )
@@ -898,7 +916,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           selectedNodeId={id}
           isOpen={showLogs}
           onOpenChange={setShowLogs}
-          trigger={null}
         />
       )}
     </Card>

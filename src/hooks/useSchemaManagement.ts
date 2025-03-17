@@ -507,6 +507,7 @@ export function useSchemaManagement() {
     schemaCache,
     isLoading,
     validationErrors,
-    extractionStatus
+    extractionStatus,
+    isTextType
   };
 }
