@@ -1,15 +1,17 @@
 
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { FileText, RefreshCw } from 'lucide-react';
+import { FileText, RefreshCw, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { useFileUploadNode } from './useFileUploadNode';
 import { useWorkflow } from '../../context/WorkflowContext';
+import { useSchemaConnection } from '@/hooks/useSchemaConnection';
 import FileSelector from './FileSelector';
 import SheetSelector from './SheetSelector';
 import FileProcessingStatus from './FileProcessingStatus';
 import FileInfoDisplay from './FileInfoDisplay';
+import WorkflowLogDialog from '@/components/workflow/WorkflowLogDialog';
 
 interface FileUploadNodeProps {
   id: string;
@@ -29,13 +31,7 @@ interface FileUploadNodeProps {
 }
 
 const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) => {
-  const { 
-    workflowId, 
-    queueSchemaPropagation,
-    propagateFileSchema,
-    getEdges, 
-    isNodeReadyForPropagation 
-  } = useWorkflow();
+  const { workflowId } = useWorkflow();
   
   const nodeWorkflowId = data.workflowId || workflowId;
   
@@ -46,8 +42,6 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     files,
     isLoadingFiles,
     isLoadingSelectedFile,
-    isLoadingSchema,
-    isLoadingSheetSchema,
     sheetSchema,
     processingState,
     realtimeEnabled,
@@ -59,72 +53,50 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
     handleRetry
   } = useFileUploadNode(nodeWorkflowId || null, id, data.config, data.onChange);
 
+  // Use the schema connection hook as a source node
+  const {
+    targetNodes,
+    setSelectedSheet: setSchemaSelectedSheet,
+    propagateSchema
+  } = useSchemaConnection(id, true);
+  
+  const [showLogDialog, setShowLogDialog] = React.useState(false);
+
   // Propagate schema when sheet changes or when file processing completes
   useEffect(() => {
-    async function propagateSchemaToConnectedNodes() {
-      if (!nodeWorkflowId || !selectedFileId) {
-        return;
-      }
-
-      // Check if this node is not ready for propagation yet
-      if (processingState.status !== FileProcessingState.Completed) {
-        console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${processingState.status}`);
-        return;
-      }
-
-      if (!selectedSheet && availableSheets.length > 0) {
-        console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
-        return;
-      }
-
-      try {
-        console.log(`FileUploadNode ${id}: Checking readiness for schema propagation`);
-        
-        // Get the edges to find connected nodes
-        const edges = await getEdges(nodeWorkflowId);
-        const connectedNodes = edges
-          .filter(edge => edge.source === id)
-          .map(edge => edge.target);
-
-        if (connectedNodes.length === 0) {
-          console.log(`FileUploadNode ${id}: No connected nodes found to propagate schema to`);
-          return;
-        }
-
-        console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
-        
-        // Force check readiness
-        const isReady = await isNodeReadyForPropagation(id);
-        
-        if (!isReady) {
-          console.log(`FileUploadNode ${id}: Not ready for schema propagation yet per readiness check`);
-          return;
-        }
-        
-        console.log(`FileUploadNode ${id}: Ready to propagate schema with sheet ${selectedSheet || 'default'} to connected nodes`);
-        
-        // Try to propagate schema to all connected nodes
-        for (const targetNodeId of connectedNodes) {
-          console.log(`FileUploadNode ${id}: Directly propagating schema to node ${targetNodeId} with sheet ${selectedSheet || 'Sheet1'}`);
-          
-          // Use direct propagation first for immediate update
-          const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
-          
-          if (success) {
-            console.log(`FileUploadNode ${id}: Successfully propagated schema to ${targetNodeId}`);
-          } else {
-            console.log(`FileUploadNode ${id}: Failed direct propagation, queueing schema propagation to node ${targetNodeId}`);
-            // Fall back to queued propagation if direct fails
-            queueSchemaPropagation(id, targetNodeId, selectedSheet);
-          }
-        }
-      } catch (error) {
-        console.error(`FileUploadNode ${id}: Error propagating schema to connected nodes:`, error);
-      }
+    if (!nodeWorkflowId || !selectedFileId) return;
+    
+    // Don't try to propagate if file is not fully processed
+    if (processingState.status !== FileProcessingState.Completed) {
+      console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${processingState.status}`);
+      return;
     }
-
-    propagateSchemaToConnectedNodes();
-  }, [id, nodeWorkflowId, selectedSheet, selectedFileId, processingState.status, queueSchemaPropagation, getEdges, isNodeReadyForPropagation, propagateFileSchema, availableSheets]);
+    
+    // Don't try to propagate if no sheet is selected but sheets are available
+    if (!selectedSheet && availableSheets.length > 0) {
+      console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
+      return;
+    }
+    
+    // Set the selected sheet in the schema connection hook
+    setSchemaSelectedSheet(selectedSheet || null);
+    
+    // Propagate schema to target nodes
+    if (targetNodes.length > 0) {
+      console.log(`FileUploadNode ${id}: Propagating schema with sheet ${selectedSheet || 'default'} to ${targetNodes.length} nodes`);
+      propagateSchema();
+    }
+  }, [
+    id, 
+    nodeWorkflowId, 
+    selectedSheet, 
+    selectedFileId, 
+    processingState.status, 
+    availableSheets, 
+    targetNodes, 
+    setSchemaSelectedSheet,
+    propagateSchema
+  ]);
 
   // Manual sync button handler
   const handleForceSyncSchema = async () => {
@@ -132,23 +104,10 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
       console.log("Cannot sync schema - file not ready");
       return;
     }
-
+    
     try {
-      const edges = await getEdges(nodeWorkflowId);
-      const connectedNodes = edges
-        .filter(edge => edge.source === id)
-        .map(edge => edge.target);
-      
-      if (connectedNodes.length === 0) {
-        console.log("No connected nodes to sync schema with");
-        return;
-      }
-      
-      console.log(`Manually syncing schema to ${connectedNodes.length} connected nodes`);
-      
-      for (const targetNodeId of connectedNodes) {
-        await propagateFileSchema(id, targetNodeId, selectedSheet);
-      }
+      console.log(`Manually syncing schema to target nodes`);
+      await propagateSchema();
     } catch (error) {
       console.error("Error syncing schema:", error);
     }
@@ -184,6 +143,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={() => setShowLogDialog(true)}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
       
@@ -203,7 +170,7 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
             selectedSheet={selectedSheet}
             availableSheets={availableSheets}
             onSheetSelect={handleSheetSelection}
-            isLoading={isLoadingSheetSchema}
+            isLoading={false}
           />
         )}
         
@@ -222,8 +189,8 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           isLoadingSelectedFile={isLoadingSelectedFile}
           selectedSheet={selectedSheet}
           availableSheets={availableSheets}
-          isLoadingSchema={isLoadingSchema}
-          isLoadingSheetSchema={isLoadingSheetSchema}
+          isLoadingSchema={false}
+          isLoadingSheetSchema={false}
           sheetSchema={sheetSchema}
           formatFileSize={formatFileSize}
         />
@@ -252,6 +219,14 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
           </div>
         )}
       </div>
+      
+      {showLogDialog && (
+        <WorkflowLogDialog
+          selectedNodeId={id}
+          isOpen={showLogDialog}
+          onOpenChange={setShowLogDialog}
+        />
+      )}
     </div>
   );
 };

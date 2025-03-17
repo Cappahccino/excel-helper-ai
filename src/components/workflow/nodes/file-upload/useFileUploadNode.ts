@@ -1,10 +1,10 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { FileProcessingState } from '@/types/workflowStatus';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
-import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
 
 interface SheetMetadata {
   name: string;
@@ -27,7 +27,6 @@ export const useFileUploadNode = (
     config?.selectedSheet
   );
   const [availableSheets, setAvailableSheets] = useState<SheetMetadata[]>([]);
-  const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   
   const [processingState, setProcessingState] = useState<{
     status: FileProcessingState;
@@ -100,42 +99,27 @@ export const useFileUploadNode = (
     enabled: !!selectedFileId,
   });
 
-  const { data: sheetSchema, isLoading: isLoadingSheetSchema } = useQuery({
-    queryKey: ['sheet-schema', workflowId, nodeId, selectedSheet],
+  // Simple query for sheet schema to display in UI
+  const { data: sheetSchema } = useQuery({
+    queryKey: ['basic-sheet-schema', workflowId, nodeId, selectedSheet],
     queryFn: async () => {
       if (!workflowId || !nodeId || !selectedSheet) return null;
       
-      setIsLoadingSchema(true);
       try {
         const dbWorkflowId = convertToDbWorkflowId(workflowId);
         
-        console.log(`Fetching schema for node ${nodeId}, sheet ${selectedSheet}`);
-        
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('workflow_file_schemas')
-          .select('columns, data_types, sample_data')
+          .select('columns, data_types')
           .eq('workflow_id', dbWorkflowId)
           .eq('node_id', nodeId)
           .eq('sheet_name', selectedSheet)
           .maybeSingle();
           
-        if (error) {
-          console.error('Error fetching sheet schema:', error);
-          return null;
-        }
-        
-        if (!data) {
-          console.log(`No schema found for sheet ${selectedSheet}. This is normal for newly selected sheets.`);
-        } else {
-          console.log(`Found schema for sheet ${selectedSheet} with ${data.columns.length} columns`);
-        }
-        
         return data;
       } catch (error) {
-        console.error('Error in sheet schema query:', error);
+        console.error('Error in basic sheet schema query:', error);
         return null;
-      } finally {
-        setIsLoadingSchema(false);
       }
     },
     enabled: !!workflowId && !!nodeId && !!selectedSheet,
@@ -313,7 +297,7 @@ export const useFileUploadNode = (
         console.error('Error associating file with RPC:', rpcError);
         
         console.log('Falling back to direct database operation');
-        const { data: assocData, error: assocError } = await supabase
+        const { error: assocError } = await supabase
           .from('workflow_files')
           .upsert({
             workflow_id: dbWorkflowId,
@@ -346,16 +330,6 @@ export const useFileUploadNode = (
     if (!fileId) return;
     
     try {
-      console.log('Debug - Current workflowId:', workflowId);
-      if (workflowId?.startsWith('temp-')) {
-        console.log('Debug - This is a temporary workflow ID');
-        console.log('Debug - Formatted for DB:', workflowId.substring(5));
-      } else {
-        console.log('Debug - This is a permanent workflow ID');
-      }
-      
-      console.log('Debug - Current nodeId:', nodeId);
-      
       if (fileId === selectedFileId && fileInfo && fileInfo.processing_status === WorkflowFileStatus.Completed) {
         return;
       }
@@ -363,6 +337,7 @@ export const useFileUploadNode = (
       updateProcessingState(FileProcessingState.Associating, 10, 'Associating file with workflow...');
       setSelectedFileId(fileId);
       
+      // Reset sheet selection
       setSelectedSheet(undefined);
       
       if (!workflowId) {
@@ -373,189 +348,57 @@ export const useFileUploadNode = (
       
       console.log(`Associating file ${fileId} with node ${nodeId} in workflow ${workflowId}`);
       
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      const isTemporary = workflowId.startsWith('temp-');
-      
-      const { data: fileData, error: fileError } = await supabase
-        .from('excel_files')
-        .select('id, filename, file_path, file_size, mime_type')
-        .eq('id', fileId)
-        .single();
-        
-      if (fileError) {
-        console.error('Error fetching file data:', fileError);
-        updateProcessingState(FileProcessingState.Error, 0, 'Error', `File data error: ${fileError.message}`);
-        toast.error('Failed to get file information');
-        throw fileError;
-      }
-      
-      if (!fileData || !fileData.file_path) {
-        throw new Error('File path is missing or invalid');
-      }
-      
-      console.log(`Downloading file from path: ${fileData.file_path}`);
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        updateProcessingState(FileProcessingState.Error, 0, 'Error', 'User not authenticated');
-        toast.error('You must be logged in to use this feature');
-        throw new Error('User not authenticated');
-      }
-      
-      updateProcessingState(FileProcessingState.Associating, 30, 'Creating database association...');
-      
-      try {
-        const result = await associateFileWithWorkflow(fileId);
-        if (!result) {
-          console.error('File association failed');
-          updateProcessingState(FileProcessingState.Error, 0, 'Error', 'File association failed');
-          toast.error('Failed to associate file with workflow node');
-          return;
-        }
-        
-        console.log('File association successful');
-      } catch (assocError) {
-        console.error('Error in association:', assocError);
-        updateProcessingState(FileProcessingState.Error, 0, 'Error', `Association error: ${assocError.message || 'Unknown error'}`);
-        toast.error('Failed to associate file with workflow node');
-        return;
-      }
-      
-      updateProcessingState(FileProcessingState.Queuing, 40, 'Submitting for processing...');
-      try {
-        const response = await supabase.functions.invoke('processFile', {
-          body: {
-            fileId,
-            workflowId,
-            nodeId
-          }
+      // Store file ID in node config
+      if (onChange) {
+        onChange(nodeId, {
+          ...config,
+          fileId: fileId,
+          selectedSheet: undefined
         });
-        
-        if (response.error) {
-          console.error('Error invoking processFile function:', response.error);
-          updateProcessingState(FileProcessingState.Error, 0, 'Error', `Processing error: ${response.error.message}`);
-          toast.error('Failed to queue file for processing');
-          throw response.error;
-        }
-        
-        const responseData = response.data;
-        if (responseData && responseData.error) {
-          console.error('Process file returned error:', responseData.error);
-          updateProcessingState(FileProcessingState.Error, 0, 'Error', `Process error: ${responseData.error}`);
-          toast.error(responseData.error);
-          return;
-        }
-        
-        updateProcessingState(FileProcessingState.FetchingSchema, 60, 'Retrieving file schema...');
-        
-        if (onChange) {
-          onChange(nodeId, { 
-            fileId, 
-            filename: files?.find(f => f.id === fileId)?.filename,
-            selectedSheet: config?.selectedSheet
-          });
-        }
-        
-        toast.success('File processing started');
-        
-        setTimeout(() => {
-          if (processingState.status !== FileProcessingState.Completed && processingState.status !== FileProcessingState.Error) {
-            updateProcessingState(FileProcessingState.Verifying, 80, 'Verifying data...');
-          }
-        }, 2000);
-      } catch (fnError) {
-        console.error('Function call failed:', fnError);
-        updateProcessingState(FileProcessingState.Error, 0, 'Error', `API error: ${fnError.message}`);
-        toast.error('Error processing file. Please try again.');
       }
+      
+      // Associate file with workflow
+      await associateFileWithWorkflow(fileId);
+      
+      updateProcessingState(FileProcessingState.Processing, 40, 'Processing file data...');
+      
+      // Fetch the updated file info
+      refetch();
+      
     } catch (error) {
-      console.error('Error associating file with workflow node:', error);
+      console.error('Error selecting file:', error);
+      updateProcessingState(FileProcessingState.Error, 0, 'Error', error.message || 'Failed to select file');
       toast.error('Failed to associate file with workflow');
-      updateProcessingState(FileProcessingState.Error, 0, 'Error', `Error: ${error.message}`);
     }
   };
 
-  const handleSheetSelection = useCallback(async (sheetName: string) => {
-    console.log(`Setting selected sheet to: ${sheetName}`);
+  const handleSheetSelection = (sheet: string) => {
+    setSelectedSheet(sheet);
     
-    setSelectedSheet(sheetName);
-    
-    if (!workflowId) {
-      console.warn('No workflow ID available, sheet selection will not persist');
-      return;
-    }
-    
+    // Update node config
     if (onChange) {
       onChange(nodeId, {
         ...config,
-        selectedSheet: sheetName
+        selectedSheet: sheet
       });
     }
+  };
+
+  const handleRetry = async () => {
+    if (!selectedFileId || !workflowId) return;
+    
+    updateProcessingState(FileProcessingState.Associating, 10, 'Retrying file association...');
     
     try {
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
-      
-      const { data: currentFile } = await supabase
-        .from('workflow_files')
-        .select('metadata')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId)
-        .maybeSingle();
-      
-      const currentMetadata = (currentFile?.metadata as Record<string, any>) || {};
-      
-      const { error } = await supabase
-        .from('workflow_files')
-        .update({
-          metadata: {
-            ...currentMetadata,
-            selected_sheet: sheetName
-          }
-        })
-        .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', nodeId);
-        
-      if (error) {
-        console.error('Error updating selected sheet in metadata:', error);
-        toast.error('Failed to update selected sheet');
-      } else {
-        console.log(`Successfully updated selected sheet to ${sheetName} in metadata`);
-        toast.success(`Sheet "${sheetName}" selected`);
-      }
-      
-      const { data: edges } = await supabase
-        .from('workflow_edges')
-        .select('target_node_id')
-        .eq('workflow_id', dbWorkflowId)
-        .eq('source_node_id', nodeId);
-        
-      if (edges && edges.length > 0) {
-        console.log(`Found ${edges.length} connected nodes to update with new sheet selection`);
-        
-        for (const edge of edges) {
-          const targetNodeId = edge.target_node_id;
-          console.log(`Propagating schema to ${targetNodeId} with sheet ${sheetName}`);
-          
-          const success = await propagateSchemaDirectly(workflowId, nodeId, targetNodeId, sheetName);
-          if (success) {
-            console.log(`Successfully propagated schema to ${targetNodeId} with sheet ${sheetName}`);
-          } else {
-            console.error(`Failed to propagate schema to ${targetNodeId} with sheet ${sheetName}`);
-          }
-        }
-      }
+      await associateFileWithWorkflow(selectedFileId);
+      updateProcessingState(FileProcessingState.Processing, 40, 'Processing file data...');
+      refetch();
     } catch (error) {
-      console.error('Error handling sheet selection:', error);
-      toast.error('Failed to update sheet selection');
+      console.error('Error retrying file association:', error);
+      updateProcessingState(FileProcessingState.Error, 0, 'Error', error.message || 'Failed to retry file association');
+      toast.error('Failed to retry file association');
     }
-  }, [workflowId, nodeId, config, onChange]);
-
-  const handleRetry = useCallback(async () => {
-    if (!selectedFileId) return;
-    updateProcessingState(FileProcessingState.Associating, 10, 'Retrying file processing...');
-    await handleFileSelection(selectedFileId);
-  }, [selectedFileId, workflowId, nodeId]);
+  };
 
   return {
     selectedFileId,
@@ -564,12 +407,10 @@ export const useFileUploadNode = (
     files,
     isLoadingFiles,
     isLoadingSelectedFile,
-    isLoadingSchema,
-    isLoadingSheetSchema,
-    sheetSchema,
     processingState,
     realtimeEnabled,
     fileInfo,
+    sheetSchema,
     refetch,
     formatFileSize,
     handleFileSelection,
@@ -577,4 +418,3 @@ export const useFileUploadNode = (
     handleRetry
   };
 };
-
