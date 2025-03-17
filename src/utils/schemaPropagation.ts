@@ -1,7 +1,6 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
-import { getNodeSchema, convertToSchemaColumns, clearSchemaCache } from '@/utils/fileSchemaUtils';
+import { getNodeSchema, convertToSchemaColumns, clearSchemaCache as clearSchemaUtilsCache } from '@/utils/fileSchemaUtils';
 import { toast } from 'sonner';
 import { retryOperation } from '@/utils/retryUtils';
 import { standardizeSchemaColumns, convertStandardSchemaToDbFormat } from '@/utils/schemaStandardization';
@@ -17,6 +16,41 @@ interface FileMetadata {
     isDefault?: boolean;
   }>;
   [key: string]: any;
+}
+
+export const clearSchemaCache = clearSchemaUtilsCache;
+
+/**
+ * Get schema for a specific node
+ */
+export async function getSourceNodeSchema(
+  workflowId: string,
+  nodeId: string,
+  sheetName?: string
+): Promise<any | null> {
+  try {
+    const dbWorkflowId = workflowId.startsWith('temp-')
+      ? workflowId.substring(5)
+      : workflowId;
+      
+    const { data, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('columns, data_types, file_id, sample_data, total_rows, has_headers')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .eq('sheet_name', sheetName || 'Sheet1')
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Error fetching node schema:', error);
+      return null;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`Error getting schema for node ${nodeId}:`, error);
+    return null;
+  }
 }
 
 /**
