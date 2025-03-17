@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,19 +20,29 @@ export function useWorkflowDatabase(
   const workflow = useWorkflow();
   
   const loadWorkflow = async (workflowId: string, setNodes: (nodes: WorkflowNode[]) => void, setEdges: (edges: any[]) => void) => {
-    if (!workflowId || workflowId === 'new' || workflowId.startsWith('temp-')) return;
+    // Only attempt to load if it's a real workflow ID (not 'new' or temporary)
+    if (!workflowId || workflowId === 'new' || workflowId.startsWith('temp-')) {
+      console.log(`Not loading workflow for ID: ${workflowId} as it's new or temporary`);
+      return;
+    }
     
     try {
       setIsLoading(true);
+      console.log(`Loading workflow with ID: ${workflowId}`);
+      
       const { data, error } = await supabase
         .from('workflows')
         .select('*')
         .eq('id', workflowId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading workflow:', error);
+        throw error;
+      }
       
       if (data) {
+        console.log(`Successfully loaded workflow: ${data.name}`);
         setWorkflowName(data.name || 'New Workflow');
         setWorkflowDescription(data.description || '');
         
@@ -110,7 +121,7 @@ export function useWorkflowDatabase(
   };
 
   const ensureUniqueWorkflowName = async (baseName: string): Promise<string> => {
-    if (workflowId) {
+    if (workflowId && workflowId !== 'new' && !workflowId.startsWith('temp-')) {
       return baseName;
     }
 
@@ -133,7 +144,7 @@ export function useWorkflowDatabase(
       if (data && data.length === 0) {
         isUnique = true;
       } else {
-        newName = `${baseName}${counter}`;
+        newName = `${baseName} ${counter}`;
         counter++;
       }
     }
@@ -143,20 +154,27 @@ export function useWorkflowDatabase(
 
   const saveWorkflow = async (nodes: WorkflowNode[], edges: Edge[]) => {
     try {
-      setIsSaving(true);
-      const userId = (await supabase.auth.getUser()).data.user?.id;
-      
-      if (!userId) {
-        toast.error('User not authenticated');
+      // Check authentication first
+      const { data: userData, error: authError } = await supabase.auth.getUser();
+      if (authError || !userData.user) {
+        console.error('Authentication error:', authError);
+        toast.error('You must be logged in to save a workflow');
         return null;
       }
       
+      const userId = userData.user.id;
+      
+      setIsSaving(true);
+      console.log(`Saving workflow. Current ID: ${workflowId}, User ID: ${userId}`);
+      
+      // Ensure workflow name is unique
       const uniqueName = await ensureUniqueWorkflowName(workflowName || 'New Workflow');
       if (uniqueName !== workflowName) {
         setWorkflowName(uniqueName);
         toast.info(`Name updated to "${uniqueName}" to ensure uniqueness`);
       }
       
+      // Prepare workflow data
       const workflowData = {
         name: uniqueName,
         description: workflowDescription,
@@ -164,22 +182,25 @@ export function useWorkflowDatabase(
           nodes,
           edges,
         }),
-        user_id: userId,
         created_by: userId,
         status: 'draft',
         trigger_type: 'manual',
         version: 1,
-        is_temporary: workflowId?.startsWith('temp-') || false,
+        is_temporary: workflowId?.startsWith('temp-') || workflowId === 'new' || false,
         is_template: false
       };
       
       let response;
       let savedWorkflowId;
-      let isTemporaryWorkflow = workflowId?.startsWith('temp-') || false;
+      let isTemporaryWorkflow = workflowId?.startsWith('temp-') || workflowId === 'new' || false;
       
       setOptimisticSave(true);
       
-      if (workflowId && !workflowId.startsWith('temp-')) {
+      console.log(`Saving workflow. Is temporary: ${isTemporaryWorkflow}, Workflow ID: ${workflowId}`);
+      
+      if (workflowId && workflowId !== 'new' && !workflowId.startsWith('temp-')) {
+        // Update existing workflow
+        console.log(`Updating existing workflow: ${workflowId}`);
         response = await supabase
           .from('workflows')
           .update(workflowData)
@@ -187,17 +208,31 @@ export function useWorkflowDatabase(
           .select('id');
         
         savedWorkflowId = workflowId;
+        
+        if (response.error) {
+          console.error('Error updating workflow:', response.error);
+          throw new Error(`Failed to update workflow: ${response.error.message}`);
+        }
       } else {
+        // Create new workflow
+        console.log(`Creating new workflow with name: ${uniqueName}`);
         response = await supabase
           .from('workflows')
           .insert(workflowData)
           .select('id');
         
+        if (response.error) {
+          console.error('Error creating workflow:', response.error);
+          throw new Error(`Failed to create workflow: ${response.error.message}`);
+        }
+        
         if (response.data && response.data[0]) {
           savedWorkflowId = response.data[0].id;
+          console.log(`New workflow created with ID: ${savedWorkflowId}`);
           
           if (isTemporaryWorkflow && savedWorkflowId && workflow.migrateTemporaryWorkflow) {
             try {
+              console.log(`Migrating temporary workflow data from ${workflowId} to ${savedWorkflowId}`);
               const migrationSuccess = await workflow.migrateTemporaryWorkflow(
                 workflowId!, 
                 savedWorkflowId
@@ -216,30 +251,87 @@ export function useWorkflowDatabase(
           setSavingWorkflowId(savedWorkflowId);
           
           if (workflowId === 'new' || isTemporaryWorkflow) {
+            console.log(`Redirecting to new workflow URL: /canvas/${savedWorkflowId}`);
             navigate(`/canvas/${savedWorkflowId}`, { replace: true });
           }
+        } else {
+          console.error('No workflow ID returned after creation', response);
+          throw new Error('Failed to create workflow: No ID returned');
         }
       }
       
-      if (response && response.error) {
-        console.error('Error details:', response.error);
-        throw response.error;
-      }
-      
       toast.success('Workflow saved successfully');
-      
       setOptimisticSave(false);
+      
+      // Also save edges separately for better performance on future loads
+      if (savedWorkflowId && edges.length > 0) {
+        await saveEdgesToDatabase(savedWorkflowId, edges);
+      }
       
       return savedWorkflowId;
     } catch (error) {
       console.error('Error saving workflow:', error);
-      toast.error('Failed to save workflow');
+      toast.error(`Failed to save workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       setOptimisticSave(false);
-      
       return null;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const saveEdgesToDatabase = async (workflowId: string, edges: Edge[]) => {
+    try {
+      if (!edges.length) return;
+      
+      console.log(`Saving ${edges.length} edges for workflow ${workflowId}`);
+      
+      // Remove existing edges
+      const { error: deleteError } = await supabase
+        .from('workflow_edges')
+        .delete()
+        .eq('workflow_id', workflowId);
+        
+      if (deleteError) {
+        console.error('Error deleting existing edges:', deleteError);
+        return;
+      }
+      
+      // Insert new edges
+      const edgesToInsert = edges.map(edge => {
+        // Extract metadata from the edge object
+        const { id, source, target, type, sourceHandle, targetHandle, label, animated, data, ...rest } = edge;
+        
+        // Build metadata object
+        const metadata: Record<string, any> = {};
+        if (sourceHandle) metadata.sourceHandle = sourceHandle;
+        if (targetHandle) metadata.targetHandle = targetHandle;
+        if (label) metadata.label = label;
+        if (animated) metadata.animated = animated;
+        if (data) metadata.data = data;
+        if (Object.keys(rest).length > 0) Object.assign(metadata, rest);
+        
+        return {
+          workflow_id: workflowId,
+          source_node_id: source,
+          target_node_id: target,
+          edge_id: id,
+          edge_type: type || 'default',
+          metadata
+        };
+      });
+      
+      const { error: insertError } = await supabase
+        .from('workflow_edges')
+        .insert(edgesToInsert);
+        
+      if (insertError) {
+        console.error('Error inserting edges:', insertError);
+      } else {
+        console.log(`Successfully saved ${edges.length} edges to database`);
+      }
+    } catch (error) {
+      console.error('Error in saveEdgesToDatabase:', error);
     }
   };
 

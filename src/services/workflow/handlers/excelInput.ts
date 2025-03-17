@@ -1,6 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
+// Define a type for metadata to fix the selected_sheet property
+interface NodeMetadata {
+  selected_sheet?: string;
+  [key: string]: any;
+}
+
 export const executeExcelInput = async (nodeData: any, options: any) => {
   console.log('Executing Excel input:', nodeData, options);
   
@@ -15,11 +21,22 @@ export const executeExcelInput = async (nodeData: any, options: any) => {
   }
   
   try {
-    // Get the selected sheet from node configuration
-    const selectedSheet = nodeData?.config?.selectedSheet || 'Sheet1';
+    // Get node configuration including selected sheet
+    const { data: nodeFile } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', workflowId)
+      .eq('node_id', nodeId)
+      .maybeSingle();
+    
+    // Determine which sheet to use - cast metadata to proper type
+    const metadata = nodeFile?.metadata as NodeMetadata | null;
+    const selectedSheet = nodeData?.config?.selectedSheet || 
+      metadata?.selected_sheet || 'Sheet1';
+    
     console.log(`Using selected sheet: ${selectedSheet}`);
     
-    // Get the schema for this node from workflow_file_schemas
+    // Get the schema for this node from workflow_file_schemas for the specific sheet
     const { data: schema, error: schemaError } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types, file_id, sample_data, total_rows')
@@ -37,10 +54,10 @@ export const executeExcelInput = async (nodeData: any, options: any) => {
     }
     
     if (!schema) {
-      console.error('No schema found for Excel input');
+      console.error(`No schema found for Excel input with sheet ${selectedSheet}`);
       return {
         success: false,
-        error: 'No schema found for this node'
+        error: `No schema found for sheet "${selectedSheet}"`
       };
     }
     
@@ -59,9 +76,15 @@ export const executeExcelInput = async (nodeData: any, options: any) => {
       };
     }
     
-    // Here you would typically use the file information to actually load data
-    // For now we'll return sample data and schema information
+    // Log detailed execution information for debugging
+    console.log(`Excel input node ${nodeId} execution:
+      - Selected sheet: ${selectedSheet}
+      - File ID: ${schema.file_id}
+      - Columns: ${schema.columns.length}
+      - Sample data rows: ${schema.sample_data?.length || 0}
+    `);
     
+    // Return sheet-specific data and schema 
     return {
       success: true,
       data: {

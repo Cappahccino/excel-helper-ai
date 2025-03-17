@@ -26,6 +26,7 @@ export const nodeTypes: NodeTypes = {
   fileUpload: FileUploadNode,
   filtering: FilteringNode,
   aggregation: AggregationNode,
+  directFileUpload: FileUploadNode, // Temporarily using FileUploadNode
 };
 
 export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: any) => void, workflowId: string | null) => ({
@@ -63,5 +64,15 @@ export const getNodeTypes = (handleNodeConfigUpdate: (nodeId: string, config: an
       workflowId: workflowId,
       onChange: handleNodeConfigUpdate
     }}
+  />,
+  directFileUpload: (props: any) => <FileUploadNode 
+    {...{
+      ...props,
+      data: {
+        ...props.data,
+        workflowId: workflowId,
+        onChange: handleNodeConfigUpdate
+      }
+    }} 
   />,
 });

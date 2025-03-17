@@ -10,7 +10,8 @@ const nodeTypeComponentMap: Record<string, NodeComponentType> = {
   'aiNode': 'aiNode',
   'askAI': 'askAI',
   'outputNode': 'outputNode',
-  'spreadsheetGenerator': 'spreadsheetGenerator'
+  'spreadsheetGenerator': 'spreadsheetGenerator',
+  'directFileUpload': 'directFileUpload'
 };
 
 // Default configurations for different node types
@@ -29,6 +30,12 @@ const defaultConfigs: Record<string, any> = {
     function: 'sum',
     column: '',
     groupBy: ''
+  },
+  directFileUpload: {
+    filename: '',
+    fileType: '',
+    fileSize: 0,
+    hasHeaders: true
   }
 };
 

@@ -3,7 +3,8 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Save, Play } from 'lucide-react';
+import { Save, Play, AlertTriangle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface WorkflowHeaderProps {
   workflowName: string;
@@ -19,6 +20,7 @@ interface WorkflowHeaderProps {
   migrationError: string | null;
   optimisticSave: boolean;
   subscriptionStatus: string | null;
+  hasUnsavedChanges?: boolean;
 }
 
 const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
@@ -34,7 +36,8 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   savingWorkflowId,
   migrationError,
   optimisticSave,
-  subscriptionStatus
+  subscriptionStatus,
+  hasUnsavedChanges = false
 }) => {
   return (
     <div className="border-b p-4 flex justify-between items-center">
@@ -44,6 +47,7 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           onChange={onWorkflowNameChange}
           className="text-xl font-bold mb-2"
           placeholder="Workflow Name"
+          aria-label="Workflow Name"
         />
         <Textarea
           value={workflowDescription}
@@ -51,13 +55,24 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           className="text-sm resize-none"
           placeholder="Describe your workflow..."
           rows={2}
+          aria-label="Workflow Description"
         />
       </div>
       <div className="flex space-x-2 items-center">
         {migrationError && (
-          <div className="px-3 py-1 text-sm rounded-full bg-yellow-100 text-yellow-800 flex items-center">
-            Warning: {migrationError}
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="px-3 py-1 text-sm rounded-full bg-yellow-100 text-yellow-800 flex items-center">
+                  <AlertTriangle className="mr-1 h-4 w-4" />
+                  Warning
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{migrationError}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         
         {executionStatus && (
@@ -80,16 +95,34 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
         )}
         
         {savingWorkflowId?.startsWith('temp-') && (
-          <div className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800 flex items-center">
-            <span className="mr-2 h-2 w-2 rounded-full bg-blue-500"></span>
-            Temporary ID
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800 flex items-center">
+                  <span className="mr-2 h-2 w-2 rounded-full bg-blue-500"></span>
+                  Temporary
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>This workflow has a temporary ID and hasn't been permanently saved yet.</p>
+                <p>Click Save to create a permanent workflow.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        
+        {hasUnsavedChanges && (
+          <div className="px-3 py-1 text-sm rounded-full bg-amber-100 text-amber-800 flex items-center">
+            <span className="mr-2 h-2 w-2 rounded-full bg-amber-500"></span>
+            Unsaved Changes
           </div>
         )}
         
         <Button 
           onClick={onSave} 
-          disabled={isSaving}
+          disabled={isSaving || (!hasUnsavedChanges && optimisticSave)}
           className={`flex items-center ${optimisticSave ? 'bg-green-500 hover:bg-green-600' : ''}`}
+          aria-label="Save workflow"
         >
           <Save className="mr-2 h-4 w-4" />
           {isSaving ? 'Saving...' : optimisticSave ? 'Saved!' : 'Save'}
@@ -99,6 +132,7 @@ const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           variant="outline"
           disabled={isRunning || executionStatus === 'running'}
           className="flex items-center"
+          aria-label="Run workflow"
         >
           <Play className="mr-2 h-4 w-4" />
           {isRunning ? 'Starting...' : executionStatus === 'running' ? 'Running...' : 'Run'}
