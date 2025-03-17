@@ -43,13 +43,19 @@ const FileSelector: React.FC<FileSelectorProps> = ({
     onFileSelect(fileId);
   }, [onFileSelect]);
 
-  // Handle dropdown click to prevent event propagation to React Flow canvas
+  // Enhanced dropdown click handler with more aggressive event stopping
   const handleDropdownClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault(); // Prevent any default behavior
+  }, []);
+
+  // Stop propagation on the whole component
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
 
   return (
-    <div>
+    <div onClick={handleContainerClick}>
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -62,7 +68,12 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           onValueChange={handleFileSelect}
           disabled={disabled}
         >
-          <SelectTrigger id="fileSelect" className="mt-1" onClick={handleDropdownClick}>
+          <SelectTrigger 
+            id="fileSelect" 
+            className="mt-1" 
+            onClick={handleDropdownClick}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <SelectValue placeholder="Choose a file..." />
           </SelectTrigger>
           <SelectContent 
@@ -94,7 +105,11 @@ const FileSelector: React.FC<FileSelectorProps> = ({
             }}
           >
             {sortedFiles?.length === 0 ? (
-              <div className="py-6 px-2 text-center">
+              <div 
+                className="py-6 px-2 text-center" 
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-sm text-gray-500">No files found</p>
               </div>
@@ -105,6 +120,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
                   value={file.id}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 flex-shrink-0" />
