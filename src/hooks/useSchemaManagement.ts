@@ -41,6 +41,7 @@ export function useSchemaManagement() {
     return sheetName ? `${nodeId}:${sheetName}` : nodeId;
   }, []);
 
+  // Helper function to determine if a type is a text type
   const isTextType = (type: string): boolean => {
     return type === 'string' || type === 'text';
   };
@@ -568,102 +569,3 @@ export function useSchemaManagement() {
     extractionStatus
   };
 }
-
-// This is where the validateNodeConfig function would remain unchanged
-function validateNodeConfig(
-  config: any,
-  schema: SchemaColumn[]
-): {
-  isValid: boolean;
-  errors: SchemaValidationError[];
-} {
-  const errors: SchemaValidationError[] = [];
-  
-  if (!config) {
-    return { isValid: true, errors: [] };
-    }
-    
-    // Check if columns referenced in config exist in schema
-    if (config.column && schema.length > 0) {
-      const column = schema.find(col => col.name === config.column);
-      
-      if (!column) {
-        errors.push({
-          code: 'column_not_found',
-          message: `Column "${config.column}" does not exist in the data`,
-          field: 'column',
-          suggestion: `Available columns: ${schema.map(c => c.name).join(', ')}`
-        });
-      } else {
-        // Check type compatibility with operator
-        if (config.operator) {
-          const numericOperators = ['greater-than', 'less-than', 'between'];
-          const stringOperators = ['contains', 'starts-with', 'ends-with'];
-          
-          if (column.type === 'number' && stringOperators.includes(config.operator)) {
-            errors.push({
-              code: 'incompatible_operator',
-              message: `Operator "${config.operator}" cannot be used with numeric column "${config.column}"`,
-              field: 'operator',
-              suggestion: 'Use equals, not-equals, greater-than, or less-than for numbers'
-            });
-          }
-          
-          if (isTextType(column.type) && numericOperators.includes(config.operator)) {
-            errors.push({
-              code: 'incompatible_operator',
-              message: `Operator "${config.operator}" cannot be used with text column "${config.column}"`,
-              field: 'operator',
-              suggestion: 'Use equals, not-equals, contains, starts-with, or ends-with for text'
-            });
-          }
-          
-          // Check value compatibility
-          if (config.value !== undefined && config.value !== null) {
-            if (column.type === 'number' && isNaN(Number(config.value)) && config.operator !== 'equals') {
-              errors.push({
-                code: 'invalid_value_type',
-                message: `Value "${config.value}" is not a valid number for column "${config.column}"`,
-                field: 'value',
-                suggestion: 'Enter a numeric value'
-              });
-            }
-            
-            if (column.type === 'date' && isNaN(Date.parse(config.value)) && ['before', 'after', 'between'].includes(config.operator)) {
-              errors.push({
-                code: 'invalid_value_type',
-                message: `Value "${config.value}" is not a valid date for column "${config.column}"`,
-                field: 'value',
-                suggestion: 'Enter a valid date'
-              });
-            }
-          }
-        }
-      }
-    }
-    
-    // For aggregation operations
-    if (config.function && config.column && schema.length > 0) {
-      const column = schema.find(col => col.name === config.column);
-      
-      if (!column) {
-        errors.push({
-          code: 'column_not_found',
-          message: `Column "${config.column}" does not exist in the data`,
-          field: 'column'
-        });
-      } else if (['sum', 'avg', 'min', 'max'].includes(config.function) && column.type !== 'number') {
-        errors.push({
-          code: 'incompatible_function',
-          message: `Function "${config.function}" can only be used with numeric columns`,
-          field: 'function',
-          suggestion: 'Use count function for non-numeric columns'
-        });
-      }
-    }
-    
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
-  }
