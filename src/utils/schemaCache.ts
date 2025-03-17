@@ -11,6 +11,7 @@ interface SchemaCacheEntry {
   timestamp: number;
   source: 'database' | 'propagation' | 'manual';
   sheetName?: string;
+  version?: number;
 }
 
 // Cache schema data in memory to reduce database calls
@@ -36,19 +37,25 @@ export function cacheSchema(
   options?: {
     source?: 'database' | 'propagation' | 'manual';
     sheetName?: string;
+    version?: number;
   }
 ): void {
-  const { source = 'database', sheetName } = options || {};
+  const { source = 'database', sheetName, version } = options || {};
   const cacheKey = generateCacheKey(workflowId, nodeId, sheetName);
+  
+  // Get existing cache entry to increment version if needed
+  const existingEntry = schemaCache.get(cacheKey);
+  const nextVersion = version || (existingEntry?.version || 0) + 1;
   
   schemaCache.set(cacheKey, {
     schema,
     timestamp: Date.now(),
     source,
-    sheetName
+    sheetName,
+    version: nextVersion
   });
   
-  console.log(`Cached schema for ${nodeId} (${schema.length} columns)`);
+  console.log(`Cached schema for ${nodeId} (${schema.length} columns, v${nextVersion})`);
 }
 
 /**
@@ -67,7 +74,7 @@ export function getSchemaFromCache(
   
   const cached = schemaCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp) < maxAge) {
-    console.log(`Using cached schema for ${nodeId} (${cached.schema.length} columns)`);
+    console.log(`Using cached schema for ${nodeId} (${cached.schema.length} columns, v${cached.version || 1})`);
     return cached.schema;
   }
   
@@ -114,4 +121,38 @@ export function invalidateWorkflowSchemaCache(workflowId: string): void {
   }
   
   console.log(`Invalidated schema cache for workflow ${workflowId} (${count} entries)`);
+}
+
+/**
+ * Get all cached schemas for a workflow
+ */
+export function getWorkflowCachedSchemas(workflowId: string): Record<string, SchemaColumn[]> {
+  const result: Record<string, SchemaColumn[]> = {};
+  const prefix = `${workflowId}:`;
+  
+  for (const [key, entry] of schemaCache.entries()) {
+    if (key.startsWith(prefix)) {
+      const parts = key.split(':');
+      if (parts.length >= 3) {
+        const nodeId = parts[1];
+        result[nodeId] = entry.schema;
+      }
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Check if schema cache exists and is valid for a node
+ */
+export function isValidCacheExists(
+  workflowId: string,
+  nodeId: string,
+  options?: {
+    maxAge?: number;
+    sheetName?: string;
+  }
+): boolean {
+  return getSchemaFromCache(workflowId, nodeId, options) !== null;
 }

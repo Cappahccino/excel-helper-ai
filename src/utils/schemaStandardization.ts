@@ -2,158 +2,209 @@
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
 /**
- * Standardizes schema column format for consistent type handling
- * Accepts various input formats and converts to a consistent SchemaColumn format
+ * Standardize column names by removing invalid characters and spaces
  */
-export function standardizeSchemaColumn(column: any): SchemaColumn {
-  // Start with a basic column structure
-  const standardColumn: SchemaColumn = {
-    name: '',
-    type: 'unknown'
-  };
+export function standardizeColumnName(name: string): string {
+  if (!name) return '';
   
-  // Handle string value (just the column name)
-  if (typeof column === 'string') {
-    standardColumn.name = column;
-    return standardColumn;
+  // Replace spaces with underscores
+  let standardName = name.trim().replace(/\s+/g, '_');
+  
+  // Remove invalid characters
+  standardName = standardName.replace(/[^a-zA-Z0-9_]/g, '');
+  
+  // Ensure it starts with a letter or underscore
+  if (!/^[a-zA-Z_]/.test(standardName)) {
+    standardName = 'col_' + standardName;
   }
   
-  // Handle column objects with different structures
-  if (typeof column === 'object' && column !== null) {
-    // Set name from possible fields
-    standardColumn.name = column.name || column.header || column.field || '';
-    
-    // Handle type with normalization
-    const rawType = column.type || column.dataType || 'unknown';
-    
-    // Normalize type values
-    if (typeof rawType === 'string') {
-      const lowerType = rawType.toLowerCase();
-      
-      if (['string', 'text', 'varchar', 'char'].includes(lowerType)) {
-        standardColumn.type = lowerType === 'text' ? 'text' : 'string';
-      } else if (['int', 'integer', 'number', 'float', 'double', 'decimal', 'numeric'].includes(lowerType)) {
-        standardColumn.type = 'number';
-      } else if (['bool', 'boolean'].includes(lowerType)) {
-        standardColumn.type = 'boolean';
-      } else if (['date', 'datetime', 'timestamp'].includes(lowerType)) {
-        standardColumn.type = 'date';
-      } else if (lowerType === 'array') {
-        standardColumn.type = 'array';
-      } else if (lowerType === 'object') {
-        standardColumn.type = 'object';
-      } else {
-        standardColumn.type = 'unknown';
-      }
-    }
-  }
-  
-  return standardColumn;
+  return standardName;
 }
 
 /**
- * Standardize an array of schema columns from various formats
+ * Standardize column type to one of the supported types
  */
-export function standardizeSchemaColumns(columns: any[]): SchemaColumn[] {
-  if (!Array.isArray(columns)) {
-    console.warn('Expected columns to be an array, got:', typeof columns);
+export function standardizeColumnType(type: string): string {
+  if (!type) return 'string';
+  
+  const lowerType = type.toLowerCase();
+  
+  // Map to standard types
+  if (['varchar', 'char', 'text', 'string', 'str'].includes(lowerType)) {
+    return 'string';
+  }
+  
+  if (['int', 'integer', 'float', 'double', 'decimal', 'number', 'num', 'numeric'].includes(lowerType)) {
+    return 'number';
+  }
+  
+  if (['date', 'datetime', 'timestamp', 'time'].includes(lowerType)) {
+    return 'date';
+  }
+  
+  if (['bool', 'boolean'].includes(lowerType)) {
+    return 'boolean';
+  }
+  
+  if (['object', 'json', 'map'].includes(lowerType)) {
+    return 'object';
+  }
+  
+  if (['array', 'list'].includes(lowerType)) {
+    return 'array';
+  }
+  
+  // Default to string for unknown types
+  return 'string';
+}
+
+/**
+ * Standardize schema columns for consistency across the workflow
+ */
+export function standardizeSchemaColumns(columns: SchemaColumn[]): SchemaColumn[] {
+  if (!columns || !Array.isArray(columns)) {
     return [];
   }
   
-  return columns.map(standardizeSchemaColumn);
-}
-
-/**
- * Convert database-format schemas to standard SchemaColumn array
- */
-export function convertDbSchemaToStandardSchema(dbSchema: any): SchemaColumn[] {
-  if (!dbSchema) return [];
+  // Create a map to detect duplicates
+  const uniqueNames = new Map<string, number>();
   
-  if (dbSchema.columns && Array.isArray(dbSchema.columns)) {
-    // Handle DB schema with separate columns and data_types objects
-    if (dbSchema.data_types && typeof dbSchema.data_types === 'object') {
-      return dbSchema.columns.map((colName: string) => ({
-        name: colName,
-        type: dbSchema.data_types[colName] || 'unknown'
-      }));
+  return columns.map((col, index) => {
+    if (!col || !col.name) {
+      return { name: `column_${index}`, type: 'string' };
     }
     
-    // Handle DB schema with just column names
-    return dbSchema.columns.map((colName: string) => ({
-      name: typeof colName === 'string' ? colName : String(colName),
-      type: 'unknown'
-    }));
-  }
-  
-  // If it's already an array of SchemaColumn-like objects
-  if (Array.isArray(dbSchema)) {
-    return standardizeSchemaColumns(dbSchema);
-  }
-  
-  console.warn('Unrecognized schema format:', dbSchema);
-  return [];
-}
-
-/**
- * Convert standard SchemaColumn array to database format
- */
-export function convertStandardSchemaToDbFormat(schema: SchemaColumn[]): { 
-  columns: string[],
-  data_types: Record<string, string>
-} {
-  const columns = schema.map(col => col.name);
-  const data_types = schema.reduce((acc, col) => {
-    acc[col.name] = col.type;
-    return acc;
-  }, {} as Record<string, string>);
-  
-  return { columns, data_types };
-}
-
-/**
- * Validate if a schema is in the correct format
- */
-export function isValidSchema(schema: any): boolean {
-  if (!schema) return false;
-  
-  // Check if it's an array of schema columns
-  if (Array.isArray(schema)) {
-    return schema.every(col => 
-      typeof col === 'object' && 
-      col !== null && 
-      typeof col.name === 'string' && 
-      col.name.trim() !== ''
-    );
-  }
-  
-  // Check if it's a database schema format
-  if (typeof schema === 'object' && 
-      schema !== null && 
-      Array.isArray(schema.columns) && 
-      typeof schema.data_types === 'object') {
-    return true;
-  }
-  
-  return false;
-}
-
-/**
- * Check if two schemas are equivalent (same columns, possibly different order)
- */
-export function areSchemasEquivalent(schema1: SchemaColumn[], schema2: SchemaColumn[]): boolean {
-  if (!schema1 || !schema2) return false;
-  if (schema1.length !== schema2.length) return false;
-  
-  // Create maps of column names to types for efficient comparison
-  const schema1Map = new Map(schema1.map(col => [col.name, col.type]));
-  const schema2Map = new Map(schema2.map(col => [col.name, col.type]));
-  
-  // Check if all columns in schema1 exist in schema2 with the same type
-  for (const [name, type] of schema1Map.entries()) {
-    if (!schema2Map.has(name) || schema2Map.get(name) !== type) {
-      return false;
+    const standardName = standardizeColumnName(col.name);
+    const standardType = standardizeColumnType(col.type);
+    
+    // Handle duplicate names by adding suffix
+    let finalName = standardName;
+    if (uniqueNames.has(standardName)) {
+      const count = uniqueNames.get(standardName)! + 1;
+      uniqueNames.set(standardName, count);
+      finalName = `${standardName}_${count}`;
+    } else {
+      uniqueNames.set(standardName, 1);
     }
+    
+    return {
+      name: finalName,
+      type: standardType
+    };
+  });
+}
+
+/**
+ * Check if two schemas are compatible (one can be transformed into the other)
+ */
+export function areSchemaColumnsCompatible(
+  sourceSchema: SchemaColumn[],
+  targetSchema: SchemaColumn[]
+): { compatible: boolean; missingColumns: string[]; typeMismatches: { name: string, sourceType: string, targetType: string }[] } {
+  if (!sourceSchema || !targetSchema) {
+    return { compatible: false, missingColumns: [], typeMismatches: [] };
   }
   
-  return true;
+  const sourceColMap = new Map<string, SchemaColumn>();
+  sourceSchema.forEach(col => {
+    sourceColMap.set(col.name, col);
+  });
+  
+  const missingColumns: string[] = [];
+  const typeMismatches: { name: string, sourceType: string, targetType: string }[] = [];
+  
+  // Check each target column against source
+  targetSchema.forEach(targetCol => {
+    const sourceCol = sourceColMap.get(targetCol.name);
+    
+    if (!sourceCol) {
+      missingColumns.push(targetCol.name);
+      return;
+    }
+    
+    // Check if types are compatible
+    const sourceType = standardizeColumnType(sourceCol.type);
+    const targetType = standardizeColumnType(targetCol.type);
+    
+    if (sourceType !== targetType) {
+      typeMismatches.push({
+        name: targetCol.name,
+        sourceType,
+        targetType
+      });
+    }
+  });
+  
+  return {
+    compatible: missingColumns.length === 0 && typeMismatches.length === 0,
+    missingColumns,
+    typeMismatches
+  };
+}
+
+/**
+ * Estimate the cost of converting from one schema to another
+ */
+export function estimateSchemaConversionCost(
+  sourceSchema: SchemaColumn[],
+  targetSchema: SchemaColumn[]
+): { 
+  conversionCost: number; 
+  columnAdditions: number; 
+  columnRemovals: number; 
+  typeConversions: number;
+} {
+  if (!sourceSchema || !targetSchema) {
+    return { conversionCost: Infinity, columnAdditions: 0, columnRemovals: 0, typeConversions: 0 };
+  }
+  
+  const sourceColMap = new Map<string, SchemaColumn>();
+  sourceSchema.forEach(col => {
+    sourceColMap.set(col.name, col);
+  });
+  
+  const targetColMap = new Map<string, SchemaColumn>();
+  targetSchema.forEach(col => {
+    targetColMap.set(col.name, col);
+  });
+  
+  // Calculate metrics
+  let columnAdditions = 0;
+  let columnRemovals = 0;
+  let typeConversions = 0;
+  
+  // Find columns to add (in target but not in source)
+  targetSchema.forEach(targetCol => {
+    if (!sourceColMap.has(targetCol.name)) {
+      columnAdditions++;
+    }
+  });
+  
+  // Find columns to remove and type conversions needed
+  sourceSchema.forEach(sourceCol => {
+    const targetCol = targetColMap.get(sourceCol.name);
+    
+    if (!targetCol) {
+      columnRemovals++;
+    } else {
+      // Check for type conversion
+      const sourceType = standardizeColumnType(sourceCol.type);
+      const targetType = standardizeColumnType(targetCol.type);
+      
+      if (sourceType !== targetType) {
+        typeConversions++;
+      }
+    }
+  });
+  
+  // Calculate overall cost
+  // This is a heuristic - you might want to adjust the weights
+  const conversionCost = columnAdditions * 2 + columnRemovals + typeConversions * 1.5;
+  
+  return {
+    conversionCost,
+    columnAdditions,
+    columnRemovals,
+    typeConversions
+  };
 }
