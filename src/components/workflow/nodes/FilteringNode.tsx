@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -87,7 +86,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [showLogs, setShowLogs] = useState<boolean>(false);
   const [loadingOperation, setLoadingOperation] = useState<'initial' | 'refresh' | 'manual' | null>(null);
-  const [isInitialized, setIsInitialized] = useState<boolean>(false);
   
   const workflow = useWorkflow();
 
@@ -241,9 +239,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const loadSchema = useCallback(async (forceRefresh = false) => {
     if (!workflow.workflowId || !id) return;
     
-    // Don't load schema if already loading (unless force refresh)
-    if (isLoading && !forceRefresh) return;
-    
     console.log(`FilteringNode ${id}: Loading schema for workflow ${workflow.workflowId} (forceRefresh: ${forceRefresh})`);
     setIsLoading(true);
     setLoadingError(null);
@@ -284,7 +279,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         setIsLoading(false);
         setIsRefreshing(false);
         setLoadingOperation(null);
-        setIsInitialized(true);
         clearAllTimeouts();
         return;
       }
@@ -379,7 +373,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               setIsLoading(false);
               setIsRefreshing(false);
               setLoadingOperation(null);
-              setIsInitialized(true);
               clearAllTimeouts();
               return;
             }
@@ -394,7 +387,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           setIsLoading(false);
           setIsRefreshing(false);
           setLoadingOperation(null);
-          setIsInitialized(true);
           clearAllTimeouts();
           return;
         }
@@ -453,14 +445,18 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [isLoading, id, loadingError]);
 
-  // REMOVED: Auto-loading on node selection
-  // Only load schema when we have a source node ID and no schema yet (initial connection)
   useEffect(() => {
-    if (sourceNodeId && columns.length === 0 && !isInitialized && !isLoading) {
-      console.log(`Initial load for node ${id} with source ${sourceNodeId}`);
+    if (selected && workflow.workflowId) {
+      console.log(`Node ${id} selected, loading schema`);
       loadSchema(false);
     }
-  }, [sourceNodeId, columns.length, isInitialized, isLoading, id, loadSchema]);
+  }, [selected, workflow.workflowId, loadSchema]);
+
+  useEffect(() => {
+    if (sourceNodeId && columns.length === 0 && !isLoading) {
+      loadSchema(false);
+    }
+  }, [sourceNodeId, columns.length, isLoading, loadSchema]);
 
   useEffect(() => {
     if (workflow.workflowId && id && !sourceNodeId) {
@@ -498,7 +494,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             const sourceId = payload.new.source_node_id;
             setSourceNodeId(sourceId);
             findSourceNode().then(() => {
-              // Load schema when a new connection is made
               loadSchema(true);
             });
           } else if (payload.eventType === 'DELETE' && payload.old.target_node_id === id) {
@@ -535,7 +530,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         },
         (payload) => {
           console.log(`Schema change detected for source node ${sourceNodeId}:`, payload);
-          // Load schema when source node schema changes
           loadSchema(true);
         }
       )
