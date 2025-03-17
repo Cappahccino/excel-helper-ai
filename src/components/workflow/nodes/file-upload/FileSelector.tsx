@@ -1,5 +1,5 @@
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useRef, useEffect } from 'react';
 import { FileText, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,6 +27,10 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   onFileSelect,
   disabled
 }) => {
+  // Track whether dropdown is open
+  const [isOpen, setIsOpen] = React.useState(false);
+  const selectContentRef = useRef<HTMLDivElement>(null);
+
   const sortedFiles = useMemo(() => {
     return [...(files || [])].sort((a, b) => {
       // Sort by most recently created first
@@ -54,8 +58,19 @@ const FileSelector: React.FC<FileSelectorProps> = ({
     e.stopPropagation();
   }, []);
 
+  // Focus management when dropdown opens
+  useEffect(() => {
+    if (isOpen && selectContentRef.current) {
+      // Ensure dropdown container maintains focus
+      selectContentRef.current.focus();
+    }
+  }, [isOpen]);
+
   return (
-    <div onClick={handleContainerClick}>
+    <div 
+      onClick={handleContainerClick} 
+      className="file-selector-container"
+    >
       <Label htmlFor="fileSelect" className="text-xs font-medium">
         Select File
       </Label>
@@ -67,6 +82,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
           value={selectedFileId} 
           onValueChange={handleFileSelect}
           disabled={disabled}
+          onOpenChange={setIsOpen}
         >
           <SelectTrigger 
             id="fileSelect" 
@@ -84,24 +100,19 @@ const FileSelector: React.FC<FileSelectorProps> = ({
             avoidCollisions={true}
             sticky="always"
             style={{ zIndex: 9999 }} // Force higher z-index
-            onCloseAutoFocus={(e) => {
-              // Prevent automatic focus return which can cause issues with React Flow
-              e.preventDefault();
-            }}
-            onEscapeKeyDown={(e) => {
-              // Stop propagation to prevent React Flow from handling the escape key
-              e.stopPropagation();
-            }}
-            onPointerDownOutside={(e) => {
-              // Only close if clicking outside the dropdown and file selector node
+            onInteractOutside={(e) => {
+              // Prevent interaction outside from closing the dropdown when clicking on the node
               const target = e.target as Node;
-              const selectContent = document.querySelector('[data-radix-select-content]');
               const fileUploadNode = document.querySelector('.react-flow__node');
               
-              // If clicking inside the dropdown content or the file upload node, prevent closing
-              if (selectContent?.contains(target) || fileUploadNode?.contains(target)) {
+              if (fileUploadNode?.contains(target)) {
                 e.preventDefault();
               }
+            }}
+            ref={selectContentRef}
+            onKeyDown={(e) => {
+              // Prevent key events from propagating to React Flow
+              e.stopPropagation();
             }}
           >
             {sortedFiles?.length === 0 ? (
