@@ -1,7 +1,17 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
+
+interface NodeMetadata {
+  selected_sheet?: string;
+  sheets?: Array<{
+    name: string;
+    index: number;
+    rowCount?: number;
+    isDefault?: boolean;
+  }>;
+  [key: string]: any;
+}
 
 /**
  * Propagate schema directly from source to target node
@@ -15,12 +25,10 @@ export async function propagateSchemaDirectly(
   try {
     console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}`);
     
-    // Convert temporary workflow ID if needed
     const dbWorkflowId = workflowId.startsWith('temp-') 
       ? workflowId.substring(5) 
       : workflowId;
     
-    // First, get source node schema
     const { data: sourceSchema, error: sourceError } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types, file_id, sheet_name')
@@ -33,18 +41,15 @@ export async function propagateSchemaDirectly(
       return false;
     }
     
-    // If multiple schemas exist (e.g., multiple sheets), try to find the right one
     let schema = sourceSchema[0];
     
     if (sheetName && sourceSchema.length > 1) {
-      // Try to find the specific sheet
       const sheetSchema = sourceSchema.find(s => s.sheet_name === sheetName);
       if (sheetSchema) {
         schema = sheetSchema;
       }
     }
     
-    // Create target schema from source schema
     const targetSchema = {
       workflow_id: dbWorkflowId,
       node_id: targetNodeId,
@@ -56,7 +61,6 @@ export async function propagateSchemaDirectly(
       updated_at: new Date().toISOString()
     };
     
-    // Update target schema in database
     const { error: targetError } = await supabase
       .from('workflow_file_schemas')
       .upsert(targetSchema, {
@@ -88,7 +92,6 @@ export async function isNodeReadyForSchemaPropagation(
       ? workflowId.substring(5) 
       : workflowId;
     
-    // Check if node has schema available
     const { data: schema, error } = await supabase
       .from('workflow_file_schemas')
       .select('columns')
@@ -101,7 +104,6 @@ export async function isNodeReadyForSchemaPropagation(
       return false;
     }
     
-    // Node is ready if it has schema with columns
     return !!schema && Array.isArray(schema.columns) && schema.columns.length > 0;
   } catch (error) {
     console.error('Error in isNodeReadyForSchemaPropagation:', error);
@@ -122,7 +124,6 @@ export async function forceSchemaRefresh(
       ? workflowId.substring(5) 
       : workflowId;
     
-    // Fetch node schema
     const { data: schema, error } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types, sheet_name')
@@ -135,7 +136,6 @@ export async function forceSchemaRefresh(
       return [];
     }
     
-    // Find schema for specific sheet if specified
     let targetSchema = schema[0];
     if (sheetName && schema.length > 1) {
       const sheetSchema = schema.find(s => s.sheet_name === sheetName);
@@ -144,7 +144,6 @@ export async function forceSchemaRefresh(
       }
     }
     
-    // Convert to SchemaColumn format
     return targetSchema.columns.map(column => ({
       name: column,
       type: targetSchema.data_types[column] || 'unknown'
@@ -168,7 +167,6 @@ export async function checkSchemaPropagationNeeded(
       ? workflowId.substring(5) 
       : workflowId;
     
-    // Get source schema
     const { data: sourceSchema, error: sourceError } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types')
@@ -181,7 +179,6 @@ export async function checkSchemaPropagationNeeded(
       return false;
     }
     
-    // Get target schema
     const { data: targetSchema, error: targetError } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types')
@@ -191,33 +188,28 @@ export async function checkSchemaPropagationNeeded(
       
     if (targetError) {
       console.error(`Error checking target schema for ${targetNodeId}:`, targetError);
-      return true; // Propagation needed if error fetching target schema
+      return true;
     }
     
-    // If no target schema exists, propagation is needed
     if (!targetSchema) {
       console.log(`No target schema exists for ${targetNodeId}, propagation needed`);
       return true;
     }
     
-    // Compare schemas to see if they match
     const sourceColumns = sourceSchema.columns || [];
     const targetColumns = targetSchema.columns || [];
     
-    // If column counts differ, propagation is needed
     if (sourceColumns.length !== targetColumns.length) {
       console.log(`Column counts differ: source=${sourceColumns.length}, target=${targetColumns.length}`);
       return true;
     }
     
-    // Check for mismatched columns
     for (const column of sourceColumns) {
       if (!targetColumns.includes(column)) {
         console.log(`Column ${column} exists in source but not in target`);
         return true;
       }
       
-      // Check data types
       if (sourceSchema.data_types[column] !== targetSchema.data_types[column]) {
         console.log(`Data type mismatch for column ${column}`);
         return true;
@@ -228,7 +220,7 @@ export async function checkSchemaPropagationNeeded(
     return false;
   } catch (error) {
     console.error('Error in checkSchemaPropagationNeeded:', error);
-    return true; // Default to propagation needed if there's an error
+    return true;
   }
 }
 
@@ -245,7 +237,6 @@ export async function synchronizeNodesSheetSelection(
       ? workflowId.substring(5) 
       : workflowId;
     
-    // Get source node's selected sheet
     const { data: sourceNodeConfig } = await supabase
       .from('workflow_files')
       .select('metadata')
@@ -258,17 +249,15 @@ export async function synchronizeNodesSheetSelection(
       return false;
     }
     
-    // Ensure metadata is an object
-    const sourceMetadata = typeof sourceNodeConfig.metadata === 'object' 
-      ? sourceNodeConfig.metadata 
-      : {};
-      
-    if (!sourceMetadata || !sourceMetadata.selected_sheet) {
+    const metadata = sourceNodeConfig.metadata as NodeMetadata;
+    
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || !metadata.selected_sheet) {
       console.log(`No selected sheet found for source node ${sourceNodeId}`);
       return false;
     }
     
-    // Update target node's selected sheet
+    const selectedSheet = metadata.selected_sheet;
+    
     const { data: targetNodeConfig } = await supabase
       .from('workflow_files')
       .select('metadata')
@@ -276,13 +265,15 @@ export async function synchronizeNodesSheetSelection(
       .eq('node_id', targetNodeId)
       .maybeSingle();
       
-    // Create a new metadata object to avoid using spread on a null object
-    const targetMetadata = targetNodeConfig?.metadata && typeof targetNodeConfig.metadata === 'object' 
-      ? {...targetNodeConfig.metadata} 
-      : {};
+    let targetMetadata: NodeMetadata;
     
-    // Update the selected sheet
-    targetMetadata.selected_sheet = sourceMetadata.selected_sheet;
+    if (targetNodeConfig?.metadata && typeof targetNodeConfig.metadata === 'object' && !Array.isArray(targetNodeConfig.metadata)) {
+      targetMetadata = { ...targetNodeConfig.metadata as NodeMetadata };
+    } else {
+      targetMetadata = {};
+    }
+    
+    targetMetadata.selected_sheet = selectedSheet;
     
     const { error } = await supabase
       .from('workflow_files')
