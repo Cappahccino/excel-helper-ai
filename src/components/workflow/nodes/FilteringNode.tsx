@@ -19,6 +19,7 @@ import { standardizeColumnType, standardizeSchemaColumns } from '@/utils/schemaS
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import SchemaColumnSelector from './SchemaColumnSelector';
 
 const OPERATORS = {
   string: [
@@ -129,6 +130,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       if (data.hasSourceNode) {
         console.log(`Node has ${data.sourceNodes.length} source nodes:`, data.sourceNodes);
+        setSourceNodeId(data.sourceNodes[0]);
       }
     } catch (error) {
       console.error('Error in inspectSchemas:', error);
@@ -292,7 +294,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   useEffect(() => {
     updateOperatorsForColumn(data.config.column, standardizedSchema);
     validateConfiguration(data.config, standardizedSchema);
-  }, [standardizedSchema, data.config.column, updateOperatorsForColumn, validateConfiguration, data.config]);
+  }, [standardizedSchema, data.config, updateOperatorsForColumn, validateConfiguration]);
 
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
@@ -369,18 +371,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
-  // Filter schema columns based on search term
-  const filteredSchema = useMemo(() => {
-    if (!columnSearchTerm) return standardizedSchema;
-    
-    return standardizedSchema.filter(column => 
-      column.name.toLowerCase().includes(columnSearchTerm.toLowerCase())
-    );
-  }, [standardizedSchema, columnSearchTerm]);
-
   const connectionInfo = getConnectionStatusInfo();
 
   useEffect(() => {
+    // Log schema changes in debug mode
     if (debug && schema.length > 0) {
       console.log(`FilteringNode ${id} schema:`, schema);
     }
@@ -395,6 +389,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       // Try to find source node again in case it was connected but not detected
       findSourceNode();
     }
+  };
+
+  const handleColumnChange = (column: string) => {
+    handleConfigChange('column', column);
   };
 
   return (
@@ -519,88 +517,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         <div className="space-y-1.5">
           <Label htmlFor="column" className="text-xs">Column</Label>
           
-          {isLoading ? (
-            <Skeleton className="h-8 w-full" />
-          ) : (
-            <>
-              {standardizedSchema.length > 5 && (
-                <div className="relative mb-2">
-                  <Input
-                    placeholder="Search columns..."
-                    value={columnSearchTerm}
-                    onChange={e => setColumnSearchTerm(e.target.value)}
-                    className="h-8 text-xs pl-8"
-                    disabled={!sourceNodeId || standardizedSchema.length === 0}
-                  />
-                  <Search className="w-4 h-4 text-gray-400 absolute left-2 top-2" />
-                  {columnSearchTerm && (
-                    <X 
-                      className="w-4 h-4 text-gray-400 absolute right-2 top-2 cursor-pointer hover:text-gray-600" 
-                      onClick={() => setColumnSearchTerm('')}
-                    />
-                  )}
-                </div>
-              )}
-              
-              <Select
-                value={data.config.column || ''}
-                onValueChange={(value) => handleConfigChange('column', value)}
-                disabled={isLoading || standardizedSchema.length === 0 || !sourceNodeId}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder={sourceNodeId ? (isLoading ? "Loading..." : "Select column") : "Connect a source first"} />
-                </SelectTrigger>
-                <SelectContent className="max-h-[240px]">
-                  {standardizedSchema.length === 0 ? (
-                    <div className="px-2 py-1.5 text-xs text-gray-500">
-                      {sourceNodeId ? "No columns available" : "Connect a source first"}
-                    </div>
-                  ) : filteredSchema.length === 0 ? (
-                    <div className="px-2 py-1.5 text-xs text-gray-500">
-                      No columns match your search
-                    </div>
-                  ) : (
-                    <ScrollArea className="h-full max-h-[220px]">
-                      {filteredSchema.map((column) => (
-                        <SelectItem key={column.name} value={column.name}>
-                          <div className="flex items-center">
-                            {column.name}
-                            <Badge variant="outline" className="ml-2 text-[9px] py-0 h-4">
-                              {column.type}
-                            </Badge>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </ScrollArea>
-                  )}
-                </SelectContent>
-              </Select>
-            </>
-          )}
-          
-          {sourceNodeId ? (
-            isLoading ? (
-              <div className="text-xs text-blue-600 mt-1 flex items-center">
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Loading columns...
-              </div>
-            ) : standardizedSchema.length > 0 ? (
-              <div className="text-xs text-blue-600 mt-1">
-                {standardizedSchema.length} column{standardizedSchema.length !== 1 ? 's' : ''} available
-                {columnSearchTerm && filteredSchema.length !== standardizedSchema.length && (
-                  <span> ({filteredSchema.length} filtered)</span>
-                )}
-              </div>
-            ) : connectionState === ConnectionState.CONNECTED ? (
-              <div className="text-xs text-amber-600 mt-1">
-                Connected but no columns found
-              </div>
-            ) : null
-          ) : (
-            <div className="text-xs text-blue-600 mt-1">
-              Connect an input to this node
-            </div>
-          )}
+          <SchemaColumnSelector
+            schema={standardizedSchema}
+            selectedColumn={data.config.column}
+            onChange={handleColumnChange}
+            isLoading={isLoading}
+            connectionState={connectionState}
+            hasSourceNode={hasSourceNode}
+            placeholder="Select column to filter"
+          />
         </div>
         
         <div className="space-y-1.5">

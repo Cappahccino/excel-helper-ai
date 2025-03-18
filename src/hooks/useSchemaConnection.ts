@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -142,6 +143,8 @@ export function useSchemaConnection(
     
     try {
       // Get schema using the Edge Function to ensure we get temporary schemas too
+      if (debug) console.log(`Fetching schema for node ${nodeId} in workflow ${workflowId}`);
+      
       const { data, error } = await supabase.functions.invoke('inspectSchemas', {
         body: { workflowId, nodeId }
       });
@@ -154,7 +157,39 @@ export function useSchemaConnection(
       if (!isMounted.current) return;
       
       if (!data || !data.schemas || data.schemas.length === 0) {
-        if (debug) console.log(`No schema found for node ${nodeId}`);
+        if (debug) console.log(`No schema found for node ${nodeId}. Source nodes:`, data?.sourceNodes);
+        
+        // Check if we have source schemas we can use
+        if (data.sourceSchemas && data.sourceSchemas.length > 0) {
+          // Process first available source schema
+          const sourceSchema = data.sourceSchemas[0];
+          const schemaColumns = sourceSchema.columns.map((column: string) => ({
+            name: column,
+            type: sourceSchema.data_types[column] || 'unknown'
+          }));
+          
+          if (debug) console.log(`Using propagated schema from source node, columns:`, schemaColumns.map(c => c.name).join(', '));
+          
+          // Cache the propagated schema
+          await cacheSchema(workflowId, nodeId, schemaColumns, {
+            source: 'propagation',
+            sheetName: sourceSchema.sheet_name,
+            isTemporary: true
+          });
+          
+          // Update in-memory cache
+          localCache.current = {
+            schema: schemaColumns,
+            lastUpdated: Date.now()
+          };
+          
+          setSchema(schemaColumns);
+          setConnectionState(ConnectionState.CONNECTED);
+          setRetryCount(0);
+          setLastRefreshTime(new Date());
+          setIsLoading(false);
+          return;
+        }
         
         // Fall back to regular schema retrieval
         const dbWorkflowId = getDbWorkflowId();
@@ -192,7 +227,38 @@ export function useSchemaConnection(
             return;
           }
           
-          // If we've exhausted retries, set to disconnected
+          // If we've exhausted retries, attempt to pull schema from source node
+          if (sourceNodeId) {
+            try {
+              const sourceSchema = await getSchemaForFiltering(workflowId, sourceNodeId, nodeId);
+              if (sourceSchema && sourceSchema.length > 0) {
+                if (debug) console.log(`Retrieved schema from source node ${sourceNodeId} as fallback`);
+                
+                // Cache the schema we got from the source
+                await cacheSchema(workflowId, nodeId, sourceSchema, {
+                  source: 'propagation',
+                  isTemporary: true
+                });
+                
+                // Update in-memory cache
+                localCache.current = {
+                  schema: sourceSchema,
+                  lastUpdated: Date.now()
+                };
+                
+                setSchema(sourceSchema);
+                setConnectionState(ConnectionState.CONNECTED);
+                setRetryCount(0);
+                setLastRefreshTime(new Date());
+                setIsLoading(false);
+                return;
+              }
+            } catch (sourceError) {
+              console.error('Error getting schema from source:', sourceError);
+            }
+          }
+          
+          // If all attempts fail, set to disconnected
           setSchema([]);
           setConnectionState(ConnectionState.DISCONNECTED);
           throw new Error('No schema available for this node');
@@ -346,6 +412,7 @@ export function useSchemaConnection(
     if (autoConnect && workflowId && nodeId) {
       // Only fetch schema if we have a source node
       if (sourceNodeId) {
+        if (debug) console.log(`Auto-connecting schema for node ${nodeId} from source ${sourceNodeId}`);
         debouncedFetchSchema(false);
       } else {
         // Clear schema and set disconnected state if no source
@@ -354,7 +421,7 @@ export function useSchemaConnection(
         setError(null);
       }
     }
-  }, [autoConnect, workflowId, nodeId, sourceNodeId, debouncedFetchSchema]);
+  }, [autoConnect, workflowId, nodeId, sourceNodeId, debouncedFetchSchema, debug]);
   
   // Setup polling if requested
   useEffect(() => {
