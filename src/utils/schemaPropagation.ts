@@ -1,7 +1,8 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
-import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from './schemaCache';
+import { cacheSchema, getSchemaFromCache, getSchemaMetadataFromCache, invalidateSchemaCache } from './schemaCache';
 import { standardizeSchemaColumns } from './schemaStandardization';
 
 interface SheetInfo {
@@ -170,7 +171,7 @@ async function propagateSchemaDirectlyFallback(
     console.log(`Using fallback propagation for ${sourceNodeId} -> ${targetNodeId} in workflow ${dbWorkflowId}`);
     
     // First check cache for source schema
-    const cachedSchema = await getSchemaFromCache(workflowId, sourceNodeId, {
+    const cachedMetadata = await getSchemaMetadataFromCache(workflowId, sourceNodeId, {
       maxAge: 10000, // 10 seconds
       sheetName
     });
@@ -178,20 +179,20 @@ async function propagateSchemaDirectlyFallback(
     let schema;
     let isTemporary = false;
     
-    if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
+    if (cachedMetadata && cachedMetadata.schema && cachedMetadata.schema.length > 0) {
       console.log(`Using cached schema for source node ${sourceNodeId}`);
       
       // Extract schema and temporary status from cache
       schema = {
-        columns: cachedSchema.schema.map(col => col.name),
-        data_types: cachedSchema.schema.reduce((acc, col) => {
+        columns: cachedMetadata.schema.map(col => col.name),
+        data_types: cachedMetadata.schema.reduce((acc, col) => {
           acc[col.name] = col.type;
           return acc;
         }, {} as Record<string, string>),
-        file_id: cachedSchema.fileId || '00000000-0000-0000-0000-000000000000'
+        file_id: cachedMetadata.fileId || '00000000-0000-0000-0000-000000000000'
       };
       
-      isTemporary = cachedSchema.isTemporary || false;
+      isTemporary = cachedMetadata.isTemporary || false;
     } else {
       // Get source schema from database - no longer filtering by is_temporary
       const { data: sourceSchema, error: sourceError } = await supabase
@@ -225,7 +226,8 @@ async function propagateSchemaDirectlyFallback(
       cacheSchema(workflowId, sourceNodeId, schemaColumns, {
         source: 'database',
         sheetName: sheetName || schema.sheet_name,
-        isTemporary
+        isTemporary,
+        fileId: schema.file_id
       });
     }
     
@@ -270,7 +272,8 @@ async function propagateSchemaDirectlyFallback(
     cacheSchema(workflowId, targetNodeId, standardizedColumns, {
       source: 'propagation',
       sheetName: sheetName || schema.sheet_name,
-      isTemporary
+      isTemporary,
+      fileId: schema.file_id
     });
     
     console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId} using fallback method`);
@@ -546,13 +549,15 @@ export async function propagateSchemaWithRetry(
       cacheSchema(workflowId, sourceNodeId, standardized, {
         source: 'database',
         sheetName: sheetName || schema.sheet_name,
-        isTemporary
+        isTemporary,
+        fileId: schema.file_id
       });
       
       cacheSchema(workflowId, targetNodeId, standardized, {
         source: 'propagation',
         sheetName: sheetName || schema.sheet_name,
-        isTemporary
+        isTemporary,
+        fileId: schema.file_id
       });
       
       success = true;
@@ -750,4 +755,3 @@ export async function debugNodeSchema(
     };
   }
 }
-
