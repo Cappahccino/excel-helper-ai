@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -78,7 +77,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
 
-  // Enhanced schema connection with better error handling and auto-retries
   const {
     connectionState,
     schema,
@@ -141,7 +139,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     
     try {
       console.log(`FilteringNode ${id}: Finding source node`);
-      // Check edges from workflow context first
       const edges = await workflow.getEdges(workflowId);
       const sources = edges
         .filter(edge => edge.target === id)
@@ -153,7 +150,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return sources[0];
       }
       
-      // If not found in context, try querying the database directly
       console.log(`FilteringNode ${id}: No source found in workflow context, checking database`);
       const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
       
@@ -184,16 +180,28 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id, workflowId]);
 
-  // Initialize the component and find source node
   useEffect(() => {
+    let isActive = true;
+    
     if (workflowId && id && !isInitialized) {
-      findSourceNode().then(() => {
-        setIsInitialized(true);
+      console.log(`FilteringNode ${id}: Initializing component...`);
+      findSourceNode().then((source) => {
+        if (isActive) {
+          if (source) {
+            console.log(`FilteringNode ${id}: Source node found during initialization: ${source}`);
+          } else {
+            console.log(`FilteringNode ${id}: No source node found during initialization`);
+          }
+          setIsInitialized(true);
+        }
       });
     }
+    
+    return () => {
+      isActive = false;
+    };
   }, [workflowId, id, findSourceNode, isInitialized]);
   
-  // Monitor workflow edge changes to detect source node connections/disconnections
   useEffect(() => {
     if (!workflowId || !id) return;
     
@@ -209,7 +217,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         },
         (payload) => {
           console.log(`Edge change detected for node ${id}:`, payload);
-          // Refetch source node
           findSourceNode();
         }
       )
@@ -286,12 +293,17 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   }, []);
 
   const standardizedSchema = useMemo(() => {
+    if (!schema || schema.length === 0) {
+      return [];
+    }
     return standardizeSchemaColumns(schema);
   }, [schema]);
 
   useEffect(() => {
-    updateOperatorsForColumn(data.config.column, standardizedSchema);
-    validateConfiguration(data.config, standardizedSchema);
+    if (standardizedSchema.length > 0) {
+      updateOperatorsForColumn(data.config.column, standardizedSchema);
+      validateConfiguration(data.config, standardizedSchema);
+    }
   }, [standardizedSchema, data.config.column, updateOperatorsForColumn, validateConfiguration, data.config]);
 
   const handleConfigChange = (key: string, value: any) => {
@@ -369,33 +381,45 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
-  // Filter schema columns based on search term
   const filteredSchema = useMemo(() => {
-    if (!columnSearchTerm) return standardizedSchema;
+    if (!standardizedSchema || standardizedSchema.length === 0) {
+      return [];
+    }
     
+    if (!columnSearchTerm) {
+      return standardizedSchema;
+    }
+    
+    const searchTermLower = columnSearchTerm.toLowerCase();
     return standardizedSchema.filter(column => 
-      column.name.toLowerCase().includes(columnSearchTerm.toLowerCase())
+      column.name.toLowerCase().includes(searchTermLower)
     );
   }, [standardizedSchema, columnSearchTerm]);
 
-  const connectionInfo = getConnectionStatusInfo();
+  const connectionInfo = useMemo(() => {
+    return getConnectionStatusInfo();
+  }, [connectionState, error, hasSourceNode]);
 
   useEffect(() => {
-    if (debug && schema.length > 0) {
-      console.log(`FilteringNode ${id} schema:`, schema);
+    if (debug && standardizedSchema.length > 0) {
+      console.log(`FilteringNode ${id} schema:`, standardizedSchema);
     }
-  }, [id, schema, debug]);
+  }, [id, standardizedSchema, debug]);
 
   const handleSchemaRefresh = async () => {
     if (sourceNodeId) {
+      console.log(`FilteringNode ${id}: Manually refreshing schema...`);
       await refreshSchema();
       toast.info("Refreshing schema...");
     } else {
       toast.info("Connect a source node first");
-      // Try to find source node again in case it was connected but not detected
       findSourceNode();
     }
   };
+
+  const isInitialLoading = useMemo(() => {
+    return (isLoading && !schema.length) || (!isInitialized && hasSourceNode);
+  }, [isLoading, schema.length, isInitialized, hasSourceNode]);
 
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>
@@ -519,7 +543,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         <div className="space-y-1.5">
           <Label htmlFor="column" className="text-xs">Column</Label>
           
-          {isLoading ? (
+          {isInitialLoading ? (
             <Skeleton className="h-8 w-full" />
           ) : (
             <>
@@ -530,7 +554,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                     value={columnSearchTerm}
                     onChange={e => setColumnSearchTerm(e.target.value)}
                     className="h-8 text-xs pl-8"
-                    disabled={!sourceNodeId || standardizedSchema.length === 0}
+                    disabled={!hasSourceNode || standardizedSchema.length === 0}
                   />
                   <Search className="w-4 h-4 text-gray-400 absolute left-2 top-2" />
                   {columnSearchTerm && (
@@ -545,15 +569,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               <Select
                 value={data.config.column || ''}
                 onValueChange={(value) => handleConfigChange('column', value)}
-                disabled={isLoading || standardizedSchema.length === 0 || !sourceNodeId}
+                disabled={isLoading || !hasSourceNode || standardizedSchema.length === 0}
               >
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder={sourceNodeId ? (isLoading ? "Loading..." : "Select column") : "Connect a source first"} />
+                  <SelectValue placeholder={hasSourceNode ? (isLoading ? "Loading..." : "Select column") : "Connect a source first"} />
                 </SelectTrigger>
                 <SelectContent className="max-h-[240px]">
                   {standardizedSchema.length === 0 ? (
                     <div className="px-2 py-1.5 text-xs text-gray-500">
-                      {sourceNodeId ? "No columns available" : "Connect a source first"}
+                      {hasSourceNode ? "No columns available" : "Connect a source first"}
                     </div>
                   ) : filteredSchema.length === 0 ? (
                     <div className="px-2 py-1.5 text-xs text-gray-500">
@@ -578,7 +602,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             </>
           )}
           
-          {sourceNodeId ? (
+          {hasSourceNode ? (
             isLoading ? (
               <div className="text-xs text-blue-600 mt-1 flex items-center">
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
@@ -605,13 +629,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         
         <div className="space-y-1.5">
           <Label htmlFor="operator" className="text-xs">Operator</Label>
-          {isLoading ? (
+          {isInitialLoading ? (
             <Skeleton className="h-8 w-full" />
           ) : (
             <Select
               value={data.config.operator || 'equals'}
               onValueChange={(value) => handleConfigChange('operator', value as any)}
-              disabled={!data.config.column || !sourceNodeId}
+              disabled={!data.config.column || !hasSourceNode}
             >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue placeholder="Select operator" />
@@ -629,7 +653,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         
         <div className="space-y-1.5">
           <Label htmlFor="value" className="text-xs">Value</Label>
-          {isLoading ? (
+          {isInitialLoading ? (
             <Skeleton className="h-8 w-full" />
           ) : (
             <Input
@@ -639,14 +663,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               placeholder={getValuePlaceholder()}
               className="h-8 text-xs"
               type={selectedColumnType === 'number' ? 'number' : 'text'}
-              disabled={!data.config.column || !sourceNodeId}
+              disabled={!data.config.column || !hasSourceNode}
             />
           )}
         </div>
         
         {showCaseSensitiveOption && (
           <div className="flex items-center space-x-2 pt-1">
-            {isLoading ? (
+            {isInitialLoading ? (
               <Skeleton className="h-5 w-10" />
             ) : (
               <>
@@ -654,7 +678,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   id="case-sensitive"
                   checked={data.config.isCaseSensitive || false}
                   onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
-                  disabled={!data.config.column || !sourceNodeId}
+                  disabled={!data.config.column || !hasSourceNode}
                 />
                 <Label htmlFor="case-sensitive" className="text-xs cursor-pointer">
                   Case sensitive
@@ -680,7 +704,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </div>
         )}
         
-        {connectionState === ConnectionState.DISCONNECTED && !sourceNodeId && (
+        {connectionState === ConnectionState.DISCONNECTED && !hasSourceNode && (
           <div className="bg-blue-50 p-2 rounded-md border border-blue-200 text-xs text-blue-600">
             <div className="flex items-start">
               <Info className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
