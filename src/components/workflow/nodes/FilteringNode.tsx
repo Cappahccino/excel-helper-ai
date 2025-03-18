@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -291,7 +292,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       default:
         return {
           icon: <Info className="w-4 h-4 text-gray-400" />,
-          tooltip: "No source connected"
+          tooltip: sourceNodeId ? "Schema not available" : "No source connected"
         };
     }
   };
@@ -319,16 +320,20 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   size="sm" 
                   className="h-6 w-6 p-0"
                   onClick={() => {
-                    refreshSchema();
-                    toast.info("Refreshing schema...");
+                    if (sourceNodeId) {
+                      refreshSchema();
+                      toast.info("Refreshing schema...");
+                    } else {
+                      toast.info("Connect a source node first");
+                    }
                   }}
-                  disabled={isLoading}
+                  disabled={isLoading || !sourceNodeId}
                 >
                   <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Refresh schema</p>
+                <p>{sourceNodeId ? "Refresh schema" : "Connect a source first"}</p>
                 {lastRefreshTime && (
                   <p className="text-xs text-gray-500">
                     Last refreshed: {lastRefreshTime.toLocaleTimeString()}
@@ -345,7 +350,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   variant="ghost" 
                   size="sm" 
                   className="h-6 w-6 p-0"
-                  onClick={inspectSchemas}
+                  onClick={() => {
+                    if (sourceNodeId) {
+                      inspectSchemas();
+                    } else {
+                      toast.info("Connect a source node first");
+                    }
+                  }}
+                  disabled={!sourceNodeId}
                 >
                   <Info className="h-3.5 w-3.5 text-gray-500" />
                 </Button>
@@ -406,7 +418,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
-        {error && (
+        {error && sourceNodeId && (
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
             <div className="flex">
               <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 flex-shrink-0" />
@@ -431,15 +443,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           <Select
             value={data.config.column || ''}
             onValueChange={(value) => handleConfigChange('column', value)}
-            disabled={isLoading || schema.length === 0}
+            disabled={isLoading || schema.length === 0 || !sourceNodeId}
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select column" />
+              <SelectValue placeholder={sourceNodeId ? "Select column" : "Connect a source first"} />
             </SelectTrigger>
             <SelectContent>
               {schema.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-gray-500">
-                  No columns available
+                  {sourceNodeId ? "No columns available" : "Connect a source first"}
                 </div>
               ) : (
                 schema.map((column) => (
@@ -455,15 +467,21 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               )}
             </SelectContent>
           </Select>
-          {schema.length > 0 ? (
+          {sourceNodeId ? (
+            schema.length > 0 ? (
+              <div className="text-xs text-blue-600 mt-1">
+                {schema.length} column{schema.length !== 1 ? 's' : ''} available
+              </div>
+            ) : connectionState === ConnectionState.CONNECTED ? (
+              <div className="text-xs text-amber-600 mt-1">
+                Connected but no columns found
+              </div>
+            ) : null
+          ) : (
             <div className="text-xs text-blue-600 mt-1">
-              {schema.length} column{schema.length !== 1 ? 's' : ''} available
+              Connect an input to this node
             </div>
-          ) : connectionState === ConnectionState.CONNECTED ? (
-            <div className="text-xs text-amber-600 mt-1">
-              Connected but no columns found
-            </div>
-          ) : null}
+          )}
         </div>
         
         <div className="space-y-1.5">
@@ -471,7 +489,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           <Select
             value={data.config.operator || 'equals'}
             onValueChange={(value) => handleConfigChange('operator', value as any)}
-            disabled={!data.config.column}
+            disabled={!data.config.column || !sourceNodeId}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue placeholder="Select operator" />
@@ -495,6 +513,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             placeholder={getValuePlaceholder()}
             className="h-8 text-xs"
             type={selectedColumnType === 'number' ? 'number' : 'text'}
+            disabled={!data.config.column || !sourceNodeId}
           />
         </div>
         
@@ -504,6 +523,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               id="case-sensitive"
               checked={data.config.isCaseSensitive || false}
               onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
+              disabled={!data.config.column || !sourceNodeId}
             />
             <Label htmlFor="case-sensitive" className="text-xs cursor-pointer">
               Case sensitive
@@ -527,12 +547,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </div>
         )}
         
-        {connectionState === ConnectionState.DISCONNECTED && sourceNodeId === null && (
-          <div className="bg-orange-50 p-2 rounded-md border border-orange-200 text-xs text-orange-600">
+        {connectionState === ConnectionState.DISCONNECTED && !sourceNodeId && (
+          <div className="bg-blue-50 p-2 rounded-md border border-blue-200 text-xs text-blue-600">
             <div className="flex items-start">
-              <Info className="h-4 w-4 text-orange-500 mr-1 flex-shrink-0 mt-0.5" />
+              <Info className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
               <div>
                 <p>Connect an input to this node to enable filtering.</p>
+                <p className="mt-1">Drag a connection from another node to this node's input handle.</p>
               </div>
             </div>
           </div>

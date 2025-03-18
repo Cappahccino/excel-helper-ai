@@ -45,6 +45,36 @@ serve(async (req) => {
     
     console.log(`Inspecting schemas for workflow ${dbWorkflowId}`);
     
+    // Check if this node has a source node
+    let hasSourceNode = false;
+    if (nodeId) {
+      const { data: edges, error: edgesError } = await supabase
+        .from('workflow_edges')
+        .select('*')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('target_node_id', nodeId);
+      
+      if (!edgesError && edges && edges.length > 0) {
+        hasSourceNode = true;
+      }
+    }
+    
+    // If a node doesn't have source nodes, we should return early with a special message
+    if (nodeId && !hasSourceNode) {
+      return new Response(
+        JSON.stringify({ 
+          workflowId: dbWorkflowId,
+          schemaCount: 0,
+          schemas: [],
+          edges: [],
+          workflowInfo: null,
+          message: 'No source node connected',
+          hasSourceNode: false
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     // Important: Do not filter by is_temporary to see both temporary and permanent schemas
     let query = supabase
       .from('workflow_file_schemas')
@@ -81,7 +111,8 @@ serve(async (req) => {
       schemaCount: data?.length || 0,
       schemas: data || [],
       edges: edges || [],
-      workflowInfo: null
+      workflowInfo: null,
+      hasSourceNode: hasSourceNode
     };
     
     // Get workflow info

@@ -49,9 +49,19 @@ export function useSchemaConnection(
   
   // Fetch schema from the database
   const fetchSchema = useCallback(async (forceRefresh = false) => {
+    // Only attempt to fetch schema if we have all required IDs
     if (!workflowId || !nodeId) {
       if (debug) console.log(`Missing required IDs: workflowId=${workflowId}, nodeId=${nodeId}`);
       setConnectionState(ConnectionState.DISCONNECTED);
+      return;
+    }
+    
+    // If no source node, don't fetch schema and clear any existing data
+    if (!sourceNodeId) {
+      if (debug) console.log(`No source node connected to ${nodeId}, skipping schema fetch`);
+      setSchema([]);
+      setConnectionState(ConnectionState.DISCONNECTED);
+      setError(null);
       return;
     }
     
@@ -149,26 +159,40 @@ export function useSchemaConnection(
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error fetching schema';
       if (debug) console.error(`Error fetching schema:`, errorMessage);
-      setError(errorMessage);
-      setConnectionState(ConnectionState.ERROR);
       
-      if (showNotifications) {
-        toast.error(`Error loading schema: ${errorMessage}`);
+      // Only show error if we have a source node but couldn't get its schema
+      if (sourceNodeId) {
+        setError(errorMessage);
+        setConnectionState(ConnectionState.ERROR);
+        
+        if (showNotifications) {
+          toast.error(`Error loading schema: ${errorMessage}`);
+        }
+      } else {
+        // If no source node, just set to disconnected without error
+        setConnectionState(ConnectionState.DISCONNECTED);
+        setError(null);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [workflowId, nodeId, getDbWorkflowId, debug, showNotifications]);
+  }, [workflowId, nodeId, sourceNodeId, getDbWorkflowId, debug, showNotifications]);
   
   // Refresh schema
   const refreshSchema = useCallback(async () => {
+    // Don't try to refresh if there's no source node
+    if (!sourceNodeId) {
+      if (debug) console.log(`No source node connected to ${nodeId}, skipping schema refresh`);
+      return;
+    }
+    
     // Invalidate cache first
     if (workflowId && nodeId) {
       await invalidateSchemaCache(workflowId, nodeId);
     }
     
     return fetchSchema(true);
-  }, [workflowId, nodeId, fetchSchema]);
+  }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug]);
   
   // Subscribe to real-time schema updates (future enhancement)
   useEffect(() => {
@@ -187,7 +211,10 @@ export function useSchemaConnection(
         },
         (payload) => {
           if (debug) console.log(`Schema change detected for node ${nodeId}:`, payload);
-          fetchSchema(true);
+          // Only refresh if we have a source node
+          if (sourceNodeId) {
+            fetchSchema(true);
+          }
         }
       )
       .subscribe();
@@ -195,18 +222,26 @@ export function useSchemaConnection(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workflowId, nodeId, fetchSchema, debug]);
+  }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug]);
   
   // Auto-connect effect
   useEffect(() => {
     if (autoConnect && workflowId && nodeId) {
-      fetchSchema();
+      // Only fetch schema if we have a source node
+      if (sourceNodeId) {
+        fetchSchema();
+      } else {
+        // Clear schema and set disconnected state if no source
+        setSchema([]);
+        setConnectionState(ConnectionState.DISCONNECTED);
+        setError(null);
+      }
     }
-  }, [autoConnect, workflowId, nodeId, fetchSchema]);
+  }, [autoConnect, workflowId, nodeId, sourceNodeId, fetchSchema]);
   
   // Setup polling if requested
   useEffect(() => {
-    if (!pollInterval || pollInterval <= 0 || !workflowId || !nodeId) return;
+    if (!pollInterval || pollInterval <= 0 || !workflowId || !nodeId || !sourceNodeId) return;
     
     const intervalId = setInterval(() => {
       if (debug) console.log(`Polling schema for node ${nodeId}`);
@@ -216,7 +251,7 @@ export function useSchemaConnection(
     return () => {
       clearInterval(intervalId);
     };
-  }, [pollInterval, workflowId, nodeId, fetchSchema, debug]);
+  }, [pollInterval, workflowId, nodeId, sourceNodeId, fetchSchema, debug]);
   
   return {
     connectionState,
