@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { Redis } from "https://esm.sh/@upstash/redis@1.20.6";
@@ -422,8 +423,33 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
     
     if (!forceRefresh) {
       const cachedSchema = await redis.get(cacheKey);
+      
+      // Fix: Check if cachedSchema is a string or already an object
       if (cachedSchema) {
-        sourceSchema = JSON.parse(cachedSchema);
+        try {
+          // Log the type and value of cachedSchema for debugging
+          console.log(`Cache hit for ${sourceNodeId}. Type: ${typeof cachedSchema}`);
+          
+          if (typeof cachedSchema === 'string') {
+            sourceSchema = JSON.parse(cachedSchema);
+            console.log(`Successfully parsed string cachedSchema`);
+          } else if (typeof cachedSchema === 'object') {
+            // If Redis client already returned a parsed object, use it directly
+            sourceSchema = cachedSchema;
+            console.log(`Using object cachedSchema directly`);
+          } else {
+            // Handle unexpected type
+            console.error(`Unexpected cachedSchema type: ${typeof cachedSchema}`);
+            console.error(`Value representation: ${String(cachedSchema).substring(0, 100)}...`);
+          }
+        } catch (error) {
+          console.error(`Error parsing cached schema: ${error.message}`);
+          console.error(`Raw value: ${String(cachedSchema).substring(0, 100)}...`);
+          // Continue with null sourceSchema if parsing fails
+        }
+      }
+      
+      if (sourceSchema) {
         console.log(`Using cached schema for source node ${sourceNodeId}`);
       }
     }
@@ -467,7 +493,7 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
         isTemporary: schema.is_temporary || false
       };
       
-      // Cache the retrieved schema
+      // Cache the retrieved schema - stringify the object before setting in Redis
       await redis.set(cacheKey, JSON.stringify({
         ...sourceSchema,
         timestamp: Date.now(),
@@ -562,7 +588,7 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
       );
     }
     
-    // Cache the target schema
+    // Cache the target schema - stringify before setting in Redis
     const targetCacheKey = `schema:${workflowId}:${targetNodeId}:${sheetName || 'default'}`;
     
     // Increment schema version
