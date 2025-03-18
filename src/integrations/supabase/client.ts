@@ -21,6 +21,8 @@ export function isTemporaryWorkflowId(id: string): boolean {
 /**
  * Convert a workflow ID to a database-friendly ID
  * Removes 'temp-' prefix if present
+ * @param id The workflow ID to convert
+ * @returns A valid UUID string without the temp- prefix
  */
 export function convertToDbWorkflowId(id: string): string {
   if (isTemporaryWorkflowId(id)) {

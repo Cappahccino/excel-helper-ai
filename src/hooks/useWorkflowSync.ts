@@ -23,6 +23,7 @@ export function useWorkflowSync(
   // Function to convert temporary workflow ID to database format
   const getDbWorkflowId = useCallback((id: string | null): string | null => {
     if (!id) return null;
+    // Handle the temp- prefix correctly
     return id.startsWith('temp-') ? id.substring(5) : id;
   }, []);
 
@@ -34,6 +35,13 @@ export function useWorkflowSync(
       syncInProgressRef.current = true;
       const dbWorkflowId = getDbWorkflowId(workflowId);
       if (!dbWorkflowId) {
+        syncInProgressRef.current = false;
+        return false;
+      }
+      
+      // Validate UUID format before database operations
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbWorkflowId)) {
+        console.error(`Invalid workflow ID format for database: ${dbWorkflowId}`);
         syncInProgressRef.current = false;
         return false;
       }
@@ -118,6 +126,12 @@ export function useWorkflowSync(
   const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]) => {
     try {
       if (!edges.length) return;
+      
+      // Validate UUID format for database operations
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workflowId)) {
+        console.error(`Invalid workflow ID format for database: ${workflowId}`);
+        return;
+      }
       
       console.log(`Syncing ${edges.length} edges for workflow ${workflowId}`);
       

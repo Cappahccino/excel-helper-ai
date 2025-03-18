@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Json } from '@/types/workflow';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -13,7 +13,7 @@ interface ConnectionHandlerProps {
 
 const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => {
   const reactFlowInstance = useReactFlow();
-  const { propagateFileSchema, isTemporaryId, convertToDbWorkflowId } = useWorkflow();
+  const { propagateFileSchema, isTemporaryId, convertToDbWorkflowId: contextConvertToDbId } = useWorkflow();
   const [retryMap, setRetryMap] = useState<Record<string, { attempts: number, maxAttempts: number, lastAttempt: number }>>({});
   
   const edgesRef = useRef<Edge[]>([]);
@@ -36,7 +36,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       console.log(`ConnectionHandler initialized with workflowId: ${workflowId}`);
       console.log(`Is temporary ID: ${isTemp}, Database ID: ${dbId}`);
     }
-  }, [workflowId, isTemporaryId, convertToDbWorkflowId]);
+  }, [workflowId, isTemporaryId]);
 
   const saveEdgesToDatabase = useCallback(async (edgesToSave: Edge[], immediate = false) => {
     if (!workflowId) return;
@@ -54,6 +54,13 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
           console.log(`Saving ${edgesToSave.length} edges for workflow ${workflowId}`);
           
           const dbWorkflowId = convertToDbWorkflowId(workflowId);
+          
+          if (!dbWorkflowId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbWorkflowId)) {
+            console.error(`Invalid workflow ID format for database: ${dbWorkflowId}`);
+            edgesSavePending.current = false;
+            edgesSaveTimeoutRef.current = null;
+            return;
+          }
           
           const { error: deleteError } = await supabase
             .from('workflow_edges')
@@ -110,7 +117,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
             for (const edge of edgesData) {
               try {
                 await propagateSchemaDirectly(
-                  dbWorkflowId, 
+                  workflowId, 
                   edge.source_node_id, 
                   edge.target_node_id
                 );
@@ -129,7 +136,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     };
     
     scheduleSave();
-  }, [workflowId, convertToDbWorkflowId]);
+  }, [workflowId]);
 
   const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string): Promise<boolean> => {
     if (!workflowId) return false;
@@ -390,4 +397,3 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
 };
 
 export default ConnectionHandler;
-
