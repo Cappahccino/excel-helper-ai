@@ -9,6 +9,7 @@ type SchemaCacheEntry = {
   source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
   version?: number;
   isTemporary?: boolean; // Added to track temporary status
+  fileId?: string; // Added to track file ID
 };
 
 // In-memory schema cache
@@ -34,6 +35,7 @@ export async function cacheSchema(
     source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
     version?: number;
     isTemporary?: boolean; // Added to track temporary status
+    fileId?: string; // Added to track file ID
   }
 ): Promise<void> {
   const key = getCacheKey(workflowId, nodeId, options);
@@ -44,7 +46,8 @@ export async function cacheSchema(
     sheetName: options?.sheetName,
     source: options?.source,
     version: options?.version,
-    isTemporary: options?.isTemporary || false // Default to false if not provided
+    isTemporary: options?.isTemporary || false, // Default to false if not provided
+    fileId: options?.fileId // Store fileId if provided
   };
 }
 
@@ -105,7 +108,8 @@ export async function getSchemaMetadataFromCache(
     sheetName: cached.sheetName,
     source: cached.source,
     version: cached.version,
-    isTemporary: cached.isTemporary
+    isTemporary: cached.isTemporary,
+    fileId: cached.fileId
   };
 }
 
@@ -157,4 +161,21 @@ export async function invalidateWorkflowSchemaCache(
       delete schemaCache[key];
     }
   });
+}
+
+/**
+ * Check if a node has a file associated with it
+ */
+export async function hasFileAssociated(
+  workflowId: string,
+  nodeId: string,
+  options?: {
+    sheetName?: string;
+    maxAge?: number;
+  }
+): Promise<boolean> {
+  const metadata = await getSchemaMetadataFromCache(workflowId, nodeId, options);
+  if (!metadata) return false;
+  
+  return !!metadata.fileId && metadata.fileId !== '00000000-0000-0000-0000-000000000000';
 }

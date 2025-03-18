@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Json } from '@/types/workflow';
 import { useDebounce } from '@/hooks/useDebounce';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { hasFileAssociated } from '@/utils/schemaCache';
 
 interface ConnectionHandlerProps {
   workflowId?: string;
@@ -28,6 +29,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   
   const edgesSavePending = useRef(false);
   const edgesSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const nodeMissingFileAlerts = useRef<Record<string, number>>({});
 
   useEffect(() => {
     if (workflowId) {
@@ -125,8 +128,43 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     scheduleSave();
   }, [workflowId, convertToDbWorkflowId]);
 
+  const checkFileExists = useCallback(async (sourceId: string): Promise<boolean> => {
+    if (!workflowId) return false;
+    
+    const hasFile = await hasFileAssociated(workflowId, sourceId);
+    
+    if (!hasFile) {
+      const nodes = reactFlowInstance.getNodes();
+      const sourceNode = nodes.find(node => node.id === sourceId);
+      
+      if (sourceNode?.type === 'fileUpload') {
+        const now = Date.now();
+        const lastShown = nodeMissingFileAlerts.current[sourceId] || 0;
+        
+        if (now - lastShown > 10000) {
+          toast.warning("Please select a file in the file upload node first", {
+            description: "Schema propagation requires a file to be selected",
+            duration: 5000,
+          });
+          
+          nodeMissingFileAlerts.current[sourceId] = now;
+        }
+        
+        return false;
+      }
+    }
+    
+    return true;
+  }, [workflowId, reactFlowInstance]);
+
   const propagateSchemaWithRetry = useCallback(async (sourceId: string, targetId: string): Promise<boolean> => {
     if (!workflowId) return false;
+    
+    const fileExists = await checkFileExists(sourceId);
+    if (!fileExists) {
+      console.log(`Source node ${sourceId} has no file - skipping schema propagation`);
+      return false;
+    }
     
     const edgeKey = `${sourceId}-${targetId}`;
     const now = Date.now();
@@ -264,7 +302,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       
       return false;
     }
-  }, [propagateFileSchema, retryMap, workflowId, isTemporaryId]);
+  }, [propagateFileSchema, retryMap, workflowId, isTemporaryId, checkFileExists]);
 
   useEffect(() => {
     if (!workflowId) return;

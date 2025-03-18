@@ -129,7 +129,17 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
 
   // Manual sync button handler
   const handleForceSyncSchema = async () => {
-    if (!nodeWorkflowId || !selectedFileId || processingState.status !== FileProcessingState.Completed) {
+    if (!nodeWorkflowId) {
+      toast.error("Workflow not initialized");
+      return;
+    }
+    
+    if (!selectedFileId) {
+      toast.error("Please select a file first");
+      return;
+    }
+    
+    if (processingState.status !== FileProcessingState.Completed) {
       toast.error("Cannot sync schema - file not ready");
       return;
     }
