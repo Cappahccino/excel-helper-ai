@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -16,7 +15,7 @@ import { toast } from 'sonner';
 import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 import { useSchemaConnection, ConnectionState } from '@/hooks/useSchemaConnection';
 import { standardizeColumnType, standardizeSchemaColumns } from '@/utils/schemaStandardization';
-import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 
 const OPERATORS = {
   string: [
@@ -147,46 +146,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       findSourceNode();
     }
   }, [workflowId, id, sourceNodeId, findSourceNode]);
-
-  useEffect(() => {
-    if (!workflowId || !id) return;
-    
-    console.log(`FilteringNode ${id}: Setting up subscription for edge changes`);
-    
-    const dbWorkflowId = convertToDbWorkflowId(workflowId);
-    
-    const channel = supabase
-      .channel(`edge_changes_${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'workflow_edges',
-          filter: `workflow_id=eq.${dbWorkflowId},target_node_id=eq.${id}`
-        },
-        (payload) => {
-          console.log(`FilteringNode ${id}: Edge change detected:`, payload);
-          
-          if (payload.eventType === 'INSERT') {
-            findSourceNode().then(sourceId => {
-              if (sourceId) {
-                setTimeout(() => refreshSchema(), 500);
-              }
-            });
-          } else if (payload.eventType === 'DELETE') {
-            setSourceNodeId(null);
-            // Fixed: Remove reference to undefined setSchema function
-            // Instead of setting schema to empty array, we should refresh or handle differently
-          }
-        }
-      )
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [workflowId, id, findSourceNode, refreshSchema]);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
