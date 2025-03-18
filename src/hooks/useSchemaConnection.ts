@@ -1,235 +1,193 @@
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { supabase } from '@/integrations/supabase/client';
+import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from '@/utils/schemaCache';
+import { getSchemaForFiltering } from '@/utils/schemaPropagation';
 import { toast } from 'sonner';
-import { getNodeSchema } from '@/utils/fileSchemaUtils';
 
-// Connection states for better tracking
 export enum ConnectionState {
   DISCONNECTED = 'disconnected',
   CONNECTING = 'connecting',
   CONNECTED = 'connected',
-  ERROR = 'error',
+  ERROR = 'error'
 }
 
 /**
- * Custom hook to manage schema connections between nodes
+ * Hook for connecting to and managing schema for a node
+ * Especially useful for nodes that rely on schema from an upstream node
  */
 export function useSchemaConnection(
-  workflowId: string | null,
+  workflowId: string | null | undefined,
   nodeId: string,
-  sourceNodeId: string | null,
+  sourceNodeId: string | null | undefined,
+  options?: {
+    autoConnect?: boolean;
+    pollInterval?: number;
+    showNotifications?: boolean;
+    debug?: boolean;
+  }
 ) {
+  const {
+    autoConnect = true,
+    pollInterval = 0, // 0 means no polling
+    showNotifications = false,
+    debug = false
+  } = options || {};
+  
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [schema, setSchema] = useState<SchemaColumn[]>([]);
-  const [sourceSchema, setSourceSchema] = useState<SchemaColumn[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
-  const [sourceSheetName, setSourceSheetName] = useState<string | null>(null);
   
-  // Refs for tracking operation state
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loadingAttemptRef = useRef(0);
-  const initialLoadCompletedRef = useRef(false);
+  // Helper to convert workflowId to database format
+  const getDbWorkflowId = useCallback(() => {
+    if (!workflowId) return null;
+    return workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+  }, [workflowId]);
   
-  // Clean up timeouts
-  const clearTimeouts = useCallback(() => {
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-      loadingTimeoutRef.current = null;
-    }
-  }, []);
-
-  // Load schema with debouncing and timeouts
-  const loadSchema = useCallback(async (forceRefresh = false) => {
-    if (!workflowId || !nodeId) return;
-    
-    if (isLoading && !forceRefresh) {
-      console.log(`Node ${nodeId}: Schema already loading, skipping redundant load`);
+  // Fetch schema from the database
+  const fetchSchema = useCallback(async (forceRefresh = false) => {
+    if (!workflowId || !nodeId) {
+      if (debug) console.log(`Missing required IDs: workflowId=${workflowId}, nodeId=${nodeId}`);
+      setConnectionState(ConnectionState.DISCONNECTED);
       return;
+    }
+    
+    if (!forceRefresh) {
+      // Try to use cached schema first
+      const cachedSchema = await getSchemaFromCache(workflowId, nodeId);
+      if (cachedSchema && cachedSchema.length > 0) {
+        if (debug) console.log(`Using cached schema for node ${nodeId}, columns:`, cachedSchema.map(c => c.name).join(', '));
+        setSchema(cachedSchema);
+        setConnectionState(ConnectionState.CONNECTED);
+        setError(null);
+        return;
+      }
     }
     
     setIsLoading(true);
     setError(null);
-    loadingAttemptRef.current += 1;
+    setConnectionState(ConnectionState.CONNECTING);
     
-    // Set a timeout to prevent infinite loading
-    clearTimeouts();
-    loadingTimeoutRef.current = setTimeout(() => {
-      if (isLoading) {
-        console.log(`Node ${nodeId}: Schema loading timed out after 15 seconds`);
-        setIsLoading(false);
-        setError('Loading timed out. Please try refreshing.');
-        setConnectionState(ConnectionState.ERROR);
-      }
-    }, 15000);
-
     try {
-      // First try to get our own schema
-      if (!forceRefresh) {
-        const ownSchema = await getNodeSchema(workflowId, nodeId, { 
-          forceRefresh: false,
-          maxCacheAge: 30000 // 30 seconds cache
-        });
-        
-        if (ownSchema && ownSchema.length > 0) {
-          console.log(`Node ${nodeId}: Using existing schema (${ownSchema.length} columns)`);
-          setSchema(ownSchema);
-          setConnectionState(ConnectionState.CONNECTED);
-          setLastRefreshTime(new Date());
-          setIsLoading(false);
-          clearTimeouts();
-          return;
-        }
-      }
-      
-      // If no source node, mark as disconnected
-      if (!sourceNodeId) {
-        console.log(`Node ${nodeId}: No source node connected`);
-        setConnectionState(ConnectionState.DISCONNECTED);
-        setIsLoading(false);
-        clearTimeouts();
-        return;
-      }
-
-      // Try to get source node's schema
-      console.log(`Node ${nodeId}: Loading schema from source node ${sourceNodeId}`);
-      setConnectionState(ConnectionState.CONNECTING);
-      
-      let sheet = sourceSheetName;
-      if (!sheet) {
-        // Try to get the sheet name from the source node
-        const { data: sheetData } = await supabase
-          .from('workflow_file_schemas')
-          .select('sheet_name')
-          .eq('workflow_id', workflowId)
-          .eq('node_id', sourceNodeId)
-          .maybeSingle();
-          
-        if (sheetData?.sheet_name) {
-          sheet = sheetData.sheet_name;
-          setSourceSheetName(sheet);
-        }
-      }
-      
-      // Now get the actual schema
-      const sourceSchema = await getNodeSchema(workflowId, sourceNodeId, { 
-        forceRefresh: true,
-        sheetName: sheet || undefined 
+      // Get schema using the Edge Function to ensure we get temporary schemas too
+      const { data, error } = await supabase.functions.invoke('inspectSchemas', {
+        body: { workflowId, nodeId }
       });
       
-      if (!sourceSchema || sourceSchema.length === 0) {
-        console.log(`Node ${nodeId}: Source node has no schema available`);
-        setError('Source node has no schema available yet. Wait for file processing to complete.');
-        setConnectionState(ConnectionState.ERROR);
-        setIsLoading(false);
-        clearTimeouts();
-        return;
+      if (error) {
+        throw new Error(error.message || 'Error fetching schema');
       }
       
-      console.log(`Node ${nodeId}: Retrieved schema from source (${sourceSchema.length} columns)`);
-      setSourceSchema(sourceSchema);
-      
-      // Propagate the schema to our node
-      const result = await propagateSchema(sourceSchema);
-      
-      if (result) {
-        setSchema(sourceSchema);
-        setConnectionState(ConnectionState.CONNECTED);
-        setLastRefreshTime(new Date());
-        console.log(`Node ${nodeId}: Schema successfully propagated from source`);
-      } else {
-        setError('Failed to propagate schema from source node');
-        setConnectionState(ConnectionState.ERROR);
-      }
-    } catch (err) {
-      console.error(`Node ${nodeId}: Error loading schema:`, err);
-      setError(`Failed to load schema: ${(err as Error).message || 'Unknown error'}`);
-      setConnectionState(ConnectionState.ERROR);
-    } finally {
-      setIsLoading(false);
-      clearTimeouts();
-    }
-  }, [workflowId, nodeId, sourceNodeId, isLoading, clearTimeouts, sourceSheetName]);
-
-  // Propagate schema from source to this node
-  const propagateSchema = useCallback(async (schemaToPropagate: SchemaColumn[]): Promise<boolean> => {
-    if (!workflowId || !nodeId) return false;
-    
-    try {
-      const sheet = sourceSheetName || 'Sheet1';
-      
-      // Update schema in database
-      const columns = schemaToPropagate.map(col => col.name);
-      const dataTypes = schemaToPropagate.reduce((acc, col) => {
-        acc[col.name] = col.type;
-        return acc;
-      }, {} as Record<string, string>);
-      
-      // Default file ID if none is available
-      const fileId = '00000000-0000-0000-0000-000000000000';
-      
-      const { error } = await supabase
-        .from('workflow_file_schemas')
-        .upsert({
-          workflow_id: workflowId,
-          node_id: nodeId,
-          columns,
-          data_types: dataTypes,
-          file_id: fileId,
-          sheet_name: sheet,
-          has_headers: true,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'workflow_id,node_id,sheet_name'
+      if (!data || !data.schemas || data.schemas.length === 0) {
+        if (debug) console.log(`No schema found for node ${nodeId}`);
+        
+        // Fall back to regular schema retrieval
+        const dbWorkflowId = getDbWorkflowId();
+        if (!dbWorkflowId) {
+          throw new Error('Invalid workflow ID');
+        }
+        
+        const { data: dbData, error: dbError } = await supabase
+          .from('workflow_file_schemas')
+          .select('*')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', nodeId);
+          
+        if (dbError) {
+          throw new Error(dbError.message);
+        }
+        
+        if (!dbData || dbData.length === 0) {
+          setSchema([]);
+          setConnectionState(ConnectionState.DISCONNECTED);
+          throw new Error('No schema available for this node');
+        }
+        
+        // Process schema from database
+        const schemaData = dbData[0];
+        const schemaColumns = schemaData.columns.map((column: string) => ({
+          name: column,
+          type: schemaData.data_types[column] || 'unknown'
+        }));
+        
+        if (debug) console.log(`Found schema in database for node ${nodeId}, columns:`, schemaColumns.map(c => c.name).join(', '));
+        
+        // Cache schema
+        await cacheSchema(workflowId, nodeId, schemaColumns, {
+          source: 'database',
+          sheetName: schemaData.sheet_name,
+          isTemporary: schemaData.is_temporary
         });
         
-      if (error) {
-        console.error(`Node ${nodeId}: Error updating schema in DB:`, error);
-        return false;
+        setSchema(schemaColumns);
+        setConnectionState(ConnectionState.CONNECTED);
+      } else {
+        // Process schema from Edge Function
+        const schemaData = data.schemas[0];
+        const schemaColumns = schemaData.columns.map((column: string) => ({
+          name: column,
+          type: schemaData.data_types[column] || 'unknown'
+        }));
+        
+        if (debug) console.log(`Found schema via Edge Function for node ${nodeId}, columns:`, schemaColumns.map(c => c.name).join(', '));
+        
+        // Cache schema
+        await cacheSchema(workflowId, nodeId, schemaColumns, {
+          source: 'database',
+          sheetName: schemaData.sheet_name,
+          isTemporary: schemaData.is_temporary
+        });
+        
+        setSchema(schemaColumns);
+        setConnectionState(ConnectionState.CONNECTED);
       }
       
-      return true;
+      setLastRefreshTime(new Date());
     } catch (err) {
-      console.error(`Node ${nodeId}: Error propagating schema:`, err);
-      return false;
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error fetching schema';
+      if (debug) console.error(`Error fetching schema:`, errorMessage);
+      setError(errorMessage);
+      setConnectionState(ConnectionState.ERROR);
+      
+      if (showNotifications) {
+        toast.error(`Error loading schema: ${errorMessage}`);
+      }
+    } finally {
+      setIsLoading(false);
     }
-  }, [workflowId, nodeId, sourceSheetName]);
-
-  // Force refresh the schema
-  const refreshSchema = useCallback(() => {
-    toast.info("Refreshing schema...");
-    loadSchema(true);
-  }, [loadSchema]);
-
-  // Set up subscriptions to detect schema changes in source node
+  }, [workflowId, nodeId, getDbWorkflowId, debug, showNotifications]);
+  
+  // Refresh schema
+  const refreshSchema = useCallback(async () => {
+    // Invalidate cache first
+    if (workflowId && nodeId) {
+      await invalidateSchemaCache(workflowId, nodeId);
+    }
+    
+    return fetchSchema(true);
+  }, [workflowId, nodeId, fetchSchema]);
+  
+  // Subscribe to real-time schema updates (future enhancement)
   useEffect(() => {
-    if (!workflowId || !sourceNodeId) return;
+    if (!workflowId || !nodeId) return;
     
-    console.log(`Node ${nodeId}: Setting up subscription for source node ${sourceNodeId}`);
-    
-    const dbWorkflowId = workflowId.startsWith('temp-') 
-      ? workflowId.substring(5) 
-      : workflowId;
-    
+    // Setup subscription for schema changes
     const channel = supabase
-      .channel(`schema_changes_${sourceNodeId}_${nodeId}`)
+      .channel(`schema-updates-${nodeId}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'workflow_file_schemas',
-          filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${sourceNodeId}`
+          filter: `node_id=eq.${nodeId}`
         },
         (payload) => {
-          console.log(`Node ${nodeId}: Schema change detected in source node ${sourceNodeId}`);
-          // Don't immediately reload - wait a short time to debounce multiple updates
-          setTimeout(() => {
-            loadSchema(true);
-          }, 1000);
+          if (debug) console.log(`Schema change detected for node ${nodeId}:`, payload);
+          fetchSchema(true);
         }
       )
       .subscribe();
@@ -237,34 +195,35 @@ export function useSchemaConnection(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workflowId, nodeId, sourceNodeId, loadSchema]);
-
-  // Initial load when connected to a source
+  }, [workflowId, nodeId, fetchSchema, debug]);
+  
+  // Auto-connect effect
   useEffect(() => {
-    if (sourceNodeId && !initialLoadCompletedRef.current && !isLoading) {
-      console.log(`Node ${nodeId}: Initial schema load triggered`);
-      initialLoadCompletedRef.current = true;
-      loadSchema(false);
+    if (autoConnect && workflowId && nodeId) {
+      fetchSchema();
     }
-  }, [sourceNodeId, nodeId, isLoading, loadSchema]);
-
-  // Cleanup timeouts on unmount
+  }, [autoConnect, workflowId, nodeId, fetchSchema]);
+  
+  // Setup polling if requested
   useEffect(() => {
+    if (!pollInterval || pollInterval <= 0 || !workflowId || !nodeId) return;
+    
+    const intervalId = setInterval(() => {
+      if (debug) console.log(`Polling schema for node ${nodeId}`);
+      fetchSchema();
+    }, pollInterval);
+    
     return () => {
-      clearTimeouts();
+      clearInterval(intervalId);
     };
-  }, [clearTimeouts]);
-
+  }, [pollInterval, workflowId, nodeId, fetchSchema, debug]);
+  
   return {
     connectionState,
     schema,
-    sourceSchema,
     isLoading,
     error,
     lastRefreshTime,
-    refreshSchema,
-    propagateSchema,
-    loadSchema,
-    sourceSheetName
+    refreshSchema
   };
 }

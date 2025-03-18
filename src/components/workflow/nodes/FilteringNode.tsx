@@ -14,9 +14,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 import { useSchemaConnection, ConnectionState } from '@/hooks/useSchemaConnection';
-import { useDebounce } from '@/hooks/useDebounce';
-import { supabase } from '@/integrations/supabase/client';
 import { standardizeColumnType, standardizeSchemaColumns } from '@/utils/schemaStandardization';
+import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 
 const OPERATORS = {
   string: [
@@ -69,10 +68,41 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState<boolean>(false);
   const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
-  const [debug, setDebug] = useState<boolean>(false);
+  const [debug, setDebug] = useState<boolean>(true);
 
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
+
+  const inspectSchemas = useCallback(async () => {
+    if (!workflowId || !id) {
+      console.log("Cannot inspect schemas: missing workflowId or nodeId");
+      return;
+    }
+    
+    try {
+      console.log(`Inspecting schemas for workflow ${workflowId}, node ${id}`);
+      const { data, error } = await supabase.functions.invoke('inspectSchemas', {
+        body: { workflowId, nodeId: id }
+      });
+      
+      if (error) {
+        console.error('Error inspecting schemas:', error);
+        toast.error(`Error inspecting schemas: ${error.message}`);
+        return;
+      }
+      
+      console.log(`Found ${data.schemaCount} schemas:`, data.schemas);
+      
+      if (data.schemas.length === 0) {
+        toast.warning('No schemas found for this node');
+      } else {
+        toast.success(`Found ${data.schemaCount} schemas for this node`);
+      }
+    } catch (error) {
+      console.error('Error in inspectSchemas:', error);
+      toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [workflowId, id]);
 
   const {
     connectionState,
@@ -81,7 +111,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     error,
     lastRefreshTime,
     refreshSchema
-  } = useSchemaConnection(workflowId, id, sourceNodeId);
+  } = useSchemaConnection(workflowId, id, sourceNodeId, {
+    debug: debug,
+    autoConnect: true,
+    showNotifications: true
+  });
 
   const findSourceNode = useCallback(async () => {
     if (!workflowId || !id) return null;
@@ -118,6 +152,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     
     console.log(`FilteringNode ${id}: Setting up subscription for edge changes`);
     
+    const dbWorkflowId = convertToDbWorkflowId(workflowId);
+    
     const channel = supabase
       .channel(`edge_changes_${id}`)
       .on(
@@ -126,15 +162,20 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           event: '*',
           schema: 'public',
           table: 'workflow_edges',
-          filter: `target_node_id=eq.${id}`
+          filter: `workflow_id=eq.${dbWorkflowId},target_node_id=eq.${id}`
         },
         (payload) => {
           console.log(`FilteringNode ${id}: Edge change detected:`, payload);
           
           if (payload.eventType === 'INSERT') {
-            setSourceNodeId(payload.new.source_node_id);
-          } else if (payload.eventType === 'DELETE' && payload.old.target_node_id === id) {
+            findSourceNode().then(sourceId => {
+              if (sourceId) {
+                setTimeout(() => refreshSchema(), 500);
+              }
+            });
+          } else if (payload.eventType === 'DELETE') {
             setSourceNodeId(null);
+            setSchema([]);
           }
         }
       )
@@ -143,7 +184,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workflowId, id]);
+  }, [workflowId, id, findSourceNode, refreshSchema]);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -316,7 +357,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   variant="ghost" 
                   size="sm" 
                   className="h-6 w-6 p-0"
-                  onClick={() => refreshSchema()}
+                  onClick={() => {
+                    refreshSchema();
+                    toast.info("Refreshing schema...");
+                  }}
                   disabled={isLoading}
                 >
                   <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isLoading ? 'animate-spin' : ''}`} />
@@ -329,6 +373,24 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                     Last refreshed: {lastRefreshTime.toLocaleTimeString()}
                   </p>
                 )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={inspectSchemas}
+                >
+                  <Info className="h-3.5 w-3.5 text-gray-500" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Inspect schemas (debug)</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -432,11 +494,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               )}
             </SelectContent>
           </Select>
-          {schema.length > 0 && (
+          {schema.length > 0 ? (
             <div className="text-xs text-blue-600 mt-1">
               {schema.length} column{schema.length !== 1 ? 's' : ''} available
             </div>
-          )}
+          ) : connectionState === ConnectionState.CONNECTED ? (
+            <div className="text-xs text-amber-600 mt-1">
+              Connected but no columns found
+            </div>
+          ) : null}
         </div>
         
         <div className="space-y-1.5">
@@ -495,6 +561,17 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                     <li key={index}>{error}</li>
                   ))}
                 </ul>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {connectionState === ConnectionState.DISCONNECTED && sourceNodeId === null && (
+          <div className="bg-orange-50 p-2 rounded-md border border-orange-200 text-xs text-orange-600">
+            <div className="flex items-start">
+              <Info className="h-4 w-4 text-orange-500 mr-1 flex-shrink-0 mt-0.5" />
+              <div>
+                <p>Connect an input to this node to enable filtering.</p>
               </div>
             </div>
           </div>

@@ -45,6 +45,7 @@ serve(async (req) => {
     
     console.log(`Inspecting schemas for workflow ${dbWorkflowId}`);
     
+    // Important: Do not filter by is_temporary to see both temporary and permanent schemas
     let query = supabase
       .from('workflow_file_schemas')
       .select('*')
