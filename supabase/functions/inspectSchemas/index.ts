@@ -39,12 +39,11 @@ serve(async (req) => {
     }
     
     // Normalize workflow ID
-    // This ensures temporary workflow IDs (temp-UUID) are properly handled
     const dbWorkflowId = workflowId.startsWith('temp-') 
       ? workflowId.substring(5) 
       : workflowId;
     
-    console.log(`Inspecting schemas for workflow ${dbWorkflowId}, node ${nodeId || 'all'}`);
+    console.log(`Inspecting schemas for workflow ${dbWorkflowId}`);
     
     // Check if this node has a source node
     let hasSourceNode = false;
@@ -92,7 +91,7 @@ serve(async (req) => {
       query = query.eq('node_id', nodeId);
     }
     
-    const { data: schemas, error } = await query.order('created_at', { ascending: false });
+    const { data, error } = await query.order('created_at', { ascending: false });
     
     if (error) {
       console.error('Error inspecting schemas:', error);
@@ -102,7 +101,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`Found ${schemas?.length || 0} schemas for node ${nodeId || 'any'}`);
+    console.log(`Found ${data?.length || 0} schemas for node ${nodeId || 'any'}`);
     
     // Get edges to show connections
     const { data: edges, error: edgesError } = await supabase
@@ -118,26 +117,28 @@ serve(async (req) => {
     
     // If no schema found for this node, but it has sources, check them
     let sourceSchemasData = [];
-    if (nodeId && hasSourceNode && (!schemas || schemas.length === 0)) {
+    if (nodeId && hasSourceNode && (!data || data.length === 0)) {
       console.log(`No schema found for ${nodeId}, checking source nodes:`, sourceNodes);
       
       // Try to get schema from source nodes
-      for (const sourceId of sourceNodes) {
-        const { data: sourceSchema, error: sourceError } = await supabase
+      const sourceSchemaPromises = sourceNodes.map(sourceId => {
+        return supabase
           .from('workflow_file_schemas')
           .select('*')
           .eq('workflow_id', dbWorkflowId)
           .eq('node_id', sourceId)
-          .order('created_at', { ascending: false })
-          .limit(1);
-          
-        if (!sourceError && sourceSchema && sourceSchema.length > 0) {
-          console.log(`Found schema in source node ${sourceId}`);
-          sourceSchemasData = [...sourceSchemasData, ...sourceSchema];
-          // Once we find a valid schema, we can use it
-          break;
+          .order('created_at', { ascending: false });
+      });
+      
+      const sourceResults = await Promise.all(sourceSchemaPromises);
+      
+      // Collect all valid source schemas
+      sourceResults.forEach((result, index) => {
+        if (!result.error && result.data && result.data.length > 0) {
+          console.log(`Found schema in source node ${sourceNodes[index]}`);
+          sourceSchemasData = [...sourceSchemasData, ...result.data];
         }
-      }
+      });
       
       console.log(`Found ${sourceSchemasData.length} source schemas that could be propagated`);
     }
@@ -145,8 +146,8 @@ serve(async (req) => {
     // Prepare response data
     const result = {
       workflowId: dbWorkflowId,
-      schemaCount: schemas?.length || 0,
-      schemas: schemas || [],
+      schemaCount: data?.length || 0,
+      schemas: data || [],
       edges: edges || [],
       workflowInfo: null,
       hasSourceNode: hasSourceNode,
