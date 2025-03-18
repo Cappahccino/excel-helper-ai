@@ -116,7 +116,7 @@ export function useSchemaSubscription(
           // If there's an initial schema, process it
           if (data.schema) {
             await cacheSchema(workflowId, nodeId, data.schema, {
-              source: 'subscription',
+              source: "subscription",
               version: data.version
             });
             
@@ -160,7 +160,7 @@ export function useSchemaSubscription(
           
           // Cache the updated schema
           await cacheSchema(workflowId, nodeId, data.schema, {
-            source: 'polling',
+            source: "polling",
             version: data.version
           });
           
@@ -212,7 +212,7 @@ export function useSchemaSubscription(
       if (data?.schema) {
         // Cache the updated schema
         await cacheSchema(workflowId, nodeId, data.schema, {
-          source: 'manual_refresh',
+          source: "manual_refresh",
           version: data.version
         });
         

@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -325,7 +324,7 @@ export function useSchemaPropagation(
         
         if (data?.schema) {
           await cacheSchema(workflowId!, targetNodeId, data.schema, {
-            source: 'refresh',
+            source: "refresh",
             version: data.version
           });
           
