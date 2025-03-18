@@ -69,7 +69,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [operators, setOperators] = useState<{ value: string; label: string }[]>(OPERATORS.default);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState<boolean>(false);
-  const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
+  const [executionId, setExecutionId] = useState<string | null>(null);
   const [debug, setDebug] = useState<boolean>(true);
   const [columnSearchTerm, setColumnSearchTerm] = useState<string>('');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
@@ -151,7 +151,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflowId, id, sourceSheetName, sheetName]);
 
-  // Helper to get source node metadata - with improved type safety
   const getSourceNodeMetadata = useCallback(async (sourceId: string) => {
     if (!workflowId || !sourceId) return null;
     
@@ -251,11 +250,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id, workflowId, getSourceNodeMetadata]);
 
-  // Added effect to force schema propagation when source node is first connected
   useEffect(() => {
     let isActive = true;
     
-    // When source node ID changes and we have a valid one, force schema propagation
     if (workflowId && id && sourceNodeId && schema.length === 0 && !isLoading) {
       console.log(`FilteringNode ${id}: Source node connected, forcing schema propagation`);
       forceSchemaPropagation().then(success => {
@@ -294,7 +291,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     };
   }, [workflowId, id, findSourceNode, isInitialized]);
   
-  // Listen for edge changes
   useEffect(() => {
     if (!workflowId || !id) return;
     
@@ -312,7 +308,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           console.log(`Edge change detected for node ${id}:`, payload);
           findSourceNode().then(sourceId => {
             if (sourceId) {
-              // When a new edge is created, force propagation after a short delay
               setTimeout(() => forceSchemaPropagation(), 500);
             }
           });
@@ -515,7 +510,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
-  // Added new method to force schema propagation from source
   const handleForcePropagation = async () => {
     if (sourceNodeId) {
       console.log(`FilteringNode ${id}: Forcing schema propagation...`);
@@ -530,8 +524,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       findSourceNode();
     }
   };
-  
-  // Added a diagnostic button to help debug schema issues
+
   const handleRunDiagnostics = async () => {
     console.log(`FilteringNode ${id}: Running schema diagnostics...`);
     await runSchemaDiagnostics();
@@ -541,7 +534,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return (isLoading && !schema.length) || (!isInitialized && hasSourceNode);
   }, [isLoading, schema.length, isInitialized, hasSourceNode]);
 
-  // Debug button handler to show current state
   const handleShowDebugInfo = () => {
     const debugInfo = {
       nodeId: id,
@@ -628,7 +620,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       
       <CardContent className="p-3 space-y-3">
         {showLogs ? (
-          <WorkflowLogPanel nodeId={id} onClose={() => setShowLogs(false)} />
+          <WorkflowLogPanel 
+            workflowId={workflowId} 
+            executionId={executionId} 
+            selectedNodeId={id} 
+            isOpen={showLogs} 
+            onOpenChange={(open) => setShowLogs(open)} 
+          />
         ) : (
           <>
             {validationErrors.length > 0 && (
@@ -697,7 +695,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               </div>
             ) : (
               <>
-                {/* Schema search and selection */}
                 <div className="space-y-3">
                   <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
@@ -788,7 +785,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               </>
             )}
             
-            {/* Debug tools, only shown when debug mode is active */}
             {debug && (
               <div className="pt-3 border-t border-gray-200">
                 <Button 

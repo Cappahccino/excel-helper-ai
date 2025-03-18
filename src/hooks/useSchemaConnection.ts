@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -129,88 +130,7 @@ export function useSchemaConnection(
     }
   }, [workflowId, sourceNodeId, getDbWorkflowId, debug, sheetName]);
   
-  // Debounced schema fetch to prevent rapid multiple requests
-  const debouncedFetchSchema = useCallback(
-    debounce(async (forceRefresh: boolean) => {
-      await fetchSchema(forceRefresh);
-    }, 300),
-    [workflowId, nodeId, sourceNodeId]
-  );
-  
-  // Force propagation of schema from source to this node
-  const forceSchemaPropagation = useCallback(async () => {
-    if (!workflowId || !nodeId || !sourceNodeId) {
-      if (debug) console.log(`Cannot force propagate: missing id(s): wf=${workflowId}, node=${nodeId}, source=${sourceNodeId}`);
-      return false;
-    }
-    
-    setIsLoading(true);
-    setConnectionState(ConnectionState.CONNECTING);
-    
-    try {
-      const effectiveSheetName = sheetName || await getSourceNodeSheet();
-      if (debug) {
-        console.log(`Forcing schema propagation from ${sourceNodeId} to ${nodeId}, sheet: ${effectiveSheetName || 'default'}`);
-      }
-      
-      // Invalidate cache first
-      await invalidateSchemaCache(workflowId, nodeId, effectiveSheetName);
-      localCache.current = null;
-      
-      if (showNotifications) {
-        toast.info('Propagating schema from source node...');
-      }
-      
-      // Try to propagate using utility function
-      const success = await propagateSchemaWithRetry(workflowId, sourceNodeId, nodeId, {
-        maxRetries: maxRetries,
-        sheetName: effectiveSheetName,
-        forceRefresh: true
-      });
-      
-      if (!isMounted.current) return false;
-      
-      if (success) {
-        if (debug) console.log(`Successfully propagated schema: ${sourceNodeId} -> ${nodeId}`);
-        
-        // Refresh schema after propagation
-        await fetchSchema(true);
-        
-        if (showNotifications) {
-          toast.success('Schema updated from source');
-        }
-        
-        return true;
-      } else {
-        if (debug) console.log(`Schema propagation failed, trying direct fetch`);
-        
-        // Even if propagation fails, try to fetch schema directly 
-        const result = await fetchSchema(true);
-        
-        if (!result && showNotifications) {
-          toast.error('Failed to update schema from source');
-        }
-        
-        return result;
-      }
-    } catch (err) {
-      if (debug) console.error('Error in forceSchemaPropagation:', err);
-      setError(`Propagation failed: ${(err as Error).message}`);
-      setConnectionState(ConnectionState.ERROR);
-      
-      if (showNotifications) {
-        toast.error('Error updating schema from source');
-      }
-      
-      return false;
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [workflowId, nodeId, sourceNodeId, debug, sheetName, maxRetries, getSourceNodeSheet, showNotifications, fetchSchema]);
-  
-  // Fetch schema from the database with retry mechanism
+  // Declaration of fetchSchema before it's used by other functions
   const fetchSchema = useCallback(async (forceRefresh = false) => {
     // Only attempt to fetch schema if we have all required IDs
     if (!workflowId || !nodeId) {
@@ -437,10 +357,91 @@ export function useSchemaConnection(
     }
   }, [workflowId, nodeId, sourceNodeId, getDbWorkflowId, debug, showNotifications, maxRetries, retryDelay, sheetName, getSourceNodeSheet]);
   
+  // Debounced schema fetch to prevent rapid multiple requests
+  const debouncedFetchSchema = useCallback(
+    debounce(async (forceRefresh: boolean) => {
+      await fetchSchema(forceRefresh);
+    }, 300),
+    [fetchSchema]
+  );
+  
   // Helper to reset retry count
   const setRetryCount = (count: number) => {
     retryCount.current = count;
   };
+  
+  // Force propagation of schema from source to this node
+  const forceSchemaPropagation = useCallback(async () => {
+    if (!workflowId || !nodeId || !sourceNodeId) {
+      if (debug) console.log(`Cannot force propagate: missing id(s): wf=${workflowId}, node=${nodeId}, source=${sourceNodeId}`);
+      return false;
+    }
+    
+    setIsLoading(true);
+    setConnectionState(ConnectionState.CONNECTING);
+    
+    try {
+      const effectiveSheetName = sheetName || await getSourceNodeSheet();
+      if (debug) {
+        console.log(`Forcing schema propagation from ${sourceNodeId} to ${nodeId}, sheet: ${effectiveSheetName || 'default'}`);
+      }
+      
+      // Invalidate cache first
+      await invalidateSchemaCache(workflowId, nodeId, effectiveSheetName);
+      localCache.current = null;
+      
+      if (showNotifications) {
+        toast.info('Propagating schema from source node...');
+      }
+      
+      // Try to propagate using utility function
+      const success = await propagateSchemaWithRetry(workflowId, sourceNodeId, nodeId, {
+        maxRetries: maxRetries,
+        sheetName: effectiveSheetName,
+        forceRefresh: true
+      });
+      
+      if (!isMounted.current) return false;
+      
+      if (success) {
+        if (debug) console.log(`Successfully propagated schema: ${sourceNodeId} -> ${nodeId}`);
+        
+        // Refresh schema after propagation
+        await fetchSchema(true);
+        
+        if (showNotifications) {
+          toast.success('Schema updated from source');
+        }
+        
+        return true;
+      } else {
+        if (debug) console.log(`Schema propagation failed, trying direct fetch`);
+        
+        // Even if propagation fails, try to fetch schema directly 
+        const result = await fetchSchema(true);
+        
+        if (!result && showNotifications) {
+          toast.error('Failed to update schema from source');
+        }
+        
+        return result;
+      }
+    } catch (err) {
+      if (debug) console.error('Error in forceSchemaPropagation:', err);
+      setError(`Propagation failed: ${(err as Error).message}`);
+      setConnectionState(ConnectionState.ERROR);
+      
+      if (showNotifications) {
+        toast.error('Error updating schema from source');
+      }
+      
+      return false;
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [workflowId, nodeId, sourceNodeId, debug, sheetName, maxRetries, getSourceNodeSheet, showNotifications, fetchSchema]);
   
   // Refresh schema with proper cache invalidation
   const refreshSchema = useCallback(async () => {
