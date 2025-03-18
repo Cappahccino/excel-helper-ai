@@ -84,7 +84,7 @@ export async function synchronizeNodesSheetSelection(
 
 /**
  * Propagate schema directly from source to target node
- * Now uses Edge Function for distributed processing with Redis
+ * Uses Edge Function for distributed processing with Redis
  */
 export async function propagateSchemaDirectly(
   workflowId: string,
@@ -93,7 +93,7 @@ export async function propagateSchemaDirectly(
   sheetName?: string
 ): Promise<boolean> {
   try {
-    console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}`);
+    console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}, workflow: ${workflowId}`);
     
     // Use schemaPropagation Edge Function
     const { data, error } = await supabase.functions.invoke('schemaPropagation', {
@@ -131,7 +131,8 @@ export async function propagateSchemaDirectly(
         cacheSchema(workflowId, targetNodeId, schemaColumns, {
           source: 'propagation',
           sheetName: sheetName,
-          version: data.version
+          version: data.version,
+          isTemporary: data.isTemporary
         });
       }
       
@@ -153,6 +154,7 @@ export async function propagateSchemaDirectly(
 /**
  * Fallback direct propagation implementation
  * Used when Edge Function is unavailable
+ * Updated to handle temporary schemas
  */
 async function propagateSchemaDirectlyFallback(
   workflowId: string,
@@ -165,6 +167,8 @@ async function propagateSchemaDirectlyFallback(
       ? workflowId.substring(5) 
       : workflowId;
     
+    console.log(`Using fallback propagation for ${sourceNodeId} -> ${targetNodeId} in workflow ${dbWorkflowId}`);
+    
     // First check cache for source schema
     const cachedSchema = await getSchemaFromCache(workflowId, sourceNodeId, {
       maxAge: 10000, // 10 seconds
@@ -172,30 +176,29 @@ async function propagateSchemaDirectlyFallback(
     });
     
     let schema;
+    let isTemporary = false;
     
-    if (cachedSchema) {
+    if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
       console.log(`Using cached schema for source node ${sourceNodeId}`);
       
-      // Convert to DB format from cached schema
-      const columns = cachedSchema.map(col => col.name);
-      const dataTypes = cachedSchema.reduce((acc, col) => {
-        acc[col.name] = col.type;
-        return acc;
-      }, {} as Record<string, string>);
-      
-      schema = { 
-        columns, 
-        data_types: dataTypes,
-        file_id: '00000000-0000-0000-0000-000000000000'
+      // Extract schema and temporary status from cache
+      schema = {
+        columns: cachedSchema.schema.map(col => col.name),
+        data_types: cachedSchema.schema.reduce((acc, col) => {
+          acc[col.name] = col.type;
+          return acc;
+        }, {} as Record<string, string>),
+        file_id: cachedSchema.fileId || '00000000-0000-0000-0000-000000000000'
       };
+      
+      isTemporary = cachedSchema.isTemporary || false;
     } else {
-      // Get source schema from database
+      // Get source schema from database - no longer filtering by is_temporary
       const { data: sourceSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
-        .select('columns, data_types, file_id, sheet_name')
+        .select('columns, data_types, file_id, sheet_name, is_temporary')
         .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', sourceNodeId)
-        .is('is_temporary', false);
+        .eq('node_id', sourceNodeId);
         
       if (sourceError || !sourceSchema || sourceSchema.length === 0) {
         console.error('Error or no schema found for source node:', sourceError || 'No schema found');
@@ -203,11 +206,13 @@ async function propagateSchemaDirectlyFallback(
       }
       
       schema = sourceSchema[0];
+      isTemporary = schema.is_temporary || false;
       
       if (sheetName && sourceSchema.length > 1) {
         const sheetSchema = sourceSchema.find(s => s.sheet_name === sheetName);
         if (sheetSchema) {
           schema = sheetSchema;
+          isTemporary = sheetSchema.is_temporary || false;
         }
       }
       
@@ -219,7 +224,8 @@ async function propagateSchemaDirectlyFallback(
       
       cacheSchema(workflowId, sourceNodeId, schemaColumns, {
         source: 'database',
-        sheetName: sheetName || schema.sheet_name
+        sheetName: sheetName || schema.sheet_name,
+        isTemporary
       });
     }
     
@@ -231,7 +237,7 @@ async function propagateSchemaDirectlyFallback(
       }))
     );
     
-    // Update target schema
+    // Update target schema, preserving temporary status
     const targetSchema = {
       workflow_id: dbWorkflowId,
       node_id: targetNodeId,
@@ -243,8 +249,11 @@ async function propagateSchemaDirectlyFallback(
       file_id: schema.file_id,
       sheet_name: sheetName || schema.sheet_name || 'Sheet1',
       has_headers: true,
+      is_temporary: isTemporary,
       updated_at: new Date().toISOString()
     };
+    
+    console.log(`Updating target schema for ${targetNodeId} with is_temporary=${isTemporary}`);
     
     const { error: targetError } = await supabase
       .from('workflow_file_schemas')
@@ -260,7 +269,8 @@ async function propagateSchemaDirectlyFallback(
     // Cache the target schema too
     cacheSchema(workflowId, targetNodeId, standardizedColumns, {
       source: 'propagation',
-      sheetName: sheetName || schema.sheet_name
+      sheetName: sheetName || schema.sheet_name,
+      isTemporary
     });
     
     console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId} using fallback method`);
@@ -273,6 +283,7 @@ async function propagateSchemaDirectlyFallback(
 
 /**
  * Check if a node is ready for schema propagation
+ * Updated to include temporary schemas
  */
 export async function isNodeReadyForSchemaPropagation(
   workflowId: string,
@@ -281,7 +292,7 @@ export async function isNodeReadyForSchemaPropagation(
   try {
     // First check cache
     const cachedSchema = await getSchemaFromCache(workflowId, nodeId);
-    if (cachedSchema && cachedSchema.length > 0) {
+    if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
       return true;
     }
     
@@ -289,6 +300,7 @@ export async function isNodeReadyForSchemaPropagation(
       ? workflowId.substring(5) 
       : workflowId;
     
+    // No longer filtering by is_temporary
     const { data: schema, error } = await supabase
       .from('workflow_file_schemas')
       .select('columns')
@@ -433,90 +445,124 @@ export async function checkSchemaPropagationNeeded(
 }
 
 /**
- * Propagate schema with retry logic
- * Now uses the Edge Function with fallback to client-side implementation
+ * Propagate schema with retry mechanism
+ * Updated to handle temporary schemas
  */
 export async function propagateSchemaWithRetry(
   workflowId: string,
-  sourceNodeId: string,
+  sourceNodeId: string, 
   targetNodeId: string,
   options?: {
     maxRetries?: number;
-    retryDelay?: number;
     sheetName?: string;
     forceRefresh?: boolean;
-    onProgress?: (attempt: number, maxAttempts: number) => void;
   }
 ): Promise<boolean> {
-  const { 
-    maxRetries = 3, 
-    retryDelay = 1000, 
-    sheetName,
-    forceRefresh = false,
-    onProgress
-  } = options || {};
+  const maxRetries = options?.maxRetries || 3;
+  const sheetName = options?.sheetName;
+  const forceRefresh = options?.forceRefresh || false;
   
-  let attempts = 0;
+  let retries = 0;
+  let success = false;
   
-  while (attempts < maxRetries) {
-    attempts++;
-    
-    if (onProgress) {
-      onProgress(attempts, maxRetries);
-    }
-    
-    console.log(`Propagating schema (attempt ${attempts}/${maxRetries}): ${sourceNodeId} → ${targetNodeId}`);
-    
+  while (retries < maxRetries && !success) {
     try {
-      // Check if source node has a schema first
-      const isSourceReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId);
+      if (retries > 0) {
+        console.log(`Retry ${retries}/${maxRetries} for schema propagation ${sourceNodeId} -> ${targetNodeId}`);
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.min(1000 * Math.pow(2, retries), 30000)));
+      }
       
-      if (!isSourceReady) {
-        console.log(`Source node ${sourceNodeId} schema not ready, waiting...`);
+      // First try direct method via Edge Function
+      if (retries === 0) {
+        success = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
+        if (success) break;
+      }
+      
+      // Fallback method
+      const dbWorkflowId = workflowId.startsWith('temp-') 
+        ? workflowId.substring(5) 
+        : workflowId;
+      
+      // No longer filtering by is_temporary
+      const { data: sourceSchema, error: sourceError } = await supabase
+        .from('workflow_file_schemas')
+        .select('columns, data_types, file_id, sheet_name, is_temporary')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', sourceNodeId);
         
-        if (attempts === maxRetries) {
-          console.error(`Max retries reached, source node ${sourceNodeId} schema not available`);
-          return false;
-        }
-        
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      if (sourceError || !sourceSchema || sourceSchema.length === 0) {
+        console.error('Error or no schema found for source node:', sourceError || 'No schema found');
+        retries++;
         continue;
       }
       
-      // If force refresh, invalidate cache
-      if (forceRefresh) {
-        invalidateSchemaCache(workflowId, sourceNodeId, sheetName);
-        invalidateSchemaCache(workflowId, targetNodeId, sheetName);
+      let schema = sourceSchema[0];
+      let isTemporary = schema.is_temporary || false;
+      
+      if (sheetName && sourceSchema.length > 1) {
+        const sheetSchema = sourceSchema.find(s => s.sheet_name === sheetName);
+        if (sheetSchema) {
+          schema = sheetSchema;
+          isTemporary = sheetSchema.is_temporary || false;
+        }
       }
       
-      // Attempt to propagate using Edge Function with fallback
-      const success = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
+      // Handle standardization
+      const standardized = standardizeSchemaColumns(
+        schema.columns.map(col => ({
+          name: col,
+          type: schema.data_types[col] || 'unknown'
+        }))
+      );
       
-      if (success) {
-        console.log(`Schema propagation successful on attempt ${attempts}`);
-        return true;
+      // Update target schema, preserving temporary status
+      const { error: targetError } = await supabase
+        .from('workflow_file_schemas')
+        .upsert({
+          workflow_id: dbWorkflowId,
+          node_id: targetNodeId,
+          columns: standardized.map(col => col.name),
+          data_types: standardized.reduce((acc, col) => {
+            acc[col.name] = col.type;
+            return acc;
+          }, {} as Record<string, string>),
+          file_id: schema.file_id,
+          sheet_name: sheetName || schema.sheet_name || 'Sheet1',
+          has_headers: true,
+          is_temporary: isTemporary,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'workflow_id,node_id,sheet_name'
+        });
+      
+      if (targetError) {
+        console.error('Error updating target schema:', targetError);
+        retries++;
+        continue;
       }
       
-      console.log(`Propagation attempt ${attempts} failed, will retry after delay`);
+      // Cache both schemas
+      cacheSchema(workflowId, sourceNodeId, standardized, {
+        source: 'database',
+        sheetName: sheetName || schema.sheet_name,
+        isTemporary
+      });
       
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, attempts - 1))); // Exponential backoff
+      cacheSchema(workflowId, targetNodeId, standardized, {
+        source: 'propagation',
+        sheetName: sheetName || schema.sheet_name,
+        isTemporary
+      });
+      
+      success = true;
     } catch (error) {
-      console.error(`Error during propagation attempt ${attempts}:`, error);
-      
-      if (attempts === maxRetries) {
-        console.error('Max retries reached');
-        return false;
-      }
-      
-      // Wait before retry with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, attempts - 1)));
+      console.error(`Error during retry ${retries} for schema propagation:`, error);
+      retries++;
     }
   }
   
-  console.error(`Failed to propagate schema after ${maxRetries} attempts`);
-  return false;
+  return success;
 }
 
 /**
@@ -531,55 +577,50 @@ export async function getSchemaForFiltering(
   }
 ): Promise<SchemaColumn[]> {
   try {
-    const { sheetName, forceRefresh = false } = options || {};
+    const sheetName = options?.sheetName;
+    const forceRefresh = options?.forceRefresh || false;
     
-    // First check cache unless force refresh
+    // Try cache first unless forced refresh
     if (!forceRefresh) {
       const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
-      if (cachedSchema && cachedSchema.length > 0) {
-        return validateSchemaForFiltering(cachedSchema);
+      if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
+        return validateSchemaForFiltering(cachedSchema.schema);
       }
     }
     
-    // Get schema from database
+    // Get from database if not in cache or forced refresh
     const dbWorkflowId = workflowId.startsWith('temp-') 
       ? workflowId.substring(5) 
       : workflowId;
     
-    const { data: schema, error } = await supabase
+    // No longer filtering by is_temporary
+    const query = supabase
       .from('workflow_file_schemas')
-      .select('columns, data_types, sheet_name')
+      .select('columns, data_types')
       .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId)
-      .is('is_temporary', false);
+      .eq('node_id', nodeId);
       
-    if (error || !schema || schema.length === 0) {
-      console.error('Error or no schema found for filtering:', error || 'No schema found');
+    if (sheetName) {
+      query.eq('sheet_name', sheetName);
+    }
+    
+    const { data, error } = await query.maybeSingle();
+    
+    if (error || !data) {
+      console.error('Error getting schema for filtering:', error || 'No schema found');
       return [];
     }
     
-    // Find the right sheet if multiple exist
-    let targetSchema = schema[0];
-    if (sheetName && schema.length > 1) {
-      const sheetSchema = schema.find(s => s.sheet_name === sheetName);
-      if (sheetSchema) {
-        targetSchema = sheetSchema;
-      }
-    }
-    
-    // Convert to SchemaColumn format
-    const schemaColumns = targetSchema.columns.map(column => ({
-      name: column,
-      type: targetSchema.data_types[column] || 'unknown'
+    // Convert to SchemaColumn array and validate
+    const schema = data.columns.map(col => ({
+      name: col,
+      type: data.data_types[col] || 'unknown'
     }));
     
-    // Cache for future use
-    await cacheSchema(workflowId, nodeId, schemaColumns, {
-      source: 'database',
-      sheetName: targetSchema.sheet_name
-    });
+    // Cache the schema
+    cacheSchema(workflowId, nodeId, schema, { sheetName });
     
-    return validateSchemaForFiltering(schemaColumns);
+    return validateSchemaForFiltering(schema);
   } catch (error) {
     console.error('Error in getSchemaForFiltering:', error);
     return [];
@@ -587,39 +628,47 @@ export async function getSchemaForFiltering(
 }
 
 /**
- * Validate schema for filtering operations by ensuring all types are supported
+ * Validate schema for filtering operations
+ * This is useful for filtering nodes that require specific column types
  */
 export function validateSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn[] {
   if (!schema || !Array.isArray(schema)) {
+    console.warn('Invalid schema provided to validateSchemaForFiltering');
     return [];
   }
   
-  return schema.map(column => {
-    // Convert type to string to make comparisons safer
-    const typeStr = column.type.toString().toLowerCase();
+  // Ensure all column types are properly standardized
+  return schema.map(col => {
+    // Ensure name is a valid string
+    const name = col.name && typeof col.name === 'string' ? col.name : `column_${Math.random().toString(36).substring(2, 9)}`;
     
-    // Map to valid types for filtering
-    let validType: "string" | "number" | "boolean" | "object" | "date" | "unknown" | "array" | "text" = "unknown";
+    // Handle type standardization
+    let type = (col.type || 'unknown').toLowerCase();
     
-    if (['varchar', 'char', 'text', 'string', 'str'].some(t => t === typeStr)) {
-      validType = 'string';
-    } else if (['int', 'integer', 'float', 'double', 'decimal', 'number', 'num', 'numeric'].some(t => t === typeStr)) {
-      validType = 'number';
-    } else if (['date', 'datetime', 'timestamp', 'time'].some(t => t === typeStr)) {
-      validType = 'date';
-    } else if (['bool', 'boolean'].some(t => t === typeStr)) {
-      validType = 'boolean';
-    } else if (['object', 'json', 'map'].some(t => t === typeStr)) {
-      validType = 'object';
-    } else if (['array', 'list'].some(t => t === typeStr)) {
-      validType = 'array';
-    } else if (typeStr === 'text') {
-      validType = 'text';
+    // Map types to standard formats
+    if (['varchar', 'char', 'text', 'string', 'str'].includes(type)) {
+      type = 'string';
+    } else if (['int', 'integer', 'float', 'double', 'decimal', 'number', 'num', 'numeric'].includes(type)) {
+      type = 'number';
+    } else if (['date', 'datetime', 'timestamp', 'time'].includes(type)) {
+      type = 'date';
+    } else if (['bool', 'boolean'].includes(type)) {
+      type = 'boolean';
+    } else if (['object', 'json', 'map'].includes(type)) {
+      type = 'object';
+    } else if (['array', 'list'].includes(type)) {
+      type = 'array';
+    } else if (type === 'text') {
+      type = 'string';
+    } else {
+      // Default to string if unknown
+      console.warn(`Unknown column type "${type}" for column "${name}", defaulting to string`);
+      type = 'string';
     }
     
     return {
-      name: column.name,
-      type: validType
+      name,
+      type: type as "string" | "number" | "boolean" | "object" | "date" | "unknown" | "array" | "text"
     };
   });
 }
@@ -701,3 +750,4 @@ export async function debugNodeSchema(
     };
   }
 }
+

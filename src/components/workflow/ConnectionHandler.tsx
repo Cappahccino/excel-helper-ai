@@ -29,6 +29,15 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   const edgesSavePending = useRef(false);
   const edgesSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  useEffect(() => {
+    if (workflowId) {
+      const isTemp = isTemporaryId(workflowId);
+      const dbId = convertToDbWorkflowId(workflowId);
+      console.log(`ConnectionHandler initialized with workflowId: ${workflowId}`);
+      console.log(`Is temporary ID: ${isTemp}, Database ID: ${dbId}`);
+    }
+  }, [workflowId, isTemporaryId, convertToDbWorkflowId]);
+
   const saveEdgesToDatabase = useCallback(async (edgesToSave: Edge[], immediate = false) => {
     if (!workflowId) return;
     
@@ -123,7 +132,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     const now = Date.now();
     
     try {
-      console.log(`Attempting direct schema propagation from ${sourceId} to ${targetId} for workflow ${workflowId}`);
+      console.log(`Attempting direct schema propagation from ${sourceId} to ${targetId} for workflow ${workflowId} (isTemp: ${isTemporaryId(workflowId)})`);
       
       const result = await propagateSchemaDirectly(workflowId, sourceId, targetId);
       
@@ -164,7 +173,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     }
     
     try {
-      console.log(`Attempting to propagate schema via context method from ${sourceId} to ${targetId}`);
+      console.log(`Attempting to propagate schema via context method from ${sourceId} to ${targetId} (isTemp: ${isTemporaryId(workflowId)})`);
       
       setSchemaPropagationStatus(prev => ({
         ...prev,
@@ -255,7 +264,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       
       return false;
     }
-  }, [propagateFileSchema, retryMap, workflowId]);
+  }, [propagateFileSchema, retryMap, workflowId, isTemporaryId]);
 
   useEffect(() => {
     if (!workflowId) return;

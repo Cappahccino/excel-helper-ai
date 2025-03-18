@@ -382,10 +382,12 @@ async function handleHealthCheck(redis, corsHeaders) {
   }
 }
 
-// Handle schema propagation (original functionality)
+// Handle schema propagation (original functionality), now updated to include temporary schemas
 async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
   const { workflowId, sourceNodeId, targetNodeId, sheetName, forceRefresh } = body;
   
+  console.log(`Starting schema propagation for workflow ${workflowId}: ${sourceNodeId} -> ${targetNodeId}`);
+
   if (!workflowId || !sourceNodeId || !targetNodeId) {
     return new Response(
       JSON.stringify({ error: 'Missing required parameters' }),
@@ -397,6 +399,8 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
   const dbWorkflowId = workflowId.startsWith('temp-') 
     ? workflowId.substring(5) 
     : workflowId;
+  
+  console.log(`Normalized workflow ID: ${workflowId} -> ${dbWorkflowId}`);
   
   // Acquire a distributed lock to prevent race conditions
   const lockKey = `lock:schema:${dbWorkflowId}:${sourceNodeId}:${targetNodeId}`;
@@ -410,7 +414,7 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
   }
   
   try {
-    console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}`);
+    console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}, workflow: ${dbWorkflowId}`);
     
     // Check Redis cache for source schema first
     const cacheKey = `schema:${workflowId}:${sourceNodeId}:${sheetName || 'default'}`;
@@ -425,18 +429,20 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
     }
     
     // If not in Redis cache, get source schema from database
+    // IMPORTANT: Removed the is_temporary: false filter to include temporary schemas
     if (!sourceSchema) {
       const { data: dbSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
-        .select('columns, data_types, file_id, sheet_name')
+        .select('columns, data_types, file_id, sheet_name, is_temporary')
         .eq('workflow_id', dbWorkflowId)
-        .eq('node_id', sourceNodeId)
-        .is('is_temporary', false);
+        .eq('node_id', sourceNodeId);
+        
+      console.log(`Schema query result for ${sourceNodeId}:`, dbSchema ? `Found ${dbSchema.length} schemas` : 'No schemas found', sourceError ? `Error: ${JSON.stringify(sourceError)}` : 'No error');
         
       if (sourceError || !dbSchema || dbSchema.length === 0) {
         console.error('Error or no schema found for source node:', sourceError || 'No schema found');
         return new Response(
-          JSON.stringify({ error: 'Source schema not found' }),
+          JSON.stringify({ error: 'Source schema not found', details: sourceError || null }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
         );
       }
@@ -457,7 +463,8 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
           type: schema.data_types[column] || 'unknown'
         })),
         fileId: schema.file_id,
-        sheetName: sheetName || schema.sheet_name || 'Sheet1'
+        sheetName: sheetName || schema.sheet_name || 'Sheet1',
+        isTemporary: schema.is_temporary || false
       };
       
       // Cache the retrieved schema
@@ -466,6 +473,8 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
         timestamp: Date.now(),
         source: 'database'
       }), { ex: 300 });
+      
+      console.log(`Cached schema for ${sourceNodeId} (source):`, sourceSchema.schema.length, 'columns, isTemporary:', sourceSchema.isTemporary);
     }
     
     // Standardize column names and types using improved type standardization
@@ -521,6 +530,7 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
     });
     
     // Update target schema
+    // Preserve the is_temporary status - will set this based on the source schema's status
     const targetSchema = {
       workflow_id: dbWorkflowId,
       node_id: targetNodeId,
@@ -532,8 +542,11 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
       file_id: sourceSchema.fileId,
       sheet_name: sheetName || sourceSchema.sheetName || 'Sheet1',
       has_headers: true,
+      is_temporary: sourceSchema.isTemporary, // Preserve temporary status
       updated_at: new Date().toISOString()
     };
+    
+    console.log(`Updating target schema for ${targetNodeId} (workflow_id: ${dbWorkflowId}, is_temporary: ${targetSchema.is_temporary})`);
     
     const { error: targetError } = await supabase
       .from('workflow_file_schemas')
@@ -544,7 +557,7 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
     if (targetError) {
       console.error('Error updating target schema:', targetError);
       return new Response(
-        JSON.stringify({ error: 'Failed to update target schema' }),
+        JSON.stringify({ error: 'Failed to update target schema', details: targetError }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -563,7 +576,8 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
       sheetName: sheetName || sourceSchema.sheetName || 'Sheet1',
       timestamp: Date.now(),
       source: 'propagation',
-      version: newVersion
+      version: newVersion,
+      isTemporary: sourceSchema.isTemporary // Also cache the temporary status
     }), { ex: 300 });
     
     // Publish schema update notification
@@ -571,7 +585,8 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
       nodeId: targetNodeId,
       sheetName: sheetName || sourceSchema.sheetName,
       version: newVersion,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      isTemporary: sourceSchema.isTemporary
     }));
     
     console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId}`);
@@ -580,7 +595,8 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
       JSON.stringify({ 
         success: true, 
         schema: finalColumns, 
-        version: newVersion 
+        version: newVersion,
+        isTemporary: sourceSchema.isTemporary
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -754,7 +770,7 @@ async function handleCheckForSchemaUpdates(body, redis, corsHeaders) {
   }
 }
 
-// Handle refreshing schema
+// Handle refreshing schema - update to handle temporary schemas
 async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
   const { workflowId, nodeId } = body;
   
@@ -771,10 +787,12 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
       ? workflowId.substring(5) 
       : workflowId;
     
-    // Get schema from database
+    console.log(`Refreshing schema for node ${nodeId} in workflow ${dbWorkflowId}`);
+    
+    // Get schema from database - no longer filtering by is_temporary
     const { data: dbSchema, error } = await supabase
       .from('workflow_file_schemas')
-      .select('columns, data_types, sheet_name')
+      .select('columns, data_types, sheet_name, is_temporary')
       .eq('workflow_id', dbWorkflowId)
       .eq('node_id', nodeId)
       .maybeSingle();
@@ -786,6 +804,8 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       );
     }
+    
+    console.log(`Found schema for ${nodeId}, is_temporary: ${dbSchema.is_temporary}`);
     
     // Convert to schema format with proper type standardization
     const schema = dbSchema.columns.map(column => {
@@ -829,7 +849,8 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
       schema,
       timestamp: Date.now(),
       source: 'refresh',
-      version: newVersion
+      version: newVersion,
+      isTemporary: dbSchema.is_temporary // Include the temporary status in the cache
     }), { ex: 300 });
     
     // Publish update notification
@@ -837,14 +858,16 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
       nodeId,
       sheetName: dbSchema.sheet_name || 'default',
       version: newVersion,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      isTemporary: dbSchema.is_temporary
     }));
     
     return new Response(
       JSON.stringify({ 
         success: true, 
         schema,
-        version: newVersion
+        version: newVersion,
+        isTemporary: dbSchema.is_temporary
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -857,3 +880,4 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
     );
   }
 }
+

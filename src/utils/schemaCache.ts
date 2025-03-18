@@ -1,13 +1,14 @@
 
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
-// Type for schema cache entries
+// Type for schema cache entries - updated to include isTemporary flag
 type SchemaCacheEntry = {
   schema: SchemaColumn[];
   timestamp: number;
   sheetName?: string;
   source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
   version?: number;
+  isTemporary?: boolean; // Added to track temporary status
 };
 
 // In-memory schema cache
@@ -32,6 +33,7 @@ export async function cacheSchema(
     sheetName?: string;
     source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
     version?: number;
+    isTemporary?: boolean; // Added to track temporary status
   }
 ): Promise<void> {
   const key = getCacheKey(workflowId, nodeId, options);
@@ -41,7 +43,8 @@ export async function cacheSchema(
     timestamp: Date.now(),
     sheetName: options?.sheetName,
     source: options?.source,
-    version: options?.version
+    version: options?.version,
+    isTemporary: options?.isTemporary || false // Default to false if not provided
   };
 }
 
@@ -55,7 +58,14 @@ export async function getSchemaFromCache(
     maxAge?: number; // maximum age in milliseconds
     sheetName?: string;
   }
-): Promise<SchemaColumn[] | null> {
+): Promise<{
+  schema: SchemaColumn[];
+  fileId?: string;
+  sheetName?: string;
+  source?: string;
+  version?: number;
+  isTemporary?: boolean;
+} | null> {
   const key = getCacheKey(workflowId, nodeId, options);
   const maxAge = options?.maxAge || 60000; // Default 1 minute
   
@@ -66,7 +76,13 @@ export async function getSchemaFromCache(
   const age = Date.now() - cached.timestamp;
   if (age > maxAge) return null;
   
-  return cached.schema;
+  return {
+    schema: cached.schema,
+    sheetName: cached.sheetName,
+    source: cached.source,
+    version: cached.version,
+    isTemporary: cached.isTemporary
+  };
 }
 
 /**
@@ -81,7 +97,7 @@ export async function isValidCacheExistsAsync(
   }
 ): Promise<boolean> {
   const schema = await getSchemaFromCache(workflowId, nodeId, options);
-  return schema !== null && schema.length > 0;
+  return schema !== null && schema.schema && schema.schema.length > 0;
 }
 
 /**
