@@ -1,5 +1,6 @@
 
-import { SchemaColumn } from '@/hooks/useNodeManagement';
+// Re-export the SchemaColumn type from useNodeManagement to avoid circular dependencies
+export type { SchemaColumn } from '@/hooks/useNodeManagement';
 
 /**
  * Type for schema cache entries
