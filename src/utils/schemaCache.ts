@@ -1,4 +1,3 @@
-
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
 // Type for schema cache entries - updated to include isTemporary flag
@@ -28,7 +27,7 @@ function getCacheKey(workflowId: string, nodeId: string, options?: { sheetName?:
  */
 function normalizeWorkflowId(workflowId: string): string {
   // Keep the ID format consistent whether it has the temp- prefix or not
-  return workflowId;
+  return workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
 }
 
 /**
@@ -258,6 +257,7 @@ export async function getWorkflowCachedSchemas(
 
 /**
  * Copy schema cache from source node to target node
+ * Updated to properly handle sheet names
  */
 export async function copySchemaCache(
   workflowId: string,
@@ -268,24 +268,44 @@ export async function copySchemaCache(
     source?: "propagation";
   }
 ): Promise<boolean> {
+  const normalizedWorkflowId = normalizeWorkflowId(workflowId);
+  
   // Try to get schema from the source with the specific sheet first
-  const sourceKey = getCacheKey(workflowId, sourceNodeId, options);
+  const sourceKey = getCacheKey(normalizedWorkflowId, sourceNodeId, options);
   let sourceCache = schemaCache[sourceKey];
   
   // If not found with the specific sheet, try the default one
   if (!sourceCache && options?.sheetName) {
-    const defaultSourceKey = getCacheKey(workflowId, sourceNodeId, { sheetName: 'default' });
+    const defaultSourceKey = getCacheKey(normalizedWorkflowId, sourceNodeId, { sheetName: 'default' });
     sourceCache = schemaCache[defaultSourceKey];
+    
+    // Still not found, try querying without sheet name at all
+    if (!sourceCache) {
+      // Try all available schemas for this node
+      const nodeSchemaKeys = Object.keys(schemaCache).filter(key => 
+        key.startsWith(`schema:${normalizedWorkflowId}:${sourceNodeId}:`)
+      );
+      
+      if (nodeSchemaKeys.length > 0) {
+        // Use the first available schema
+        sourceCache = schemaCache[nodeSchemaKeys[0]];
+        console.log(`Using first available schema for ${sourceNodeId} from ${nodeSchemaKeys[0]}`);
+      }
+    }
   }
   
-  if (!sourceCache) return false;
+  if (!sourceCache) {
+    console.log(`No cache found for source node ${sourceNodeId} in workflow ${workflowId}`);
+    return false;
+  }
   
-  const targetKey = getCacheKey(workflowId, targetNodeId, options);
+  const effectiveSheetName = options?.sheetName || sourceCache.sheetName || 'default';
+  const targetKey = getCacheKey(normalizedWorkflowId, targetNodeId, { sheetName: effectiveSheetName });
   
   schemaCache[targetKey] = {
     schema: sourceCache.schema,
     timestamp: Date.now(),
-    sheetName: options?.sheetName || sourceCache.sheetName,
+    sheetName: effectiveSheetName,
     source: options?.source || "propagation",
     version: sourceCache.version,
     isTemporary: sourceCache.isTemporary,
@@ -293,14 +313,14 @@ export async function copySchemaCache(
   };
   
   // Also cache under default if not already a default cache
-  if (options?.sheetName && options.sheetName !== 'default') {
-    const defaultTargetKey = getCacheKey(workflowId, targetNodeId, { sheetName: 'default' });
+  if (effectiveSheetName !== 'default') {
+    const defaultTargetKey = getCacheKey(normalizedWorkflowId, targetNodeId, { sheetName: 'default' });
     schemaCache[defaultTargetKey] = {
       ...schemaCache[targetKey],
       sheetName: 'default'
     };
   }
   
-  console.log(`Copied schema cache from ${sourceNodeId} to ${targetNodeId} with sheet "${options?.sheetName || 'default'}"`);
+  console.log(`Copied schema cache from ${sourceNodeId} to ${targetNodeId} with sheet "${effectiveSheetName}"`);
   return true;
 }

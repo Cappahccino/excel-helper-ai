@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -37,67 +36,68 @@ function safeConvertWorkflowId(workflowId: string): string {
 }
 
 /**
- * Synchronize sheet selection between two nodes
+ * Check if a node is ready for schema propagation
+ * Now updated to handle multiple sheets correctly
  */
-export async function synchronizeNodesSheetSelection(
-  workflowId: string,
-  sourceNodeId: string,
-  targetNodeId: string
-): Promise<boolean> {
+export const isNodeReadyForSchemaPropagation = async (workflowId: string, nodeId: string, sheetName?: string): Promise<boolean> => {
   try {
-    const dbWorkflowId = safeConvertWorkflowId(workflowId);
+    console.log(`Checking if node ${nodeId} is ready for propagation in workflow ${workflowId}`);
     
-    // Get source node metadata to find selected sheet
-    const { data: sourceNodeData, error: sourceError } = await supabase
-      .from('workflow_files')
-      .select('metadata')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', sourceNodeId)
-      .maybeSingle();
+    // Normalize workflow ID (handle temp- prefix)
+    const normalizedWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    console.log(`Checking if node ${nodeId} is ready for schema propagation in workflow ${normalizedWorkflowId}`);
+
+    // First check for cached schema to avoid database query
+    const cachedSchema = await getSchemaFromCache(workflowId, nodeId, {
+      maxAge: 120000, // 2 minutes
+      sheetName
+    });
+    
+    if (cachedSchema && cachedSchema.length > 0) {
+      console.log(`Node ${nodeId} has cached schema with ${cachedSchema.length} columns, ready for propagation`);
+      return true;
+    }
+    
+    // Query database for schema, retrieving all sheets for this node
+    const { data: schemas, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('columns, sheet_name')
+      .eq('workflow_id', normalizedWorkflowId)
+      .eq('node_id', nodeId);
       
-    if (sourceError || !sourceNodeData?.metadata) {
-      console.error('Error getting source node metadata:', sourceError || 'No metadata found');
+    if (error) {
+      console.error('Error checking node readiness:', error);
       return false;
     }
     
-    const sourceMetadata = sourceNodeData.metadata as NodeMetadata;
-    const selectedSheet = sourceMetadata.selected_sheet || 'Sheet1';
-    
-    // Update target node metadata with selected sheet
-    const { data: targetNodeData, error: targetError } = await supabase
-      .from('workflow_files')
-      .select('metadata')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', targetNodeId)
-      .maybeSingle();
-      
-    if (targetError) {
-      console.error('Error getting target node metadata:', targetError);
+    if (!schemas || schemas.length === 0) {
+      console.log(`No schema found for node ${nodeId} in workflow ${normalizedWorkflowId}`);
       return false;
     }
     
-    const targetMetadata = targetNodeData?.metadata as NodeMetadata || {};
-    targetMetadata.selected_sheet = selectedSheet;
+    console.log(`Node ${nodeId} ready status: true, found ${schemas.length} schemas`);
     
-    // Update target node with new metadata
-    const { error: updateError } = await supabase
-      .from('workflow_files')
-      .update({ metadata: targetMetadata })
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', targetNodeId);
+    // If a specific sheet was requested, check if it exists
+    if (sheetName) {
+      const specificSheet = schemas.find(s => s.sheet_name === sheetName);
+      if (!specificSheet) {
+        console.log(`Requested sheet ${sheetName} not found for node ${nodeId}`);
+        return false;
+      }
       
-    if (updateError) {
-      console.error('Error updating target node metadata:', updateError);
-      return false;
+      return specificSheet.columns && specificSheet.columns.length > 0;
     }
     
-    // After synchronizing sheet selection, propagate schema
-    return await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, selectedSheet);
+    // At least one schema exists
+    return schemas.some(schema => schema.columns && schema.columns.length > 0);
   } catch (error) {
-    console.error('Error in synchronizeNodesSheetSelection:', error);
+    console.error(`Error checking if node ${nodeId} is ready for propagation:`, error);
     return false;
   }
-}
+};
 
 /**
  * Propagate schema directly from source to target node
@@ -336,65 +336,81 @@ async function propagateSchemaDirectlyFallback(
 }
 
 /**
- * Check if a node is ready for schema propagation
- * Updated to include temporary schemas and handle multiple schema rows
+ * Synchronize sheet selection between source and target nodes
  */
-export async function isNodeReadyForSchemaPropagation(
+export const synchronizeNodesSheetSelection = async (
   workflowId: string,
-  nodeId: string,
-  sheetName?: string
-): Promise<boolean> {
+  sourceNodeId: string,
+  targetNodeId: string
+): Promise<boolean> => {
   try {
-    // First check cache
-    const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId, { sheetName });
-    if (cachedSchemaData && cachedSchemaData.schema && cachedSchemaData.schema.length > 0) {
-      console.log(`Node ${nodeId} is ready for schema propagation (from cache)`);
-      return true;
-    }
+    // Normalize workflow ID
+    const normalizedWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
     
-    const dbWorkflowId = safeConvertWorkflowId(workflowId);
+    console.log(`Synchronizing sheet selection from ${sourceNodeId} to ${targetNodeId}`);
     
-    console.log(`Checking if node ${nodeId} is ready for schema propagation in workflow ${dbWorkflowId}`);
-    
-    // No longer filtering by is_temporary, and now using select() instead of maybeSingle()
-    const { data: schemas, error } = await supabase
-      .from('workflow_file_schemas')
-      .select('columns, sheet_name')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId);
+    // Get source node metadata to find selected sheet
+    const { data: sourceFile } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', normalizedWorkflowId)
+      .eq('node_id', sourceNodeId)
+      .maybeSingle();
       
-    if (error) {
-      console.error('Error checking node readiness:', error);
+    if (!sourceFile || !sourceFile.metadata) {
+      console.log(`No metadata found for source node ${sourceNodeId}`);
       return false;
     }
     
-    // If a specific sheet was requested, check if that sheet has schema
-    if (sheetName && schemas && schemas.length > 0) {
-      const sheetSchema = schemas.find(s => s.sheet_name === sheetName);
-      if (sheetSchema) {
-        const isReady = Array.isArray(sheetSchema.columns) && sheetSchema.columns.length > 0;
-        console.log(`Node ${nodeId} with sheet ${sheetName} ready status: ${isReady}`);
-        return isReady;
-      }
-      console.log(`No schema found for sheet ${sheetName} in node ${nodeId}`);
+    const sourceMetadata = sourceFile.metadata as Record<string, any>;
+    const selectedSheet = sourceMetadata.selected_sheet;
+    
+    if (!selectedSheet) {
+      console.log(`No selected sheet found for source node ${sourceNodeId}`);
       return false;
     }
     
-    // No specific sheet requested, check if ANY sheet has a schema
-    const isReady = schemas && schemas.length > 0 && 
-                    schemas.some(schema => Array.isArray(schema.columns) && schema.columns.length > 0);
+    console.log(`Found selected sheet "${selectedSheet}" for source node ${sourceNodeId}`);
     
-    console.log(`Node ${nodeId} ready status: ${isReady}, found ${schemas?.length || 0} schemas`);
-    if (schemas && schemas.length > 0) {
-      console.log(`Available sheets: ${schemas.map(s => s.sheet_name).join(', ')}`);
+    // Get target node metadata
+    const { data: targetFile } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', normalizedWorkflowId)
+      .eq('node_id', targetNodeId)
+      .maybeSingle();
+      
+    const targetMetadata = targetFile?.metadata as Record<string, any> || {};
+    
+    // Update target node metadata with selected sheet
+    const updatedMetadata = {
+      ...targetMetadata,
+      selected_sheet: selectedSheet
+    };
+    
+    // Update target node
+    const { error: updateError } = await supabase
+      .from('workflow_files')
+      .update({ metadata: updatedMetadata })
+      .eq('workflow_id', normalizedWorkflowId)
+      .eq('node_id', targetNodeId);
+      
+    if (updateError) {
+      console.error('Error updating target node metadata:', updateError);
+      return false;
     }
     
-    return isReady;
+    console.log(`Successfully synchronized sheet selection to "${selectedSheet}" for target node ${targetNodeId}`);
+    
+    // Now propagate schema with the selected sheet
+    return await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, selectedSheet);
   } catch (error) {
-    console.error('Error in isNodeReadyForSchemaPropagation:', error);
+    console.error('Error synchronizing sheet selection:', error);
     return false;
   }
-}
+};
 
 /**
  * Force refresh schema for a node from source

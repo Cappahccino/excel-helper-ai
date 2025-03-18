@@ -55,10 +55,14 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
           
           const dbWorkflowId = convertToDbWorkflowId(workflowId);
           
-          await supabase
+          const { error: deleteError } = await supabase
             .from('workflow_edges')
             .delete()
             .eq('workflow_id', dbWorkflowId);
+            
+          if (deleteError) {
+            console.error('Error deleting existing edges:', deleteError);
+          }
           
           if (edgesToSave.length > 0) {
             const edgesData = edgesToSave.map(edge => {
@@ -91,25 +95,27 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
               };
             });
             
-            for (let i = 0; i < edgesData.length; i += 50) {
-              const batch = edgesData.slice(i, i + 50);
+            for (let i = 0; i < edgesData.length; i += 20) {
+              const batch = edgesData.slice(i, i + 20);
               const { error } = await supabase
                 .from('workflow_edges')
                 .insert(batch);
                 
               if (error) {
-                console.error('Error saving edges batch:', error);
-                console.error('Error details:', JSON.stringify(error));
+                console.error(`Error saving edges batch ${i}-${i+20}:`, error);
               }
             }
             
-            if (edgesData.length > 0) {
-              for (const edge of edgesData) {
+            console.log(`Running post-save schema propagation for ${edgesData.length} edges`);
+            for (const edge of edgesData) {
+              try {
                 await propagateSchemaDirectly(
                   dbWorkflowId, 
                   edge.source_node_id, 
                   edge.target_node_id
-                ).catch(err => console.error('Error in post-save schema propagation:', err));
+                );
+              } catch (err) {
+                console.error(`Error in post-save schema propagation for ${edge.source_node_id} -> ${edge.target_node_id}:`, err);
               }
             }
           }
@@ -277,9 +283,6 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     
     handleEdgeChanges();
     
-    const unsubscribe = reactFlowInstance.getEdges();
-    handleEdgeChanges();
-    
     const intervalId = setInterval(() => {
       handleEdgeChanges();
     }, 500);
@@ -387,3 +390,4 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
 };
 
 export default ConnectionHandler;
+

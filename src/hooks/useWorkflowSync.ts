@@ -121,11 +121,18 @@ export function useWorkflowSync(
       
       console.log(`Syncing ${edges.length} edges for workflow ${workflowId}`);
       
-      // We don't delete existing edges to avoid flickering
-      // Instead, we just upsert the current set of edges
+      // First, delete existing edges to avoid duplicate issues
+      const { error: deleteError } = await supabase
+        .from('workflow_edges')
+        .delete()
+        .eq('workflow_id', workflowId);
       
-      // Insert/update edges
-      const edgesToUpsert = edges.map(edge => {
+      if (deleteError) {
+        console.error('Error deleting existing edges:', deleteError);
+      }
+      
+      // Insert new edges without using conflicting ON CONFLICT specifications
+      const edgesToInsert = edges.map(edge => {
         // Extract metadata from the edge object
         const { id, source, target, type, sourceHandle, targetHandle, label, animated, data, ...rest } = edge;
         
@@ -148,18 +155,19 @@ export function useWorkflowSync(
         };
       });
       
-      const { error: upsertError } = await supabase
-        .from('workflow_edges')
-        .upsert(edgesToUpsert, { 
-          onConflict: 'workflow_id,edge_id', 
-          ignoreDuplicates: false 
-        });
-        
-      if (upsertError) {
-        console.error('Error upserting edges:', upsertError);
-      } else {
-        console.log(`Successfully synced ${edges.length} edges to database`);
+      // Use batching for large edge sets
+      for (let i = 0; i < edgesToInsert.length; i += 20) {
+        const batch = edgesToInsert.slice(i, i + 20);
+        const { error: insertError } = await supabase
+          .from('workflow_edges')
+          .insert(batch);
+          
+        if (insertError) {
+          console.error(`Error inserting edges batch ${i}-${i+20}:`, insertError);
+        }
       }
+      
+      console.log(`Successfully synced ${edges.length} edges to database`);
     } catch (error) {
       console.error('Error in syncEdgesToDatabase:', error);
     }
