@@ -1,3 +1,11 @@
 
 project_id = "saxnxtumstrsqowuwwbt"
 app_version = "1.0.0"
+
+[http_options]
+read_timeout_ms = 30000
+write_timeout_ms = 30000
+
+[realtime_options]
+enabled = true
+webhooks_enabled = true

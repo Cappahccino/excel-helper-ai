@@ -14,6 +14,7 @@ import {
   invalidateSchemaCache,
   isValidCacheExistsAsync
 } from '@/utils/schemaCache';
+import { useSchemaSubscription } from './useSchemaSubscription';
 
 type PropagationStatus = 'idle' | 'propagating' | 'success' | 'error';
 
@@ -49,11 +50,16 @@ interface PropagationOptions {
    * Whether to show toast notifications
    */
   showNotifications?: boolean;
+  
+  /**
+   * Whether to subscribe to schema updates via Redis
+   */
+  subscribeToUpdates?: boolean;
 }
 
 /**
  * Hook for managing schema propagation between nodes
- * Enhanced with Redis-based distributed caching
+ * Enhanced with Redis-based distributed caching and real-time updates
  */
 export function useSchemaPropagation(
   workflowId: string | null,
@@ -66,12 +72,37 @@ export function useSchemaPropagation(
     sheetName,
     maxRetries = 3,
     autoPropagateOnConnection = true,
-    showNotifications = true
+    showNotifications = true,
+    subscribeToUpdates = true
   } = options;
   
   const [state, setState] = useState<PropagationState>({
     status: 'idle'
   });
+  
+  // Subscribe to real-time schema updates if enabled
+  const { 
+    isSubscribed,
+    lastUpdate: subscriptionUpdate,
+    refreshSchema: refreshSubscription
+  } = useSchemaSubscription(
+    workflowId, 
+    targetNodeId,
+    {
+      debug: false,
+      onSchemaUpdated: (schema, meta) => {
+        console.log(`Schema updated via subscription: source=${meta.source}, version=${meta.version}`);
+        setState(prev => ({
+          ...prev,
+          status: 'success',
+          schema,
+          lastUpdated: Date.now()
+        }));
+      },
+      // Only use subscription if requested
+      pollingInterval: subscribeToUpdates ? 5000 : 1000000 // Effectively disable polling if not subscribing
+    }
+  );
   
   // Helper to get normalized workflow ID
   const getNormalizedWorkflowId = useCallback(() => {
@@ -148,7 +179,7 @@ export function useSchemaPropagation(
     }
   }, [workflowId, sourceNodeId, targetNodeId, getNormalizedWorkflowId, sheetName]);
   
-  // Propagate schema function
+  // Propagate schema function, now enhanced with Edge Function
   const propagateSchema = useCallback(async () => {
     if (!workflowId || !sourceNodeId || !targetNodeId) {
       console.log('Missing required IDs for propagation');
@@ -164,11 +195,23 @@ export function useSchemaPropagation(
         toast.info('Updating schema...');
       }
       
-      const success = await propagateSchemaWithRetry(workflowId, sourceNodeId, targetNodeId, {
-        maxRetries,
-        sheetName,
-        forceRefresh
-      });
+      // First try the direct Edge Function approach for better performance
+      let success = false;
+      try {
+        success = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
+      } catch (error) {
+        console.warn('Direct propagation failed, falling back to retry mechanism:', error);
+        success = false;
+      }
+      
+      // Fall back to retry mechanism if direct approach fails
+      if (!success) {
+        success = await propagateSchemaWithRetry(workflowId, sourceNodeId, targetNodeId, {
+          maxRetries,
+          sheetName,
+          forceRefresh
+        });
+      }
       
       if (success) {
         // Get schema for the target node after propagation
@@ -193,6 +236,11 @@ export function useSchemaPropagation(
         
         if (showNotifications) {
           toast.success('Schema updated successfully');
+        }
+        
+        // Refresh subscription to pick up changes
+        if (subscribeToUpdates) {
+          refreshSubscription();
         }
         
         return true;
@@ -224,7 +272,7 @@ export function useSchemaPropagation(
       
       return false;
     }
-  }, [workflowId, sourceNodeId, targetNodeId, maxRetries, sheetName, forceRefresh, showNotifications]);
+  }, [workflowId, sourceNodeId, targetNodeId, maxRetries, sheetName, forceRefresh, showNotifications, subscribeToUpdates, refreshSubscription]);
   
   // Effect to auto-propagate on connection if needed
   useEffect(() => {
@@ -250,8 +298,68 @@ export function useSchemaPropagation(
       await invalidateSchemaCache(workflowId, targetNodeId, sheetName);
     }
     
-    return propagateSchema();
-  }, [workflowId, targetNodeId, sheetName, propagateSchema]);
+    // Refresh subscription first if enabled
+    if (subscribeToUpdates) {
+      await refreshSubscription();
+    }
+    
+    // Propagate schema if we have a source, otherwise just refresh from database
+    if (sourceNodeId) {
+      return propagateSchema();
+    } else {
+      try {
+        setState(prev => ({ ...prev, status: 'propagating' }));
+        
+        // Get schema directly from the Edge Function
+        const { data, error } = await supabase.functions.invoke('schemaPropagation', {
+          body: {
+            action: 'refreshSchema',
+            workflowId,
+            nodeId: targetNodeId
+          }
+        });
+        
+        if (error) {
+          throw new Error(error.message);
+        }
+        
+        if (data?.schema) {
+          await cacheSchema(workflowId!, targetNodeId, data.schema, {
+            source: 'refresh',
+            version: data.version
+          });
+          
+          setState({
+            status: 'success',
+            schema: data.schema,
+            lastUpdated: Date.now()
+          });
+          
+          if (showNotifications) {
+            toast.success('Schema refreshed successfully');
+          }
+          
+          return true;
+        } else {
+          throw new Error('No schema returned from refresh');
+        }
+      } catch (error) {
+        console.error('Error refreshing schema:', error);
+        
+        setState({
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          lastUpdated: Date.now()
+        });
+        
+        if (showNotifications) {
+          toast.error('Error refreshing schema');
+        }
+        
+        return false;
+      }
+    }
+  }, [workflowId, targetNodeId, sourceNodeId, sheetName, propagateSchema, refreshSubscription, subscribeToUpdates, showNotifications]);
   
   // Get schema for the target node
   const getSchema = useCallback(async (): Promise<SchemaColumn[]> => {
@@ -276,6 +384,7 @@ export function useSchemaPropagation(
     }
   }, [workflowId, targetNodeId, sheetName]);
   
+  // Return extended API with subscription info
   return {
     state,
     propagateSchema,
@@ -285,6 +394,10 @@ export function useSchemaPropagation(
     hasError: state.status === 'error',
     error: state.error,
     schema: state.schema || [],
-    lastUpdated: state.lastUpdated
+    lastUpdated: state.lastUpdated,
+    // Subscription status
+    isSubscribed,
+    lastSubscriptionUpdate: subscriptionUpdate,
+    subscriptionEnabled: subscribeToUpdates
   };
 }

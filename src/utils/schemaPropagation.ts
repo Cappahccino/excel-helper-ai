@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -531,28 +530,56 @@ export async function getSchemaForFiltering(
     forceRefresh?: boolean;
   }
 ): Promise<SchemaColumn[]> {
-  const { sheetName, forceRefresh = false } = options || {};
-  
   try {
-    // Check cache first unless force refresh
+    const { sheetName, forceRefresh = false } = options || {};
+    
+    // First check cache unless force refresh
     if (!forceRefresh) {
       const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
       if (cachedSchema && cachedSchema.length > 0) {
         return validateSchemaForFiltering(cachedSchema);
       }
-    } else {
-      // Invalidate cache if force refresh
-      invalidateSchemaCache(workflowId, nodeId, sheetName);
     }
     
     // Get schema from database
-    const schema = await forceSchemaRefresh(workflowId, nodeId, sheetName);
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
     
-    if (schema.length > 0) {
-      return validateSchemaForFiltering(schema);
+    const { data: schema, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('columns, data_types, sheet_name')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .is('is_temporary', false);
+      
+    if (error || !schema || schema.length === 0) {
+      console.error('Error or no schema found for filtering:', error || 'No schema found');
+      return [];
     }
     
-    return [];
+    // Find the right sheet if multiple exist
+    let targetSchema = schema[0];
+    if (sheetName && schema.length > 1) {
+      const sheetSchema = schema.find(s => s.sheet_name === sheetName);
+      if (sheetSchema) {
+        targetSchema = sheetSchema;
+      }
+    }
+    
+    // Convert to SchemaColumn format
+    const schemaColumns = targetSchema.columns.map(column => ({
+      name: column,
+      type: targetSchema.data_types[column] || 'unknown'
+    }));
+    
+    // Cache for future use
+    await cacheSchema(workflowId, nodeId, schemaColumns, {
+      source: 'database',
+      sheetName: targetSchema.sheet_name
+    });
+    
+    return validateSchemaForFiltering(schemaColumns);
   } catch (error) {
     console.error('Error in getSchemaForFiltering:', error);
     return [];
@@ -560,35 +587,40 @@ export async function getSchemaForFiltering(
 }
 
 /**
- * Validate schema columns for filtering operations
+ * Validate schema for filtering operations by ensuring all types are supported
  */
 export function validateSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn[] {
-  if (!schema || !Array.isArray(schema) || schema.length === 0) {
+  if (!schema || !Array.isArray(schema)) {
     return [];
   }
   
-  // Filter out columns with missing names
-  const validSchema = schema.filter(col => col && col.name);
-  
-  // Normalize types
-  return validSchema.map(col => {
-    let type = col.type || 'string';
+  return schema.map(column => {
+    // Convert type to string to make comparisons safer
+    const typeStr = column.type.toString().toLowerCase();
     
-    // Normalize type names
-    if (['text', 'varchar', 'char'].includes(type.toString())) {
-      type = 'string';
-    } else if (['int', 'integer', 'float', 'decimal', 'double'].includes(type.toString())) {
-      type = 'number';
-    } else if (['datetime', 'timestamp'].includes(type.toString())) {
-      type = 'date';
-    } else if (['bool', 'boolean'].includes(type.toString())) {
-      type = 'boolean';
+    // Map to valid types for filtering
+    let validType: "string" | "number" | "boolean" | "object" | "date" | "unknown" | "array" | "text" = "unknown";
+    
+    if (['varchar', 'char', 'text', 'string', 'str'].some(t => t === typeStr)) {
+      validType = 'string';
+    } else if (['int', 'integer', 'float', 'double', 'decimal', 'number', 'num', 'numeric'].some(t => t === typeStr)) {
+      validType = 'number';
+    } else if (['date', 'datetime', 'timestamp', 'time'].some(t => t === typeStr)) {
+      validType = 'date';
+    } else if (['bool', 'boolean'].some(t => t === typeStr)) {
+      validType = 'boolean';
+    } else if (['object', 'json', 'map'].some(t => t === typeStr)) {
+      validType = 'object';
+    } else if (['array', 'list'].some(t => t === typeStr)) {
+      validType = 'array';
+    } else if (typeStr === 'text') {
+      validType = 'text';
     }
     
     return {
-      name: col.name,
-      type
-    } as SchemaColumn;
+      name: column.name,
+      type: validType
+    };
   });
 }
 

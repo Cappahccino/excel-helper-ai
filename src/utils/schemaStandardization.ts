@@ -1,4 +1,3 @@
-
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
 /**
@@ -54,7 +53,11 @@ export function standardizeColumnType(type: string): "string" | "number" | "bool
     return 'array';
   }
   
-  // Default to string for unknown types
+  if (['text'].includes(lowerType)) {
+    return 'text';
+  }
+  
+  // Default to unknown for unsupported types
   return 'unknown';
 }
 
@@ -69,9 +72,9 @@ export function standardizeSchemaColumns(columns: {name: string, type: string}[]
   // Create a map to detect duplicates
   const uniqueNames = new Map<string, number>();
   
-  return columns.map((col, index) => {
+  const standardizedColumns = columns.map((col, index) => {
     if (!col || !col.name) {
-      return { name: `column_${index}`, type: 'string' } as SchemaColumn;
+      return { name: `column_${index}`, type: 'string' as const };
     }
     
     const standardName = standardizeColumnName(col.name);
@@ -90,8 +93,11 @@ export function standardizeSchemaColumns(columns: {name: string, type: string}[]
     return {
       name: finalName,
       type: standardType
-    } as SchemaColumn;
+    };
   });
+  
+  // Explicitly cast to SchemaColumn[] to ensure TypeScript recognizes the correct type
+  return standardizedColumns as SchemaColumn[];
 }
 
 /**
