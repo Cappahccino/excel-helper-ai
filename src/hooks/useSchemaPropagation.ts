@@ -9,11 +9,9 @@ import {
 } from '@/utils/schemaPropagation';
 import { 
   cacheSchema, 
-  getSchemaFromCache,
-  getSchemaMetadataFromCache,
+  getSchemaFromCache, 
   invalidateSchemaCache,
-  isValidCacheExistsAsync,
-  hasFileAssociated
+  isValidCacheExistsAsync
 } from '@/utils/schemaCache';
 import { useSchemaSubscription } from './useSchemaSubscription';
 
@@ -81,8 +79,7 @@ export function useSchemaPropagation(
     status: 'idle'
   });
   
-  const [lastMissingFileNotification, setLastMissingFileNotification] = useState<number>(0);
-  
+  // Subscribe to real-time schema updates if enabled
   const { 
     isSubscribed,
     lastUpdate: subscriptionUpdate,
@@ -101,51 +98,24 @@ export function useSchemaPropagation(
           lastUpdated: Date.now()
         }));
       },
-      pollingInterval: subscribeToUpdates ? 5000 : 1000000
+      // Only use subscription if requested
+      pollingInterval: subscribeToUpdates ? 5000 : 1000000 // Effectively disable polling if not subscribing
     }
   );
   
+  // Helper to get normalized workflow ID
   const getNormalizedWorkflowId = useCallback(() => {
     if (!workflowId) return null;
     return workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
   }, [workflowId]);
   
-  const checkSourceHasFile = useCallback(async (): Promise<boolean> => {
-    if (!workflowId || !sourceNodeId) return false;
-    
-    try {
-      const hasFile = await hasFileAssociated(workflowId, sourceNodeId);
-      
-      if (!hasFile) {
-        const now = Date.now();
-        if (showNotifications && (now - lastMissingFileNotification > 10000)) {
-          toast.warning("Please select a file in the source node", {
-            description: "Schema propagation requires a file to be selected",
-            duration: 5000,
-          });
-          setLastMissingFileNotification(now);
-        }
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Error checking if source has file:', error);
-      return false;
-    }
-  }, [workflowId, sourceNodeId, showNotifications, lastMissingFileNotification]);
-  
+  // Check if propagation is needed
   const checkPropagationNeeded = useCallback(async () => {
     if (!workflowId || !sourceNodeId || !targetNodeId) return false;
     
-    const hasFile = await checkSourceHasFile();
-    if (!hasFile) {
-      console.log(`Source node ${sourceNodeId} has no file - propagation not needed yet`);
-      return false;
-    }
-    
+    // First check cache
     const cachedSchema = await getSchemaFromCache(workflowId, targetNodeId, {
-      maxAge: 60000,
+      maxAge: 60000, // 1 minute
       sheetName
     });
     
@@ -160,6 +130,7 @@ export function useSchemaPropagation(
       return false;
     }
     
+    // Check database for existing schema
     try {
       const dbWorkflowId = getNormalizedWorkflowId();
       if (!dbWorkflowId) return false;
@@ -177,10 +148,12 @@ export function useSchemaPropagation(
         return true;
       }
       
+      // If target has no schema, propagation is needed
       if (!targetSchema || !targetSchema.columns || targetSchema.columns.length === 0) {
         return true;
       }
       
+      // If we have schema, format and cache it
       const schema = targetSchema.columns.map(column => ({
         name: column,
         type: targetSchema.data_types[column] || 'unknown'
@@ -203,22 +176,12 @@ export function useSchemaPropagation(
       console.error('Error in checkPropagationNeeded:', error);
       return true;
     }
-  }, [workflowId, sourceNodeId, targetNodeId, getNormalizedWorkflowId, sheetName, checkSourceHasFile]);
+  }, [workflowId, sourceNodeId, targetNodeId, getNormalizedWorkflowId, sheetName]);
   
+  // Propagate schema function, now enhanced with Edge Function
   const propagateSchema = useCallback(async () => {
     if (!workflowId || !sourceNodeId || !targetNodeId) {
       console.log('Missing required IDs for propagation');
-      return false;
-    }
-    
-    const hasFile = await checkSourceHasFile();
-    if (!hasFile) {
-      setState(prev => ({ 
-        ...prev, 
-        status: 'error',
-        error: 'Source node has no file selected',
-        lastUpdated: Date.now()
-      }));
       return false;
     }
     
@@ -231,6 +194,7 @@ export function useSchemaPropagation(
         toast.info('Updating schema...');
       }
       
+      // First try the direct Edge Function approach for better performance
       let success = false;
       try {
         success = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
@@ -239,6 +203,7 @@ export function useSchemaPropagation(
         success = false;
       }
       
+      // Fall back to retry mechanism if direct approach fails
       if (!success) {
         success = await propagateSchemaWithRetry(workflowId, sourceNodeId, targetNodeId, {
           maxRetries,
@@ -248,11 +213,13 @@ export function useSchemaPropagation(
       }
       
       if (success) {
+        // Get schema for the target node after propagation
         const schema = await getSchemaForFiltering(workflowId, targetNodeId, { 
           sheetName, 
           forceRefresh: false 
         });
         
+        // Cache the schema
         if (schema && schema.length > 0) {
           await cacheSchema(workflowId, targetNodeId, schema, {
             source: 'propagation',
@@ -270,6 +237,7 @@ export function useSchemaPropagation(
           toast.success('Schema updated successfully');
         }
         
+        // Refresh subscription to pick up changes
         if (subscribeToUpdates) {
           refreshSubscription();
         }
@@ -303,8 +271,9 @@ export function useSchemaPropagation(
       
       return false;
     }
-  }, [workflowId, sourceNodeId, targetNodeId, maxRetries, sheetName, forceRefresh, showNotifications, subscribeToUpdates, refreshSubscription, checkSourceHasFile]);
+  }, [workflowId, sourceNodeId, targetNodeId, maxRetries, sheetName, forceRefresh, showNotifications, subscribeToUpdates, refreshSubscription]);
   
+  // Effect to auto-propagate on connection if needed
   useEffect(() => {
     if (autoPropagateOnConnection && sourceNodeId && targetNodeId) {
       let isActive = true;
@@ -321,31 +290,26 @@ export function useSchemaPropagation(
     }
   }, [autoPropagateOnConnection, sourceNodeId, targetNodeId, checkPropagationNeeded, propagateSchema]);
   
+  // Force refresh schema
   const refreshSchema = useCallback(async () => {
-    if (sourceNodeId) {
-      const hasFile = await checkSourceHasFile();
-      if (!hasFile) {
-        if (showNotifications) {
-          toast.error('Please select a file in the source node first');
-        }
-        return false;
-      }
-    }
-    
+    // Invalidate cache first
     if (workflowId && targetNodeId) {
       await invalidateSchemaCache(workflowId, targetNodeId, sheetName);
     }
     
+    // Refresh subscription first if enabled
     if (subscribeToUpdates) {
       await refreshSubscription();
     }
     
+    // Propagate schema if we have a source, otherwise just refresh from database
     if (sourceNodeId) {
       return propagateSchema();
     } else {
       try {
         setState(prev => ({ ...prev, status: 'propagating' }));
         
+        // Get schema directly from the Edge Function
         const { data, error } = await supabase.functions.invoke('schemaPropagation', {
           body: {
             action: 'refreshSchema',
@@ -394,15 +358,18 @@ export function useSchemaPropagation(
         return false;
       }
     }
-  }, [workflowId, targetNodeId, sourceNodeId, sheetName, propagateSchema, refreshSubscription, subscribeToUpdates, showNotifications, checkSourceHasFile]);
+  }, [workflowId, targetNodeId, sourceNodeId, sheetName, propagateSchema, refreshSubscription, subscribeToUpdates, showNotifications]);
   
+  // Get schema for the target node
   const getSchema = useCallback(async (): Promise<SchemaColumn[]> => {
     if (!workflowId || !targetNodeId) return [];
     
     try {
+      // Try cache first
       const cachedSchema = await getSchemaFromCache(workflowId, targetNodeId, { sheetName });
       if (cachedSchema) return cachedSchema;
       
+      // Get from database or Edge Function
       const schema = await getSchemaForFiltering(workflowId, targetNodeId, { sheetName });
       
       if (schema && schema.length > 0) {
@@ -416,6 +383,7 @@ export function useSchemaPropagation(
     }
   }, [workflowId, targetNodeId, sheetName]);
   
+  // Return extended API with subscription info
   return {
     state,
     propagateSchema,
@@ -426,7 +394,7 @@ export function useSchemaPropagation(
     error: state.error,
     schema: state.schema || [],
     lastUpdated: state.lastUpdated,
-    hasSourceFile: checkSourceHasFile,
+    // Subscription status
     isSubscribed,
     lastSubscriptionUpdate: subscriptionUpdate,
     subscriptionEnabled: subscribeToUpdates
