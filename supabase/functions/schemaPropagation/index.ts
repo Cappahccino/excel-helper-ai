@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { Redis } from "https://esm.sh/@upstash/redis@1.20.6";
@@ -469,7 +468,7 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
       }), { ex: 300 });
     }
     
-    // Standardize column names and types
+    // Standardize column names and types using improved type standardization
     const standardizedColumns = sourceSchema.schema.map(col => {
       // Standardize column name
       let standardName = col.name.trim().replace(/\s+/g, '_');
@@ -478,8 +477,10 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
         standardName = 'col_' + standardName;
       }
       
-      // Standardize column type
+      // Improved type standardization
       let standardType = col.type.toLowerCase();
+      
+      // Map to standard types with better matching
       if (['varchar', 'char', 'text', 'string', 'str'].includes(standardType)) {
         standardType = 'string';
       } else if (['int', 'integer', 'float', 'double', 'decimal', 'number', 'num', 'numeric'].includes(standardType)) {
@@ -492,7 +493,11 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
         standardType = 'object';
       } else if (['array', 'list'].includes(standardType)) {
         standardType = 'array';
+      } else if (standardType === 'text') {
+        standardType = 'string'; // Ensure 'text' is mapped to 'string'
       } else {
+        // Default to string if unknown, but log this
+        console.log(`Unknown column type "${standardType}" for column "${col.name}", defaulting to string`);
         standardType = 'string';
       }
       
@@ -775,17 +780,42 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
       .maybeSingle();
       
     if (error || !dbSchema) {
+      console.error('Error fetching schema:', error || 'Schema not found');
       return new Response(
         JSON.stringify({ error: error?.message || 'Schema not found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       );
     }
     
-    // Convert to schema format
-    const schema = dbSchema.columns.map(column => ({
-      name: column,
-      type: dbSchema.data_types[column] || 'unknown'
-    }));
+    // Convert to schema format with proper type standardization
+    const schema = dbSchema.columns.map(column => {
+      const rawType = dbSchema.data_types[column] || 'unknown';
+      let standardType = rawType.toLowerCase();
+      
+      // Map to standard types with consistent standardization
+      if (['varchar', 'char', 'text', 'string', 'str'].includes(standardType)) {
+        standardType = 'string';
+      } else if (['int', 'integer', 'float', 'double', 'decimal', 'number', 'num', 'numeric'].includes(standardType)) {
+        standardType = 'number';
+      } else if (['date', 'datetime', 'timestamp', 'time'].includes(standardType)) {
+        standardType = 'date';
+      } else if (['bool', 'boolean'].includes(standardType)) {
+        standardType = 'boolean';
+      } else if (['object', 'json', 'map'].includes(standardType)) {
+        standardType = 'object';
+      } else if (['array', 'list'].includes(standardType)) {
+        standardType = 'array';
+      } else if (standardType === 'text') {
+        standardType = 'string';
+      } else {
+        standardType = 'string';
+      }
+      
+      return {
+        name: column,
+        type: standardType
+      };
+    });
     
     // Cache the schema
     const cacheKey = `schema:${workflowId}:${nodeId}:${dbSchema.sheet_name || 'default'}`;

@@ -16,6 +16,7 @@ import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 import { useSchemaConnection, ConnectionState } from '@/hooks/useSchemaConnection';
 import { useDebounce } from '@/hooks/useDebounce';
 import { supabase } from '@/integrations/supabase/client';
+import { standardizeColumnType, standardizeSchemaColumns } from '@/utils/schemaStandardization';
 
 const OPERATORS = {
   string: [
@@ -68,10 +69,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState<boolean>(false);
   const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
-  
+  const [debug, setDebug] = useState<boolean>(false);
+
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
-  
+
   const {
     connectionState,
     schema,
@@ -158,14 +160,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     if (config.column && config.operator) {
       const column = schema.find(col => col.name === config.column);
       if (column) {
+        const columnType = standardizeColumnType(column.type);
         const stringOperators = ['contains', 'starts-with', 'ends-with'];
         const numericOperators = ['greater-than', 'less-than'];
         
-        if (column.type === 'number' && stringOperators.includes(config.operator)) {
+        if (columnType === 'number' && stringOperators.includes(config.operator)) {
           errors.push(`Operator "${config.operator}" cannot be used with numeric column "${config.column}"`);
         }
         
-        if ((column.type === 'string' || column.type === 'text') && numericOperators.includes(config.operator)) {
+        if ((columnType === 'string' || columnType === 'text') && numericOperators.includes(config.operator)) {
           errors.push(`Operator "${config.operator}" cannot be used with text column "${config.column}"`);
         }
       }
@@ -185,7 +188,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     const column = schemaColumns.find(col => col.name === columnName);
     
     if (column) {
-      switch(column.type) {
+      const standardType = standardizeColumnType(column.type);
+      
+      switch(standardType) {
         case 'number':
           setOperators(OPERATORS.number);
           break;
@@ -205,10 +210,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, []);
 
+  const standardizedSchema = useMemo(() => {
+    return standardizeSchemaColumns(schema);
+  }, [schema]);
+
   useEffect(() => {
-    updateOperatorsForColumn(data.config.column, schema);
-    validateConfiguration(data.config, schema);
-  }, [schema, data.config.column, updateOperatorsForColumn, validateConfiguration, data.config]);
+    updateOperatorsForColumn(data.config.column, standardizedSchema);
+    validateConfiguration(data.config, standardizedSchema);
+  }, [standardizedSchema, data.config.column, updateOperatorsForColumn, validateConfiguration, data.config]);
 
   const handleConfigChange = (key: string, value: any) => {
     if (data.onChange) {
@@ -218,11 +227,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   };
 
   const isTextType = (type: string): boolean => {
-    return type === 'string' || type === 'text';
+    const standardType = standardizeColumnType(type);
+    return standardType === 'string' || standardType === 'text';
   };
 
   const selectedColumnType = data.config.column 
-    ? schema.find(col => col.name === data.config.column)?.type || 'unknown'
+    ? standardizedSchema.find(col => col.name === data.config.column)?.type || 'unknown'
     : 'unknown';
 
   const showCaseSensitiveOption = isTextType(selectedColumnType);
@@ -285,6 +295,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   };
 
   const connectionInfo = getConnectionStatusInfo();
+
+  useEffect(() => {
+    if (debug && schema.length > 0) {
+      console.log(`FilteringNode ${id} schema:`, schema);
+    }
+  }, [id, schema, debug]);
 
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>

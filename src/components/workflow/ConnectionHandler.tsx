@@ -123,9 +123,13 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     const now = Date.now();
     
     try {
+      console.log(`Attempting direct schema propagation from ${sourceId} to ${targetId} for workflow ${workflowId}`);
+      
       const result = await propagateSchemaDirectly(workflowId, sourceId, targetId);
       
       if (result) {
+        console.log(`Successfully propagated schema from ${sourceId} to ${targetId}`);
+        
         setSchemaPropagationStatus(prev => ({
           ...prev,
           [edgeKey]: {
@@ -140,9 +144,12 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         }));
         
         return true;
+      } else {
+        console.warn(`Direct schema propagation returned false for ${sourceId} to ${targetId}`);
       }
     } catch (error) {
-      console.error('Direct schema propagation failed, falling back to context method:', error);
+      console.error(`Direct schema propagation failed from ${sourceId} to ${targetId}:`, error);
+      console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
     }
     
     const retryInfo = retryMap[edgeKey];
@@ -157,7 +164,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
     }
     
     try {
-      console.log(`Attempting to propagate schema from ${sourceId} to ${targetId}`);
+      console.log(`Attempting to propagate schema via context method from ${sourceId} to ${targetId}`);
       
       setSchemaPropagationStatus(prev => ({
         ...prev,
@@ -179,6 +186,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       const result = await propagateFileSchema(sourceId, targetId);
       
       if (result) {
+        console.log(`Successfully propagated schema via context method from ${sourceId} to ${targetId}`);
+        
         setRetryMap(prev => ({
           ...prev,
           [edgeKey]: { attempts: 0, maxAttempts: 5, lastAttempt: now }
@@ -194,6 +203,8 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         
         return true;
       } else {
+        console.warn(`Failed to propagate schema via context method from ${sourceId} to ${targetId}`);
+        
         setRetryMap(prev => {
           const currentRetry = prev[edgeKey] || { attempts: 0, maxAttempts: 5, lastAttempt: now };
           return {
@@ -219,6 +230,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       }
     } catch (error) {
       console.error(`Error propagating schema for edge ${edgeKey}:`, error);
+      console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
       
       setRetryMap(prev => {
         const currentRetry = prev[edgeKey] || { attempts: 0, maxAttempts: 5, lastAttempt: 0 };
@@ -236,7 +248,7 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
         ...prev,
         [edgeKey]: {
           status: 'error',
-          message: error.message || 'Unknown error',
+          message: error instanceof Error ? error.message : 'Unknown error',
           lastAttempt: now
         }
       }));
