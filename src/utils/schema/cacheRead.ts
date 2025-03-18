@@ -1,142 +1,137 @@
 
-import { supabase } from '@/integrations/supabase/client';
-import { SchemaColumn, SchemaCacheEntry, SchemaMetadata } from './types';
-import { getCacheKey, getSchemaEntry, normalizeWorkflowId } from './cacheStore';
+import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { SchemaMetadata } from './types';
+import { getCacheKey, normalizeWorkflowId, getSchemaEntry } from './cacheStore';
 
 /**
- * Read schema from cache
+ * Get schema from cache if available and not expired
  */
-export function readSchemaFromCache(
+export async function getSchemaFromCache(
   workflowId: string,
   nodeId: string,
   options?: {
-    sheetName?: string;
-  }
-): SchemaColumn[] | null {
-  // Normalize the workflow ID
-  const normalizedWorkflowId = normalizeWorkflowId(workflowId);
-  
-  // Generate cache key
-  const key = getCacheKey(normalizedWorkflowId, nodeId, { sheetName: options?.sheetName });
-  
-  // Get from cache
-  const cacheEntry = getSchemaEntry(key);
-  
-  if (cacheEntry) {
-    console.log(`Schema found in cache for ${nodeId} in workflow ${workflowId}`);
-    return cacheEntry.schema;
-  }
-  
-  console.log(`No schema found in cache for ${nodeId} in workflow ${workflowId}`);
-  return null;
-}
-
-/**
- * Read schema with full metadata from cache
- */
-export function readSchemaMetadataFromCache(
-  workflowId: string,
-  nodeId: string,
-  options?: {
-    sheetName?: string;
-  }
-): SchemaMetadata | null {
-  // Normalize the workflow ID
-  const normalizedWorkflowId = normalizeWorkflowId(workflowId);
-  
-  // Generate cache key
-  const key = getCacheKey(normalizedWorkflowId, nodeId, { sheetName: options?.sheetName });
-  
-  // Get from cache
-  const cacheEntry = getSchemaEntry(key);
-  
-  if (cacheEntry) {
-    return {
-      schema: cacheEntry.schema,
-      fileId: cacheEntry.fileId,
-      sheetName: cacheEntry.sheetName,
-      source: cacheEntry.source,
-      version: cacheEntry.version,
-      isTemporary: cacheEntry.isTemporary
-    };
-  }
-  
-  return null;
-}
-
-/**
- * Read schema from database
- */
-export async function fetchSchemaFromDatabase(
-  workflowId: string,
-  nodeId: string,
-  options?: {
+    maxAge?: number; // maximum age in milliseconds
     sheetName?: string;
   }
 ): Promise<SchemaColumn[] | null> {
-  try {
-    if (!workflowId || workflowId === 'new') {
-      return null;
-    }
-    
-    // Convert temporary ID if necessary
-    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
-    
-    // Validate UUID format
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbWorkflowId)) {
-      console.error(`Invalid workflow ID format for database: ${dbWorkflowId}`);
-      return null;
-    }
-    
-    const query = supabase
-      .from('workflow_file_schemas')
-      .select('*')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId);
-    
-    if (options?.sheetName) {
-      query.eq('sheet_name', options.sheetName);
-    }
-    
-    const { data, error } = await query.single();
-    
-    if (error) {
-      if (error.code !== 'PGRST116') { // Not found error
-        console.error('Error fetching schema from database:', error);
+  const normalizedWorkflowId = normalizeWorkflowId(workflowId);
+  const key = getCacheKey(normalizedWorkflowId, nodeId, options);
+  const maxAge = options?.maxAge || 60000; // Default 1 minute
+  
+  const cached = getSchemaEntry(key);
+  if (!cached) {
+    // Try with default sheet if explicit sheet not found
+    if (options?.sheetName && options.sheetName !== 'default') {
+      const defaultKey = getCacheKey(normalizedWorkflowId, nodeId, { sheetName: 'default' });
+      const defaultCached = getSchemaEntry(defaultKey);
+      
+      if (defaultCached) {
+        const age = Date.now() - defaultCached.timestamp;
+        if (age <= maxAge) {
+          console.log(`No cache for sheet ${options.sheetName}, using default sheet cache`);
+          return defaultCached.schema;
+        }
       }
-      return null;
     }
-    
-    if (!data) {
-      return null;
-    }
-    
-    // Convert database format to SchemaColumn[]
-    const schema: SchemaColumn[] = [];
-    const columns = data.columns as string[];
-    const dataTypes = data.data_types as Record<string, string>;
-    
-    columns.forEach(colName => {
-      schema.push({
-        name: colName,
-        type: (dataTypes[colName] || 'string') as any
-      });
-    });
-    
-    // Cache the result
-    await writeSchemaToCache(workflowId, nodeId, schema, {
-      sheetName: data.sheet_name,
-      source: "database",
-      fileId: data.file_id,
-      isTemporary: data.is_temporary
-    });
-    
-    return schema;
-  } catch (error) {
-    console.error('Error in fetchSchemaFromDatabase:', error);
     return null;
   }
+  
+  // Check if cache entry is still valid
+  const age = Date.now() - cached.timestamp;
+  if (age > maxAge) return null;
+  
+  return cached.schema;
 }
 
-// Import here after declaration to avoid circular dependency
-import { writeSchemaToCache } from './cacheWrite';
+/**
+ * Get full schema metadata from cache if available and not expired
+ */
+export async function getSchemaMetadataFromCache(
+  workflowId: string,
+  nodeId: string,
+  options?: {
+    maxAge?: number; // maximum age in milliseconds
+    sheetName?: string;
+  }
+): Promise<SchemaMetadata | null> {
+  const key = getCacheKey(workflowId, nodeId, options);
+  const maxAge = options?.maxAge || 60000; // Default 1 minute
+  
+  const cached = getSchemaEntry(key);
+  if (!cached) {
+    // Try with default sheet if explicit sheet not found
+    if (options?.sheetName && options.sheetName !== 'default') {
+      const defaultKey = getCacheKey(workflowId, nodeId, { sheetName: 'default' });
+      const defaultCached = getSchemaEntry(defaultKey);
+      
+      if (defaultCached) {
+        const age = Date.now() - defaultCached.timestamp;
+        if (age <= maxAge) {
+          return {
+            schema: defaultCached.schema,
+            sheetName: defaultCached.sheetName,
+            source: defaultCached.source,
+            version: defaultCached.version,
+            isTemporary: defaultCached.isTemporary,
+            fileId: defaultCached.fileId
+          };
+        }
+      }
+    }
+    return null;
+  }
+  
+  // Check if cache entry is still valid
+  const age = Date.now() - cached.timestamp;
+  if (age > maxAge) return null;
+  
+  return {
+    schema: cached.schema,
+    sheetName: cached.sheetName,
+    source: cached.source,
+    version: cached.version,
+    isTemporary: cached.isTemporary,
+    fileId: cached.fileId
+  };
+}
+
+/**
+ * Check if a valid cache exists for the given workflow and node
+ */
+export async function isValidCacheExistsAsync(
+  workflowId: string,
+  nodeId: string,
+  options?: {
+    maxAge?: number;
+    sheetName?: string;
+  }
+): Promise<boolean> {
+  const schema = await getSchemaFromCache(workflowId, nodeId, options);
+  return schema !== null && schema.length > 0;
+}
+
+/**
+ * Get all cached schemas for a workflow
+ */
+export async function getWorkflowCachedSchemas(
+  workflowId: string
+): Promise<Record<string, SchemaColumn[]>> {
+  const prefix = `schema:${workflowId}:`;
+  const result: Record<string, SchemaColumn[]> = {};
+  
+  const schemaEntries = getSchemaEntriesByPrefix(prefix);
+  
+  Object.keys(schemaEntries).forEach(key => {
+    const parts = key.split(':');
+    if (parts.length >= 4) {
+      const nodeId = parts[2];
+      const schema = schemaEntries[key].schema;
+      result[nodeId] = schema;
+    }
+  });
+  
+  return result;
+}
+
+// Imported in cacheRead.ts but defined in cacheStore.ts
+import { getSchemaEntriesByPrefix } from './cacheStore';

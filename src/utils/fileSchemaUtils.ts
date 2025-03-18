@@ -1,11 +1,8 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
-import { 
-  cacheSchema, 
-  getSchemaFromCache, 
-  invalidateSchemaCache 
-} from './schema';
+import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from './schemaCache';
 
 // Type definitions for schema cache
 interface SchemaCacheEntry {

@@ -1,125 +1,139 @@
 
-import { supabase } from '@/integrations/supabase/client';
-import { SchemaColumn, SchemaCacheEntry } from './types';
-import { getCacheKey, setSchemaEntry, normalizeWorkflowId } from './cacheStore';
+import { SchemaColumn } from '@/hooks/useNodeManagement';
+import { SchemaCacheEntry } from './types';
+import { getCacheKey, normalizeWorkflowId, setSchemaEntry } from './cacheStore';
 
 /**
- * Write schema to cache with metadata
+ * Cache schema data
  */
-export async function writeSchemaToCache(
+export async function cacheSchema(
   workflowId: string,
   nodeId: string,
   schema: SchemaColumn[],
   options?: {
     sheetName?: string;
     source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
+    version?: number;
     isTemporary?: boolean;
     fileId?: string;
-    version?: number;
   }
 ): Promise<void> {
-  // Normalize the workflow ID
-  const normalizedWorkflowId = normalizeWorkflowId(workflowId);
+  if (!workflowId || !nodeId) {
+    console.error('Cannot cache schema with invalid workflowId or nodeId', { workflowId, nodeId });
+    return;
+  }
   
-  // Generate cache key
-  const key = getCacheKey(normalizedWorkflowId, nodeId, { sheetName: options?.sheetName });
-  
-  // Create cache entry
-  const cacheEntry: SchemaCacheEntry = {
-    schema,
-    timestamp: Date.now(),
-    sheetName: options?.sheetName,
-    source: options?.source || "manual",
-    version: options?.version || 1,
-    isTemporary: options?.isTemporary || false,
-    fileId: options?.fileId
-  };
-  
-  // Store in cache
-  setSchemaEntry(key, cacheEntry);
-  
-  console.log(`Schema written to cache for ${nodeId} in workflow ${workflowId} with key ${key}`);
+  try {
+    const normalizedWorkflowId = normalizeWorkflowId(workflowId);
+    const key = getCacheKey(normalizedWorkflowId, nodeId, options);
+    
+    const cacheEntry: SchemaCacheEntry = {
+      schema,
+      timestamp: Date.now(),
+      sheetName: options?.sheetName,
+      source: options?.source,
+      version: options?.version,
+      isTemporary: options?.isTemporary || false,
+      fileId: options?.fileId
+    };
+    
+    setSchemaEntry(key, cacheEntry);
+    
+    // Also cache under the default sheet if we're dealing with a sheet-less schema
+    // This helps with fallback mechanisms
+    if (!options?.sheetName && workflowId && nodeId) {
+      const defaultKey = getCacheKey(normalizedWorkflowId, nodeId, { sheetName: 'default' });
+      if (defaultKey !== key) {
+        setSchemaEntry(defaultKey, {
+          ...cacheEntry,
+          sheetName: 'default'
+        });
+      }
+    }
+    
+    // Log cache operation for debugging
+    console.log(`Schema cached for ${nodeId} with sheet "${options?.sheetName || 'default'}" in workflow ${workflowId}. Source: ${options?.source}`);
+  } catch (error) {
+    console.error('Error caching schema:', error);
+  }
 }
 
 /**
- * Write schema to both cache and database
+ * Copy schema cache from source node to target node
  */
-export async function persistSchemaToDatabase(
+export async function copySchemaCache(
   workflowId: string,
-  nodeId: string,
-  schema: SchemaColumn[],
+  sourceNodeId: string,
+  targetNodeId: string,
   options?: {
     sheetName?: string;
-    fileId?: string;
-    isTemporary?: boolean;
+    source?: "propagation";
   }
 ): Promise<boolean> {
+  if (!workflowId || !sourceNodeId || !targetNodeId) {
+    console.error('Cannot copy schema cache with invalid parameters', { workflowId, sourceNodeId, targetNodeId });
+    return false;
+  }
+  
   try {
-    // First write to cache
-    await writeSchemaToCache(workflowId, nodeId, schema, {
-      ...options,
-      source: "database"
-    });
+    const normalizedWorkflowId = normalizeWorkflowId(workflowId);
     
-    // Skip database persistence for temporary workflows or when no workflow ID
-    if (!workflowId || workflowId === 'new') {
-      console.log(`Skipping database persistence for temporary workflow: ${workflowId}`);
-      return true;
-    }
+    // Try to get schema from the source with the specific sheet first
+    const sourceKey = getCacheKey(normalizedWorkflowId, sourceNodeId, options);
+    let sourceCache = getSchemaEntry(sourceKey);
     
-    // Convert temporary ID if necessary
-    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
-    
-    // Validate UUID format
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbWorkflowId)) {
-      console.error(`Invalid workflow ID format for database: ${dbWorkflowId}`);
-      return false;
-    }
-    
-    // Get file ID if available
-    const fileId = options?.fileId;
-    
-    if (!fileId) {
-      console.warn(`No file ID provided for schema persistence for node ${nodeId}`);
-    }
-    
-    // Extract column names and types
-    const columnNames = schema.map(col => col.name);
-    const dataTypes: Record<string, string> = {};
-    
-    schema.forEach(col => {
-      dataTypes[col.name] = col.type;
-    });
-    
-    // Insert or update schema in database
-    const { error } = await supabase
-      .from('workflow_file_schemas')
-      .upsert(
-        {
-          workflow_id: dbWorkflowId,
-          node_id: nodeId,
-          file_id: fileId,
-          columns: columnNames,
-          data_types: dataTypes,
-          sheet_name: options?.sheetName,
-          is_temporary: options?.isTemporary || false,
-          updated_at: new Date().toISOString()
-        },
-        {
-          onConflict: 'workflow_id,node_id',
-          ignoreDuplicates: false
+    // If not found with the specific sheet, try the default one
+    if (!sourceCache && options?.sheetName) {
+      const defaultSourceKey = getCacheKey(normalizedWorkflowId, sourceNodeId, { sheetName: 'default' });
+      sourceCache = getSchemaEntry(defaultSourceKey);
+      
+      // Still not found, try querying without sheet name at all
+      if (!sourceCache) {
+        // Try all available schemas for this node
+        const nodeSchemaKeys = Object.keys(getSchemaEntriesByPrefix(`schema:${normalizedWorkflowId}:${sourceNodeId}:`));
+        
+        if (nodeSchemaKeys.length > 0) {
+          // Use the first available schema
+          sourceCache = getSchemaEntry(nodeSchemaKeys[0]);
+          console.log(`Using first available schema for ${sourceNodeId} from ${nodeSchemaKeys[0]}`);
         }
-      );
+      }
+    }
     
-    if (error) {
-      console.error('Error persisting schema to database:', error);
+    if (!sourceCache) {
+      console.log(`No cache found for source node ${sourceNodeId} in workflow ${workflowId}`);
       return false;
     }
     
-    console.log(`Schema successfully persisted to database for ${nodeId} in workflow ${dbWorkflowId}`);
+    const effectiveSheetName = options?.sheetName || sourceCache.sheetName || 'default';
+    const targetKey = getCacheKey(normalizedWorkflowId, targetNodeId, { sheetName: effectiveSheetName });
+    
+    setSchemaEntry(targetKey, {
+      schema: sourceCache.schema,
+      timestamp: Date.now(),
+      sheetName: effectiveSheetName,
+      source: options?.source || "propagation",
+      version: sourceCache.version,
+      isTemporary: sourceCache.isTemporary,
+      fileId: sourceCache.fileId
+    });
+    
+    // Also cache under default if not already a default cache
+    if (effectiveSheetName !== 'default') {
+      const defaultTargetKey = getCacheKey(normalizedWorkflowId, targetNodeId, { sheetName: 'default' });
+      setSchemaEntry(defaultTargetKey, {
+        ...getSchemaEntry(targetKey)!,
+        sheetName: 'default'
+      });
+    }
+    
+    console.log(`Copied schema cache from ${sourceNodeId} to ${targetNodeId} with sheet "${effectiveSheetName}"`);
     return true;
   } catch (error) {
-    console.error('Error in persistSchemaToDatabase:', error);
+    console.error('Error copying schema cache:', error);
     return false;
   }
 }
+
+// Imported in cacheWrite.ts but defined in cacheStore.ts
+import { getSchemaEntry, getSchemaEntriesByPrefix } from './cacheStore';
