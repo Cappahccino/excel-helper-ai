@@ -38,10 +38,15 @@ export async function cacheSchema(
     fileId?: string;
   }
 ): Promise<void> {
+  if (!workflowId || !nodeId || !schema || !Array.isArray(schema)) {
+    console.warn(`Invalid input for cacheSchema: workflowId=${workflowId}, nodeId=${nodeId}, schema=${Array.isArray(schema) ? schema.length : typeof schema}`);
+    return;
+  }
+
   const key = getCacheKey(workflowId, nodeId, options);
   
   schemaCache[key] = {
-    schema,
+    schema: schema.filter(col => col && typeof col === 'object' && col.name),
     timestamp: Date.now(),
     sheetName: options?.sheetName,
     source: options?.source,
@@ -49,6 +54,8 @@ export async function cacheSchema(
     isTemporary: options?.isTemporary || false,
     fileId: options?.fileId
   };
+  
+  console.log(`Cached schema for node ${nodeId} with ${schema.length} columns, sheet: ${options?.sheetName || 'default'}`);
 }
 
 /**
@@ -62,16 +69,28 @@ export async function getSchemaFromCache(
     sheetName?: string;
   }
 ): Promise<SchemaColumn[] | null> {
+  if (!workflowId || !nodeId) {
+    console.warn(`Invalid input for getSchemaFromCache: workflowId=${workflowId}, nodeId=${nodeId}`);
+    return null;
+  }
+  
   const key = getCacheKey(workflowId, nodeId, options);
   const maxAge = options?.maxAge || 60000; // Default 1 minute
   
   const cached = schemaCache[key];
-  if (!cached) return null;
+  if (!cached) {
+    console.log(`No cache entry found for ${key}`);
+    return null;
+  }
   
   // Check if cache entry is still valid
   const age = Date.now() - cached.timestamp;
-  if (age > maxAge) return null;
+  if (age > maxAge) {
+    console.log(`Cache entry for ${key} expired (age: ${age}ms, max: ${maxAge}ms)`);
+    return null;
+  }
   
+  console.log(`Using cached schema for ${key} with ${cached.schema.length} columns (age: ${age}ms)`);
   return cached.schema;
 }
 
@@ -93,6 +112,8 @@ export async function getSchemaMetadataFromCache(
   version?: number;
   isTemporary?: boolean;
 } | null> {
+  if (!workflowId || !nodeId) return null;
+  
   const key = getCacheKey(workflowId, nodeId, options);
   const maxAge = options?.maxAge || 60000; // Default 1 minute
   
@@ -136,14 +157,35 @@ export async function invalidateSchemaCache(
   nodeId: string,
   sheetName?: string
 ): Promise<void> {
-  const key = getCacheKey(workflowId, nodeId, { sheetName });
-  delete schemaCache[key];
+  if (!workflowId || !nodeId) {
+    console.log(`Cannot invalidate cache: Invalid ID(s): wf=${workflowId}, node=${nodeId}`);
+    return;
+  }
+  
+  if (sheetName) {
+    // Only invalidate the specific sheet
+    const key = getCacheKey(workflowId, nodeId, { sheetName });
+    if (schemaCache[key]) {
+      console.log(`Invalidating schema cache for ${nodeId} sheet: ${sheetName}`);
+      delete schemaCache[key];
+    }
+  } else {
+    // Invalidate all sheets for this node
+    console.log(`Invalidating all schema caches for node ${nodeId}`);
+    const prefix = `schema:${workflowId}:${nodeId}:`;
+    Object.keys(schemaCache).forEach(key => {
+      if (key.startsWith(prefix)) {
+        delete schemaCache[key];
+      }
+    });
+  }
 }
 
 /**
  * Invalidate all cached schemas
  */
 export async function invalidateAllSchemaCaches(): Promise<void> {
+  console.log(`Invalidating all schema caches`);
   Object.keys(schemaCache).forEach(key => {
     delete schemaCache[key];
   });
@@ -155,10 +197,47 @@ export async function invalidateAllSchemaCaches(): Promise<void> {
 export async function invalidateWorkflowSchemaCache(
   workflowId: string
 ): Promise<void> {
+  if (!workflowId) return;
+  
   const prefix = `schema:${workflowId}:`;
+  console.log(`Invalidating all schema caches for workflow ${workflowId}`);
+  
+  let count = 0;
   Object.keys(schemaCache).forEach(key => {
     if (key.startsWith(prefix)) {
       delete schemaCache[key];
+      count++;
     }
   });
+  
+  console.log(`Invalidated ${count} cache entries for workflow ${workflowId}`);
+}
+
+/**
+ * Dump cache contents for debugging
+ */
+export function getDebugCacheInfo(): { 
+  totalEntries: number;
+  entries: Record<string, { 
+    columns: number; 
+    age: number; 
+    sheetName?: string;
+  }>;
+} {
+  const now = Date.now();
+  const entries: Record<string, { columns: number; age: number; sheetName?: string }> = {};
+  
+  Object.keys(schemaCache).forEach(key => {
+    const entry = schemaCache[key];
+    entries[key] = {
+      columns: entry.schema.length,
+      age: now - entry.timestamp,
+      sheetName: entry.sheetName
+    };
+  });
+  
+  return {
+    totalEntries: Object.keys(schemaCache).length,
+    entries
+  };
 }
