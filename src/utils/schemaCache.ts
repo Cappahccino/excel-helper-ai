@@ -1,3 +1,4 @@
+
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
 // Type for schema cache entries - updated to include isTemporary flag
@@ -267,8 +268,15 @@ export async function copySchemaCache(
     source?: "propagation";
   }
 ): Promise<boolean> {
+  // Try to get schema from the source with the specific sheet first
   const sourceKey = getCacheKey(workflowId, sourceNodeId, options);
-  const sourceCache = schemaCache[sourceKey];
+  let sourceCache = schemaCache[sourceKey];
+  
+  // If not found with the specific sheet, try the default one
+  if (!sourceCache && options?.sheetName) {
+    const defaultSourceKey = getCacheKey(workflowId, sourceNodeId, { sheetName: 'default' });
+    sourceCache = schemaCache[defaultSourceKey];
+  }
   
   if (!sourceCache) return false;
   
@@ -284,5 +292,15 @@ export async function copySchemaCache(
     fileId: sourceCache.fileId
   };
   
+  // Also cache under default if not already a default cache
+  if (options?.sheetName && options.sheetName !== 'default') {
+    const defaultTargetKey = getCacheKey(workflowId, targetNodeId, { sheetName: 'default' });
+    schemaCache[defaultTargetKey] = {
+      ...schemaCache[targetKey],
+      sheetName: 'default'
+    };
+  }
+  
+  console.log(`Copied schema cache from ${sourceNodeId} to ${targetNodeId} with sheet "${options?.sheetName || 'default'}"`);
   return true;
 }

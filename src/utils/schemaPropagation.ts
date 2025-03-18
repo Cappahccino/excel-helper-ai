@@ -1,7 +1,13 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
-import { cacheSchema, getSchemaFromCache, getSchemaMetadataFromCache, invalidateSchemaCache } from './schemaCache';
+import { 
+  cacheSchema, 
+  getSchemaFromCache, 
+  getSchemaMetadataFromCache, 
+  invalidateSchemaCache
+} from './schemaCache';
 import { standardizeSchemaColumns } from './schemaStandardization';
 
 interface SheetInfo {
@@ -331,40 +337,58 @@ async function propagateSchemaDirectlyFallback(
 
 /**
  * Check if a node is ready for schema propagation
- * Updated to include temporary schemas
+ * Updated to include temporary schemas and handle multiple schema rows
  */
 export async function isNodeReadyForSchemaPropagation(
   workflowId: string,
-  nodeId: string
+  nodeId: string,
+  sheetName?: string
 ): Promise<boolean> {
   try {
     // First check cache
-    const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId);
+    const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId, { sheetName });
     if (cachedSchemaData && cachedSchemaData.schema && cachedSchemaData.schema.length > 0) {
+      console.log(`Node ${nodeId} is ready for schema propagation (from cache)`);
       return true;
     }
     
-    const dbWorkflowId = workflowId.startsWith('temp-') 
-      ? workflowId.substring(5) 
-      : workflowId;
+    const dbWorkflowId = safeConvertWorkflowId(workflowId);
     
     console.log(`Checking if node ${nodeId} is ready for schema propagation in workflow ${dbWorkflowId}`);
     
-    // No longer filtering by is_temporary
-    const { data: schema, error } = await supabase
+    // No longer filtering by is_temporary, and now using select() instead of maybeSingle()
+    const { data: schemas, error } = await supabase
       .from('workflow_file_schemas')
-      .select('columns')
+      .select('columns, sheet_name')
       .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId)
-      .maybeSingle();
+      .eq('node_id', nodeId);
       
     if (error) {
       console.error('Error checking node readiness:', error);
       return false;
     }
     
-    const isReady = !!schema && Array.isArray(schema.columns) && schema.columns.length > 0;
-    console.log(`Node ${nodeId} ready status: ${isReady}, schema:`, schema);
+    // If a specific sheet was requested, check if that sheet has schema
+    if (sheetName && schemas && schemas.length > 0) {
+      const sheetSchema = schemas.find(s => s.sheet_name === sheetName);
+      if (sheetSchema) {
+        const isReady = Array.isArray(sheetSchema.columns) && sheetSchema.columns.length > 0;
+        console.log(`Node ${nodeId} with sheet ${sheetName} ready status: ${isReady}`);
+        return isReady;
+      }
+      console.log(`No schema found for sheet ${sheetName} in node ${nodeId}`);
+      return false;
+    }
+    
+    // No specific sheet requested, check if ANY sheet has a schema
+    const isReady = schemas && schemas.length > 0 && 
+                    schemas.some(schema => Array.isArray(schema.columns) && schema.columns.length > 0);
+    
+    console.log(`Node ${nodeId} ready status: ${isReady}, found ${schemas?.length || 0} schemas`);
+    if (schemas && schemas.length > 0) {
+      console.log(`Available sheets: ${schemas.map(s => s.sheet_name).join(', ')}`);
+    }
+    
     return isReady;
   } catch (error) {
     console.error('Error in isNodeReadyForSchemaPropagation:', error);

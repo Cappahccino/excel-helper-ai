@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { 
   propagateSchemaDirectly, 
   propagateSchemaWithRetry,
-  getSchemaForFiltering
+  getSchemaForFiltering,
+  isNodeReadyForSchemaPropagation
 } from '@/utils/schemaPropagation';
 import { 
   cacheSchema, 
@@ -113,29 +114,36 @@ export function useSchemaPropagation(
   const checkPropagationNeeded = useCallback(async () => {
     if (!workflowId || !sourceNodeId || !targetNodeId) return false;
     
-    // First check cache
-    const cachedSchema = await getSchemaFromCache(workflowId, targetNodeId, {
-      maxAge: 60000, // 1 minute
-      sheetName
-    });
-    
-    if (cachedSchema && cachedSchema.length > 0) {
-      console.log(`Using cached schema for ${targetNodeId}`);
-      setState(prev => ({
-        ...prev,
-        status: 'success',
-        schema: cachedSchema,
-        lastUpdated: Date.now()
-      }));
-      return false;
-    }
-    
-    // Check database for existing schema
     try {
+      // First check if source node has schema
+      const isSourceReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId, sheetName);
+      if (!isSourceReady) {
+        console.log(`Source node ${sourceNodeId} is not ready for propagation`);
+        return false;
+      }
+      
+      // First check cache for target node
+      const cachedSchema = await getSchemaFromCache(workflowId, targetNodeId, {
+        maxAge: 60000, // 1 minute
+        sheetName
+      });
+      
+      if (cachedSchema && cachedSchema.length > 0) {
+        console.log(`Using cached schema for ${targetNodeId}`);
+        setState(prev => ({
+          ...prev,
+          status: 'success',
+          schema: cachedSchema,
+          lastUpdated: Date.now()
+        }));
+        return false;
+      }
+      
+      // Check if target already has schema in database
       const dbWorkflowId = getNormalizedWorkflowId();
       if (!dbWorkflowId) return false;
       
-      const { data: targetSchema, error } = await supabase
+      const { data: targetSchema, error: targetError } = await supabase
         .from('workflow_file_schemas')
         .select('columns, data_types')
         .eq('workflow_id', dbWorkflowId)
@@ -143,13 +151,14 @@ export function useSchemaPropagation(
         .eq('sheet_name', sheetName || 'Sheet1')
         .maybeSingle();
         
-      if (error) {
-        console.error('Error checking target schema:', error);
+      if (targetError) {
+        console.error('Error checking target schema:', targetError);
         return true;
       }
       
-      // If target has no schema, propagation is needed
+      // If target has no schema for this sheet, propagation is needed
       if (!targetSchema || !targetSchema.columns || targetSchema.columns.length === 0) {
+        console.log(`No schema found for target node ${targetNodeId} with sheet ${sheetName || 'Sheet1'}, propagation needed`);
         return true;
       }
       
