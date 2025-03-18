@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -362,7 +361,7 @@ export function useSchemaConnection(
     
     // Invalidate cache first
     if (workflowId && nodeId) {
-      await invalidateSchemaCache(workflowId, nodeId);
+      await invalidateSchemaCache({ workflowId, nodeId });
       localCache.current = null;
     }
     
