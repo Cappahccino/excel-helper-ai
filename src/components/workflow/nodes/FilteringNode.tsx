@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -74,6 +75,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [columnSearchTerm, setColumnSearchTerm] = useState<string>('');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [sourceSheetName, setSourceSheetName] = useState<string | undefined>(undefined);
+  const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
   
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;

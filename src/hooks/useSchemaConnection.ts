@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -130,7 +129,7 @@ export function useSchemaConnection(
     }
   }, [workflowId, sourceNodeId, getDbWorkflowId, debug, sheetName]);
   
-  // Declaration of fetchSchema before it's used by other functions
+  // Declaration of fetchSchema
   const fetchSchema = useCallback(async (forceRefresh = false) => {
     // Only attempt to fetch schema if we have all required IDs
     if (!workflowId || !nodeId) {
