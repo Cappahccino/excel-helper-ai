@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -175,7 +176,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
             });
           } else if (payload.eventType === 'DELETE') {
             setSourceNodeId(null);
-            setSchema([]);
+            // Fixed: Remove reference to undefined setSchema function
+            // Instead of setting schema to empty array, we should refresh or handle differently
           }
         }
       )
