@@ -58,6 +58,30 @@ export async function getSchemaFromCache(
     maxAge?: number; // maximum age in milliseconds
     sheetName?: string;
   }
+): Promise<SchemaColumn[] | null> {
+  const key = getCacheKey(workflowId, nodeId, options);
+  const maxAge = options?.maxAge || 60000; // Default 1 minute
+  
+  const cached = schemaCache[key];
+  if (!cached) return null;
+  
+  // Check if cache entry is still valid
+  const age = Date.now() - cached.timestamp;
+  if (age > maxAge) return null;
+  
+  return cached.schema;
+}
+
+/**
+ * Get full schema metadata from cache if available and not expired
+ */
+export async function getSchemaMetadataFromCache(
+  workflowId: string,
+  nodeId: string,
+  options?: {
+    maxAge?: number; // maximum age in milliseconds
+    sheetName?: string;
+  }
 ): Promise<{
   schema: SchemaColumn[];
   fileId?: string;
@@ -97,7 +121,7 @@ export async function isValidCacheExistsAsync(
   }
 ): Promise<boolean> {
   const schema = await getSchemaFromCache(workflowId, nodeId, options);
-  return schema !== null && schema.schema && schema.schema.length > 0;
+  return schema !== null && schema.length > 0;
 }
 
 /**

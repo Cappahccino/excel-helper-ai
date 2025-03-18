@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { Redis } from "https://esm.sh/@upstash/redis@1.20.6";
@@ -160,7 +161,23 @@ async function handleGetSchema(body, redis, corsHeaders) {
       );
     }
     
-    const parsed = JSON.parse(cachedData);
+    let parsed;
+    try {
+      // Handle different types of responses from Redis
+      if (typeof cachedData === 'string') {
+        parsed = JSON.parse(cachedData);
+      } else if (typeof cachedData === 'object') {
+        parsed = cachedData;
+      } else {
+        throw new Error(`Unexpected type for cached data: ${typeof cachedData}`);
+      }
+    } catch (parseError) {
+      console.error('Error parsing cached schema:', parseError, 'Raw data:', cachedData);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid cached data format' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
     
     // Check if cache is still valid
     const cacheAge = Date.now() - parsed.timestamp;
@@ -327,7 +344,22 @@ async function handleGetWorkflowSchemas(body, redis, corsHeaders) {
           const parts = key.split(':');
           if (parts.length >= 3) {
             const nodeId = parts[2];
-            const parsed = JSON.parse(values[index]);
+            
+            // Parse the schema value safely
+            let parsed;
+            try {
+              if (typeof values[index] === 'string') {
+                parsed = JSON.parse(values[index]);
+              } else if (typeof values[index] === 'object') {
+                parsed = values[index];
+              } else {
+                console.warn(`Unexpected type for schema value: ${typeof values[index]}`);
+                return;
+              }
+            } catch (parseError) {
+              console.error(`Error parsing schema for node ${nodeId}:`, parseError);
+              return;
+            }
             
             if (!schemas[nodeId]) {
               schemas[nodeId] = {};
@@ -423,13 +455,27 @@ async function handleSchemaPropagation(body, redis, supabase, corsHeaders) {
     if (!forceRefresh) {
       const cachedSchema = await redis.get(cacheKey);
       if (cachedSchema) {
-        sourceSchema = JSON.parse(cachedSchema);
-        console.log(`Using cached schema for source node ${sourceNodeId}`);
+        console.log('Found cached schema, type:', typeof cachedSchema);
+        
+        try {
+          // Handle different types from Redis
+          if (typeof cachedSchema === 'string') {
+            sourceSchema = JSON.parse(cachedSchema);
+            console.log('Parsed string schema for source node', sourceNodeId);
+          } else if (typeof cachedSchema === 'object') {
+            sourceSchema = cachedSchema;
+            console.log('Using object schema for source node', sourceNodeId);
+          } else {
+            console.warn(`Unexpected type for cached schema: ${typeof cachedSchema}`);
+          }
+        } catch (parseError) {
+          console.error('Error parsing cached schema:', parseError, 'Raw data:', cachedSchema);
+          // Continue to fetch from database
+        }
       }
     }
     
     // If not in Redis cache, get source schema from database
-    // IMPORTANT: Removed the is_temporary: false filter to include temporary schemas
     if (!sourceSchema) {
       const { data: dbSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
@@ -637,9 +683,21 @@ async function handleSubscribeToSchemaUpdates(body, redis, supabase, corsHeaders
     let version = 1;
     
     if (cachedSchema) {
-      const parsed = JSON.parse(cachedSchema);
-      schema = parsed.schema;
-      version = parsed.version || 1;
+      let parsed;
+      try {
+        if (typeof cachedSchema === 'string') {
+          parsed = JSON.parse(cachedSchema);
+        } else if (typeof cachedSchema === 'object') {
+          parsed = cachedSchema;
+        } else {
+          throw new Error(`Unexpected type for cached schema: ${typeof cachedSchema}`);
+        }
+        schema = parsed.schema;
+        version = parsed.version || 1;
+      } catch (parseError) {
+        console.error('Error parsing cached schema in subscription:', parseError);
+        // Continue with null schema
+      }
     } else {
       // No cached schema, try to get from database
       const dbWorkflowId = workflowId.startsWith('temp-') 
@@ -747,8 +805,16 @@ async function handleCheckForSchemaUpdates(body, redis, corsHeaders) {
       const cachedSchema = await redis.get(cacheKey);
       
       if (cachedSchema) {
-        const parsed = JSON.parse(cachedSchema);
-        schema = parsed.schema;
+        try {
+          if (typeof cachedSchema === 'string') {
+            const parsed = JSON.parse(cachedSchema);
+            schema = parsed.schema;
+          } else if (typeof cachedSchema === 'object') {
+            schema = cachedSchema.schema;
+          }
+        } catch (parseError) {
+          console.error('Error parsing schema in updates check:', parseError);
+        }
       }
     }
     
@@ -880,4 +946,3 @@ async function handleRefreshSchema(body, redis, supabase, corsHeaders) {
     );
   }
 }
-
