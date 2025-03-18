@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -145,50 +146,78 @@ export const useFileUploadNode = (
     if (!workflowId || !selectedFileId || !nodeId) return;
     
     console.log('Setting up realtime subscription for workflow file updates');
-    const dbWorkflowId = convertToDbWorkflowId(workflowId);
     
-    const channel = supabase
-      .channel(`workflow_file_updates_${nodeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workflow_files',
-          filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${nodeId} AND file_id=eq.${selectedFileId}`
-        },
-        (payload) => {
-          console.log('Received realtime update for workflow file:', payload);
-          const updatedFile = payload.new;
-          
-          const processingStatus = updatedFile.processing_status as string;
-          
-          if (processingStatus === WorkflowFileStatus.Completed) {
-            updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
-            refetch();
-          } else if (processingStatus === WorkflowFileStatus.Processing) {
-            updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
-          } else if (processingStatus === WorkflowFileStatus.Failed || 
-                     processingStatus === WorkflowFileStatus.Error) {
-            const errorMessage = updatedFile.processing_error || 'File processing failed';
-            updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
+    // Safely handle temporary workflow IDs
+    let dbWorkflowId;
+    try {
+      dbWorkflowId = convertToDbWorkflowId(workflowId);
+      
+      // Add error handling if the ID conversion returns null or empty string
+      if (!dbWorkflowId) {
+        console.error(`Invalid workflow ID format: ${workflowId}`);
+        return;
+      }
+      
+      console.log(`Subscribing to updates for workflow ${dbWorkflowId}, node ${nodeId}, file ${selectedFileId}`);
+    } catch (error) {
+      console.error(`Failed to convert workflow ID: ${workflowId}`, error);
+      return;
+    }
+    
+    // Using a more stable channel name to avoid connection issues
+    const channelName = `file_updates_${nodeId.replace(/-/g, '_')}_${Date.now()}`;
+    
+    try {
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'workflow_files',
+            filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${nodeId} AND file_id=eq.${selectedFileId}`
+          },
+          (payload) => {
+            console.log('Received realtime update for workflow file:', payload);
+            const updatedFile = payload.new;
+            
+            const processingStatus = updatedFile.processing_status as string;
+            
+            if (processingStatus === WorkflowFileStatus.Completed) {
+              updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
+              refetch();
+            } else if (processingStatus === WorkflowFileStatus.Processing) {
+              updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
+            } else if (processingStatus === WorkflowFileStatus.Failed || 
+                      processingStatus === WorkflowFileStatus.Error) {
+              const errorMessage = updatedFile.processing_error || 'File processing failed';
+              updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
+            }
           }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to workflow file updates');
+            setRealtimeEnabled(true);
+          } else {
+            console.error('Failed to subscribe to workflow file updates:', status);
+            setRealtimeEnabled(false);
+          }
+        });
+      
+      return () => {
+        console.log('Cleaning up realtime subscription');
+        try {
+          supabase.removeChannel(channel);
+        } catch (err) {
+          console.error('Error cleaning up realtime subscription:', err);
         }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Successfully subscribed to workflow file updates');
-          setRealtimeEnabled(true);
-        } else {
-          console.error('Failed to subscribe to workflow file updates:', status);
-          setRealtimeEnabled(false);
-        }
-      });
-    
-    return () => {
-      console.log('Cleaning up realtime subscription');
-      supabase.removeChannel(channel);
-    };
+      };
+    } catch (error) {
+      console.error('Error setting up realtime subscription:', error);
+      return () => {};
+    }
   }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetch]);
 
   useEffect(() => {
@@ -494,14 +523,31 @@ export const useFileUploadNode = (
     }
     
     try {
-      const dbWorkflowId = convertToDbWorkflowId(workflowId);
+      // Safe conversion to DB workflow ID
+      let dbWorkflowId;
+      try {
+        dbWorkflowId = convertToDbWorkflowId(workflowId);
+        if (!dbWorkflowId) {
+          throw new Error(`Invalid workflow ID format: ${workflowId}`);
+        }
+      } catch (error) {
+        console.error('Failed to convert workflow ID for metadata update:', error);
+        toast.error('Failed to update selected sheet');
+        return;
+      }
       
-      const { data: currentFile } = await supabase
+      const { data: currentFile, error: fetchError } = await supabase
         .from('workflow_files')
         .select('metadata')
         .eq('workflow_id', dbWorkflowId)
         .eq('node_id', nodeId)
         .maybeSingle();
+      
+      if (fetchError) {
+        console.error('Error fetching current file metadata:', fetchError);
+        toast.error('Failed to update selected sheet');
+        return;
+      }
       
       const currentMetadata = (currentFile?.metadata as Record<string, any>) || {};
       
@@ -524,11 +570,18 @@ export const useFileUploadNode = (
         toast.success(`Sheet "${sheetName}" selected`);
       }
       
-      const { data: edges } = await supabase
+      // Propagate schema to connected nodes with the new sheet selection
+      console.log(`Fetching edges to propagate schema for new sheet selection: ${sheetName}`);
+      const { data: edges, error: edgesError } = await supabase
         .from('workflow_edges')
         .select('target_node_id')
         .eq('workflow_id', dbWorkflowId)
         .eq('source_node_id', nodeId);
+        
+      if (edgesError) {
+        console.error('Error fetching edges for schema propagation:', edgesError);
+        return;
+      }
         
       if (edges && edges.length > 0) {
         console.log(`Found ${edges.length} connected nodes to update with new sheet selection`);
@@ -577,4 +630,3 @@ export const useFileUploadNode = (
     handleRetry
   };
 };
-

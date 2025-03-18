@@ -92,6 +92,10 @@ export function useSchemaConnection(
     
     try {
       const dbWorkflowId = getDbWorkflowId();
+      if (!dbWorkflowId) {
+        console.error('Invalid workflow ID for sheet selection lookup');
+        return null;
+      }
       
       // Get source node metadata to find selected sheet
       const { data: sourceNodeData, error: sourceError } = await supabase
@@ -101,8 +105,13 @@ export function useSchemaConnection(
         .eq('node_id', sourceNodeId)
         .maybeSingle();
         
-      if (sourceError || !sourceNodeData?.metadata) {
-        console.error('Error getting source node metadata:', sourceError || 'No metadata found');
+      if (sourceError) {
+        console.error('Error getting source node metadata:', sourceError);
+        return null;
+      }
+      
+      if (!sourceNodeData?.metadata) {
+        console.log(`No metadata found for source node ${sourceNodeId}`);
         return null;
       }
       
@@ -190,7 +199,7 @@ export function useSchemaConnection(
       // Get schema using the Edge Function to ensure we get temporary schemas too
       const { data, error } = await supabase.functions.invoke('inspectSchemas', {
         body: { 
-          workflowId, 
+          workflowId: workflowId, 
           nodeId,
           sheetName: effectiveSheetName 
         }
@@ -375,73 +384,113 @@ export function useSchemaConnection(
     return true;
   }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug, showNotifications, getSourceNodeSheet]);
   
-  // Subscribe to real-time schema updates
+  // Subscribe to real-time schema updates with added error handling
   useEffect(() => {
     if (!workflowId || !nodeId) return;
     
-    // Setup subscription for schema changes
-    const channel = supabase
-      .channel(`schema-updates-${nodeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'workflow_file_schemas',
-          filter: `node_id=eq.${nodeId}`
-        },
-        (payload) => {
-          if (debug) console.log(`Schema change detected for node ${nodeId}:`, payload);
-          // Only refresh if we have a source node
-          if (sourceNodeId) {
-            debouncedFetchSchema(true);
+    // Normalize the workflow ID for subscription
+    const dbWorkflowId = getDbWorkflowId();
+    if (!dbWorkflowId) {
+      console.error('Invalid workflow ID for realtime subscription');
+      return;
+    }
+    
+    try {
+      // Setup subscription for schema changes
+      const channel = supabase
+        .channel(`schema-updates-${nodeId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'workflow_file_schemas',
+            filter: `node_id=eq.${nodeId}`
+          },
+          (payload) => {
+            if (debug) console.log(`Schema change detected for node ${nodeId}:`, payload);
+            // Only refresh if we have a source node
+            if (sourceNodeId) {
+              debouncedFetchSchema(true);
+            }
           }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            if (debug) console.log(`Successfully subscribed to schema updates for ${nodeId}`);
+          } else {
+            console.error(`Failed to subscribe to schema updates: ${status}`);
+          }
+        });
+        
+      return () => {
+        try {
+          supabase.removeChannel(channel);
+        } catch (err) {
+          console.error('Error cleaning up schema update subscription:', err);
         }
-      )
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [workflowId, nodeId, sourceNodeId, debouncedFetchSchema, debug]);
+      };
+    } catch (err) {
+      console.error('Error setting up schema update subscription:', err);
+      return () => {};
+    }
+  }, [workflowId, nodeId, sourceNodeId, debouncedFetchSchema, debug, getDbWorkflowId]);
   
   // Subscribe to source node metadata changes (for sheet selection)
   useEffect(() => {
     if (!workflowId || !nodeId || !sourceNodeId) return;
     
     const dbWorkflowId = getDbWorkflowId();
-    if (!dbWorkflowId) return;
+    if (!dbWorkflowId) {
+      console.error('Invalid workflow ID for source node metadata subscription');
+      return;
+    }
     
-    // Setup subscription for source node metadata changes
-    const channel = supabase
-      .channel(`source-node-metadata-${sourceNodeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workflow_files',
-          filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${sourceNodeId}`
-        },
-        async (payload) => {
-          const metadata = payload.new.metadata;
-          if (debug) console.log(`Source node metadata changed:`, metadata);
-          
-          // Check if sheet selection has changed
-          if (metadata && metadata.selected_sheet && metadata.selected_sheet !== sheetName) {
-            if (debug) console.log(`Source node sheet changed to ${metadata.selected_sheet}, refreshing schema`);
-            setSheetName(metadata.selected_sheet);
-            // Invalidate cache and fetch new schema
-            await invalidateSchemaCache(workflowId, nodeId, metadata.selected_sheet);
-            await fetchSchema(true);
+    try {
+      // Setup subscription for source node metadata changes
+      const channel = supabase
+        .channel(`source-node-metadata-${sourceNodeId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'workflow_files',
+            filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${sourceNodeId}`
+          },
+          async (payload) => {
+            const metadata = payload.new.metadata;
+            if (debug) console.log(`Source node metadata changed:`, metadata);
+            
+            // Check if sheet selection has changed
+            if (metadata && metadata.selected_sheet && metadata.selected_sheet !== sheetName) {
+              if (debug) console.log(`Source node sheet changed to ${metadata.selected_sheet}, refreshing schema`);
+              setSheetName(metadata.selected_sheet);
+              // Invalidate cache and fetch new schema
+              await invalidateSchemaCache(workflowId, nodeId, metadata.selected_sheet);
+              await fetchSchema(true);
+            }
           }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            if (debug) console.log(`Successfully subscribed to source node metadata updates for ${sourceNodeId}`);
+          } else {
+            console.error(`Failed to subscribe to source node metadata updates: ${status}`);
+          }
+        });
+        
+      return () => {
+        try {
+          supabase.removeChannel(channel);
+        } catch (err) {
+          console.error('Error cleaning up source node metadata subscription:', err);
         }
-      )
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      };
+    } catch (err) {
+      console.error('Error setting up source node metadata subscription:', err);
+      return () => {};
+    }
   }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug, getDbWorkflowId, sheetName]);
   
   // Auto-connect effect with debouncing
