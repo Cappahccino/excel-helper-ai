@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -122,14 +123,6 @@ export function useSchemaConnection(
       return null;
     }
   }, [workflowId, sourceNodeId, getDbWorkflowId, debug, sheetName]);
-  
-  // Debounced schema fetch to prevent rapid multiple requests
-  const debouncedFetchSchema = useCallback(
-    debounce(async (forceRefresh: boolean) => {
-      await fetchSchema(forceRefresh);
-    }, 300),
-    [workflowId, nodeId, sourceNodeId]
-  );
   
   // Fetch schema from the database with retry mechanism
   const fetchSchema = useCallback(async (forceRefresh = false) => {
@@ -336,6 +329,14 @@ export function useSchemaConnection(
       }
     }
   }, [workflowId, nodeId, sourceNodeId, getDbWorkflowId, debug, showNotifications, maxRetries, retryDelay, sheetName, getSourceNodeSheet]);
+  
+  // Debounced schema fetch to prevent rapid multiple requests
+  const debouncedFetchSchema = useCallback(
+    debounce(async (forceRefresh: boolean) => {
+      await fetchSchema(forceRefresh);
+    }, 300),
+    [fetchSchema]
+  );
   
   // Helper to reset retry count
   const setRetryCount = (count: number) => {

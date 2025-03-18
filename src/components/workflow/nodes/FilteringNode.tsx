@@ -75,6 +75,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [columnSearchTerm, setColumnSearchTerm] = useState<string>('');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [sourceSheetName, setSourceSheetName] = useState<string | undefined>(undefined);
+  const [executionId, setExecutionId] = useState<string | null>(null);
   
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
@@ -96,6 +97,13 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     retryDelay: 1000,
     sheetName: sourceSheetName
   });
+
+  // Set execution ID whenever workflow execution changes
+  useEffect(() => {
+    if (workflow.executionId) {
+      setExecutionId(workflow.executionId);
+    }
+  }, [workflow.executionId]);
 
   const inspectSchemas = useCallback(async () => {
     if (!workflowId || !id) {
@@ -840,10 +848,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       <Handle type="target" position={Position.Top} id="in" />
       <Handle type="source" position={Position.Bottom} id="out" />
       
-      {showLogs && workflow.executionId && (
+      {showLogs && executionId && (
         <WorkflowLogPanel
           workflowId={workflow.workflowId}
-          executionId={workflow.executionId}
+          executionId={executionId}
           selectedNodeId={id}
           isOpen={showLogs}
           onOpenChange={setShowLogs}
