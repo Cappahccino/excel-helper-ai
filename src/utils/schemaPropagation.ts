@@ -197,6 +197,7 @@ async function propagateSchemaDirectlyFallback(
       fileId = cachedSchemaData.fileId || fileId;
     } else {
       // Get source schema from database - no longer filtering by is_temporary
+      console.log(`Fetching schema for source node ${sourceNodeId} from database (workflow_id: ${dbWorkflowId})`);
       const { data: sourceSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
         .select('columns, data_types, file_id, sheet_name, is_temporary')
@@ -207,6 +208,8 @@ async function propagateSchemaDirectlyFallback(
         console.error('Error or no schema found for source node:', sourceError || 'No schema found');
         return false;
       }
+      
+      console.log(`Found ${sourceSchema.length} schemas for source node ${sourceNodeId}:`, sourceSchema);
       
       schema = sourceSchema[0];
       isTemporary = schema.is_temporary || false;
@@ -259,7 +262,7 @@ async function propagateSchemaDirectlyFallback(
       updated_at: new Date().toISOString()
     };
     
-    console.log(`Updating target schema for ${targetNodeId} with is_temporary=${isTemporary}`);
+    console.log(`Updating target schema for ${targetNodeId} with is_temporary=${isTemporary}, workflow_id=${dbWorkflowId}:`, targetSchema);
     
     const { error: targetError } = await supabase
       .from('workflow_file_schemas')
@@ -270,6 +273,22 @@ async function propagateSchemaDirectlyFallback(
     if (targetError) {
       console.error('Error updating target schema:', targetError);
       return false;
+    } else {
+      console.log(`Successfully updated schema for target node ${targetNodeId}`);
+      
+      // Verify schema was created by querying it back
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('workflow_file_schemas')
+        .select('*')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', targetNodeId)
+        .eq('sheet_name', targetSchema.sheet_name);
+        
+      if (verifyError) {
+        console.error('Error verifying schema creation:', verifyError);
+      } else {
+        console.log(`Verification result: Found ${verifyData?.length || 0} schemas for target node ${targetNodeId}:`, verifyData);
+      }
     }
     
     // Cache the target schema too
@@ -307,6 +326,8 @@ export async function isNodeReadyForSchemaPropagation(
       ? workflowId.substring(5) 
       : workflowId;
     
+    console.log(`Checking if node ${nodeId} is ready for schema propagation in workflow ${dbWorkflowId}`);
+    
     // No longer filtering by is_temporary
     const { data: schema, error } = await supabase
       .from('workflow_file_schemas')
@@ -320,7 +341,9 @@ export async function isNodeReadyForSchemaPropagation(
       return false;
     }
     
-    return !!schema && Array.isArray(schema.columns) && schema.columns.length > 0;
+    const isReady = !!schema && Array.isArray(schema.columns) && schema.columns.length > 0;
+    console.log(`Node ${nodeId} ready status: ${isReady}, schema:`, schema);
+    return isReady;
   } catch (error) {
     console.error('Error in isNodeReadyForSchemaPropagation:', error);
     return false;
@@ -343,17 +366,21 @@ export async function forceSchemaRefresh(
       ? workflowId.substring(5) 
       : workflowId;
     
+    console.log(`Force refreshing schema for node ${nodeId} in workflow ${dbWorkflowId}`);
+    
+    // Get schema from database - include both temporary and non-temporary schemas
     const { data: schema, error } = await supabase
       .from('workflow_file_schemas')
-      .select('columns, data_types, sheet_name')
+      .select('columns, data_types, sheet_name, is_temporary')
       .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId)
-      .is('is_temporary', false);
+      .eq('node_id', nodeId);
       
     if (error || !schema || schema.length === 0) {
-      console.error('No schema found for node:', nodeId);
+      console.error('No schema found for node:', nodeId, error);
       return [];
     }
+    
+    console.log(`Found ${schema.length} schemas for node ${nodeId}:`, schema);
     
     let targetSchema = schema[0];
     if (sheetName && schema.length > 1) {
@@ -371,7 +398,8 @@ export async function forceSchemaRefresh(
     // Cache the refreshed schema
     cacheSchema(workflowId, nodeId, schemaColumns, {
       source: 'database',
-      sheetName: targetSchema.sheet_name
+      sheetName: targetSchema.sheet_name,
+      isTemporary: targetSchema.is_temporary
     });
     
     return schemaColumns;
@@ -491,6 +519,8 @@ export async function propagateSchemaWithRetry(
         ? workflowId.substring(5) 
         : workflowId;
       
+      console.log(`Propagating schema (retry ${retries}) for ${sourceNodeId} -> ${targetNodeId} in workflow ${dbWorkflowId}`);
+      
       // No longer filtering by is_temporary
       const { data: sourceSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
@@ -503,6 +533,8 @@ export async function propagateSchemaWithRetry(
         retries++;
         continue;
       }
+      
+      console.log(`Retry ${retries}: Found ${sourceSchema.length} schemas for source node ${sourceNodeId}`);
       
       let schema = sourceSchema[0];
       let isTemporary = schema.is_temporary || false;
@@ -524,22 +556,26 @@ export async function propagateSchemaWithRetry(
       );
       
       // Update target schema, preserving temporary status
+      const targetSchemaData = {
+        workflow_id: dbWorkflowId,
+        node_id: targetNodeId,
+        columns: standardized.map(col => col.name),
+        data_types: standardized.reduce((acc, col) => {
+          acc[col.name] = col.type;
+          return acc;
+        }, {} as Record<string, string>),
+        file_id: schema.file_id,
+        sheet_name: sheetName || schema.sheet_name || 'Sheet1',
+        has_headers: true,
+        is_temporary: isTemporary,
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log(`Retry ${retries}: Upserting schema for target node ${targetNodeId}:`, targetSchemaData);
+      
       const { error: targetError } = await supabase
         .from('workflow_file_schemas')
-        .upsert({
-          workflow_id: dbWorkflowId,
-          node_id: targetNodeId,
-          columns: standardized.map(col => col.name),
-          data_types: standardized.reduce((acc, col) => {
-            acc[col.name] = col.type;
-            return acc;
-          }, {} as Record<string, string>),
-          file_id: schema.file_id,
-          sheet_name: sheetName || schema.sheet_name || 'Sheet1',
-          has_headers: true,
-          is_temporary: isTemporary,
-          updated_at: new Date().toISOString()
-        }, {
+        .upsert(targetSchemaData, {
           onConflict: 'workflow_id,node_id,sheet_name'
         });
       
@@ -547,6 +583,20 @@ export async function propagateSchemaWithRetry(
         console.error('Error updating target schema:', targetError);
         retries++;
         continue;
+      }
+      
+      // Verify the schema was created
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('workflow_file_schemas')
+        .select('*')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', targetNodeId)
+        .eq('sheet_name', targetSchemaData.sheet_name);
+        
+      if (verifyError) {
+        console.error('Error verifying schema creation:', verifyError);
+      } else {
+        console.log(`Verification result: Found ${verifyData?.length || 0} schemas for target node ${targetNodeId}`);
       }
       
       // Cache both schemas
@@ -600,6 +650,8 @@ export async function getSchemaForFiltering(
       ? workflowId.substring(5) 
       : workflowId;
     
+    console.log(`Getting schema for filtering from database: workflow=${dbWorkflowId}, node=${nodeId}, sheet=${sheetName || 'Sheet1'}`);
+    
     const { data, error } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types')
@@ -609,12 +661,16 @@ export async function getSchemaForFiltering(
       .maybeSingle();
       
     if (error) {
+      console.error('Error fetching schema for filtering:', error);
       return [];
     }
     
     if (!data) {
+      console.log(`No schema found for filtering: workflow=${dbWorkflowId}, node=${nodeId}`);
       return [];
     }
+    
+    console.log(`Found schema for filtering with ${data.columns.length} columns`);
     
     const schema = data.columns.map(column => ({
       name: column,
@@ -750,6 +806,52 @@ export async function debugNodeSchema(
       cacheStatus: 'miss',
       dbStatus: 'error',
       schema: [],
+      error: (error as Error).message
+    };
+  }
+}
+
+/**
+ * List all schemas for a workflow - useful for debugging
+ */
+export async function listAllWorkflowSchemas(
+  workflowId: string
+): Promise<{
+  schemas: Record<string, any>[];
+  error?: string;
+}> {
+  try {
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    console.log(`Listing all schemas for workflow ${dbWorkflowId}`);
+    
+    const { data, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('*')
+      .eq('workflow_id', dbWorkflowId);
+      
+    if (error) {
+      console.error('Error listing schemas:', error);
+      return {
+        schemas: [],
+        error: error.message
+      };
+    }
+    
+    if (!data || data.length === 0) {
+      console.log(`No schemas found for workflow ${dbWorkflowId}`);
+      return { schemas: [] };
+    }
+    
+    console.log(`Found ${data.length} schemas for workflow ${dbWorkflowId}:`, data);
+    
+    return { schemas: data };
+  } catch (error) {
+    console.error('Error in listAllWorkflowSchemas:', error);
+    return {
+      schemas: [],
       error: (error as Error).message
     };
   }
