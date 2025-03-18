@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -15,6 +16,71 @@ interface NodeMetadata {
   selected_sheet?: string;
   sheets?: SheetInfo[];
   [key: string]: any;
+}
+
+/**
+ * Synchronize sheet selection between two nodes
+ */
+export async function synchronizeNodesSheetSelection(
+  workflowId: string,
+  sourceNodeId: string,
+  targetNodeId: string
+): Promise<boolean> {
+  try {
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    // Get source node metadata to find selected sheet
+    const { data: sourceNodeData, error: sourceError } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', sourceNodeId)
+      .maybeSingle();
+      
+    if (sourceError || !sourceNodeData?.metadata) {
+      console.error('Error getting source node metadata:', sourceError || 'No metadata found');
+      return false;
+    }
+    
+    const sourceMetadata = sourceNodeData.metadata as NodeMetadata;
+    const selectedSheet = sourceMetadata.selected_sheet || 'Sheet1';
+    
+    // Update target node metadata with selected sheet
+    const { data: targetNodeData, error: targetError } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', targetNodeId)
+      .maybeSingle();
+      
+    if (targetError) {
+      console.error('Error getting target node metadata:', targetError);
+      return false;
+    }
+    
+    const targetMetadata = targetNodeData?.metadata as NodeMetadata || {};
+    targetMetadata.selected_sheet = selectedSheet;
+    
+    // Update target node with new metadata
+    const { error: updateError } = await supabase
+      .from('workflow_files')
+      .update({ metadata: targetMetadata })
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', targetNodeId);
+      
+    if (updateError) {
+      console.error('Error updating target node metadata:', updateError);
+      return false;
+    }
+    
+    // After synchronizing sheet selection, propagate schema
+    return await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, selectedSheet);
+  } catch (error) {
+    console.error('Error in synchronizeNodesSheetSelection:', error);
+    return false;
+  }
 }
 
 /**
@@ -58,7 +124,12 @@ export async function propagateSchemaDirectly(
       
       // Cache the result locally
       if (data.schema) {
-        cacheSchema(workflowId, targetNodeId, data.schema, {
+        const schemaColumns = data.schema.map((col: any) => ({
+          name: col.name,
+          type: col.type as "string" | "number" | "boolean" | "object" | "date" | "unknown" | "array" | "text"
+        }));
+        
+        cacheSchema(workflowId, targetNodeId, schemaColumns, {
           source: 'propagation',
           sheetName: sheetName,
           version: data.version
@@ -96,7 +167,7 @@ async function propagateSchemaDirectlyFallback(
       : workflowId;
     
     // First check cache for source schema
-    const cachedSchema = getSchemaFromCache(workflowId, sourceNodeId, {
+    const cachedSchema = await getSchemaFromCache(workflowId, sourceNodeId, {
       maxAge: 10000, // 10 seconds
       sheetName
     });
@@ -210,7 +281,7 @@ export async function isNodeReadyForSchemaPropagation(
 ): Promise<boolean> {
   try {
     // First check cache
-    const cachedSchema = getSchemaFromCache(workflowId, nodeId);
+    const cachedSchema = await getSchemaFromCache(workflowId, nodeId);
     if (cachedSchema && cachedSchema.length > 0) {
       return true;
     }
@@ -306,7 +377,7 @@ export async function checkSchemaPropagationNeeded(
       : workflowId;
     
     // First check if source node has a schema
-    const sourceSchemaCache = getSchemaFromCache(workflowId, sourceNodeId);
+    const sourceSchemaCache = await getSchemaFromCache(workflowId, sourceNodeId);
     if (!sourceSchemaCache) {
       const { data: sourceSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
@@ -322,7 +393,7 @@ export async function checkSchemaPropagationNeeded(
     }
     
     // Check if target already has schema
-    const targetSchemaCache = getSchemaFromCache(workflowId, targetNodeId);
+    const targetSchemaCache = await getSchemaFromCache(workflowId, targetNodeId);
     if (targetSchemaCache && targetSchemaCache.length > 0) {
       console.log(`Target node ${targetNodeId} already has cached schema`);
       return false;
@@ -465,7 +536,7 @@ export async function getSchemaForFiltering(
   try {
     // Check cache first unless force refresh
     if (!forceRefresh) {
-      const cachedSchema = getSchemaFromCache(workflowId, nodeId, { sheetName });
+      const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
       if (cachedSchema && cachedSchema.length > 0) {
         return validateSchemaForFiltering(cachedSchema);
       }
@@ -504,20 +575,20 @@ export function validateSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn
     let type = col.type || 'string';
     
     // Normalize type names
-    if (type === 'text' || type === 'varchar' || type === 'char') {
+    if (['text', 'varchar', 'char'].includes(type.toString())) {
       type = 'string';
-    } else if (type === 'int' || type === 'integer' || type === 'float' || type === 'decimal' || type === 'double') {
+    } else if (['int', 'integer', 'float', 'decimal', 'double'].includes(type.toString())) {
       type = 'number';
-    } else if (type === 'datetime' || type === 'timestamp') {
+    } else if (['datetime', 'timestamp'].includes(type.toString())) {
       type = 'date';
-    } else if (type === 'bool' || type === 'boolean') {
+    } else if (['bool', 'boolean'].includes(type.toString())) {
       type = 'boolean';
     }
     
     return {
       name: col.name,
       type
-    };
+    } as SchemaColumn;
   });
 }
 
@@ -536,7 +607,7 @@ export async function debugNodeSchema(
 }> {
   try {
     // Check cache
-    const cachedSchema = getSchemaFromCache(workflowId, nodeId, { sheetName });
+    const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
     
     if (cachedSchema) {
       return {
@@ -594,7 +665,7 @@ export async function debugNodeSchema(
       cacheStatus: 'miss',
       dbStatus: 'error',
       schema: [],
-      error: error.message
+      error: (error as Error).message
     };
   }
 }

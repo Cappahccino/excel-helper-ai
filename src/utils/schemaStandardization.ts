@@ -24,7 +24,7 @@ export function standardizeColumnName(name: string): string {
 /**
  * Standardize column type to one of the supported types
  */
-export function standardizeColumnType(type: string): string {
+export function standardizeColumnType(type: string): "string" | "number" | "boolean" | "object" | "date" | "unknown" | "array" | "text" {
   if (!type) return 'string';
   
   const lowerType = type.toLowerCase();
@@ -55,13 +55,13 @@ export function standardizeColumnType(type: string): string {
   }
   
   // Default to string for unknown types
-  return 'string';
+  return 'unknown';
 }
 
 /**
  * Standardize schema columns for consistency across the workflow
  */
-export function standardizeSchemaColumns(columns: SchemaColumn[]): SchemaColumn[] {
+export function standardizeSchemaColumns(columns: {name: string, type: string}[]): SchemaColumn[] {
   if (!columns || !Array.isArray(columns)) {
     return [];
   }
@@ -71,7 +71,7 @@ export function standardizeSchemaColumns(columns: SchemaColumn[]): SchemaColumn[
   
   return columns.map((col, index) => {
     if (!col || !col.name) {
-      return { name: `column_${index}`, type: 'string' };
+      return { name: `column_${index}`, type: 'string' } as SchemaColumn;
     }
     
     const standardName = standardizeColumnName(col.name);
@@ -90,7 +90,7 @@ export function standardizeSchemaColumns(columns: SchemaColumn[]): SchemaColumn[
     return {
       name: finalName,
       type: standardType
-    };
+    } as SchemaColumn;
   });
 }
 

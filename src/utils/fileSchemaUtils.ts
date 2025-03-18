@@ -68,7 +68,7 @@ export async function getNodeSchema(
   
   // Try cache first when not forcing refresh
   if (!forceRefresh) {
-    const cachedSchema = getSchemaFromCache(workflowId, nodeId, {
+    const cachedSchema = await getSchemaFromCache(workflowId, nodeId, {
       maxAge: maxCacheAge,
       sheetName
     });
