@@ -47,15 +47,20 @@ serve(async (req) => {
     
     // Check if this node has a source node
     let hasSourceNode = false;
+    let sourceNodes = [];
     if (nodeId) {
       const { data: edges, error: edgesError } = await supabase
         .from('workflow_edges')
-        .select('*')
+        .select('source_node_id, target_node_id')
         .eq('workflow_id', dbWorkflowId)
         .eq('target_node_id', nodeId);
       
       if (!edgesError && edges && edges.length > 0) {
         hasSourceNode = true;
+        sourceNodes = edges.map(edge => edge.source_node_id);
+        console.log(`Node ${nodeId} has source nodes:`, sourceNodes);
+      } else {
+        console.log(`Node ${nodeId} has no source nodes. Error:`, edgesError);
       }
     }
     
@@ -69,7 +74,8 @@ serve(async (req) => {
           edges: [],
           workflowInfo: null,
           message: 'No source node connected',
-          hasSourceNode: false
+          hasSourceNode: false,
+          sourceNodes: []
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -95,14 +101,46 @@ serve(async (req) => {
       );
     }
     
+    console.log(`Found ${data?.length || 0} schemas for node ${nodeId || 'any'}`);
+    
     // Get edges to show connections
     const { data: edges, error: edgesError } = await supabase
       .from('workflow_edges')
-      .select('*')
+      .select('source_node_id, target_node_id')
       .eq('workflow_id', dbWorkflowId);
       
     if (edgesError) {
       console.error('Error fetching edges:', edgesError);
+    } else {
+      console.log(`Found ${edges?.length || 0} edges in workflow ${dbWorkflowId}`);
+    }
+    
+    // If no schema found for this node, but it has sources, check them
+    let sourceSchemasData = [];
+    if (nodeId && hasSourceNode && (!data || data.length === 0)) {
+      console.log(`No schema found for ${nodeId}, checking source nodes:`, sourceNodes);
+      
+      // Try to get schema from source nodes
+      const sourceSchemaPromises = sourceNodes.map(sourceId => {
+        return supabase
+          .from('workflow_file_schemas')
+          .select('*')
+          .eq('workflow_id', dbWorkflowId)
+          .eq('node_id', sourceId)
+          .order('created_at', { ascending: false });
+      });
+      
+      const sourceResults = await Promise.all(sourceSchemaPromises);
+      
+      // Collect all valid source schemas
+      sourceResults.forEach((result, index) => {
+        if (!result.error && result.data && result.data.length > 0) {
+          console.log(`Found schema in source node ${sourceNodes[index]}`);
+          sourceSchemasData = [...sourceSchemasData, ...result.data];
+        }
+      });
+      
+      console.log(`Found ${sourceSchemasData.length} source schemas that could be propagated`);
     }
     
     // Prepare response data
@@ -112,7 +150,9 @@ serve(async (req) => {
       schemas: data || [],
       edges: edges || [],
       workflowInfo: null,
-      hasSourceNode: hasSourceNode
+      hasSourceNode: hasSourceNode,
+      sourceNodes: sourceNodes,
+      sourceSchemas: sourceSchemasData,
     };
     
     // Get workflow info

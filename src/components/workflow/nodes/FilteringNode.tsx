@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Info, Check, X, FileText } from 'lucide-react';
+import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Info, Check, X, FileText, Search } from 'lucide-react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -17,6 +17,8 @@ import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
 import { useSchemaConnection, ConnectionState } from '@/hooks/useSchemaConnection';
 import { standardizeColumnType, standardizeSchemaColumns } from '@/utils/schemaStandardization';
 import { supabase } from '@/integrations/supabase/client';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const OPERATORS = {
   string: [
@@ -70,9 +72,28 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [showLogs, setShowLogs] = useState<boolean>(false);
   const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
   const [debug, setDebug] = useState<boolean>(true);
-
+  const [columnSearchTerm, setColumnSearchTerm] = useState<string>('');
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
+
+  // Enhanced schema connection with better error handling and auto-retries
+  const {
+    connectionState,
+    schema,
+    isLoading,
+    error,
+    lastRefreshTime,
+    refreshSchema,
+    hasSourceNode
+  } = useSchemaConnection(workflowId, id, sourceNodeId, {
+    debug: debug,
+    autoConnect: true,
+    showNotifications: true,
+    maxRetries: 3,
+    retryDelay: 1000
+  });
 
   const inspectSchemas = useCallback(async () => {
     if (!workflowId || !id) {
@@ -82,6 +103,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     
     try {
       console.log(`Inspecting schemas for workflow ${workflowId}, node ${id}`);
+      toast.info('Inspecting schemas...');
+      
       const { data, error } = await supabase.functions.invoke('inspectSchemas', {
         body: { workflowId, nodeId: id }
       });
@@ -95,9 +118,17 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.log(`Found ${data.schemaCount} schemas:`, data.schemas);
       
       if (data.schemas.length === 0) {
-        toast.warning('No schemas found for this node');
+        if (data.sourceSchemas && data.sourceSchemas.length > 0) {
+          toast.info(`No schema for this node, but found ${data.sourceSchemas.length} schemas from source nodes`);
+        } else {
+          toast.warning('No schemas found for this node');
+        }
       } else {
         toast.success(`Found ${data.schemaCount} schemas for this node`);
+      }
+      
+      if (data.hasSourceNode) {
+        console.log(`Node has ${data.sourceNodes.length} source nodes:`, data.sourceNodes);
       }
     } catch (error) {
       console.error('Error in inspectSchemas:', error);
@@ -105,24 +136,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflowId, id]);
 
-  const {
-    connectionState,
-    schema,
-    isLoading,
-    error,
-    lastRefreshTime,
-    refreshSchema
-  } = useSchemaConnection(workflowId, id, sourceNodeId, {
-    debug: debug,
-    autoConnect: true,
-    showNotifications: true
-  });
-
   const findSourceNode = useCallback(async () => {
     if (!workflowId || !id) return null;
     
     try {
       console.log(`FilteringNode ${id}: Finding source node`);
+      // Check edges from workflow context first
       const edges = await workflow.getEdges(workflowId);
       const sources = edges
         .filter(edge => edge.target === id)
@@ -134,6 +153,29 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         return sources[0];
       }
       
+      // If not found in context, try querying the database directly
+      console.log(`FilteringNode ${id}: No source found in workflow context, checking database`);
+      const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+      
+      const { data: edgesData, error } = await supabase
+        .from('workflow_edges')
+        .select('source_node_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('target_node_id', id);
+        
+      if (error) {
+        console.error('Error fetching edges from database:', error);
+        return null;
+      }
+      
+      if (edgesData && edgesData.length > 0) {
+        const source = edgesData[0].source_node_id;
+        console.log(`FilteringNode ${id}: Found source node ${source} from database`);
+        setSourceNodeId(source);
+        return source;
+      }
+      
+      console.log(`FilteringNode ${id}: No source node found`);
       setSourceNodeId(null);
       return null;
     } catch (error) {
@@ -142,11 +184,41 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflow, id, workflowId]);
 
+  // Initialize the component and find source node
   useEffect(() => {
-    if (workflowId && id && !sourceNodeId) {
-      findSourceNode();
+    if (workflowId && id && !isInitialized) {
+      findSourceNode().then(() => {
+        setIsInitialized(true);
+      });
     }
-  }, [workflowId, id, sourceNodeId, findSourceNode]);
+  }, [workflowId, id, findSourceNode, isInitialized]);
+  
+  // Monitor workflow edge changes to detect source node connections/disconnections
+  useEffect(() => {
+    if (!workflowId || !id) return;
+    
+    const channel = supabase
+      .channel(`edge-updates-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workflow_edges',
+          filter: `target_node_id=eq.${id}`
+        },
+        (payload) => {
+          console.log(`Edge change detected for node ${id}:`, payload);
+          // Refetch source node
+          findSourceNode();
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [workflowId, id, findSourceNode]);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -292,10 +364,19 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       default:
         return {
           icon: <Info className="w-4 h-4 text-gray-400" />,
-          tooltip: sourceNodeId ? "Schema not available" : "No source connected"
+          tooltip: hasSourceNode ? "Schema not available" : "No source connected"
         };
     }
   };
+
+  // Filter schema columns based on search term
+  const filteredSchema = useMemo(() => {
+    if (!columnSearchTerm) return standardizedSchema;
+    
+    return standardizedSchema.filter(column => 
+      column.name.toLowerCase().includes(columnSearchTerm.toLowerCase())
+    );
+  }, [standardizedSchema, columnSearchTerm]);
 
   const connectionInfo = getConnectionStatusInfo();
 
@@ -304,6 +385,17 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.log(`FilteringNode ${id} schema:`, schema);
     }
   }, [id, schema, debug]);
+
+  const handleSchemaRefresh = async () => {
+    if (sourceNodeId) {
+      await refreshSchema();
+      toast.info("Refreshing schema...");
+    } else {
+      toast.info("Connect a source node first");
+      // Try to find source node again in case it was connected but not detected
+      findSourceNode();
+    }
+  };
 
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>
@@ -319,15 +411,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   variant="ghost" 
                   size="sm" 
                   className="h-6 w-6 p-0"
-                  onClick={() => {
-                    if (sourceNodeId) {
-                      refreshSchema();
-                      toast.info("Refreshing schema...");
-                    } else {
-                      toast.info("Connect a source node first");
-                    }
-                  }}
-                  disabled={isLoading || !sourceNodeId}
+                  onClick={handleSchemaRefresh}
+                  disabled={isLoading}
                 >
                   <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
@@ -350,14 +435,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   variant="ghost" 
                   size="sm" 
                   className="h-6 w-6 p-0"
-                  onClick={() => {
-                    if (sourceNodeId) {
-                      inspectSchemas();
-                    } else {
-                      toast.info("Connect a source node first");
-                    }
-                  }}
-                  disabled={!sourceNodeId}
+                  onClick={inspectSchemas}
                 >
                   <Info className="h-3.5 w-3.5 text-gray-500" />
                 </Button>
@@ -428,10 +506,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   variant="link" 
                   size="sm" 
                   className="p-0 h-auto text-xs text-amber-600"
-                  onClick={() => refreshSchema()}
+                  onClick={handleSchemaRefresh}
                   disabled={isLoading}
                 >
-                  Refresh
+                  Retry
                 </Button>
               </div>
             </div>
@@ -440,37 +518,78 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         
         <div className="space-y-1.5">
           <Label htmlFor="column" className="text-xs">Column</Label>
-          <Select
-            value={data.config.column || ''}
-            onValueChange={(value) => handleConfigChange('column', value)}
-            disabled={isLoading || schema.length === 0 || !sourceNodeId}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder={sourceNodeId ? "Select column" : "Connect a source first"} />
-            </SelectTrigger>
-            <SelectContent>
-              {schema.length === 0 ? (
-                <div className="px-2 py-1.5 text-xs text-gray-500">
-                  {sourceNodeId ? "No columns available" : "Connect a source first"}
+          
+          {isLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <>
+              {standardizedSchema.length > 5 && (
+                <div className="relative mb-2">
+                  <Input
+                    placeholder="Search columns..."
+                    value={columnSearchTerm}
+                    onChange={e => setColumnSearchTerm(e.target.value)}
+                    className="h-8 text-xs pl-8"
+                    disabled={!sourceNodeId || standardizedSchema.length === 0}
+                  />
+                  <Search className="w-4 h-4 text-gray-400 absolute left-2 top-2" />
+                  {columnSearchTerm && (
+                    <X 
+                      className="w-4 h-4 text-gray-400 absolute right-2 top-2 cursor-pointer hover:text-gray-600" 
+                      onClick={() => setColumnSearchTerm('')}
+                    />
+                  )}
                 </div>
-              ) : (
-                schema.map((column) => (
-                  <SelectItem key={column.name} value={column.name}>
-                    <div className="flex items-center">
-                      {column.name}
-                      <Badge variant="outline" className="ml-2 text-[9px] py-0 h-4">
-                        {column.type}
-                      </Badge>
-                    </div>
-                  </SelectItem>
-                ))
               )}
-            </SelectContent>
-          </Select>
+              
+              <Select
+                value={data.config.column || ''}
+                onValueChange={(value) => handleConfigChange('column', value)}
+                disabled={isLoading || standardizedSchema.length === 0 || !sourceNodeId}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder={sourceNodeId ? (isLoading ? "Loading..." : "Select column") : "Connect a source first"} />
+                </SelectTrigger>
+                <SelectContent className="max-h-[240px]">
+                  {standardizedSchema.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-gray-500">
+                      {sourceNodeId ? "No columns available" : "Connect a source first"}
+                    </div>
+                  ) : filteredSchema.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-gray-500">
+                      No columns match your search
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-full max-h-[220px]">
+                      {filteredSchema.map((column) => (
+                        <SelectItem key={column.name} value={column.name}>
+                          <div className="flex items-center">
+                            {column.name}
+                            <Badge variant="outline" className="ml-2 text-[9px] py-0 h-4">
+                              {column.type}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  )}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          
           {sourceNodeId ? (
-            schema.length > 0 ? (
+            isLoading ? (
+              <div className="text-xs text-blue-600 mt-1 flex items-center">
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Loading columns...
+              </div>
+            ) : standardizedSchema.length > 0 ? (
               <div className="text-xs text-blue-600 mt-1">
-                {schema.length} column{schema.length !== 1 ? 's' : ''} available
+                {standardizedSchema.length} column{standardizedSchema.length !== 1 ? 's' : ''} available
+                {columnSearchTerm && filteredSchema.length !== standardizedSchema.length && (
+                  <span> ({filteredSchema.length} filtered)</span>
+                )}
               </div>
             ) : connectionState === ConnectionState.CONNECTED ? (
               <div className="text-xs text-amber-600 mt-1">
@@ -486,48 +605,62 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         
         <div className="space-y-1.5">
           <Label htmlFor="operator" className="text-xs">Operator</Label>
-          <Select
-            value={data.config.operator || 'equals'}
-            onValueChange={(value) => handleConfigChange('operator', value as any)}
-            disabled={!data.config.column || !sourceNodeId}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select operator" />
-            </SelectTrigger>
-            <SelectContent>
-              {operators.map((op) => (
-                <SelectItem key={op.value} value={op.value}>
-                  {op.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {isLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <Select
+              value={data.config.operator || 'equals'}
+              onValueChange={(value) => handleConfigChange('operator', value as any)}
+              disabled={!data.config.column || !sourceNodeId}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select operator" />
+              </SelectTrigger>
+              <SelectContent>
+                {operators.map((op) => (
+                  <SelectItem key={op.value} value={op.value}>
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         
         <div className="space-y-1.5">
           <Label htmlFor="value" className="text-xs">Value</Label>
-          <Input
-            id="value"
-            value={data.config.value || ''}
-            onChange={(e) => handleConfigChange('value', e.target.value)}
-            placeholder={getValuePlaceholder()}
-            className="h-8 text-xs"
-            type={selectedColumnType === 'number' ? 'number' : 'text'}
-            disabled={!data.config.column || !sourceNodeId}
-          />
+          {isLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <Input
+              id="value"
+              value={data.config.value || ''}
+              onChange={(e) => handleConfigChange('value', e.target.value)}
+              placeholder={getValuePlaceholder()}
+              className="h-8 text-xs"
+              type={selectedColumnType === 'number' ? 'number' : 'text'}
+              disabled={!data.config.column || !sourceNodeId}
+            />
+          )}
         </div>
         
         {showCaseSensitiveOption && (
           <div className="flex items-center space-x-2 pt-1">
-            <Switch
-              id="case-sensitive"
-              checked={data.config.isCaseSensitive || false}
-              onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
-              disabled={!data.config.column || !sourceNodeId}
-            />
-            <Label htmlFor="case-sensitive" className="text-xs cursor-pointer">
-              Case sensitive
-            </Label>
+            {isLoading ? (
+              <Skeleton className="h-5 w-10" />
+            ) : (
+              <>
+                <Switch
+                  id="case-sensitive"
+                  checked={data.config.isCaseSensitive || false}
+                  onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
+                  disabled={!data.config.column || !sourceNodeId}
+                />
+                <Label htmlFor="case-sensitive" className="text-xs cursor-pointer">
+                  Case sensitive
+                </Label>
+              </>
+            )}
           </div>
         )}
         

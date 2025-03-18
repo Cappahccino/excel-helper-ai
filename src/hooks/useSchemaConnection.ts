@@ -1,10 +1,10 @@
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
 import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from '@/utils/schemaCache';
 import { getSchemaForFiltering } from '@/utils/schemaPropagation';
 import { toast } from 'sonner';
+import { debounce } from 'lodash';
 
 export enum ConnectionState {
   DISCONNECTED = 'disconnected',
@@ -12,6 +12,11 @@ export enum ConnectionState {
   CONNECTED = 'connected',
   ERROR = 'error'
 }
+
+type SchemaCache = {
+  schema: SchemaColumn[];
+  lastUpdated: number;
+};
 
 /**
  * Hook for connecting to and managing schema for a node
@@ -26,13 +31,17 @@ export function useSchemaConnection(
     pollInterval?: number;
     showNotifications?: boolean;
     debug?: boolean;
+    maxRetries?: number;
+    retryDelay?: number;
   }
 ) {
   const {
     autoConnect = true,
     pollInterval = 0, // 0 means no polling
     showNotifications = false,
-    debug = false
+    debug = false,
+    maxRetries = 3,
+    retryDelay = 1000
   } = options || {};
   
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
@@ -41,13 +50,45 @@ export function useSchemaConnection(
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   
+  // Keep track of retry attempts and cancellation
+  const retryCount = useRef<number>(0);
+  const isMounted = useRef<boolean>(true);
+  const localCache = useRef<SchemaCache | null>(null);
+  
   // Helper to convert workflowId to database format
   const getDbWorkflowId = useCallback(() => {
     if (!workflowId) return null;
     return workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
   }, [workflowId]);
   
-  // Fetch schema from the database
+  // Reset state when sourceNodeId changes
+  useEffect(() => {
+    if (!sourceNodeId) {
+      setConnectionState(ConnectionState.DISCONNECTED);
+      setSchema([]);
+      setError(null);
+      localCache.current = null;
+    }
+    retryCount.current = 0;
+  }, [sourceNodeId]);
+  
+  // Handle cleanup
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  
+  // Debounced schema fetch to prevent rapid multiple requests
+  const debouncedFetchSchema = useCallback(
+    debounce((forceRefresh: boolean) => {
+      fetchSchema(forceRefresh);
+    }, 300),
+    [workflowId, nodeId, sourceNodeId]
+  );
+  
+  // Fetch schema from the database with retry mechanism
   const fetchSchema = useCallback(async (forceRefresh = false) => {
     // Only attempt to fetch schema if we have all required IDs
     if (!workflowId || !nodeId) {
@@ -65,18 +106,36 @@ export function useSchemaConnection(
       return;
     }
     
-    if (!forceRefresh) {
-      // Try to use cached schema first
-      const cachedSchema = await getSchemaFromCache(workflowId, nodeId);
-      if (cachedSchema && cachedSchema.length > 0) {
-        if (debug) console.log(`Using cached schema for node ${nodeId}, columns:`, cachedSchema.map(c => c.name).join(', '));
-        setSchema(cachedSchema);
+    if (!forceRefresh && localCache.current?.schema?.length > 0) {
+      // Use in-memory cache if available and fresh (less than 5 seconds old)
+      const now = Date.now();
+      if (now - localCache.current.lastUpdated < 5000) {
+        if (debug) console.log(`Using in-memory schema cache for node ${nodeId}`);
+        setSchema(localCache.current.schema);
         setConnectionState(ConnectionState.CONNECTED);
         setError(null);
         return;
       }
     }
     
+    if (!forceRefresh) {
+      // Try to use persistent cache
+      const cachedSchema = await getSchemaFromCache(workflowId, nodeId);
+      if (cachedSchema && cachedSchema.length > 0) {
+        if (debug) console.log(`Using cached schema for node ${nodeId}, columns:`, cachedSchema.map(c => c.name).join(', '));
+        setSchema(cachedSchema);
+        setConnectionState(ConnectionState.CONNECTED);
+        setError(null);
+        // Update in-memory cache
+        localCache.current = {
+          schema: cachedSchema,
+          lastUpdated: Date.now()
+        };
+        return;
+      }
+    }
+    
+    // At this point we need to fetch from database
     setIsLoading(true);
     setError(null);
     setConnectionState(ConnectionState.CONNECTING);
@@ -90,6 +149,9 @@ export function useSchemaConnection(
       if (error) {
         throw new Error(error.message || 'Error fetching schema');
       }
+      
+      // Check if component is still mounted before updating state
+      if (!isMounted.current) return;
       
       if (!data || !data.schemas || data.schemas.length === 0) {
         if (debug) console.log(`No schema found for node ${nodeId}`);
@@ -110,7 +172,27 @@ export function useSchemaConnection(
           throw new Error(dbError.message);
         }
         
+        // Check if component is still mounted before updating state
+        if (!isMounted.current) return;
+        
         if (!dbData || dbData.length === 0) {
+          if (retryCount.current < maxRetries) {
+            // Schedule a retry with exponential backoff
+            retryCount.current += 1;
+            const delay = retryDelay * Math.pow(2, retryCount.current - 1);
+            if (debug) console.log(`Scheduling retry ${retryCount.current}/${maxRetries} after ${delay}ms`);
+            
+            setTimeout(() => {
+              if (isMounted.current) {
+                fetchSchema(forceRefresh);
+              }
+            }, delay);
+            
+            // Keep the loading state active during retry
+            return;
+          }
+          
+          // If we've exhausted retries, set to disconnected
           setSchema([]);
           setConnectionState(ConnectionState.DISCONNECTED);
           throw new Error('No schema available for this node');
@@ -132,8 +214,15 @@ export function useSchemaConnection(
           isTemporary: schemaData.is_temporary
         });
         
+        // Update in-memory cache
+        localCache.current = {
+          schema: schemaColumns,
+          lastUpdated: Date.now()
+        };
+        
         setSchema(schemaColumns);
         setConnectionState(ConnectionState.CONNECTED);
+        setRetryCount(0);
       } else {
         // Process schema from Edge Function
         const schemaData = data.schemas[0];
@@ -151,8 +240,15 @@ export function useSchemaConnection(
           isTemporary: schemaData.is_temporary
         });
         
+        // Update in-memory cache
+        localCache.current = {
+          schema: schemaColumns,
+          lastUpdated: Date.now()
+        };
+        
         setSchema(schemaColumns);
         setConnectionState(ConnectionState.CONNECTED);
+        setRetryCount(0);
       }
       
       setLastRefreshTime(new Date());
@@ -174,27 +270,48 @@ export function useSchemaConnection(
         setError(null);
       }
     } finally {
-      setIsLoading(false);
+      // Check if component is still mounted before updating state
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
-  }, [workflowId, nodeId, sourceNodeId, getDbWorkflowId, debug, showNotifications]);
+  }, [workflowId, nodeId, sourceNodeId, getDbWorkflowId, debug, showNotifications, maxRetries, retryDelay]);
   
-  // Refresh schema
+  // Helper to reset retry count
+  const setRetryCount = (count: number) => {
+    retryCount.current = count;
+  };
+  
+  // Refresh schema with proper cache invalidation
   const refreshSchema = useCallback(async () => {
     // Don't try to refresh if there's no source node
     if (!sourceNodeId) {
       if (debug) console.log(`No source node connected to ${nodeId}, skipping schema refresh`);
-      return;
+      return false;
     }
+    
+    // Reset state
+    setRetryCount(0);
+    setError(null);
     
     // Invalidate cache first
     if (workflowId && nodeId) {
       await invalidateSchemaCache(workflowId, nodeId);
+      localCache.current = null;
     }
     
-    return fetchSchema(true);
-  }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug]);
+    // Show notification if enabled
+    if (showNotifications) {
+      toast.info('Refreshing schema...');
+    }
+    
+    // Fetch with force refresh
+    await fetchSchema(true);
+    
+    return true;
+  }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug, showNotifications]);
   
-  // Subscribe to real-time schema updates (future enhancement)
+  // Subscribe to real-time schema updates
   useEffect(() => {
     if (!workflowId || !nodeId) return;
     
@@ -213,7 +330,7 @@ export function useSchemaConnection(
           if (debug) console.log(`Schema change detected for node ${nodeId}:`, payload);
           // Only refresh if we have a source node
           if (sourceNodeId) {
-            fetchSchema(true);
+            debouncedFetchSchema(true);
           }
         }
       )
@@ -222,14 +339,14 @@ export function useSchemaConnection(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug]);
+  }, [workflowId, nodeId, sourceNodeId, debouncedFetchSchema, debug]);
   
-  // Auto-connect effect
+  // Auto-connect effect with debouncing
   useEffect(() => {
     if (autoConnect && workflowId && nodeId) {
       // Only fetch schema if we have a source node
       if (sourceNodeId) {
-        fetchSchema();
+        debouncedFetchSchema(false);
       } else {
         // Clear schema and set disconnected state if no source
         setSchema([]);
@@ -237,7 +354,7 @@ export function useSchemaConnection(
         setError(null);
       }
     }
-  }, [autoConnect, workflowId, nodeId, sourceNodeId, fetchSchema]);
+  }, [autoConnect, workflowId, nodeId, sourceNodeId, debouncedFetchSchema]);
   
   // Setup polling if requested
   useEffect(() => {
@@ -245,13 +362,13 @@ export function useSchemaConnection(
     
     const intervalId = setInterval(() => {
       if (debug) console.log(`Polling schema for node ${nodeId}`);
-      fetchSchema();
+      debouncedFetchSchema(false);
     }, pollInterval);
     
     return () => {
       clearInterval(intervalId);
     };
-  }, [pollInterval, workflowId, nodeId, sourceNodeId, fetchSchema, debug]);
+  }, [pollInterval, workflowId, nodeId, sourceNodeId, debouncedFetchSchema, debug]);
   
   return {
     connectionState,
@@ -259,6 +376,8 @@ export function useSchemaConnection(
     isLoading,
     error,
     lastRefreshTime,
-    refreshSchema
+    refreshSchema,
+    hasSourceNode: !!sourceNodeId,
+    sourceNodeId
   };
 }
