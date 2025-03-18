@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
-import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Info, Check, X, FileText, Search, Activity } from 'lucide-react';
+import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Info, Check, X, FileText, Search } from 'lucide-react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -70,12 +70,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [operators, setOperators] = useState<{ value: string; label: string }[]>(OPERATORS.default);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState<boolean>(false);
-  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
   const [debug, setDebug] = useState<boolean>(true);
   const [columnSearchTerm, setColumnSearchTerm] = useState<string>('');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [sourceSheetName, setSourceSheetName] = useState<string | undefined>(undefined);
-  const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
   
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
@@ -87,8 +86,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     error,
     lastRefreshTime,
     refreshSchema,
-    forceSchemaPropagation,
-    runSchemaDiagnostics,
     hasSourceNode,
     sheetName
   } = useSchemaConnection(workflowId, id, sourceNodeId, {
@@ -153,6 +150,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   }, [workflowId, id, sourceSheetName, sheetName]);
 
+  // Helper to get source node metadata
   const getSourceNodeMetadata = useCallback(async (sourceId: string) => {
     if (!workflowId || !sourceId) return null;
     
@@ -255,25 +253,6 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   useEffect(() => {
     let isActive = true;
     
-    if (workflowId && id && sourceNodeId && schema.length === 0 && !isLoading) {
-      console.log(`FilteringNode ${id}: Source node connected, forcing schema propagation`);
-      forceSchemaPropagation().then(success => {
-        if (isActive && success) {
-          console.log(`FilteringNode ${id}: Initial schema propagation successful`);
-        } else if (isActive) {
-          console.warn(`FilteringNode ${id}: Initial schema propagation failed`);
-        }
-      });
-    }
-    
-    return () => {
-      isActive = false;
-    };
-  }, [workflowId, id, sourceNodeId, forceSchemaPropagation, schema.length, isLoading]);
-
-  useEffect(() => {
-    let isActive = true;
-    
     if (workflowId && id && !isInitialized) {
       console.log(`FilteringNode ${id}: Initializing component...`);
       findSourceNode().then((source) => {
@@ -308,11 +287,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         },
         (payload) => {
           console.log(`Edge change detected for node ${id}:`, payload);
-          findSourceNode().then(sourceId => {
-            if (sourceId) {
-              setTimeout(() => forceSchemaPropagation(), 500);
-            }
-          });
+          findSourceNode();
         }
       )
       .subscribe();
@@ -320,7 +295,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workflowId, id, findSourceNode, forceSchemaPropagation]);
+  }, [workflowId, id, findSourceNode]);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -512,30 +487,11 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
   };
 
-  const handleForcePropagation = async () => {
-    if (sourceNodeId) {
-      console.log(`FilteringNode ${id}: Forcing schema propagation...`);
-      const success = await forceSchemaPropagation();
-      if (success) {
-        toast.success("Schema updated successfully");
-      } else {
-        toast.error("Failed to update schema");
-      }
-    } else {
-      toast.info("Connect a source node first");
-      findSourceNode();
-    }
-  };
-
-  const handleRunDiagnostics = async () => {
-    console.log(`FilteringNode ${id}: Running schema diagnostics...`);
-    await runSchemaDiagnostics();
-  };
-
   const isInitialLoading = useMemo(() => {
     return (isLoading && !schema.length) || (!isInitialized && hasSourceNode);
   }, [isLoading, schema.length, isInitialized, hasSourceNode]);
 
+  // Debug button handler to show current state
   const handleShowDebugInfo = () => {
     const debugInfo = {
       nodeId: id,
@@ -574,7 +530,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{sourceNodeId ? "Refresh schema" : "Connect a source node first"}</p>
+                <p>{sourceNodeId ? "Refresh schema" : "Connect a source first"}</p>
                 {lastRefreshTime && (
                   <p className="text-xs text-gray-500">
                     Last refreshed: {lastRefreshTime.toLocaleTimeString()}
@@ -591,21 +547,59 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
                   variant="ghost" 
                   size="sm" 
                   className="h-6 w-6 p-0"
-                  onClick={() => setShowLogs(!showLogs)}
+                  onClick={inspectSchemas}
                 >
-                  <FileText className="h-3.5 w-3.5 text-gray-500" />
+                  <Info className="h-3.5 w-3.5 text-gray-500" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Show logs</p>
+                <p>Inspect schemas (debug)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={handleShowDebugInfo}
+                >
+                  <FileText className="h-3.5 w-3.5 text-amber-500" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Show debug info</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
           
+          {workflow.executionId && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 w-6 p-0"
+                    onClick={() => setShowLogs(!showLogs)}
+                  >
+                    <FileText className="h-3.5 w-3.5 text-gray-500" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>View node logs</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex items-center">
+                <div>
                   {connectionInfo.icon}
                 </div>
               </TooltipTrigger>
@@ -617,194 +611,244 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          
+          {isLoading && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Loading schema...</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </CardHeader>
-      
       <CardContent className="p-3 space-y-3">
-        {showLogs ? (
-          <WorkflowLogPanel 
-            workflowId={workflowId} 
-            executionId={executionId} 
-            selectedNodeId={id} 
-            isOpen={showLogs} 
-            onOpenChange={(open) => setShowLogs(open)} 
-          />
-        ) : (
-          <>
-            {validationErrors.length > 0 && (
-              <div className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                <div className="flex items-start mb-1">
-                  <AlertTriangle className="w-3 h-3 mr-1 mt-0.5 text-amber-500" />
-                  <span className="font-medium">Configuration errors:</span>
+        {sourceSheetName && (
+          <div className="bg-blue-50 p-2 rounded-md border border-blue-200 text-xs text-blue-700 mb-3">
+            <div className="flex items-start">
+              <Info className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
+              <div>
+                <p>Using data from sheet: <strong>{sourceSheetName}</strong></p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {error && sourceNodeId && (
+          <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
+            <div className="flex">
+              <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 flex-shrink-0" />
+              <div>
+                <p>{error}</p>
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="p-0 h-auto text-xs text-amber-600"
+                  onClick={handleSchemaRefresh}
+                  disabled={isLoading}
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div className="space-y-1.5">
+          <Label htmlFor="column" className="text-xs">Column</Label>
+          
+          {isInitialLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <>
+              {standardizedSchema.length > 5 && (
+                <div className="relative mb-2">
+                  <Input
+                    placeholder="Search columns..."
+                    value={columnSearchTerm}
+                    onChange={e => setColumnSearchTerm(e.target.value)}
+                    className="h-8 text-xs pl-8"
+                    disabled={!hasSourceNode || standardizedSchema.length === 0}
+                  />
+                  <Search className="w-4 h-4 text-gray-400 absolute left-2 top-2" />
+                  {columnSearchTerm && (
+                    <X 
+                      className="w-4 h-4 text-gray-400 absolute right-2 top-2 cursor-pointer hover:text-gray-600" 
+                      onClick={() => setColumnSearchTerm('')}
+                    />
+                  )}
                 </div>
-                <ul className="list-disc list-inside pl-1 space-y-1">
-                  {validationErrors.map((err, idx) => (
-                    <li key={idx}>{err}</li>
+              )}
+              
+              <Select
+                value={data.config.column || ''}
+                onValueChange={(value) => handleConfigChange('column', value)}
+                disabled={isLoading || !hasSourceNode || standardizedSchema.length === 0}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder={hasSourceNode ? (isLoading ? "Loading..." : "Select column") : "Connect a source first"} />
+                </SelectTrigger>
+                <SelectContent className="max-h-[240px]">
+                  {standardizedSchema.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-gray-500">
+                      {hasSourceNode ? "No columns available" : "Connect a source first"}
+                    </div>
+                  ) : filteredSchema.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-gray-500">
+                      No columns match your search
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-full max-h-[220px]">
+                      {filteredSchema.map((column) => (
+                        <SelectItem key={column.name} value={column.name}>
+                          <div className="flex items-center">
+                            {column.name}
+                            <Badge variant="outline" className="ml-2 text-[9px] py-0 h-4">
+                              {column.type}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
+                  )}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          
+          {hasSourceNode ? (
+            isLoading ? (
+              <div className="text-xs text-blue-600 mt-1 flex items-center">
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Loading columns...
+              </div>
+            ) : standardizedSchema.length > 0 ? (
+              <div className="text-xs text-blue-600 mt-1">
+                {standardizedSchema.length} column{standardizedSchema.length !== 1 ? 's' : ''} available
+                {columnSearchTerm && filteredSchema.length !== standardizedSchema.length && (
+                  <span> ({filteredSchema.length} filtered)</span>
+                )}
+              </div>
+            ) : connectionState === ConnectionState.CONNECTED ? (
+              <div className="text-xs text-amber-600 mt-1">
+                Connected but no columns found
+              </div>
+            ) : null
+          ) : (
+            <div className="text-xs text-blue-600 mt-1">
+              Connect an input to this node
+            </div>
+          )}
+        </div>
+        
+        <div className="space-y-1.5">
+          <Label htmlFor="operator" className="text-xs">Operator</Label>
+          {isInitialLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <Select
+              value={data.config.operator || 'equals'}
+              onValueChange={(value) => handleConfigChange('operator', value as any)}
+              disabled={!data.config.column || !hasSourceNode}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select operator" />
+              </SelectTrigger>
+              <SelectContent>
+                {operators.map((op) => (
+                  <SelectItem key={op.value} value={op.value}>
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        
+        <div className="space-y-1.5">
+          <Label htmlFor="value" className="text-xs">Value</Label>
+          {isInitialLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <Input
+              id="value"
+              value={data.config.value || ''}
+              onChange={(e) => handleConfigChange('value', e.target.value)}
+              placeholder={getValuePlaceholder()}
+              className="h-8 text-xs"
+              type={selectedColumnType === 'number' ? 'number' : 'text'}
+              disabled={!data.config.column || !hasSourceNode}
+            />
+          )}
+        </div>
+        
+        {showCaseSensitiveOption && (
+          <div className="flex items-center space-x-2 pt-1">
+            {isInitialLoading ? (
+              <Skeleton className="h-5 w-10" />
+            ) : (
+              <>
+                <Switch
+                  id="case-sensitive"
+                  checked={data.config.isCaseSensitive || false}
+                  onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
+                  disabled={!data.config.column || !hasSourceNode}
+                />
+                <Label htmlFor="case-sensitive" className="text-xs cursor-pointer">
+                  Case sensitive
+                </Label>
+              </>
+            )}
+          </div>
+        )}
+        
+        {validationErrors.length > 0 && (
+          <div className="bg-red-50 p-2 rounded-md border border-red-200 text-xs text-red-600">
+            <div className="flex items-start">
+              <AlertTriangle className="h-4 w-4 text-red-500 mr-1 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Validation errors:</p>
+                <ul className="list-disc pl-4 mt-1 space-y-1">
+                  {validationErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
                   ))}
                 </ul>
               </div>
-            )}
-            
-            {!hasSourceNode ? (
-              <div className="text-center py-4">
-                <div className="flex flex-col items-center justify-center space-y-2">
-                  <Info className="h-8 w-8 text-gray-400" />
-                  <p className="text-sm text-gray-500">Connect a source node to see available columns</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-2"
-                    onClick={findSourceNode}
-                  >
-                    Check connections
-                  </Button>
-                </div>
+            </div>
+          </div>
+        )}
+        
+        {connectionState === ConnectionState.DISCONNECTED && !hasSourceNode && (
+          <div className="bg-blue-50 p-2 rounded-md border border-blue-200 text-xs text-blue-600">
+            <div className="flex items-start">
+              <Info className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
+              <div>
+                <p>Connect an input to this node to enable filtering.</p>
+                <p className="mt-1">Drag a connection from another node to this node's input handle.</p>
               </div>
-            ) : isInitialLoading ? (
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                  <span className="text-sm">Loading schema from source...</span>
-                </div>
-                <Skeleton className="h-[30px] w-full" />
-                <Skeleton className="h-[30px] w-full" />
-                <Skeleton className="h-[30px] w-full" />
-              </div>
-            ) : standardizedSchema.length === 0 ? (
-              <div className="text-center py-4">
-                <div className="flex flex-col items-center justify-center space-y-2">
-                  <AlertTriangle className="h-8 w-8 text-amber-500" />
-                  <p className="text-sm text-gray-700">No schema available from source</p>
-                  <div className="flex flex-row gap-2 mt-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={handleForcePropagation}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                      Force update
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={handleRunDiagnostics}
-                    >
-                      <Activity className="h-3.5 w-3.5 mr-1" />
-                      Diagnose
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search columns..."
-                      className="pl-8"
-                      value={columnSearchTerm}
-                      onChange={(e) => setColumnSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="column">Column</Label>
-                    <Select
-                      value={data.config.column || ""}
-                      onValueChange={(value) => {
-                        handleConfigChange('column', value);
-                        updateOperatorsForColumn(value, standardizedSchema);
-                      }}
-                    >
-                      <SelectTrigger id="column">
-                        <SelectValue placeholder="Select column" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <ScrollArea className="h-48">
-                          {filteredSchema.map((column) => (
-                            <SelectItem key={column.name} value={column.name} className="flex items-center">
-                              <span>{column.name}</span>
-                              <Badge variant="outline" className="ml-2 text-xs">
-                                {column.type}
-                              </Badge>
-                            </SelectItem>
-                          ))}
-                          {filteredSchema.length === 0 && (
-                            <div className="px-2 py-4 text-center text-sm text-gray-500">
-                              No columns match your search
-                            </div>
-                          )}
-                        </ScrollArea>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <Label htmlFor="operator">Operator</Label>
-                    <Select
-                      value={data.config.operator || ""}
-                      onValueChange={(value) => handleConfigChange('operator', value)}
-                      disabled={!data.config.column}
-                    >
-                      <SelectTrigger id="operator">
-                        <SelectValue placeholder="Select operator" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {operators.map((op) => (
-                          <SelectItem key={op.value} value={op.value}>
-                            {op.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <Label htmlFor="value">Value</Label>
-                    <Input
-                      id="value"
-                      placeholder={getValuePlaceholder()}
-                      value={data.config.value || ""}
-                      onChange={(e) => handleConfigChange('value', e.target.value)}
-                      disabled={!data.config.operator}
-                    />
-                  </div>
-                  
-                  {showCaseSensitiveOption && (
-                    <div className="flex items-center justify-between space-x-2 pt-1">
-                      <Label htmlFor="case-sensitive">Case-sensitive</Label>
-                      <Switch
-                        id="case-sensitive"
-                        checked={!!data.config.isCaseSensitive}
-                        onCheckedChange={(checked) => handleConfigChange('isCaseSensitive', checked)}
-                      />
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-            
-            {debug && (
-              <div className="pt-3 border-t border-gray-200">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full text-xs"
-                  onClick={handleShowDebugInfo}
-                >
-                  Show Debug Info
-                </Button>
-              </div>
-            )}
-          </>
+            </div>
+          </div>
         )}
       </CardContent>
       
-      <Handle type="target" position={Position.Left} id="in" />
-      <Handle type="source" position={Position.Right} id="out" />
+      <Handle type="target" position={Position.Top} id="in" />
+      <Handle type="source" position={Position.Bottom} id="out" />
+      
+      {showLogs && workflow.executionId && (
+        <WorkflowLogPanel
+          workflowId={workflow.workflowId}
+          executionId={workflow.executionId}
+          selectedNodeId={id}
+          isOpen={showLogs}
+          onOpenChange={setShowLogs}
+        />
+      )}
     </Card>
   );
 };

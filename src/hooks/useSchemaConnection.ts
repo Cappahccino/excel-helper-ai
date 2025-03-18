@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
 import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from '@/utils/schemaCache';
-import { getSchemaForFiltering, propagateSchemaWithRetry } from '@/utils/schemaPropagation';
+import { getSchemaForFiltering } from '@/utils/schemaPropagation';
 import { toast } from 'sonner';
 import { debounce } from 'lodash';
 
@@ -101,18 +101,12 @@ export function useSchemaConnection(
         .maybeSingle();
         
       if (sourceError || !sourceNodeData?.metadata) {
-        if (debug) console.error('Error getting source node metadata:', sourceError || 'No metadata found');
+        console.error('Error getting source node metadata:', sourceError || 'No metadata found');
         return null;
       }
       
-      // Type-safe access to metadata
-      if (typeof sourceNodeData.metadata !== 'object' || sourceNodeData.metadata === null) {
-        if (debug) console.warn(`Source node metadata is not an object type: ${typeof sourceNodeData.metadata}`);
-        return null;
-      }
-      
-      const metadata = sourceNodeData.metadata as Record<string, any>;
-      const selectedSheet = metadata.selected_sheet;
+      const sourceMetadata = sourceNodeData.metadata as any;
+      const selectedSheet = sourceMetadata.selected_sheet;
       
       if (debug) {
         console.log(`Found selected sheet "${selectedSheet}" for source node ${sourceNodeId}`);
@@ -129,13 +123,21 @@ export function useSchemaConnection(
     }
   }, [workflowId, sourceNodeId, getDbWorkflowId, debug, sheetName]);
   
-  // Declaration of fetchSchema
+  // Debounced schema fetch to prevent rapid multiple requests
+  const debouncedFetchSchema = useCallback(
+    debounce(async (forceRefresh: boolean) => {
+      await fetchSchema(forceRefresh);
+    }, 300),
+    [workflowId, nodeId, sourceNodeId]
+  );
+  
+  // Fetch schema from the database with retry mechanism
   const fetchSchema = useCallback(async (forceRefresh = false) => {
     // Only attempt to fetch schema if we have all required IDs
     if (!workflowId || !nodeId) {
       if (debug) console.log(`Missing required IDs: workflowId=${workflowId}, nodeId=${nodeId}`);
       setConnectionState(ConnectionState.DISCONNECTED);
-      return false;
+      return;
     }
     
     // If no source node, don't fetch schema and clear any existing data
@@ -144,7 +146,7 @@ export function useSchemaConnection(
       setSchema([]);
       setConnectionState(ConnectionState.DISCONNECTED);
       setError(null);
-      return false;
+      return;
     }
     
     // Get the current sheet name from the source node if not already set
@@ -162,7 +164,7 @@ export function useSchemaConnection(
         setSchema(localCache.current.schema);
         setConnectionState(ConnectionState.CONNECTED);
         setError(null);
-        return true;
+        return;
       }
     }
     
@@ -182,7 +184,7 @@ export function useSchemaConnection(
           lastUpdated: Date.now(),
           sheetName: effectiveSheetName
         };
-        return true;
+        return;
       }
     }
     
@@ -202,31 +204,14 @@ export function useSchemaConnection(
       });
       
       if (error) {
-        if (debug) console.error('Error from Edge Function:', error);
         throw new Error(error.message || 'Error fetching schema');
       }
       
       // Check if component is still mounted before updating state
-      if (!isMounted.current) return false;
+      if (!isMounted.current) return;
       
       if (!data || !data.schemas || data.schemas.length === 0) {
         if (debug) console.log(`No schema found for node ${nodeId}`);
-        
-        if (data && data.sourceNodes && data.sourceNodes.includes(sourceNodeId)) {
-          if (debug) console.log(`Source node ${sourceNodeId} is confirmed, trying propagation`);
-          
-          // Try source propagation if we have a source node
-          const propagateSuccess = await propagateSchemaWithRetry(workflowId, sourceNodeId, nodeId, {
-            maxRetries: 1,
-            sheetName: effectiveSheetName
-          });
-          
-          if (propagateSuccess) {
-            if (debug) console.log(`Schema propagation successful`);
-            // Retry fetch after propagation
-            return await fetchSchema(true);
-          }
-        }
         
         // Fall back to regular schema retrieval
         const dbWorkflowId = getDbWorkflowId();
@@ -246,7 +231,7 @@ export function useSchemaConnection(
         }
         
         // Check if component is still mounted before updating state
-        if (!isMounted.current) return false;
+        if (!isMounted.current) return;
         
         if (!dbData || dbData.length === 0) {
           if (retryCount.current < maxRetries) {
@@ -262,14 +247,13 @@ export function useSchemaConnection(
             }, delay);
             
             // Keep the loading state active during retry
-            return false;
+            return;
           }
           
           // If we've exhausted retries, set to disconnected
           setSchema([]);
           setConnectionState(ConnectionState.DISCONNECTED);
-          setError(`No schema available for node ${nodeId} with sheet ${effectiveSheetName || 'default'}`);
-          return false;
+          throw new Error(`No schema available for node ${nodeId} with sheet ${effectiveSheetName || 'default'}`);
         }
         
         // Process schema from database
@@ -298,7 +282,6 @@ export function useSchemaConnection(
         setSchema(schemaColumns);
         setConnectionState(ConnectionState.CONNECTED);
         setRetryCount(0);
-        return true;
       } else {
         // Process schema from Edge Function
         const schemaData = data.schemas[0];
@@ -326,7 +309,6 @@ export function useSchemaConnection(
         setSchema(schemaColumns);
         setConnectionState(ConnectionState.CONNECTED);
         setRetryCount(0);
-        return true;
       }
       
       setLastRefreshTime(new Date());
@@ -347,7 +329,6 @@ export function useSchemaConnection(
         setConnectionState(ConnectionState.DISCONNECTED);
         setError(null);
       }
-      return false;
     } finally {
       // Check if component is still mounted before updating state
       if (isMounted.current) {
@@ -356,91 +337,10 @@ export function useSchemaConnection(
     }
   }, [workflowId, nodeId, sourceNodeId, getDbWorkflowId, debug, showNotifications, maxRetries, retryDelay, sheetName, getSourceNodeSheet]);
   
-  // Debounced schema fetch to prevent rapid multiple requests
-  const debouncedFetchSchema = useCallback(
-    debounce(async (forceRefresh: boolean) => {
-      await fetchSchema(forceRefresh);
-    }, 300),
-    [fetchSchema]
-  );
-  
   // Helper to reset retry count
   const setRetryCount = (count: number) => {
     retryCount.current = count;
   };
-  
-  // Force propagation of schema from source to this node
-  const forceSchemaPropagation = useCallback(async () => {
-    if (!workflowId || !nodeId || !sourceNodeId) {
-      if (debug) console.log(`Cannot force propagate: missing id(s): wf=${workflowId}, node=${nodeId}, source=${sourceNodeId}`);
-      return false;
-    }
-    
-    setIsLoading(true);
-    setConnectionState(ConnectionState.CONNECTING);
-    
-    try {
-      const effectiveSheetName = sheetName || await getSourceNodeSheet();
-      if (debug) {
-        console.log(`Forcing schema propagation from ${sourceNodeId} to ${nodeId}, sheet: ${effectiveSheetName || 'default'}`);
-      }
-      
-      // Invalidate cache first
-      await invalidateSchemaCache(workflowId, nodeId, effectiveSheetName);
-      localCache.current = null;
-      
-      if (showNotifications) {
-        toast.info('Propagating schema from source node...');
-      }
-      
-      // Try to propagate using utility function
-      const success = await propagateSchemaWithRetry(workflowId, sourceNodeId, nodeId, {
-        maxRetries: maxRetries,
-        sheetName: effectiveSheetName,
-        forceRefresh: true
-      });
-      
-      if (!isMounted.current) return false;
-      
-      if (success) {
-        if (debug) console.log(`Successfully propagated schema: ${sourceNodeId} -> ${nodeId}`);
-        
-        // Refresh schema after propagation
-        await fetchSchema(true);
-        
-        if (showNotifications) {
-          toast.success('Schema updated from source');
-        }
-        
-        return true;
-      } else {
-        if (debug) console.log(`Schema propagation failed, trying direct fetch`);
-        
-        // Even if propagation fails, try to fetch schema directly 
-        const result = await fetchSchema(true);
-        
-        if (!result && showNotifications) {
-          toast.error('Failed to update schema from source');
-        }
-        
-        return result;
-      }
-    } catch (err) {
-      if (debug) console.error('Error in forceSchemaPropagation:', err);
-      setError(`Propagation failed: ${(err as Error).message}`);
-      setConnectionState(ConnectionState.ERROR);
-      
-      if (showNotifications) {
-        toast.error('Error updating schema from source');
-      }
-      
-      return false;
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [workflowId, nodeId, sourceNodeId, debug, sheetName, maxRetries, getSourceNodeSheet, showNotifications, fetchSchema]);
   
   // Refresh schema with proper cache invalidation
   const refreshSchema = useCallback(async () => {
@@ -469,65 +369,10 @@ export function useSchemaConnection(
     }
     
     // Fetch with force refresh
-    const result = await fetchSchema(true);
+    await fetchSchema(true);
     
-    return result;
+    return true;
   }, [workflowId, nodeId, sourceNodeId, fetchSchema, debug, showNotifications, getSourceNodeSheet]);
-  
-  // Run diagnostic information to help debug schema issues
-  const runSchemaDiagnostics = useCallback(async () => {
-    if (!workflowId || !nodeId) {
-      console.log("Cannot run schema diagnostics: missing workflowId or nodeId");
-      return null;
-    }
-    
-    if (showNotifications) {
-      toast.info('Running schema diagnostics...');
-    }
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('inspectSchemas', {
-        body: { 
-          workflowId, 
-          nodeId,
-          source: sourceNodeId,
-          includeSourceSchemas: true,
-          includeEdges: true,
-          verbose: true
-        }
-      });
-      
-      if (error) {
-        if (showNotifications) {
-          toast.error(`Diagnostics error: ${error.message}`);
-        }
-        return null;
-      }
-      
-      console.log('Schema diagnostics:', data);
-      
-      if (showNotifications) {
-        if (data.schemaCount > 0) {
-          toast.success(`Found ${data.schemaCount} schema entries`);
-        } else if (data.sourceSchemas && data.sourceSchemas.length > 0) {
-          toast.info(`No schema for this node, but found ${data.sourceSchemas.length} schemas from source nodes`);
-          
-          // Attempt repair
-          await forceSchemaPropagation();
-        } else {
-          toast.warning('No schemas found');
-        }
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('Error running diagnostics:', error);
-      if (showNotifications) {
-        toast.error(`Diagnostics failed: ${(error as Error).message}`);
-      }
-      return null;
-    }
-  }, [workflowId, nodeId, sourceNodeId, showNotifications, forceSchemaPropagation]);
   
   // Subscribe to real-time schema updates
   useEffect(() => {
@@ -582,15 +427,12 @@ export function useSchemaConnection(
           if (debug) console.log(`Source node metadata changed:`, metadata);
           
           // Check if sheet selection has changed
-          if (metadata && typeof metadata === 'object' && metadata !== null && 'selected_sheet' in metadata) {
-            const selectedSheet = (metadata as { selected_sheet?: string }).selected_sheet;
-            if (selectedSheet && selectedSheet !== sheetName) {
-              if (debug) console.log(`Source node sheet changed to ${selectedSheet}, refreshing schema`);
-              setSheetName(selectedSheet);
-              // Invalidate cache and fetch new schema
-              await invalidateSchemaCache(workflowId, nodeId, selectedSheet);
-              await fetchSchema(true);
-            }
+          if (metadata && metadata.selected_sheet && metadata.selected_sheet !== sheetName) {
+            if (debug) console.log(`Source node sheet changed to ${metadata.selected_sheet}, refreshing schema`);
+            setSheetName(metadata.selected_sheet);
+            // Invalidate cache and fetch new schema
+            await invalidateSchemaCache(workflowId, nodeId, metadata.selected_sheet);
+            await fetchSchema(true);
           }
         }
       )
@@ -637,8 +479,6 @@ export function useSchemaConnection(
     error,
     lastRefreshTime,
     refreshSchema,
-    forceSchemaPropagation,
-    runSchemaDiagnostics,
     hasSourceNode: !!sourceNodeId,
     sourceNodeId,
     sheetName
