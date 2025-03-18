@@ -30,3 +30,10 @@ export function convertToDbWorkflowId(id: string): string {
   }
   return id;
 }
+
+/**
+ * Validate if a string is a valid UUID for database operations
+ */
+export function isValidUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
