@@ -8,7 +8,8 @@ type SchemaCacheEntry = {
   sheetName?: string;
   source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
   version?: number;
-  isTemporary?: boolean; // Added to track temporary status
+  isTemporary?: boolean;
+  fileId?: string;
 };
 
 // In-memory schema cache
@@ -33,7 +34,8 @@ export async function cacheSchema(
     sheetName?: string;
     source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
     version?: number;
-    isTemporary?: boolean; // Added to track temporary status
+    isTemporary?: boolean;
+    fileId?: string;
   }
 ): Promise<void> {
   const key = getCacheKey(workflowId, nodeId, options);
@@ -44,7 +46,8 @@ export async function cacheSchema(
     sheetName: options?.sheetName,
     source: options?.source,
     version: options?.version,
-    isTemporary: options?.isTemporary || false // Default to false if not provided
+    isTemporary: options?.isTemporary || false,
+    fileId: options?.fileId
   };
 }
 
@@ -105,7 +108,8 @@ export async function getSchemaMetadataFromCache(
     sheetName: cached.sheetName,
     source: cached.source,
     version: cached.version,
-    isTemporary: cached.isTemporary
+    isTemporary: cached.isTemporary,
+    fileId: cached.fileId
   };
 }
 

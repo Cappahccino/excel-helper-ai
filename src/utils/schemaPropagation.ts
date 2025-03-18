@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
-import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from './schemaCache';
+import { cacheSchema, getSchemaFromCache, getSchemaMetadataFromCache, invalidateSchemaCache } from './schemaCache';
 import { standardizeSchemaColumns } from './schemaStandardization';
 
 interface SheetInfo {
@@ -170,28 +170,30 @@ async function propagateSchemaDirectlyFallback(
     console.log(`Using fallback propagation for ${sourceNodeId} -> ${targetNodeId} in workflow ${dbWorkflowId}`);
     
     // First check cache for source schema
-    const cachedSchema = await getSchemaFromCache(workflowId, sourceNodeId, {
+    const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, sourceNodeId, {
       maxAge: 10000, // 10 seconds
       sheetName
     });
     
     let schema;
     let isTemporary = false;
+    let fileId = '00000000-0000-0000-0000-000000000000';
     
-    if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
+    if (cachedSchemaData && cachedSchemaData.schema && cachedSchemaData.schema.length > 0) {
       console.log(`Using cached schema for source node ${sourceNodeId}`);
       
       // Extract schema and temporary status from cache
       schema = {
-        columns: cachedSchema.schema.map(col => col.name),
-        data_types: cachedSchema.schema.reduce((acc, col) => {
+        columns: cachedSchemaData.schema.map(col => col.name),
+        data_types: cachedSchemaData.schema.reduce((acc, col) => {
           acc[col.name] = col.type;
           return acc;
         }, {} as Record<string, string>),
-        file_id: cachedSchema.fileId || '00000000-0000-0000-0000-000000000000'
+        file_id: cachedSchemaData.fileId || '00000000-0000-0000-0000-000000000000'
       };
       
-      isTemporary = cachedSchema.isTemporary || false;
+      isTemporary = cachedSchemaData.isTemporary || false;
+      fileId = cachedSchemaData.fileId || fileId;
     } else {
       // Get source schema from database - no longer filtering by is_temporary
       const { data: sourceSchema, error: sourceError } = await supabase
@@ -207,12 +209,14 @@ async function propagateSchemaDirectlyFallback(
       
       schema = sourceSchema[0];
       isTemporary = schema.is_temporary || false;
+      fileId = schema.file_id || fileId;
       
       if (sheetName && sourceSchema.length > 1) {
         const sheetSchema = sourceSchema.find(s => s.sheet_name === sheetName);
         if (sheetSchema) {
           schema = sheetSchema;
           isTemporary = sheetSchema.is_temporary || false;
+          fileId = sheetSchema.file_id || fileId;
         }
       }
       
@@ -225,7 +229,8 @@ async function propagateSchemaDirectlyFallback(
       cacheSchema(workflowId, sourceNodeId, schemaColumns, {
         source: 'database',
         sheetName: sheetName || schema.sheet_name,
-        isTemporary
+        isTemporary,
+        fileId
       });
     }
     
@@ -246,7 +251,7 @@ async function propagateSchemaDirectlyFallback(
         acc[col.name] = col.type;
         return acc;
       }, {} as Record<string, string>),
-      file_id: schema.file_id,
+      file_id: fileId,
       sheet_name: sheetName || schema.sheet_name || 'Sheet1',
       has_headers: true,
       is_temporary: isTemporary,
@@ -270,7 +275,8 @@ async function propagateSchemaDirectlyFallback(
     cacheSchema(workflowId, targetNodeId, standardizedColumns, {
       source: 'propagation',
       sheetName: sheetName || schema.sheet_name,
-      isTemporary
+      isTemporary,
+      fileId
     });
     
     console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId} using fallback method`);
@@ -291,8 +297,8 @@ export async function isNodeReadyForSchemaPropagation(
 ): Promise<boolean> {
   try {
     // First check cache
-    const cachedSchema = await getSchemaFromCache(workflowId, nodeId);
-    if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
+    const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId);
+    if (cachedSchemaData && cachedSchemaData.schema && cachedSchemaData.schema.length > 0) {
       return true;
     }
     
@@ -388,7 +394,7 @@ export async function checkSchemaPropagationNeeded(
       : workflowId;
     
     // First check if source node has a schema
-    const sourceSchemaCache = await getSchemaFromCache(workflowId, sourceNodeId);
+    const sourceSchemaCache = await getSchemaMetadataFromCache(workflowId, sourceNodeId);
     if (!sourceSchemaCache) {
       const { data: sourceSchema, error: sourceError } = await supabase
         .from('workflow_file_schemas')
@@ -404,7 +410,7 @@ export async function checkSchemaPropagationNeeded(
     }
     
     // Check if target already has schema
-    const targetSchemaCache = await getSchemaFromCache(workflowId, targetNodeId);
+    const targetSchemaCache = await getSchemaMetadataFromCache(workflowId, targetNodeId);
     if (targetSchemaCache && targetSchemaCache.length > 0) {
       console.log(`Target node ${targetNodeId} already has cached schema`);
       return false;
@@ -582,9 +588,9 @@ export async function getSchemaForFiltering(
     
     // Try cache first unless forced refresh
     if (!forceRefresh) {
-      const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
-      if (cachedSchema && cachedSchema.schema && cachedSchema.schema.length > 0) {
-        return validateSchemaForFiltering(cachedSchema.schema);
+      const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId, { sheetName });
+      if (cachedSchemaData && cachedSchemaData.schema && cachedSchemaData.schema.length > 0) {
+        return validateSchemaForFiltering(cachedSchemaData.schema);
       }
     }
     
@@ -593,28 +599,25 @@ export async function getSchemaForFiltering(
       ? workflowId.substring(5) 
       : workflowId;
     
-    // No longer filtering by is_temporary
-    const query = supabase
+    const { data, error } = await supabase
       .from('workflow_file_schemas')
       .select('columns, data_types')
       .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId);
+      .eq('node_id', nodeId)
+      .eq('sheet_name', sheetName || 'Sheet1')
+      .maybeSingle();
       
-    if (sheetName) {
-      query.eq('sheet_name', sheetName);
-    }
-    
-    const { data, error } = await query.maybeSingle();
-    
-    if (error || !data) {
-      console.error('Error getting schema for filtering:', error || 'No schema found');
+    if (error) {
       return [];
     }
     
-    // Convert to SchemaColumn array and validate
-    const schema = data.columns.map(col => ({
-      name: col,
-      type: data.data_types[col] || 'unknown'
+    if (!data) {
+      return [];
+    }
+    
+    const schema = data.columns.map(column => ({
+      name: column,
+      type: data.data_types[column] || 'unknown'
     }));
     
     // Cache the schema
@@ -688,66 +691,7 @@ export async function debugNodeSchema(
 }> {
   try {
     // Check cache
-    const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
+    const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId, { sheetName });
     
-    if (cachedSchema) {
-      return {
-        cacheStatus: 'hit',
-        dbStatus: 'found', // Assume it came from DB originally
-        schema: cachedSchema
-      };
-    }
-    
-    // Try database
-    const dbWorkflowId = workflowId.startsWith('temp-') 
-      ? workflowId.substring(5) 
-      : workflowId;
-    
-    const { data, error } = await supabase
-      .from('workflow_file_schemas')
-      .select('columns, data_types')
-      .eq('workflow_id', dbWorkflowId)
-      .eq('node_id', nodeId)
-      .eq('sheet_name', sheetName || 'Sheet1')
-      .maybeSingle();
-      
-    if (error) {
-      return {
-        cacheStatus: 'miss',
-        dbStatus: 'error',
-        schema: [],
-        error: error.message
-      };
-    }
-    
-    if (!data) {
-      return {
-        cacheStatus: 'miss',
-        dbStatus: 'not_found',
-        schema: []
-      };
-    }
-    
-    const schema = data.columns.map(column => ({
-      name: column,
-      type: data.data_types[column] || 'unknown'
-    }));
-    
-    // Cache it for future use
-    cacheSchema(workflowId, nodeId, schema, { sheetName });
-    
-    return {
-      cacheStatus: 'miss',
-      dbStatus: 'found',
-      schema
-    };
-  } catch (error) {
-    return {
-      cacheStatus: 'miss',
-      dbStatus: 'error',
-      schema: [],
-      error: (error as Error).message
-    };
-  }
-}
+    if (cachedSchemaData)
 
