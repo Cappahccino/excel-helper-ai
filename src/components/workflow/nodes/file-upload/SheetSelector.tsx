@@ -57,6 +57,9 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
     onSheetSelect(value);
   };
 
+  // Make sure selectedSheet is a string value or undefined
+  const effectiveSelectedSheet = typeof selectedSheet === 'string' ? selectedSheet : undefined;
+
   return (
     <div>
       <Label htmlFor="sheetSelect" className="text-xs font-medium flex items-center">
@@ -73,7 +76,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
             </Tooltip>
           </TooltipProvider>
         )}
-        {selectedSheet && !isLoading && (
+        {effectiveSelectedSheet && !isLoading && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -87,7 +90,7 @@ const SheetSelector: React.FC<SheetSelectorProps> = ({
         )}
       </Label>
       <Select 
-        value={selectedSheet} 
+        value={effectiveSelectedSheet} 
         onValueChange={handleSheetSelection}
         disabled={isLoading}
       >

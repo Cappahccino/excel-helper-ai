@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -73,6 +74,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [debug, setDebug] = useState<boolean>(true);
   const [columnSearchTerm, setColumnSearchTerm] = useState<string>('');
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [sourceSheetName, setSourceSheetName] = useState<string | undefined>(undefined);
   
   const workflow = useWorkflow();
   const workflowId = data.workflowId || workflow.workflowId;
@@ -84,13 +86,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     error,
     lastRefreshTime,
     refreshSchema,
-    hasSourceNode
+    hasSourceNode,
+    sheetName
   } = useSchemaConnection(workflowId, id, sourceNodeId, {
     debug: debug,
     autoConnect: true,
     showNotifications: true,
     maxRetries: 3,
-    retryDelay: 1000
+    retryDelay: 1000,
+    sheetName: sourceSheetName
   });
 
   const inspectSchemas = useCallback(async () => {
@@ -100,11 +104,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     }
     
     try {
-      console.log(`Inspecting schemas for workflow ${workflowId}, node ${id}`);
+      console.log(`Inspecting schemas for workflow ${workflowId}, node ${id}, sheetName: ${sourceSheetName || sheetName || 'default'}`);
       toast.info('Inspecting schemas...');
       
       const { data, error } = await supabase.functions.invoke('inspectSchemas', {
-        body: { workflowId, nodeId: id }
+        body: { 
+          workflowId, 
+          nodeId: id,
+          sheetName: sourceSheetName || sheetName
+        }
       });
       
       if (error) {
@@ -118,6 +126,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       if (data.schemas.length === 0) {
         if (data.sourceSchemas && data.sourceSchemas.length > 0) {
           toast.info(`No schema for this node, but found ${data.sourceSchemas.length} schemas from source nodes`);
+          console.log('Source schemas:', data.sourceSchemas);
+          
+          // Try to extract sheet name
+          if (data.sourceSchemas[0] && data.sourceSchemas[0].sheet_name) {
+            setSourceSheetName(data.sourceSchemas[0].sheet_name);
+            console.log(`Setting source sheet name to ${data.sourceSchemas[0].sheet_name}`);
+            toast.info(`Found source sheet: ${data.sourceSchemas[0].sheet_name}`);
+          }
         } else {
           toast.warning('No schemas found for this node');
         }
@@ -132,7 +148,33 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.error('Error in inspectSchemas:', error);
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [workflowId, id]);
+  }, [workflowId, id, sourceSheetName, sheetName]);
+
+  // Helper to get source node metadata
+  const getSourceNodeMetadata = useCallback(async (sourceId: string) => {
+    if (!workflowId || !sourceId) return null;
+    
+    try {
+      const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+      
+      const { data: nodeData, error } = await supabase
+        .from('workflow_files')
+        .select('metadata')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', sourceId)
+        .maybeSingle();
+        
+      if (error) {
+        console.error('Error fetching source node metadata:', error);
+        return null;
+      }
+      
+      return nodeData?.metadata || null;
+    } catch (err) {
+      console.error('Error in getSourceNodeMetadata:', err);
+      return null;
+    }
+  }, [workflowId]);
 
   const findSourceNode = useCallback(async () => {
     if (!workflowId || !id) return null;
@@ -147,6 +189,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       if (sources.length > 0) {
         console.log(`FilteringNode ${id}: Found source node ${sources[0]}`);
         setSourceNodeId(sources[0]);
+        
+        // Get the source node's selected sheet
+        const metadata = await getSourceNodeMetadata(sources[0]);
+        if (metadata && metadata.selected_sheet) {
+          console.log(`Source node ${sources[0]} has selected sheet: ${metadata.selected_sheet}`);
+          setSourceSheetName(metadata.selected_sheet);
+        }
+        
         return sources[0];
       }
       
@@ -168,6 +218,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         const source = edgesData[0].source_node_id;
         console.log(`FilteringNode ${id}: Found source node ${source} from database`);
         setSourceNodeId(source);
+        
+        // Get the source node's selected sheet
+        const metadata = await getSourceNodeMetadata(source);
+        if (metadata && metadata.selected_sheet) {
+          console.log(`Source node ${source} has selected sheet: ${metadata.selected_sheet}`);
+          setSourceSheetName(metadata.selected_sheet);
+        }
+        
         return source;
       }
       
@@ -178,7 +236,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.error('Error finding source node:', error);
       return null;
     }
-  }, [workflow, id, workflowId]);
+  }, [workflow, id, workflowId, getSourceNodeMetadata]);
 
   useEffect(() => {
     let isActive = true;
@@ -421,6 +479,24 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return (isLoading && !schema.length) || (!isInitialized && hasSourceNode);
   }, [isLoading, schema.length, isInitialized, hasSourceNode]);
 
+  // Debug button handler to show current state
+  const handleShowDebugInfo = () => {
+    const debugInfo = {
+      nodeId: id,
+      sourceNodeId,
+      sourceSheetName,
+      sheetName,
+      connectionState,
+      schemaLength: schema.length,
+      hasSourceNode,
+      isLoading,
+      workflowId
+    };
+    
+    console.log('FilteringNode debug info:', debugInfo);
+    toast.info('Debug info printed to console');
+  };
+
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>
       <CardHeader className="bg-blue-50 p-3 flex flex-row items-center">
@@ -469,6 +545,24 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={handleShowDebugInfo}
+                >
+                  <FileText className="h-3.5 w-3.5 text-amber-500" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Show debug info</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           
           {workflow.executionId && (
             <TooltipProvider>
@@ -499,6 +593,9 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
               </TooltipTrigger>
               <TooltipContent>
                 <p>{connectionInfo.tooltip}</p>
+                {sheetName && (
+                  <p className="text-xs">Using sheet: {sheetName}</p>
+                )}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -520,6 +617,17 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         </div>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
+        {sourceSheetName && (
+          <div className="bg-blue-50 p-2 rounded-md border border-blue-200 text-xs text-blue-700 mb-3">
+            <div className="flex items-start">
+              <Info className="h-4 w-4 text-blue-500 mr-1 flex-shrink-0 mt-0.5" />
+              <div>
+                <p>Using data from sheet: <strong>{sourceSheetName}</strong></p>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {error && sourceNodeId && (
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
             <div className="flex">
