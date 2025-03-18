@@ -1,11 +1,9 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
 import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from './schemaCache';
 import { standardizeSchemaColumns } from './schemaStandardization';
 
-// Improved type definitions for metadata objects
 interface SheetInfo {
   name: string;
   index: number;
@@ -21,6 +19,7 @@ interface NodeMetadata {
 
 /**
  * Propagate schema directly from source to target node
+ * Now uses Edge Function for distributed processing with Redis
  */
 export async function propagateSchemaDirectly(
   workflowId: string,
@@ -31,6 +30,67 @@ export async function propagateSchemaDirectly(
   try {
     console.log(`Propagating schema: ${sourceNodeId} -> ${targetNodeId}, sheet: ${sheetName || 'default'}`);
     
+    // Use schemaPropagation Edge Function
+    const { data, error } = await supabase.functions.invoke('schemaPropagation', {
+      body: {
+        workflowId,
+        sourceNodeId,
+        targetNodeId,
+        sheetName,
+        forceRefresh: false
+      }
+    });
+    
+    if (error) {
+      console.error('Error calling schemaPropagation Edge Function:', error);
+      
+      // Fallback to direct propagation
+      return await propagateSchemaDirectlyFallback(workflowId, sourceNodeId, targetNodeId, sheetName);
+    }
+    
+    if (data.status === 'already_processing') {
+      console.log(`Schema propagation from ${sourceNodeId} to ${targetNodeId} already in progress`);
+      return false;
+    }
+    
+    if (data.success) {
+      console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId} via Edge Function`);
+      
+      // Cache the result locally
+      if (data.schema) {
+        cacheSchema(workflowId, targetNodeId, data.schema, {
+          source: 'propagation',
+          sheetName: sheetName,
+          version: data.version
+        });
+      }
+      
+      return true;
+    } else {
+      console.error('Edge Function returned error:', data.error);
+      
+      // Fallback to direct propagation
+      return await propagateSchemaDirectlyFallback(workflowId, sourceNodeId, targetNodeId, sheetName);
+    }
+  } catch (error) {
+    console.error('Error in propagateSchemaDirectly:', error);
+    
+    // Fallback to direct propagation
+    return await propagateSchemaDirectlyFallback(workflowId, sourceNodeId, targetNodeId, sheetName);
+  }
+}
+
+/**
+ * Fallback direct propagation implementation
+ * Used when Edge Function is unavailable
+ */
+async function propagateSchemaDirectlyFallback(
+  workflowId: string,
+  sourceNodeId: string,
+  targetNodeId: string,
+  sheetName?: string
+): Promise<boolean> {
+  try {
     const dbWorkflowId = workflowId.startsWith('temp-') 
       ? workflowId.substring(5) 
       : workflowId;
@@ -133,10 +193,10 @@ export async function propagateSchemaDirectly(
       sheetName: sheetName || schema.sheet_name
     });
     
-    console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId}`);
+    console.log(`Schema successfully propagated from ${sourceNodeId} to ${targetNodeId} using fallback method`);
     return true;
   } catch (error) {
-    console.error('Error in propagateSchemaDirectly:', error);
+    console.error('Error in propagateSchemaDirectlyFallback:', error);
     return false;
   }
 }
@@ -304,6 +364,7 @@ export async function checkSchemaPropagationNeeded(
 
 /**
  * Propagate schema with retry logic
+ * Now uses the Edge Function with fallback to client-side implementation
  */
 export async function propagateSchemaWithRetry(
   workflowId: string,
@@ -359,7 +420,7 @@ export async function propagateSchemaWithRetry(
         invalidateSchemaCache(workflowId, targetNodeId, sheetName);
       }
       
-      // Attempt to propagate
+      // Attempt to propagate using Edge Function with fallback
       const success = await propagateSchemaDirectly(workflowId, sourceNodeId, targetNodeId, sheetName);
       
       if (success) {

@@ -11,7 +11,8 @@ import {
 import { 
   cacheSchema, 
   getSchemaFromCache, 
-  invalidateSchemaCache 
+  invalidateSchemaCache,
+  isValidCacheExistsAsync
 } from '@/utils/schemaCache';
 
 type PropagationStatus = 'idle' | 'propagating' | 'success' | 'error';
@@ -52,6 +53,7 @@ interface PropagationOptions {
 
 /**
  * Hook for managing schema propagation between nodes
+ * Enhanced with Redis-based distributed caching
  */
 export function useSchemaPropagation(
   workflowId: string | null,
@@ -82,7 +84,7 @@ export function useSchemaPropagation(
     if (!workflowId || !sourceNodeId || !targetNodeId) return false;
     
     // First check cache
-    const cachedSchema = getSchemaFromCache(workflowId, targetNodeId, {
+    const cachedSchema = await getSchemaFromCache(workflowId, targetNodeId, {
       maxAge: 60000, // 1 minute
       sheetName
     });
@@ -127,7 +129,7 @@ export function useSchemaPropagation(
         type: targetSchema.data_types[column] || 'unknown'
       }));
       
-      cacheSchema(workflowId, targetNodeId, schema, {
+      await cacheSchema(workflowId, targetNodeId, schema, {
         source: 'database',
         sheetName: sheetName || 'Sheet1'
       });
@@ -177,7 +179,7 @@ export function useSchemaPropagation(
         
         // Cache the schema
         if (schema && schema.length > 0) {
-          cacheSchema(workflowId, targetNodeId, schema, {
+          await cacheSchema(workflowId, targetNodeId, schema, {
             source: 'propagation',
             sheetName
           });
@@ -245,7 +247,7 @@ export function useSchemaPropagation(
   const refreshSchema = useCallback(async () => {
     // Invalidate cache first
     if (workflowId && targetNodeId) {
-      invalidateSchemaCache(workflowId, targetNodeId, sheetName);
+      await invalidateSchemaCache(workflowId, targetNodeId, sheetName);
     }
     
     return propagateSchema();
@@ -257,14 +259,14 @@ export function useSchemaPropagation(
     
     try {
       // Try cache first
-      const cachedSchema = getSchemaFromCache(workflowId, targetNodeId, { sheetName });
+      const cachedSchema = await getSchemaFromCache(workflowId, targetNodeId, { sheetName });
       if (cachedSchema) return cachedSchema;
       
-      // Get from database
+      // Get from database or Edge Function
       const schema = await getSchemaForFiltering(workflowId, targetNodeId, { sheetName });
       
       if (schema && schema.length > 0) {
-        cacheSchema(workflowId, targetNodeId, schema, { sheetName });
+        await cacheSchema(workflowId, targetNodeId, schema, { sheetName });
       }
       
       return schema;
