@@ -104,3 +104,17 @@ export async function invalidateAllSchemaCaches(): Promise<void> {
     delete schemaCache[key];
   });
 }
+
+/**
+ * Invalidate all schemas for a specific workflow
+ */
+export async function invalidateWorkflowSchemaCache(
+  workflowId: string
+): Promise<void> {
+  const prefix = `schema:${workflowId}:`;
+  Object.keys(schemaCache).forEach(key => {
+    if (key.startsWith(prefix)) {
+      delete schemaCache[key];
+    }
+  });
+}
