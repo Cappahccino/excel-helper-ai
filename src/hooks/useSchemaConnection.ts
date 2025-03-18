@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
-import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from '@/utils/schemaCache';
+import { cacheSchema, getSchemaFromCache, invalidateSchemaCache } from '@/utils/schema';
 import { getSchemaForFiltering } from '@/utils/schemaPropagation';
 import { toast } from 'sonner';
 import { debounce } from 'lodash';

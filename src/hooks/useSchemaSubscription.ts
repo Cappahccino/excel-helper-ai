@@ -1,8 +1,7 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
-import { cacheSchema, getSchemaFromCache } from '@/utils/schemaCache';
+import { cacheSchema, getSchemaFromCache } from '@/utils/schema';
 
 interface SchemaSubscriptionOptions {
   /**

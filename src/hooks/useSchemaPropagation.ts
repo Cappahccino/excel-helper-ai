@@ -13,7 +13,7 @@ import {
   getSchemaFromCache, 
   invalidateSchemaCache,
   isValidCacheExistsAsync
-} from '@/utils/schemaCache';
+} from '@/utils/schema';
 import { useSchemaSubscription } from './useSchemaSubscription';
 
 type PropagationStatus = 'idle' | 'propagating' | 'success' | 'error';

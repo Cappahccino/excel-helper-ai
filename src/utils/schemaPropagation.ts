@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -6,7 +7,7 @@ import {
   getSchemaFromCache, 
   getSchemaMetadataFromCache, 
   invalidateSchemaCache
-} from './schemaCache';
+} from '@/utils/schema';
 import { standardizeSchemaColumns } from './schemaStandardization';
 
 interface SheetInfo {
