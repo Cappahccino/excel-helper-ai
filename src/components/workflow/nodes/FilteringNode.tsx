@@ -192,9 +192,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         
         // Get the source node's selected sheet
         const metadata = await getSourceNodeMetadata(sources[0]);
-        if (metadata && metadata.selected_sheet) {
-          console.log(`Source node ${sources[0]} has selected sheet: ${metadata.selected_sheet}`);
-          setSourceSheetName(metadata.selected_sheet);
+        if (metadata) {
+          // Safely check if metadata is an object with selected_sheet property
+          if (typeof metadata === 'object' && metadata !== null && 'selected_sheet' in metadata) {
+            const selectedSheet = (metadata as { selected_sheet?: string }).selected_sheet;
+            if (selectedSheet) {
+              console.log(`Source node ${sources[0]} has selected sheet: ${selectedSheet}`);
+              setSourceSheetName(selectedSheet);
+            }
+          }
         }
         
         return sources[0];
@@ -221,9 +227,15 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
         
         // Get the source node's selected sheet
         const metadata = await getSourceNodeMetadata(source);
-        if (metadata && metadata.selected_sheet) {
-          console.log(`Source node ${source} has selected sheet: ${metadata.selected_sheet}`);
-          setSourceSheetName(metadata.selected_sheet);
+        if (metadata) {
+          // Safely check if metadata is an object with selected_sheet property
+          if (typeof metadata === 'object' && metadata !== null && 'selected_sheet' in metadata) {
+            const selectedSheet = (metadata as { selected_sheet?: string }).selected_sheet;
+            if (selectedSheet) {
+              console.log(`Source node ${source} has selected sheet: ${selectedSheet}`);
+              setSourceSheetName(selectedSheet);
+            }
+          }
         }
         
         return source;
