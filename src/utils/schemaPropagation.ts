@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { toast } from 'sonner';
@@ -411,7 +412,7 @@ export async function checkSchemaPropagationNeeded(
     
     // Check if target already has schema
     const targetSchemaCache = await getSchemaMetadataFromCache(workflowId, targetNodeId);
-    if (targetSchemaCache && targetSchemaCache.length > 0) {
+    if (targetSchemaCache && targetSchemaCache.schema && targetSchemaCache.schema.length > 0) {
       console.log(`Target node ${targetNodeId} already has cached schema`);
       return false;
     }
@@ -693,5 +694,63 @@ export async function debugNodeSchema(
     // Check cache
     const cachedSchemaData = await getSchemaMetadataFromCache(workflowId, nodeId, { sheetName });
     
-    if (cachedSchemaData)
-
+    if (cachedSchemaData && cachedSchemaData.schema && cachedSchemaData.schema.length > 0) {
+      return {
+        cacheStatus: 'hit',
+        dbStatus: 'not_found', // We didn't check the DB
+        schema: cachedSchemaData.schema
+      };
+    }
+    
+    // Get from database
+    const dbWorkflowId = workflowId.startsWith('temp-') 
+      ? workflowId.substring(5) 
+      : workflowId;
+    
+    const { data, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('columns, data_types')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .eq('sheet_name', sheetName || 'Sheet1')
+      .maybeSingle();
+      
+    if (error) {
+      return {
+        cacheStatus: 'miss',
+        dbStatus: 'error',
+        schema: [],
+        error: error.message
+      };
+    }
+    
+    if (!data) {
+      return {
+        cacheStatus: 'miss',
+        dbStatus: 'not_found',
+        schema: []
+      };
+    }
+    
+    const schema = data.columns.map(column => ({
+      name: column,
+      type: data.data_types[column] || 'unknown'
+    }));
+    
+    // Cache the schema
+    cacheSchema(workflowId, nodeId, schema, { sheetName });
+    
+    return {
+      cacheStatus: 'miss',
+      dbStatus: 'found',
+      schema
+    };
+  } catch (error) {
+    return {
+      cacheStatus: 'miss',
+      dbStatus: 'error',
+      schema: [],
+      error: (error as Error).message
+    };
+  }
+}
