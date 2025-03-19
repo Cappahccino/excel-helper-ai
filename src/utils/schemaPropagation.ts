@@ -1,8 +1,20 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { cacheSchema, invalidateSchemaCache } from '@/utils/schema';
+
+interface FileMetadata {
+  selected_sheet?: string;
+  sheets?: Array<{
+    name: string;
+    index: number;
+    row_count?: number;
+    rowCount?: number;
+    is_default?: boolean;
+    isDefault?: boolean;
+  }>;
+  [key: string]: any;
+}
 
 /**
  * Propagate schema from source node to target node with robust error handling and retries
@@ -247,7 +259,8 @@ export async function synchronizeNodesSheetSelection(
       return false;
     }
     
-    const sourceMetadata = sourceData.metadata as any;
+    // Type assertion to FileMetadata type to properly handle the metadata structure
+    const sourceMetadata = sourceData.metadata as FileMetadata;
     const selectedSheet = sourceMetadata.selected_sheet;
     
     if (!selectedSheet) {
@@ -263,10 +276,11 @@ export async function synchronizeNodesSheetSelection(
       .eq('node_id', targetNodeId)
       .maybeSingle();
       
-    let targetMetadata = targetData?.metadata || {};
-    if (typeof targetMetadata !== 'object') {
-      targetMetadata = {};
-    }
+    // Create a proper typed metadata object for the target
+    let targetMetadata: FileMetadata = 
+      (typeof targetData?.metadata === 'object' && !Array.isArray(targetData?.metadata)) 
+        ? targetData?.metadata as FileMetadata 
+        : {};
     
     targetMetadata.selected_sheet = selectedSheet;
     
@@ -343,7 +357,9 @@ export async function getSchemaForFiltering(
 /**
  * Validate if schema is suitable for filtering operations
  */
-export function validateSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn[] {
+export function validateSchemaForFiltering(
+  schema: SchemaColumn[]
+): SchemaColumn[] {
   // Filter out columns that can't be used for filtering
   return schema.filter(col => {
     // Remove columns with null, undefined, or complex types
