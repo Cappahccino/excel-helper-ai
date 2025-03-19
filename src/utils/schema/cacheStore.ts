@@ -1,4 +1,6 @@
 
+import { SchemaCacheEntry } from './types';
+
 // In-memory schema cache
 const schemaCache: Record<string, SchemaCacheEntry> = {};
 
