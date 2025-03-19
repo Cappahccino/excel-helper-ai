@@ -43,18 +43,28 @@ export function useWorkflowRealtime({
     setSubscriptionStatus('idle');
   }, []);
 
+  // Validation to check if we should subscribe
+  const shouldSubscribe = useCallback((id: string | null | undefined): boolean => {
+    // Don't subscribe for non-existent, 'new' workflows, or temp workflows that haven't been saved
+    if (!id || id === 'new') {
+      return false;
+    }
+    
+    return true;
+  }, []);
+
   // Set up subscription to execution updates
   useEffect(() => {
     // Clean up existing subscriptions first
     cleanupSubscriptions();
     
-    // Set up new subscriptions if we have IDs
-    if (executionId) {
+    // Only set up execution subscription if we have a valid ID
+    if (shouldSubscribe(executionId)) {
       console.log(`Setting up realtime subscription for execution: ${executionId}`);
       setSubscriptionStatus('subscribing');
       
       executionSubscriptionRef.current = createWorkflowExecutionSubscription(
-        executionId,
+        executionId as string,
         (payload) => {
           console.log('Received execution update:', payload);
           const updatedExecution = payload.new;
@@ -95,11 +105,12 @@ export function useWorkflowRealtime({
       );
     }
     
-    if (workflowId) {
+    // Only set up workflow subscription if we have a valid ID
+    if (shouldSubscribe(workflowId)) {
       console.log(`Setting up realtime subscription for workflow: ${workflowId}`);
       
       workflowSubscriptionRef.current = createWorkflowUpdateSubscription(
-        workflowId,
+        workflowId as string,
         (payload) => {
           console.log('Received workflow update:', payload);
           const updatedWorkflow = payload.new;
@@ -125,7 +136,7 @@ export function useWorkflowRealtime({
     return () => {
       cleanupSubscriptions();
     };
-  }, [executionId, workflowId, cleanupSubscriptions, onStatusChange, onComplete, onError]);
+  }, [executionId, workflowId, cleanupSubscriptions, onStatusChange, onComplete, onError, shouldSubscribe]);
 
   return {
     status,

@@ -19,6 +19,15 @@ const MAX_BACKOFF = 15000; // 15 seconds
 const MAX_ATTEMPTS = 5;
 
 /**
+ * Validate if a workflow ID is usable for subscriptions
+ */
+export function isValidWorkflowId(id: string | null | undefined): boolean {
+  if (!id) return false;
+  if (id === 'new') return false;
+  return true;
+}
+
+/**
  * Generate a stable subscription key
  */
 export function getSubscriptionKey(type: string, id: string, subType?: string): string {
@@ -214,6 +223,12 @@ export function createWorkflowFileSubscription(
     onStatusChange?: (isSubscribed: boolean) => void;
   }
 ): { unsubscribe: () => void } {
+  // Check for valid workflow ID first
+  if (!isValidWorkflowId(workflowId)) {
+    console.log(`Skipping file subscription for invalid workflow ID: ${workflowId}`);
+    return { unsubscribe: () => {} }; // Return a no-op unsubscribe function
+  }
+  
   // Normalize workflow ID (remove temp- prefix)
   const normalizedWorkflowId = workflowId.startsWith('temp-') 
     ? workflowId.substring(5) 
@@ -259,6 +274,12 @@ export function createWorkflowExecutionSubscription(
     onStatusChange?: (isSubscribed: boolean) => void;
   }
 ): { unsubscribe: () => void } {
+  // Check for valid execution ID first
+  if (!executionId) {
+    console.log(`Skipping execution subscription for invalid execution ID: ${executionId}`);
+    return { unsubscribe: () => {} }; // Return a no-op unsubscribe function
+  }
+  
   const subscriptionKey = getSubscriptionKey('workflow_execution', executionId);
   const channelName = `execution-${executionId}`;
   
@@ -299,6 +320,12 @@ export function createWorkflowUpdateSubscription(
     onStatusChange?: (isSubscribed: boolean) => void;
   }
 ): { unsubscribe: () => void } {
+  // Check for valid workflow ID first
+  if (!isValidWorkflowId(workflowId)) {
+    console.log(`Skipping workflow update subscription for invalid workflow ID: ${workflowId}`);
+    return { unsubscribe: () => {} }; // Return a no-op unsubscribe function
+  }
+  
   // Normalize workflow ID (remove temp- prefix)
   const normalizedWorkflowId = workflowId.startsWith('temp-') 
     ? workflowId.substring(5) 
