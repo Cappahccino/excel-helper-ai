@@ -1,9 +1,11 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { cacheSchema, invalidateSchemaCache } from '@/utils/schema';
 
-interface FileMetadata {
+// Define proper interface for file metadata to avoid TypeScript errors
+export interface FileMetadata {
   selected_sheet?: string;
   sheets?: Array<{
     name: string;

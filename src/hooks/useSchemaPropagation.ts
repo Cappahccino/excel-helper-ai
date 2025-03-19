@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,7 +7,9 @@ import {
   propagateSchemaDirectly, 
   propagateSchemaWithRetry,
   getSchemaForFiltering,
-  isNodeReadyForSchemaPropagation
+  isNodeReadyForSchemaPropagation,
+  checkSchemaPropagationNeeded,
+  synchronizeNodesSheetSelection
 } from '@/utils/schemaPropagation';
 import { 
   cacheSchema, 
@@ -29,7 +32,7 @@ interface PropagationOptions {
   /**
    * Whether to try to force refresh schema through the file processor
    */
-  forceRefresh?: boolean;
+  shouldRefresh?: boolean;
   
   /**
    * The sheet name to use
@@ -68,7 +71,7 @@ export function useSchemaPropagation(
   options: PropagationOptions = {}
 ) {
   const {
-    forceRefresh = false,
+    shouldRefresh = false,
     sheetName,
     maxRetries = 3,
     autoPropagateOnConnection = true,
@@ -404,6 +407,15 @@ export function useSchemaPropagation(
     // Subscription status
     isSubscribed,
     lastSubscriptionUpdate: subscriptionUpdate,
-    subscriptionEnabled: subscribeToUpdates
+    subscriptionEnabled: subscribeToUpdates,
+    // Add missing export for sheet sync
+    synchronizeSheets: async () => {
+      if (workflowId && sourceNodeId && targetNodeId) {
+        return synchronizeNodesSheetSelection(workflowId, sourceNodeId, targetNodeId);
+      }
+      return false;
+    },
+    // Add missing export for propagation check
+    checkPropagationNeeded
   };
 }

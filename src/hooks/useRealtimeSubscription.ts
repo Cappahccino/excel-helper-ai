@@ -5,6 +5,24 @@ import { trackSubscription } from '@/utils/schemaPropagationScheduler';
 
 type SubscriptionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'closed';
 
+// Define proper types for Supabase realtime events and filters
+type RealtimePostgresChangesPayload<T> = {
+  commit_timestamp: string;
+  errors: any;
+  schema: string;
+  table: string;
+  type: 'INSERT' | 'UPDATE' | 'DELETE';
+  old: T;
+  new: T;
+};
+
+type PostgresChangesFilter = {
+  event: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
+  schema: string;
+  table: string;
+  filter?: string;
+};
+
 interface UseRealtimeSubscriptionOptions {
   table: string;
   schema?: string;
@@ -13,7 +31,7 @@ interface UseRealtimeSubscriptionOptions {
   enabled?: boolean;
   debugName?: string;
   channelName?: string;
-  onRecordChange?: (payload: any) => void;
+  onRecordChange?: (payload: RealtimePostgresChangesPayload<any>) => void;
   onStatusChange?: (status: SubscriptionStatus) => void;
   workflowId?: string;
   nodeId?: string;
@@ -89,15 +107,22 @@ export function useRealtimeSubscription({
     try {
       const channel = supabase.channel(actualChannelName);
       
+      // Create the filter object with proper typing
+      const postgresFilter: PostgresChangesFilter = {
+        event: event,
+        schema: schema,
+        table: table
+      };
+      
+      // Add filter if provided
+      if (filter) {
+        postgresFilter.filter = filter;
+      }
+      
       channel.on(
         'postgres_changes',
-        {
-          event: event,
-          schema: schema,
-          table: table,
-          filter: filter
-        } as any,
-        (payload) => {
+        postgresFilter,
+        (payload: RealtimePostgresChangesPayload<any>) => {
           if (!isMounted.current) return;
           
           console.log(`[${debugName}] Received update:`, payload);
