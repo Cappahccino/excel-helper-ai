@@ -216,16 +216,14 @@ export function useSchemaPropagation(
       if (!success) {
         success = await propagateSchemaWithRetry(workflowId, sourceNodeId, targetNodeId, {
           maxRetries,
-          sheetName,
-          forceRefresh
+          sheetName
         });
       }
       
       if (success) {
         // Get schema for the target node after propagation
         const schema = await getSchemaForFiltering(workflowId, targetNodeId, { 
-          sheetName, 
-          forceRefresh: false 
+          sheetName
         });
         
         // Cache the schema
@@ -280,7 +278,7 @@ export function useSchemaPropagation(
       
       return false;
     }
-  }, [workflowId, sourceNodeId, targetNodeId, maxRetries, sheetName, forceRefresh, showNotifications, subscribeToUpdates, refreshSubscription]);
+  }, [workflowId, sourceNodeId, targetNodeId, maxRetries, sheetName, showNotifications, subscribeToUpdates, refreshSubscription]);
   
   // Effect to auto-propagate on connection if needed
   useEffect(() => {

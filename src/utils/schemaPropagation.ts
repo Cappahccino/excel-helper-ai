@@ -186,6 +186,112 @@ export async function isNodeReadyForSchemaPropagation(
 }
 
 /**
+ * Check if schema propagation is needed between two nodes
+ */
+export async function checkSchemaPropagationNeeded(
+  workflowId: string,
+  sourceNodeId: string,
+  targetNodeId: string,
+  sheetName?: string
+): Promise<boolean> {
+  try {
+    if (!workflowId || !sourceNodeId || !targetNodeId) return false;
+    
+    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+    
+    // Check if source has schema
+    const sourceReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId, sheetName);
+    if (!sourceReady) {
+      console.log(`Source node ${sourceNodeId} not ready for propagation`);
+      return false;
+    }
+    
+    // Check if target is missing schema
+    const targetReady = await isNodeReadyForSchemaPropagation(workflowId, targetNodeId, sheetName);
+    if (targetReady) {
+      console.log(`Target node ${targetNodeId} already has schema`);
+      return false;
+    }
+    
+    console.log(`Propagation needed from ${sourceNodeId} to ${targetNodeId}`);
+    return true;
+  } catch (err) {
+    console.error('Error in checkSchemaPropagationNeeded:', err);
+    return false;
+  }
+}
+
+/**
+ * Synchronize sheet selection between nodes
+ */
+export async function synchronizeNodesSheetSelection(
+  workflowId: string,
+  sourceNodeId: string,
+  targetNodeId: string
+): Promise<boolean> {
+  try {
+    if (!workflowId || !sourceNodeId || !targetNodeId) return false;
+    
+    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+    
+    // Get source node's selected sheet
+    const { data: sourceData } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', sourceNodeId)
+      .maybeSingle();
+      
+    if (!sourceData || !sourceData.metadata) {
+      console.log('No metadata found for source node');
+      return false;
+    }
+    
+    const sourceMetadata = sourceData.metadata as any;
+    const selectedSheet = sourceMetadata.selected_sheet;
+    
+    if (!selectedSheet) {
+      console.log('No selected sheet found for source node');
+      return false;
+    }
+    
+    // Update target node's selected sheet
+    const { data: targetData } = await supabase
+      .from('workflow_files')
+      .select('metadata')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', targetNodeId)
+      .maybeSingle();
+      
+    let targetMetadata = targetData?.metadata || {};
+    if (typeof targetMetadata !== 'object') {
+      targetMetadata = {};
+    }
+    
+    targetMetadata.selected_sheet = selectedSheet;
+    
+    const { error: updateError } = await supabase
+      .from('workflow_files')
+      .update({ metadata: targetMetadata })
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', targetNodeId);
+      
+    if (updateError) {
+      console.error('Error updating target metadata:', updateError);
+      return false;
+    }
+    
+    // Propagate schema with the selected sheet
+    return await propagateSchemaWithRetry(workflowId, sourceNodeId, targetNodeId, {
+      sheetName: selectedSheet
+    });
+  } catch (err) {
+    console.error('Error synchronizing sheet selection:', err);
+    return false;
+  }
+}
+
+/**
  * Get schema formatted for filtering operations
  */
 export async function getSchemaForFiltering(

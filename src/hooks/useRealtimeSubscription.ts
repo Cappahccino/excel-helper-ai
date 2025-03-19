@@ -96,7 +96,7 @@ export function useRealtimeSubscription({
           schema: schema,
           table: table,
           filter: filter
-        },
+        } as any,
         (payload) => {
           if (!isMounted.current) return;
           
