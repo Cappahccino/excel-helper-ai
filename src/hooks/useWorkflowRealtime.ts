@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { 
   createWorkflowExecutionSubscription, 
-  createWorkflowUpdateSubscription 
+  createWorkflowUpdateSubscription,
+  isValidWorkflowId
 } from '@/utils/subscriptionManager';
 
 type SubscriptionStatus = 'idle' | 'subscribing' | 'subscribed' | 'error';
@@ -43,10 +44,19 @@ export function useWorkflowRealtime({
     setSubscriptionStatus('idle');
   }, []);
 
-  // Validation to check if we should subscribe
+  // Enhanced validation to check if we should subscribe
   const shouldSubscribe = useCallback((id: string | null | undefined): boolean => {
-    // Don't subscribe for non-existent, 'new' workflows, or temp workflows that haven't been saved
-    if (!id || id === 'new') {
+    // Don't subscribe for non-existent, 'new' workflows, or temp workflows on the /new route
+    if (!isValidWorkflowId(id)) {
+      return false;
+    }
+    
+    // Check if we're on the /new route
+    const isNewRoute = typeof window !== 'undefined' && window.location.pathname.endsWith('/new');
+    
+    // For temp IDs on the /new route, don't subscribe since they don't exist in DB yet
+    if (isNewRoute && id && id.startsWith('temp-')) {
+      console.log(`Skipping subscription for temporary ID on /new route: ${id}`);
       return false;
     }
     

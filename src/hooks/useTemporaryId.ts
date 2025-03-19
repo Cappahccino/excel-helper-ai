@@ -124,6 +124,15 @@ export function useTemporaryId(
         return;
       }
 
+      // Don't create DB entries for temporary IDs on the /new route
+      // They'll be created when the user saves the workflow
+      const isNewRoute = typeof window !== 'undefined' && window.location.pathname.endsWith('/new');
+      if (isNewRoute) {
+        console.log(`Skipping database sync for temporary ID on /new route: ${id}`);
+        setIsInitialized(true);
+        return;
+      }
+
       try {
         // Mark sync as in progress to prevent multiple simultaneous attempts
         syncInProgress.current = true;

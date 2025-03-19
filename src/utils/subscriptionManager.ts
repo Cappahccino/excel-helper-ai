@@ -24,6 +24,13 @@ const MAX_ATTEMPTS = 5;
 export function isValidWorkflowId(id: string | null | undefined): boolean {
   if (!id) return false;
   if (id === 'new') return false;
+  
+  // Check if we're on the /new route for temp IDs
+  const isNewRoute = typeof window !== 'undefined' && window.location.pathname.endsWith('/new');
+  if (isNewRoute && id.startsWith('temp-')) {
+    return false; // Don't allow temp IDs on /new route since they're not saved yet
+  }
+  
   return true;
 }
 
