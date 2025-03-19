@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
@@ -7,6 +7,7 @@ import { FileProcessingState } from '@/types/workflowStatus';
 import { WorkflowFileStatus } from '@/types/workflowStatus';
 import { useFileSchemaManagement } from './useFileSchemaManagement';
 import { invalidateWorkflowSchemaCache } from '@/utils/schemaCache';
+import { createWorkflowFileSubscription } from '@/utils/subscriptionManager';
 
 /**
  * Enhanced hook for FileUploadNode with improved schema handling
@@ -35,6 +36,7 @@ export const useFileUploadNodeEnhanced = (
   
   const [fileInfo, setFileInfo] = useState<any>(null);
   const [realtimeEnabled, setRealtimeEnabled] = useState(false);
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
 
   const {
     // Schema management
@@ -114,67 +116,71 @@ export const useFileUploadNodeEnhanced = (
     enabled: !!selectedFileId,
   });
 
+  // Clean up function for subscriptions
+  const cleanupSubscription = useCallback(() => {
+    if (subscriptionRef.current) {
+      subscriptionRef.current.unsubscribe();
+      subscriptionRef.current = null;
+      setRealtimeEnabled(false);
+    }
+  }, []);
+
+  // Set up realtime subscription for workflow file updates
   useEffect(() => {
+    // Clean up existing subscription
+    cleanupSubscription();
+    
     if (!workflowId || !selectedFileId || !nodeId) return;
     
     console.log('Setting up realtime subscription for workflow file updates');
-    const dbWorkflowId = convertToDbWorkflowId(workflowId);
     
-    const channel = supabase
-      .channel(`workflow_file_updates_${nodeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workflow_files',
-          filter: `workflow_id=eq.${dbWorkflowId} AND node_id=eq.${nodeId} AND file_id=eq.${selectedFileId}`
-        },
-        (payload) => {
-          console.log('Received realtime update for workflow file:', payload);
-          const updatedFile = payload.new;
+    // Create new subscription
+    subscriptionRef.current = createWorkflowFileSubscription(
+      workflowId,
+      nodeId,
+      selectedFileId,
+      (payload) => {
+        console.log('Received realtime update for workflow file:', payload);
+        const updatedFile = payload.new;
+        
+        const processingStatus = updatedFile.processing_status as string;
+        
+        if (processingStatus === WorkflowFileStatus.Completed) {
+          updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
           
-          const processingStatus = updatedFile.processing_status as string;
+          // Refresh file data
+          refetch();
           
-          if (processingStatus === WorkflowFileStatus.Completed) {
-            updateProcessingState(FileProcessingState.Completed, 100, 'File processed successfully');
-            
-            // Refresh file data
-            refetch();
-            
-            // Invalidate schema cache for this workflow
-            if (workflowId) {
-              invalidateWorkflowSchemaCache(workflowId);
-            }
-            
-            // Refresh schema after a short delay
-            setTimeout(() => {
-              refreshSchema();
-            }, 1000);
-          } else if (processingStatus === WorkflowFileStatus.Processing) {
-            updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
-          } else if (processingStatus === WorkflowFileStatus.Failed || 
-                     processingStatus === WorkflowFileStatus.Error) {
-            const errorMessage = updatedFile.processing_error || 'File processing failed';
-            updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
+          // Invalidate schema cache for this workflow
+          if (workflowId) {
+            invalidateWorkflowSchemaCache(workflowId);
           }
+          
+          // Refresh schema after a short delay
+          setTimeout(() => {
+            refreshSchema();
+          }, 1000);
+        } else if (processingStatus === WorkflowFileStatus.Processing) {
+          updateProcessingState(FileProcessingState.Processing, 50, 'Processing file data...');
+        } else if (processingStatus === WorkflowFileStatus.Failed || 
+                   processingStatus === WorkflowFileStatus.Error) {
+          const errorMessage = updatedFile.processing_error || 'File processing failed';
+          updateProcessingState(FileProcessingState.Error, 0, 'Error', errorMessage);
         }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Successfully subscribed to workflow file updates');
-          setRealtimeEnabled(true);
-        } else {
-          console.error('Failed to subscribe to workflow file updates:', status);
-          setRealtimeEnabled(false);
+      },
+      {
+        debug: true,
+        onStatusChange: (isSubscribed) => {
+          console.log(`Workflow file subscription status changed: ${isSubscribed ? 'subscribed' : 'disconnected'}`);
+          setRealtimeEnabled(isSubscribed);
         }
-      });
+      }
+    );
     
     return () => {
-      console.log('Cleaning up realtime subscription');
-      supabase.removeChannel(channel);
+      cleanupSubscription();
     };
-  }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetch, refreshSchema]);
+  }, [workflowId, selectedFileId, nodeId, updateProcessingState, refetch, refreshSchema, cleanupSubscription]);
 
   useEffect(() => {
     if (selectedFile) {

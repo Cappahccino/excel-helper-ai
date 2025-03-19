@@ -1,4 +1,3 @@
-
 import { SchemaCacheEntry } from './types';
 
 // In-memory schema cache
@@ -10,11 +9,18 @@ const cacheExpirations: Record<string, number> = {};
 // Default TTL for cache entries (5 minutes)
 const DEFAULT_CACHE_TTL = 5 * 60 * 1000;
 
-// Successful propagation tracking
+// Successful propagation tracking with last data hash
 const successfulPropagations: Record<string, {
   timestamp: number;
   version?: number;
+  dataHash?: string; // Track data hash to prevent redundant propagations
 }> = {};
+
+// Store for propagation debouncing
+const pendingPropagations: Record<string, NodeJS.Timeout> = {};
+
+// Minimum propagation interval (2 seconds)
+const MIN_PROPAGATION_INTERVAL = 2000;
 
 /**
  * Get cache key for a schema
@@ -45,6 +51,23 @@ export function normalizeWorkflowId(workflowId: string): string {
 }
 
 /**
+ * Generate a simple hash for schema data to detect changes
+ */
+function generateSchemaHash(schema: any): string {
+  if (!schema || !Array.isArray(schema)) return '';
+  
+  try {
+    // Sort and stringify field names to create a consistent hash
+    // regardless of field order
+    const fieldNames = schema.map(field => field.name).sort().join(',');
+    return fieldNames;
+  } catch (error) {
+    console.error('Error generating schema hash:', error);
+    return '';
+  }
+}
+
+/**
  * Track successful schema propagation
  */
 export function trackSuccessfulPropagation(
@@ -54,13 +77,46 @@ export function trackSuccessfulPropagation(
   options?: {
     sheetName?: string;
     version?: number;
+    schema?: any;
+    debounce?: boolean;
   }
 ): void {
   const key = getPropagationKey(workflowId, sourceId, targetId, options?.sheetName);
-  successfulPropagations[key] = {
-    timestamp: Date.now(),
-    version: options?.version
-  };
+  
+  // Clear any pending propagation for this key
+  if (pendingPropagations[key]) {
+    clearTimeout(pendingPropagations[key]);
+    delete pendingPropagations[key];
+  }
+  
+  // Calculate data hash if schema is provided
+  const dataHash = options?.schema ? generateSchemaHash(options.schema) : undefined;
+  
+  // If same data was recently propagated, skip redundant propagation tracking
+  if (dataHash && successfulPropagations[key]?.dataHash === dataHash) {
+    // Already tracked with the same data hash, update timestamp only
+    successfulPropagations[key].timestamp = Date.now();
+    return;
+  }
+  
+  // If debouncing is requested, set a timer
+  if (options?.debounce) {
+    pendingPropagations[key] = setTimeout(() => {
+      successfulPropagations[key] = {
+        timestamp: Date.now(),
+        version: options?.version,
+        dataHash
+      };
+      delete pendingPropagations[key];
+    }, MIN_PROPAGATION_INTERVAL);
+  } else {
+    // Track immediately
+    successfulPropagations[key] = {
+      timestamp: Date.now(),
+      version: options?.version,
+      dataHash
+    };
+  }
 }
 
 /**
@@ -73,6 +129,7 @@ export function wasRecentlyPropagated(
   options?: {
     sheetName?: string;
     maxAge?: number;
+    schema?: any; // Optional schema to compare hash with
   }
 ): boolean {
   const key = getPropagationKey(workflowId, sourceId, targetId, options?.sheetName);
@@ -80,8 +137,39 @@ export function wasRecentlyPropagated(
   
   if (!entry) return false;
   
+  // If a pending propagation exists for this key, consider it as in progress
+  if (pendingPropagations[key]) {
+    return true;
+  }
+  
   const maxAge = options?.maxAge || 30000; // Default 30 seconds
+  
+  // If schema is provided, check if the hash matches to avoid redundant propagation
+  if (options?.schema && entry.dataHash) {
+    const newHash = generateSchemaHash(options.schema);
+    if (newHash === entry.dataHash && (Date.now() - entry.timestamp) < maxAge * 2) {
+      return true; // Same schema was recently propagated
+    }
+  }
+  
   return (Date.now() - entry.timestamp) < maxAge;
+}
+
+/**
+ * Cancel pending propagation tracking
+ */
+export function cancelPendingPropagation(
+  workflowId: string,
+  sourceId: string,
+  targetId: string,
+  sheetName?: string
+): void {
+  const key = getPropagationKey(workflowId, sourceId, targetId, sheetName);
+  
+  if (pendingPropagations[key]) {
+    clearTimeout(pendingPropagations[key]);
+    delete pendingPropagations[key];
+  }
 }
 
 /**
@@ -176,6 +264,12 @@ export function clearSchemaCache(): void {
   // Also clear propagation history
   Object.keys(successfulPropagations).forEach(key => {
     delete successfulPropagations[key];
+  });
+  
+  // Clear any pending propagations
+  Object.keys(pendingPropagations).forEach(key => {
+    clearTimeout(pendingPropagations[key]);
+    delete pendingPropagations[key];
   });
 }
 
