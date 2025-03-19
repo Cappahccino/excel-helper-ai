@@ -46,18 +46,8 @@ export const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]): Pr
       return false;
     }
     
-    // Create a map of unique edges to eliminate duplicates before insertion
-    const uniqueEdgesMap = new Map();
-    
-    edges.forEach(edge => {
-      const key = `${edge.source}-${edge.target}`;
-      uniqueEdgesMap.set(key, edge);
-    });
-    
-    const uniqueEdges = Array.from(uniqueEdgesMap.values());
-    
     // Insert new edges
-    const edgesToInsert = uniqueEdges.map(edge => {
+    const edgesToInsert = edges.map(edge => {
       const { id, source, target, type, sourceHandle, targetHandle, label, animated, data, ...rest } = edge;
       
       // Build metadata object
@@ -79,46 +69,22 @@ export const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]): Pr
       };
     });
     
-    // Use batching for large edge sets with error handling
+    // Use batching for large edge sets
     let success = true;
-    
-    if (edgesToInsert.length > 0) {
-      for (let i = 0; i < edgesToInsert.length; i += 20) {
-        const batch = edgesToInsert.slice(i, i + 20);
+    for (let i = 0; i < edgesToInsert.length; i += 20) {
+      const batch = edgesToInsert.slice(i, i + 20);
+      const { error: insertError } = await supabase
+        .from('workflow_edges')
+        .insert(batch);
         
-        // Use upsert instead of insert to handle any possible duplicates
-        const { error: insertError } = await supabase
-          .from('workflow_edges')
-          .upsert(batch, { 
-            onConflict: 'workflow_id,source_node_id,target_node_id',
-            ignoreDuplicates: false 
-          });
-          
-        if (insertError) {
-          console.error(`Error inserting edges batch ${i}-${i+20}:`, insertError);
-          
-          // Try one-by-one insertion as fallback if batch fails
-          console.log('Attempting one-by-one insertion as fallback...');
-          
-          for (const edge of batch) {
-            const { error } = await supabase
-              .from('workflow_edges')
-              .upsert([edge], { 
-                onConflict: 'workflow_id,source_node_id,target_node_id',
-                ignoreDuplicates: false 
-              });
-              
-            if (error) {
-              console.error(`Error inserting individual edge ${edge.source_node_id} -> ${edge.target_node_id}:`, error);
-              success = false;
-            }
-          }
-        }
+      if (insertError) {
+        console.error(`Error inserting edges batch ${i}-${i+20}:`, insertError);
+        success = false;
       }
     }
     
     if (success) {
-      console.log(`Successfully synced ${edgesToInsert.length} edges to database`);
+      console.log(`Successfully synced ${edges.length} edges to database`);
     }
     
     return success;
