@@ -6,6 +6,7 @@ import { WorkflowUpdateType } from './useWorkflowSyncState';
 import { useWorkflowSyncDebounce } from './useWorkflowSyncDebounce';
 import { syncEdgesToDatabase, getDbWorkflowId, isValidUuid, deduplicateEdges } from '@/utils/workflowSyncUtils';
 import { supabase } from '@/integrations/supabase/client';
+import { trackSubscription } from '@/utils/schemaPropagationScheduler';
 
 /**
  * Hook to synchronize nodes and edges with the workflow definition
@@ -22,6 +23,12 @@ export function useWorkflowSync(
   const syncInProgressRef = useRef<boolean>(false);
   const scheduledSyncRef = useRef<NodeJS.Timeout | null>(null);
   const savePendingRef = useRef<boolean>(false);
+  
+  // Get normalized workflow ID (without temp- prefix)
+  const getNormalizedWorkflowId = useCallback((id: string | null): string | null => {
+    if (!id || id === 'new') return null;
+    return id.startsWith('temp-') ? id.substring(5) : id;
+  }, []);
   
   // Synchronize workflow definition with nodes and edges
   const syncWorkflowDefinition = useCallback(async (updateType: WorkflowUpdateType = WorkflowUpdateType.MINOR) => {
@@ -131,6 +138,18 @@ export function useWorkflowSync(
         if (updateSuccess) {
           console.log(`Synchronized workflow definition for ${workflowId}`);
           lastSyncRef.current = Date.now();
+          
+          // Set all node subscriptions to inactive on successful sync
+          // This helps avoid stale subscriptions
+          if (nodes.length > 0) {
+            const normalizedId = getNormalizedWorkflowId(workflowId);
+            if (normalizedId) {
+              nodes.forEach(node => {
+                trackSubscription(normalizedId, node.id, false);
+              });
+            }
+          }
+          
           if (onSyncComplete) onSyncComplete();
         }
         
@@ -145,7 +164,7 @@ export function useWorkflowSync(
       syncInProgressRef.current = false;
       return false;
     }
-  }, [workflowId, nodes, edges, onSyncComplete]);
+  }, [workflowId, nodes, edges, onSyncComplete, getNormalizedWorkflowId]);
 
   // Use the debounce hook for sync timing
   const { 
@@ -197,6 +216,7 @@ export function useWorkflowSync(
     syncWorkflow,
     forceSyncNow: () => syncWorkflowDefinition(WorkflowUpdateType.FULL_SAVE),
     lastSync: lastSyncRef.current,
-    isPending: savePendingRef.current
+    isPending: savePendingRef.current,
+    getNormalizedWorkflowId
   };
 }

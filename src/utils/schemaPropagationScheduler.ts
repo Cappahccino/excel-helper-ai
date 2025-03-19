@@ -9,17 +9,27 @@ const recentPropagations: Record<string, number> = {};
 // Track in-progress propagations
 const propagationLocks: Record<string, boolean> = {};
 
+// Track subscription states
+const subscriptionStates: Record<string, {
+  isActive: boolean;
+  lastActive: number;
+  errorCount: number;
+}> = {};
+
 // Default cooldown periods
 const DEFAULT_COOLDOWN_MS = 30000; // 30 seconds
 const ERROR_COOLDOWN_BASE_MS = 1000; // Base cooldown after error (will use exponential backoff)
 const MAX_ERROR_COOLDOWN_MS = 60000; // Max 1 minute backoff
+const SUBSCRIPTION_TIMEOUT_MS = 10000; // 10 seconds before considering subscription stale
 
 /**
  * Get propagation key from workflow, source and target
  */
 export function getPropagationKey(workflowId: string, sourceId: string, targetId: string, sheetName?: string): string {
+  // Remove 'temp-' prefix from workflowId if present for consistent keys
+  const normalizedWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
   const sheet = sheetName || 'default';
-  return `${workflowId}:${sourceId}:${targetId}:${sheet}`;
+  return `${normalizedWorkflowId}:${sourceId}:${targetId}:${sheet}`;
 }
 
 /**
@@ -125,6 +135,57 @@ export function markPropagationError(
 }
 
 /**
+ * Track subscription state for a specific workflow/node
+ */
+export function trackSubscription(
+  workflowId: string,
+  nodeId: string,
+  isActive: boolean,
+  hasError: boolean = false
+): void {
+  // Remove 'temp-' prefix from workflowId if present
+  const normalizedWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+  const key = `${normalizedWorkflowId}:${nodeId}`;
+  
+  if (!subscriptionStates[key]) {
+    subscriptionStates[key] = {
+      isActive: false,
+      lastActive: 0,
+      errorCount: 0
+    };
+  }
+  
+  subscriptionStates[key].isActive = isActive;
+  subscriptionStates[key].lastActive = Date.now();
+  
+  if (hasError) {
+    subscriptionStates[key].errorCount += 1;
+  } else if (isActive) {
+    // Reset error count on successful activation
+    subscriptionStates[key].errorCount = 0;
+  }
+}
+
+/**
+ * Check if a subscription is active and healthy
+ */
+export function isSubscriptionActive(
+  workflowId: string,
+  nodeId: string
+): boolean {
+  // Remove 'temp-' prefix from workflowId if present
+  const normalizedWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+  const key = `${normalizedWorkflowId}:${nodeId}`;
+  
+  const state = subscriptionStates[key];
+  if (!state) return false;
+  
+  // Check if subscription is active and not stale
+  const isStale = Date.now() - state.lastActive > SUBSCRIPTION_TIMEOUT_MS;
+  return state.isActive && !isStale;
+}
+
+/**
  * Clear propagation history for a specific workflow or key
  */
 export function clearPropagationHistory(workflowIdOrKey: string): void {
@@ -136,13 +197,25 @@ export function clearPropagationHistory(workflowIdOrKey: string): void {
   }
   
   // Otherwise treat as workflow ID and clear all entries for that workflow
+  // Normalize the workflow ID
+  const normalizedWorkflowId = workflowIdOrKey.startsWith('temp-') ? workflowIdOrKey.substring(5) : workflowIdOrKey;
+  
   const keysToRemove = Object.keys(recentPropagations).filter(
-    key => key.startsWith(`${workflowIdOrKey}:`)
+    key => key.startsWith(`${normalizedWorkflowId}:`)
   );
   
   keysToRemove.forEach(key => {
     delete recentPropagations[key];
     delete propagationLocks[key];
+  });
+  
+  // Also clear subscription states
+  const subscriptionKeysToRemove = Object.keys(subscriptionStates).filter(
+    key => key.startsWith(`${normalizedWorkflowId}:`)
+  );
+  
+  subscriptionKeysToRemove.forEach(key => {
+    delete subscriptionStates[key];
   });
 }
 
@@ -153,13 +226,16 @@ export function getPropagationStats(): {
   activeCount: number;
   totalTracked: number;
   lockedCount: number;
+  activeSubscriptions: number;
 } {
   const totalKeys = Object.keys(recentPropagations).length;
   const lockedKeys = Object.values(propagationLocks).filter(Boolean).length;
+  const activeSubscriptions = Object.values(subscriptionStates).filter(s => s.isActive).length;
   
   return {
     totalTracked: totalKeys,
     lockedCount: lockedKeys,
-    activeCount: lockedKeys
+    activeCount: lockedKeys,
+    activeSubscriptions
   };
 }

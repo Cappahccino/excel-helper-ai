@@ -9,11 +9,19 @@ export * from './cacheInvalidate';
 // Add backward compatibility aliases for functions that may be imported with old names
 import { cacheSchema } from './cacheWrite';
 import { getSchemaFromCache, getSchemaMetadataFromCache, isValidCacheExistsAsync } from './cacheRead';
+import { 
+  trackSuccessfulPropagation, 
+  wasRecentlyPropagated,
+  normalizeWorkflowId 
+} from './cacheStore';
 
 // Export aliases to maintain backward compatibility with existing code
 export { 
   cacheSchema as writeSchemaToCache,
   getSchemaFromCache,
   getSchemaMetadataFromCache,
-  isValidCacheExistsAsync
+  isValidCacheExistsAsync,
+  trackSuccessfulPropagation,
+  wasRecentlyPropagated,
+  normalizeWorkflowId
 };

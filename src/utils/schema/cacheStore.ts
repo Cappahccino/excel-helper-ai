@@ -1,6 +1,4 @@
 
-import { SchemaCacheEntry } from './types';
-
 // In-memory schema cache
 const schemaCache: Record<string, SchemaCacheEntry> = {};
 
@@ -10,12 +8,30 @@ const cacheExpirations: Record<string, number> = {};
 // Default TTL for cache entries (5 minutes)
 const DEFAULT_CACHE_TTL = 5 * 60 * 1000;
 
+// Successful propagation tracking
+const successfulPropagations: Record<string, {
+  timestamp: number;
+  version?: number;
+}> = {};
+
 /**
  * Get cache key for a schema
  */
 export function getCacheKey(workflowId: string, nodeId: string, options?: { sheetName?: string }): string {
+  // Remove 'temp-' prefix from workflowId if present for consistent keys
+  const normalizedWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
   const sheetName = options?.sheetName || 'default';
-  return `schema:${workflowId}:${nodeId}:${sheetName}`;
+  return `schema:${normalizedWorkflowId}:${nodeId}:${sheetName}`;
+}
+
+/**
+ * Get propagation tracking key
+ */
+export function getPropagationKey(workflowId: string, sourceId: string, targetId: string, sheetName?: string): string {
+  // Remove 'temp-' prefix from workflowId if present for consistent keys
+  const normalizedWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+  const sheet = sheetName || 'default';
+  return `prop:${normalizedWorkflowId}:${sourceId}:${targetId}:${sheet}`;
 }
 
 /**
@@ -24,6 +40,46 @@ export function getCacheKey(workflowId: string, nodeId: string, options?: { shee
 export function normalizeWorkflowId(workflowId: string): string {
   // Keep the ID format consistent whether it has the temp- prefix or not
   return workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+}
+
+/**
+ * Track successful schema propagation
+ */
+export function trackSuccessfulPropagation(
+  workflowId: string,
+  sourceId: string,
+  targetId: string,
+  options?: {
+    sheetName?: string;
+    version?: number;
+  }
+): void {
+  const key = getPropagationKey(workflowId, sourceId, targetId, options?.sheetName);
+  successfulPropagations[key] = {
+    timestamp: Date.now(),
+    version: options?.version
+  };
+}
+
+/**
+ * Check if a propagation was recently successful
+ */
+export function wasRecentlyPropagated(
+  workflowId: string,
+  sourceId: string,
+  targetId: string,
+  options?: {
+    sheetName?: string;
+    maxAge?: number;
+  }
+): boolean {
+  const key = getPropagationKey(workflowId, sourceId, targetId, options?.sheetName);
+  const entry = successfulPropagations[key];
+  
+  if (!entry) return false;
+  
+  const maxAge = options?.maxAge || 30000; // Default 30 seconds
+  return (Date.now() - entry.timestamp) < maxAge;
 }
 
 /**
@@ -60,16 +116,16 @@ export function setSchemaEntry(key: string, entry: SchemaCacheEntry, ttlMs?: num
     
     // Extend TTL for certain sources that are more stable
     if (entry.source === 'database' || entry.source === 'manual') {
-      defaultTtl = 10 * 60 * 1000; // 10 minutes for database/manual sources
+      defaultTtl = 15 * 60 * 1000; // 15 minutes for database/manual sources
     } else if (entry.source === 'propagation') {
-      defaultTtl = 5 * 60 * 1000; // 5 minutes for propagated schemas
+      defaultTtl = 10 * 60 * 1000; // 10 minutes for propagated schemas
     } else if (entry.source === 'subscription' || entry.source === 'polling') {
-      defaultTtl = 15 * 60 * 1000; // 15 minutes for subscription/polling (more trusted)
+      defaultTtl = 20 * 60 * 1000; // 20 minutes for subscription/polling (more trusted)
     }
     
     // Temporary schemas expire faster
     if (entry.isTemporary) {
-      defaultTtl = Math.min(defaultTtl, 2 * 60 * 1000); // Max 2 minutes for temporary schemas
+      defaultTtl = Math.min(defaultTtl, 3 * 60 * 1000); // Max 3 minutes for temporary schemas
     }
     
     cacheExpirations[key] = Date.now() + defaultTtl;
@@ -114,6 +170,11 @@ export function clearSchemaCache(): void {
   Object.keys(cacheExpirations).forEach(key => {
     delete cacheExpirations[key];
   });
+  
+  // Also clear propagation history
+  Object.keys(successfulPropagations).forEach(key => {
+    delete successfulPropagations[key];
+  });
 }
 
 /**
@@ -129,6 +190,13 @@ export function cleanupExpiredEntries(): number {
       delete schemaCache[key];
       delete cacheExpirations[key];
       removedCount++;
+    }
+  });
+  
+  // Also clean up old propagation history
+  Object.keys(successfulPropagations).forEach(key => {
+    if (now - successfulPropagations[key].timestamp > 30 * 60 * 1000) { // 30 minutes
+      delete successfulPropagations[key];
     }
   });
   

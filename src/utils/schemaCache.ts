@@ -8,7 +8,10 @@ import {
   writeSchemaToCache,
   getSchemaFromCache,
   getSchemaMetadataFromCache,
-  isValidCacheExistsAsync 
+  isValidCacheExistsAsync,
+  trackSuccessfulPropagation,
+  wasRecentlyPropagated,
+  normalizeWorkflowId
 } from './schema';
 
 // Explicit re-exports for old import statements
@@ -17,5 +20,8 @@ export {
   writeSchemaToCache,
   getSchemaFromCache,
   getSchemaMetadataFromCache,
-  isValidCacheExistsAsync
+  isValidCacheExistsAsync,
+  trackSuccessfulPropagation,
+  wasRecentlyPropagated,
+  normalizeWorkflowId
 };
