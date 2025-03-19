@@ -1,11 +1,11 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { useReactFlow, Connection, Edge } from '@xyflow/react';
 import { useWorkflow } from './context/WorkflowContext';
-import { supabase, convertToDbWorkflowId } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Json } from '@/types/workflow';
 import { useDebounce } from '@/hooks/useDebounce';
 import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { syncEdgesToDatabase, deduplicateEdges } from '@/utils/workflowSyncUtils';
 
 interface ConnectionHandlerProps {
   workflowId?: string;
@@ -32,11 +32,11 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
   useEffect(() => {
     if (workflowId) {
       const isTemp = isTemporaryId(workflowId);
-      const dbId = convertToDbWorkflowId(workflowId);
+      const dbId = contextConvertToDbId(workflowId);
       console.log(`ConnectionHandler initialized with workflowId: ${workflowId}`);
       console.log(`Is temporary ID: ${isTemp}, Database ID: ${dbId}`);
     }
-  }, [workflowId, isTemporaryId]);
+  }, [workflowId, isTemporaryId, contextConvertToDbId]);
 
   const saveEdgesToDatabase = useCallback(async (edgesToSave: Edge[], immediate = false) => {
     if (!workflowId) return;
@@ -51,79 +51,25 @@ const ConnectionHandler: React.FC<ConnectionHandlerProps> = ({ workflowId }) => 
       edgesSavePending.current = true;
       edgesSaveTimeoutRef.current = setTimeout(async () => {
         try {
-          console.log(`Saving ${edgesToSave.length} edges for workflow ${workflowId}`);
+          const uniqueEdges = deduplicateEdges(edgesToSave);
+          console.log(`Saving ${uniqueEdges.length} unique edges for workflow ${workflowId}`);
           
-          const dbWorkflowId = convertToDbWorkflowId(workflowId);
+          const success = await syncEdgesToDatabase(workflowId, uniqueEdges);
           
-          if (!dbWorkflowId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbWorkflowId)) {
-            console.error(`Invalid workflow ID format for database: ${dbWorkflowId}`);
-            edgesSavePending.current = false;
-            edgesSaveTimeoutRef.current = null;
-            return;
+          if (!success) {
+            console.error('Failed to sync edges to database');
           }
           
-          const { error: deleteError } = await supabase
-            .from('workflow_edges')
-            .delete()
-            .eq('workflow_id', dbWorkflowId);
-            
-          if (deleteError) {
-            console.error('Error deleting existing edges:', deleteError);
-          }
-          
-          if (edgesToSave.length > 0) {
-            const edgesData = edgesToSave.map(edge => {
-              const safeMetadata: Record<string, Json> = {
-                sourceHandle: edge.sourceHandle as Json,
-                targetHandle: edge.targetHandle as Json,
-                animated: (edge.animated || false) as Json,
-              };
-              
-              if (edge.label && typeof edge.label === 'string') {
-                safeMetadata.label = edge.label as Json;
-              }
-              
-              if (edge.data && typeof edge.data === 'object') {
-                try {
-                  JSON.stringify(edge.data);
-                  safeMetadata.data = edge.data as Json;
-                } catch (e) {
-                  console.warn('Edge data could not be serialized:', e);
-                }
-              }
-              
-              return {
-                workflow_id: dbWorkflowId,
-                source_node_id: edge.source,
-                target_node_id: edge.target,
-                edge_id: edge.id,
-                edge_type: edge.type || 'default',
-                metadata: safeMetadata
-              };
-            });
-            
-            for (let i = 0; i < edgesData.length; i += 20) {
-              const batch = edgesData.slice(i, i + 20);
-              const { error } = await supabase
-                .from('workflow_edges')
-                .insert(batch);
-                
-              if (error) {
-                console.error(`Error saving edges batch ${i}-${i+20}:`, error);
-              }
-            }
-            
-            console.log(`Running post-save schema propagation for ${edgesData.length} edges`);
-            for (const edge of edgesData) {
-              try {
-                await propagateSchemaDirectly(
-                  workflowId, 
-                  edge.source_node_id, 
-                  edge.target_node_id
-                );
-              } catch (err) {
-                console.error(`Error in post-save schema propagation for ${edge.source_node_id} -> ${edge.target_node_id}:`, err);
-              }
+          console.log(`Running post-save schema propagation for ${uniqueEdges.length} edges`);
+          for (const edge of uniqueEdges) {
+            try {
+              await propagateSchemaDirectly(
+                workflowId, 
+                edge.source, 
+                edge.target
+              );
+            } catch (err) {
+              console.error(`Error in post-save schema propagation for ${edge.source} -> ${edge.target}:`, err);
             }
           }
         } catch (error) {

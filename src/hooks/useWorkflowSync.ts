@@ -4,7 +4,7 @@ import { WorkflowNode, Edge } from '@/types/workflow';
 import { toast } from 'sonner';
 import { WorkflowUpdateType } from './useWorkflowSyncState';
 import { useWorkflowSyncDebounce } from './useWorkflowSyncDebounce';
-import { syncEdgesToDatabase, getDbWorkflowId, isValidUuid } from '@/utils/workflowSyncUtils';
+import { syncEdgesToDatabase, getDbWorkflowId, isValidUuid, deduplicateEdges } from '@/utils/workflowSyncUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -55,7 +55,9 @@ export function useWorkflowSync(
       
       // If workflow exists, update the definition
       if (existingWorkflow) {
-        const definition = JSON.stringify({ nodes, edges });
+        // Deduplicate edges before saving to prevent constraint violations
+        const uniqueEdges = deduplicateEdges(edges);
+        const definition = JSON.stringify({ nodes, edges: uniqueEdges });
         
         // For schema updates, we need to ensure the workflow definition is updated
         // For structure updates, we update both definition and edges
@@ -78,8 +80,8 @@ export function useWorkflowSync(
           
           // For structure updates and full saves, also sync edges
           if ((updateType === WorkflowUpdateType.STRUCTURE || 
-               updateType === WorkflowUpdateType.FULL_SAVE) && edges.length > 0) {
-            await syncEdgesToDatabase(workflowId, edges);
+               updateType === WorkflowUpdateType.FULL_SAVE) && uniqueEdges.length > 0) {
+            await syncEdgesToDatabase(workflowId, uniqueEdges);
           }
         } else {
           // For minor updates, check if enough time has passed since last sync

@@ -1,6 +1,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { Edge } from '@/types/workflow';
+import { retryOperation } from '@/utils/retryUtils';
 
 /**
  * Convert temporary workflow ID to database format
@@ -19,6 +20,22 @@ export const isValidUuid = (id: string): boolean => {
 };
 
 /**
+ * Deduplicate edges to prevent constraint violations
+ * The workflow_edges table has a unique constraint on (workflow_id, source_node_id, target_node_id)
+ */
+export const deduplicateEdges = (edges: Edge[]): Edge[] => {
+  const uniqueEdgeMap = new Map<string, Edge>();
+  
+  edges.forEach(edge => {
+    const key = `${edge.source}:${edge.target}`;
+    // Either add the edge, or replace it with a newer one if it exists
+    uniqueEdgeMap.set(key, edge);
+  });
+  
+  return Array.from(uniqueEdgeMap.values());
+};
+
+/**
  * Synchronize workflow edges with the database
  */
 export const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]): Promise<boolean> => {
@@ -33,7 +50,10 @@ export const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]): Pr
       return false;
     }
     
-    console.log(`Syncing ${edges.length} edges for workflow ${workflowId} (DB ID: ${dbWorkflowId})`);
+    // Deduplicate edges to avoid constraint violations
+    const uniqueEdges = deduplicateEdges(edges);
+    
+    console.log(`Syncing ${uniqueEdges.length} unique edges for workflow ${workflowId} (DB ID: ${dbWorkflowId})`);
     
     // First, delete existing edges to avoid duplicate issues
     const { error: deleteError } = await supabase
@@ -46,8 +66,8 @@ export const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]): Pr
       return false;
     }
     
-    // Insert new edges
-    const edgesToInsert = edges.map(edge => {
+    // Prepare edges to insert
+    const edgesToInsert = uniqueEdges.map(edge => {
       const { id, source, target, type, sourceHandle, targetHandle, label, animated, data, ...rest } = edge;
       
       // Build metadata object
@@ -69,25 +89,76 @@ export const syncEdgesToDatabase = async (workflowId: string, edges: Edge[]): Pr
       };
     });
     
-    // Use batching for large edge sets
+    // Use batching with retry for large edge sets
     let success = true;
-    for (let i = 0; i < edgesToInsert.length; i += 20) {
-      const batch = edgesToInsert.slice(i, i + 20);
-      const { error: insertError } = await supabase
-        .from('workflow_edges')
-        .insert(batch);
+    let successCount = 0;
+    let failureCount = 0;
+    
+    // Process in smaller batches to reduce likelihood of constraint violations
+    for (let i = 0; i < edgesToInsert.length; i += 10) {
+      const batch = edgesToInsert.slice(i, i + 10);
+      
+      try {
+        // Use upsert with ON CONFLICT DO NOTHING to handle any remaining duplicates gracefully
+        const { error: batchError } = await retryOperation(
+          async () => {
+            return await supabase
+              .from('workflow_edges')
+              .upsert(batch, { 
+                onConflict: 'workflow_id,source_node_id,target_node_id',
+                ignoreDuplicates: true
+              });
+          },
+          {
+            maxRetries: 3,
+            delay: 500,
+            backoff: 2,
+            onRetry: (error, attempt) => {
+              console.warn(`Retry ${attempt} for edges batch ${i}-${i+10}: ${error.message}`);
+            }
+          }
+        );
         
-      if (insertError) {
-        console.error(`Error inserting edges batch ${i}-${i+20}:`, insertError);
+        if (batchError) {
+          console.error(`Error inserting edges batch ${i}-${i+batch.length}:`, batchError);
+          failureCount += batch.length;
+          
+          // Try to insert edges one by one as a fallback
+          for (const edge of batch) {
+            const { error: singleEdgeError } = await supabase
+              .from('workflow_edges')
+              .upsert([edge], { 
+                onConflict: 'workflow_id,source_node_id,target_node_id',
+                ignoreDuplicates: true 
+              });
+              
+            if (!singleEdgeError) {
+              successCount++;
+            } else {
+              failureCount++;
+              console.error('Error inserting single edge:', singleEdgeError, edge);
+            }
+          }
+        } else {
+          successCount += batch.length;
+        }
+      } catch (error) {
+        console.error(`Exception in batch ${i}-${i+batch.length}:`, error);
+        failureCount += batch.length;
         success = false;
       }
     }
     
-    if (success) {
-      console.log(`Successfully synced ${edges.length} edges to database`);
+    if (successCount > 0) {
+      console.log(`Successfully synced ${successCount}/${edgesToInsert.length} edges to database`);
     }
     
-    return success;
+    if (failureCount > 0) {
+      console.warn(`Failed to sync ${failureCount}/${edgesToInsert.length} edges to database`);
+    }
+    
+    // Consider it a success if at least some edges were synced
+    return successCount > 0;
   } catch (error) {
     console.error('Error in syncEdgesToDatabase:', error);
     return false;
