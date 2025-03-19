@@ -4,7 +4,8 @@ export * from './schema';
 
 // For direct backwards compatibility
 import { 
-  writeSchemaToCache as cacheSchema,
+  cacheSchema,
+  writeSchemaToCache,
   getSchemaFromCache,
   getSchemaMetadataFromCache,
   isValidCacheExistsAsync 
@@ -13,6 +14,7 @@ import {
 // Explicit re-exports for old import statements
 export {
   cacheSchema,
+  writeSchemaToCache,
   getSchemaFromCache,
   getSchemaMetadataFromCache,
   isValidCacheExistsAsync

@@ -1,4 +1,3 @@
-
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { SchemaCacheEntry } from './types';
 import { getCacheKey, normalizeWorkflowId, setSchemaEntry } from './cacheStore';
@@ -57,6 +56,9 @@ export async function cacheSchema(
     console.error('Error caching schema:', error);
   }
 }
+
+// Export both the original and alias for backward compatibility
+export { cacheSchema as writeSchemaToCache };
 
 /**
  * Copy schema cache from source node to target node
