@@ -1,6 +1,13 @@
 
 export * from './types';
 export * from './cacheStore';
-export * from './cacheWrite';
-export * from './cacheRead';
-export * from './cacheInvalidate';
+
+// Export with aliases for backward compatibility
+export { cacheSchema, copySchemaCache } from './cacheWrite';
+export { 
+  getSchemaFromCache, 
+  getSchemaMetadataFromCache, 
+  isValidCacheExistsAsync, 
+  getWorkflowCachedSchemas 
+} from './cacheRead';
+export { invalidateCache, invalidateWorkflowCache } from './cacheInvalidate';

@@ -3,16 +3,18 @@ import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { SchemaMetadata } from './types';
 import { getCacheKey, normalizeWorkflowId, getSchemaEntry } from './cacheStore';
 
+interface SchemaReadOptions {
+  maxAge?: number;
+  sheetName?: string;
+}
+
 /**
  * Get schema from cache if available and not expired
  */
 export async function getSchemaFromCache(
   workflowId: string,
   nodeId: string,
-  options?: {
-    maxAge?: number; // maximum age in milliseconds
-    sheetName?: string;
-  }
+  options?: SchemaReadOptions
 ): Promise<SchemaColumn[] | null> {
   const normalizedWorkflowId = normalizeWorkflowId(workflowId);
   const key = getCacheKey(normalizedWorkflowId, nodeId, options);
@@ -49,10 +51,7 @@ export async function getSchemaFromCache(
 export async function getSchemaMetadataFromCache(
   workflowId: string,
   nodeId: string,
-  options?: {
-    maxAge?: number; // maximum age in milliseconds
-    sheetName?: string;
-  }
+  options?: SchemaReadOptions
 ): Promise<SchemaMetadata | null> {
   const key = getCacheKey(workflowId, nodeId, options);
   const maxAge = options?.maxAge || 60000; // Default 1 minute
@@ -101,10 +100,7 @@ export async function getSchemaMetadataFromCache(
 export async function isValidCacheExistsAsync(
   workflowId: string,
   nodeId: string,
-  options?: {
-    maxAge?: number;
-    sheetName?: string;
-  }
+  options?: SchemaReadOptions
 ): Promise<boolean> {
   const schema = await getSchemaFromCache(workflowId, nodeId, options);
   return schema !== null && schema.length > 0;

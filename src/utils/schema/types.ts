@@ -25,3 +25,6 @@ export type SchemaMetadata = {
   version?: number;
   isTemporary?: boolean;
 };
+
+// Re-export SchemaColumn type to ensure consistency
+export { SchemaColumn };
