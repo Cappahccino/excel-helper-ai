@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { trackSubscription } from '@/utils/schemaPropagationScheduler';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 type SubscriptionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'closed';
 
@@ -57,7 +58,7 @@ export function useRealtimeSubscription({
   const [status, setStatus] = useState<SubscriptionStatus>('idle');
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMounted = useRef(true);
 
@@ -119,8 +120,9 @@ export function useRealtimeSubscription({
         postgresFilter.filter = filter;
       }
       
-      channel.on(
-        'postgres_changes',
+      // Use type assertion to work around TypeScript limitations with Supabase's API
+      (channel as any).on(
+        'postgres_changes', 
         postgresFilter,
         (payload: RealtimePostgresChangesPayload<any>) => {
           if (!isMounted.current) return;
@@ -131,7 +133,7 @@ export function useRealtimeSubscription({
             onRecordChange(payload);
           }
         }
-      ).subscribe((status) => {
+      ).subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           console.log(`[${debugName}] Successfully subscribed to ${table}`);
           updateStatus('connected');
