@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -153,7 +152,7 @@ export const useFileUploadNodeEnhanced = (
           
           // Invalidate schema cache for this workflow
           if (workflowId) {
-            invalidateWorkflowSchemaCache(workflowId);
+            invalidateWorkflowSchemaCache(workflowId, nodeId);
           }
           
           // Refresh schema after a short delay

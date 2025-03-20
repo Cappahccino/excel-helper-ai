@@ -9,7 +9,7 @@ export interface SheetMetadata {
   rowCount?: number;
   columnCount?: number;
   isDefault?: boolean;
-  index?: number;
+  index: number; // Changed from optional to required
 }
 
 /**
