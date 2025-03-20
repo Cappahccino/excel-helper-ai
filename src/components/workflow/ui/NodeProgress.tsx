@@ -8,6 +8,8 @@ interface NodeProgressProps {
   status?: 'default' | 'success' | 'error' | 'warning' | 'info';
   showLabel?: boolean;
   className?: string;
+  processingStatus?: string;
+  animated?: boolean;
 }
 
 /**
@@ -18,7 +20,9 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
   value,
   status = 'default',
   showLabel = false,
-  className
+  className,
+  processingStatus,
+  animated = false
 }) => {
   // Status-specific colors
   const statusColors = {
@@ -35,12 +39,16 @@ const NodeProgress: React.FC<NodeProgressProps> = ({
     <div className={cn("space-y-1", className)}>
       <Progress 
         value={value} 
-        className={cn("h-2", status === 'error' && "bg-red-100")}
+        className={cn(
+          "h-2", 
+          status === 'error' && "bg-red-100",
+          animated && "animate-pulse"
+        )}
         indicatorClassName={progressColor}
       />
       {showLabel && (
         <div className="flex justify-between text-xs text-gray-500">
-          <span>{value < 1 ? 'Starting...' : ''}</span>
+          <span>{processingStatus || (value < 1 ? 'Starting...' : '')}</span>
           <span>{Math.round(value)}%</span>
         </div>
       )}

@@ -9,6 +9,7 @@ export interface SheetMetadata {
   rowCount?: number;
   columnCount?: number;
   isDefault?: boolean;
+  index?: number;
 }
 
 /**
@@ -41,7 +42,11 @@ export async function getNodeSheets(
     }
     
     if (data?.sheets && Array.isArray(data.sheets)) {
-      return data.sheets;
+      // Add index property if it doesn't exist
+      return data.sheets.map((sheet, i) => ({
+        ...sheet,
+        index: sheet.index !== undefined ? sheet.index : i
+      }));
     }
     
     return [];
@@ -182,5 +187,51 @@ export async function triggerSchemaRefresh(
   } catch (error) {
     console.error('Error in triggerSchemaRefresh:', error);
     return false;
+  }
+}
+
+/**
+ * Validate sheet schema for a node
+ */
+export async function validateNodeSheetSchema(
+  workflowId: string,
+  nodeId: string,
+  sheetName?: string
+): Promise<{ isValid: boolean, message?: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('fileOperations', {
+      body: {
+        action: 'validateSchema',
+        workflowId,
+        nodeId,
+        sheetName
+      }
+    });
+    
+    if (error) {
+      console.error('Error validating schema:', error);
+      return { 
+        isValid: false, 
+        message: error.message || 'Error validating schema'
+      };
+    }
+    
+    if (!data) {
+      return {
+        isValid: false,
+        message: 'No validation result returned'
+      };
+    }
+    
+    return {
+      isValid: data.isValid === true,
+      message: data.message
+    };
+  } catch (error) {
+    console.error('Error in validateNodeSheetSchema:', error);
+    return {
+      isValid: false,
+      message: error instanceof Error ? error.message : 'Unknown error validating schema'
+    };
   }
 }

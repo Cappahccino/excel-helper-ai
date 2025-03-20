@@ -1,7 +1,7 @@
 
 import { FileUploadNodeData } from '@/types/workflow';
 import FileUploadNode from './file-upload/FileUploadNode';
-import { propagateSchemaDirectly } from '@/utils/schemaPropagation';
+import { propagateSchemaWithRetry, propagateSchemaDirectly } from '@/utils/schemaPropagation';
 import { standardizeSchemaColumns } from '@/utils/schemaStandardization';
 
 // Make the propagate function available globally for backwards compatibility

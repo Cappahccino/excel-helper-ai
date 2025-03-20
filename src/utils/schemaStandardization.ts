@@ -48,7 +48,7 @@ export function standardizeSchemaColumns(columns: SchemaColumn[]): SchemaColumn[
   
   return columns.map(column => ({
     ...column,
-    type: standardizeColumnType(column.type)
+    type: standardizeColumnType(column.type) as SchemaColumn['type']
   }));
 }
 
