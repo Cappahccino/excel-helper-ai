@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { retryOperation } from '@/utils/retryUtils';
@@ -365,8 +366,52 @@ export function validateSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn
 /**
  * Get schema for filtering UI
  */
-export function getSchemaForFiltering(schema: SchemaColumn[]): SchemaColumn[] {
-  return validateSchemaForFiltering(schema);
+export async function getSchemaForFiltering(
+  workflowId: string,
+  nodeId: string,
+  sheetName?: string
+): Promise<SchemaColumn[]> {
+  try {
+    // Try to get from cache first
+    const cachedSchema = await getSchemaFromCache(workflowId, nodeId, { sheetName });
+    if (cachedSchema && cachedSchema.length > 0) {
+      return validateSchemaForFiltering(cachedSchema);
+    }
+    
+    // If not in cache, try to get from database
+    const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+    
+    const { data, error } = await supabase
+      .from('workflow_file_schemas')
+      .select('columns, data_types')
+      .eq('workflow_id', dbWorkflowId)
+      .eq('node_id', nodeId)
+      .eq('sheet_name', sheetName || 'Sheet1')
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Error fetching schema for filtering:', error);
+      return [];
+    }
+    
+    if (!data || !data.columns || !data.data_types) {
+      return [];
+    }
+    
+    // Convert to SchemaColumn format
+    const schema: SchemaColumn[] = data.columns.map(column => ({
+      name: column,
+      type: data.data_types[column] || 'unknown'
+    }));
+    
+    // Cache the schema
+    await cacheSchema(workflowId, nodeId, schema, { sheetName });
+    
+    return validateSchemaForFiltering(schema);
+  } catch (error) {
+    console.error('Error in getSchemaForFiltering:', error);
+    return [];
+  }
 }
 
 /**

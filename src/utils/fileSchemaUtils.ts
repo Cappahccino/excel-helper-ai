@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -6,10 +5,10 @@ import { supabase } from '@/integrations/supabase/client';
  */
 export interface SheetMetadata {
   name: string;
-  rowCount?: number;
+  rowCount: number; // Changed from optional to required
   columnCount?: number;
   isDefault?: boolean;
-  index: number; // Changed from optional to required
+  index: number;
 }
 
 /**

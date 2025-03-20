@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { supabase } from '@/integrations/supabase/client';
@@ -119,7 +118,7 @@ export function useSchemaPropagation(
     
     try {
       // First check if source node has schema
-      const isSourceReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId, sheetName);
+      const isSourceReady = await isNodeReadyForSchemaPropagation(workflowId, sourceNodeId);
       if (!isSourceReady) {
         console.log(`Source node ${sourceNodeId} is not ready for propagation`);
         return false;
@@ -225,9 +224,7 @@ export function useSchemaPropagation(
       
       if (success) {
         // Get schema for the target node after propagation
-        const schema = await getSchemaForFiltering(workflowId, targetNodeId, { 
-          sheetName
-        });
+        const schema = await getSchemaForFiltering(workflowId, targetNodeId, sheetName);
         
         // Cache the schema
         if (schema && schema.length > 0) {
@@ -380,7 +377,7 @@ export function useSchemaPropagation(
       if (cachedSchema) return cachedSchema;
       
       // Get from database or Edge Function
-      const schema = await getSchemaForFiltering(workflowId, targetNodeId, { sheetName });
+      const schema = await getSchemaForFiltering(workflowId, targetNodeId, sheetName);
       
       if (schema && schema.length > 0) {
         await cacheSchema(workflowId, targetNodeId, schema, { sheetName });
