@@ -1,44 +1,44 @@
 
-import { getCacheKey, normalizeWorkflowId, deleteSchemaEntry, getSchemaEntriesByPrefix, clearSchemaCache } from './cacheStore';
+import { normalizeWorkflowId } from './cacheStore';
 
 /**
- * Invalidate cache for a specific workflow and node
+ * Invalidate schema cache for a specific node
+ * This forces the next schema request to bypass the cache
  */
 export async function invalidateSchemaCache(
-  workflowId: string,
+  workflowId: string, 
   nodeId: string,
   sheetName?: string
 ): Promise<void> {
-  const normalizedWorkflowId = normalizeWorkflowId(workflowId);
-  const key = getCacheKey(normalizedWorkflowId, nodeId, { sheetName });
-  deleteSchemaEntry(key);
-  
-  // If no specific sheet was provided, also invalidate the default sheet
-  if (!sheetName) {
-    const defaultKey = getCacheKey(normalizedWorkflowId, nodeId, { sheetName: 'default' });
-    deleteSchemaEntry(defaultKey);
+  try {
+    const normalizedWorkflowId = normalizeWorkflowId(workflowId);
+    
+    // Create a cache key with or without the sheet name
+    const cacheKey = sheetName 
+      ? `schema:${normalizedWorkflowId}:${nodeId}:${sheetName}`
+      : `schema:${normalizedWorkflowId}:${nodeId}`;
+    
+    // Clear from localStorage
+    if (typeof window !== 'undefined') {
+      // Try to invalidate the specific cache key first
+      localStorage.removeItem(cacheKey);
+      
+      // Also clear any cache entries that start with this prefix
+      // This handles both sheet-specific and default caches
+      const keysToRemove = [];
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`schema:${normalizedWorkflowId}:${nodeId}`)) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    }
+    
+    console.log(`Invalidated schema cache for ${nodeId} ${sheetName ? `sheet ${sheetName}` : ''}`);
+  } catch (error) {
+    console.error(`Error invalidating schema cache:`, error);
   }
-  
-  console.log(`Schema cache invalidated for ${nodeId} with sheet "${sheetName || 'all sheets'}" in workflow ${workflowId}`);
-}
-
-/**
- * Invalidate all cached schemas
- */
-export async function invalidateAllSchemaCaches(): Promise<void> {
-  clearSchemaCache();
-}
-
-/**
- * Invalidate all schemas for a specific workflow
- */
-export async function invalidateWorkflowSchemaCache(
-  workflowId: string
-): Promise<void> {
-  const prefix = `schema:${workflowId}:`;
-  const entries = getSchemaEntriesByPrefix(prefix);
-  
-  Object.keys(entries).forEach(key => {
-    deleteSchemaEntry(key);
-  });
 }
