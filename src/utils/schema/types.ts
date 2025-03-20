@@ -2,26 +2,67 @@
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 
 /**
- * Type for schema cache entries
+ * Schema cache entry with metadata
  */
-export type SchemaCacheEntry = {
+export interface SchemaCacheEntry {
   schema: SchemaColumn[];
   timestamp: number;
-  sheetName?: string;
   source?: "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh";
   version?: number;
+  sheetName?: string;
   isTemporary?: boolean;
   fileId?: string;
-};
+}
 
 /**
- * Type for schema metadata object returned from cache
+ * Schema metadata for caching and tracking
  */
-export type SchemaMetadata = {
+export interface SchemaMetadata {
   schema: SchemaColumn[];
-  fileId?: string;
   sheetName?: string;
   source?: string;
   version?: number;
   isTemporary?: boolean;
-};
+  fileId?: string;
+}
+
+/**
+ * Schema validation result
+ */
+export interface SchemaValidationResult {
+  isValid: boolean;
+  errors: SchemaValidationError[];
+}
+
+/**
+ * Schema validation error
+ */
+export interface SchemaValidationError {
+  code: string;
+  message: string;
+  field?: string;
+  suggestion?: string;
+}
+
+/**
+ * Schema subscription options
+ */
+export interface SchemaSubscriptionOptions {
+  sheetName?: string;
+  pollingInterval?: number;
+  onSchemaUpdated?: (schema: SchemaColumn[], metadata: SchemaMetadata) => void;
+  debug?: boolean;
+}
+
+/**
+ * Schema update event
+ */
+export interface SchemaUpdateEvent {
+  workflowId: string;
+  nodeId: string;
+  schema: SchemaColumn[];
+  timestamp: number;
+  source: string;
+  version?: number;
+  sheetName?: string;
+}

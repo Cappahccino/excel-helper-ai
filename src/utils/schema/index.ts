@@ -1,27 +1,7 @@
 
-// Re-export all schema cache functionality from the modular structure
+// Re-export all schema management functionality
 export * from './types';
 export * from './cacheStore';
-export * from './cacheWrite';
 export * from './cacheRead';
+export * from './cacheWrite';
 export * from './cacheInvalidate';
-
-// Add backward compatibility aliases for functions that may be imported with old names
-import { cacheSchema } from './cacheWrite';
-import { getSchemaFromCache, getSchemaMetadataFromCache, isValidCacheExistsAsync } from './cacheRead';
-import { 
-  trackSuccessfulPropagation, 
-  wasRecentlyPropagated,
-  normalizeWorkflowId 
-} from './cacheStore';
-
-// Export aliases to maintain backward compatibility with existing code
-export { 
-  cacheSchema as writeSchemaToCache,
-  getSchemaFromCache,
-  getSchemaMetadataFromCache,
-  isValidCacheExistsAsync,
-  trackSuccessfulPropagation,
-  wasRecentlyPropagated,
-  normalizeWorkflowId
-};

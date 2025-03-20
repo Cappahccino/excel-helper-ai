@@ -1,436 +1,305 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
-// Set up CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Create Supabase client
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
-      headers: corsHeaders,
-      status: 204,
-    });
+    return new Response(null, { headers: corsHeaders });
   }
-  
+
   try {
-    // Parse the request body
-    const { action, workflowId, sourceNodeId, targetNodeId, sheetName, 
-            nodeId, lastVersion } = await req.json();
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
-    // Normalize workflow ID (handle temp- prefix)
-    const dbWorkflowId = workflowId?.startsWith('temp-') 
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+    
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseServiceRoleKey
+    );
+    
+    // Parse request body
+    const body = await req.json();
+    const { action, workflowId, sourceNodeId, targetNodeId, sheetName } = body;
+    
+    // Normalize workflow ID
+    const dbWorkflowId = workflowId.startsWith('temp-') 
       ? workflowId.substring(5) 
       : workflowId;
+    
+    console.log(`Processing request for ${action} in workflow ${dbWorkflowId}`);
+    
+    if (action === 'propagateSchema') {
+      // Handle schema propagation from source to target node
+      if (!sourceNodeId || !targetNodeId) {
+        throw new Error('Missing source or target node ID');
+      }
       
-    if (!dbWorkflowId) {
+      console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId}`);
+      
+      // 1. Get source schema
+      const { data: sourceSchema, error: sourceError } = await supabase
+        .from('workflow_file_schemas')
+        .select('columns, data_types, file_id, sheet_name')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', sourceNodeId)
+        .eq('sheet_name', sheetName || 'Sheet1')
+        .maybeSingle();
+        
+      if (sourceError) {
+        throw new Error(`Error fetching source schema: ${sourceError.message}`);
+      }
+      
+      if (!sourceSchema || !sourceSchema.columns || sourceSchema.columns.length === 0) {
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            message: `Source node ${sourceNodeId} has no schema data`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // 2. Propagate schema to target node
+      const { error: targetError } = await supabase
+        .from('workflow_file_schemas')
+        .upsert({
+          workflow_id: dbWorkflowId,
+          node_id: targetNodeId,
+          file_id: sourceSchema.file_id,
+          columns: sourceSchema.columns,
+          data_types: sourceSchema.data_types,
+          sheet_name: sheetName || sourceSchema.sheet_name || 'Sheet1',
+          updated_at: new Date().toISOString()
+        });
+        
+      if (targetError) {
+        throw new Error(`Error updating target schema: ${targetError.message}`);
+      }
+      
+      // 3. Broadcast update event
+      const schemaVersion = Date.now();
+      const channel = supabase.channel(`schema_updates:${dbWorkflowId}:${targetNodeId}`);
+      
+      await channel.send({
+        type: 'broadcast',
+        event: 'schema_update',
+        payload: {
+          workflowId: dbWorkflowId,
+          nodeId: targetNodeId,
+          schema: sourceSchema.columns.map(col => ({
+            name: col,
+            type: sourceSchema.data_types[col] || 'unknown'
+          })),
+          timestamp: Date.now(),
+          source: 'propagation',
+          version: schemaVersion,
+          sheetName: sheetName || sourceSchema.sheet_name || 'Sheet1'
+        }
+      });
+      
+      console.log(`Successfully propagated schema from ${sourceNodeId} to ${targetNodeId}`);
+      
       return new Response(
         JSON.stringify({ 
-          success: false, 
-          message: 'Invalid workflow ID' 
+          success: true,
+          message: 'Schema propagated successfully',
+          version: schemaVersion
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } 
+    else if (action === 'getSchema') {
+      // Get schema for a specific node
+      const nodeId = body.nodeId;
+      if (!nodeId) {
+        throw new Error('Missing node ID');
+      }
+      
+      const { data: schema, error } = await supabase
+        .from('workflow_file_schemas')
+        .select('columns, data_types, file_id, sheet_name')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId)
+        .eq('sheet_name', sheetName || 'Sheet1')
+        .maybeSingle();
+        
+      if (error) {
+        throw new Error(`Error fetching schema: ${error.message}`);
+      }
+      
+      if (!schema || !schema.columns || schema.columns.length === 0) {
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            message: `Node ${nodeId} has no schema data`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const formattedSchema = schema.columns.map(col => ({
+        name: col,
+        type: schema.data_types[col] || 'unknown'
+      }));
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          schema: formattedSchema,
+          file_id: schema.file_id,
+          sheet_name: schema.sheet_name,
+          version: Date.now()
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    // Route to the appropriate action handler
-    switch (action) {
-      case 'propagateSchema':
-        return handlePropagateSchema(dbWorkflowId, sourceNodeId, targetNodeId, sheetName);
+    else if (action === 'refreshSchema') {
+      // Trigger schema refresh for a node
+      const nodeId = body.nodeId;
+      if (!nodeId) {
+        throw new Error('Missing node ID');
+      }
+      
+      // Get file ID for the node
+      const { data: fileData, error: fileError } = await supabase
+        .from('workflow_files')
+        .select('file_id')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId)
+        .maybeSingle();
         
-      case 'refreshSchema':
-        return handleRefreshSchema(dbWorkflowId, nodeId, sheetName);
-        
-      case 'checkForSchemaUpdates':
-        return handleCheckForUpdates(dbWorkflowId, nodeId, lastVersion, sheetName);
-        
-      case 'subscribeToSchemaUpdates':
-        return handleSubscribeToUpdates(dbWorkflowId, nodeId, sheetName);
-        
-      case 'unsubscribeFromSchemaUpdates':
-        return handleUnsubscribeFromUpdates(dbWorkflowId, nodeId);
-        
-      default:
+      if (fileError) {
+        throw new Error(`Error fetching file data: ${fileError.message}`);
+      }
+      
+      if (!fileData?.file_id) {
         return new Response(
           JSON.stringify({ 
-            success: false, 
-            message: `Unknown action: ${action}` 
+            success: false,
+            message: `No file associated with node ${nodeId}`
           }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400
-          }
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+      
+      // Try to get schema from database
+      const { data: schema, error: schemaError } = await supabase
+        .from('workflow_file_schemas')
+        .select('columns, data_types, sheet_name')
+        .eq('workflow_id', dbWorkflowId)
+        .eq('node_id', nodeId)
+        .eq('sheet_name', sheetName || 'Sheet1')
+        .maybeSingle();
+      
+      if (schemaError) {
+        throw new Error(`Error fetching schema: ${schemaError.message}`);
+      }
+      
+      // Format schema if available
+      let formattedSchema = null;
+      if (schema && schema.columns && schema.columns.length > 0) {
+        formattedSchema = schema.columns.map(col => ({
+          name: col,
+          type: schema.data_types[col] || 'unknown'
+        }));
+      }
+      
+      if (!formattedSchema) {
+        // Try to process file to get schema
+        try {
+          await supabase.functions.invoke('processFile', {
+            body: {
+              fileId: fileData.file_id,
+              workflowId: dbWorkflowId,
+              nodeId,
+              requestedSheetName: sheetName || 'Sheet1',
+              forceRefresh: true
+            }
+          });
+          
+          // Wait briefly for processing
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Try to get schema again
+          const { data: refreshedSchema, error: refreshError } = await supabase
+            .from('workflow_file_schemas')
+            .select('columns, data_types, sheet_name')
+            .eq('workflow_id', dbWorkflowId)
+            .eq('node_id', nodeId)
+            .eq('sheet_name', sheetName || 'Sheet1')
+            .maybeSingle();
+            
+          if (!refreshError && refreshedSchema?.columns && refreshedSchema.columns.length > 0) {
+            formattedSchema = refreshedSchema.columns.map(col => ({
+              name: col,
+              type: refreshedSchema.data_types[col] || 'unknown'
+            }));
+          }
+        } catch (err) {
+          console.error('Error processing file:', err);
+        }
+      }
+      
+      // If we still don't have schema, return error
+      if (!formattedSchema) {
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            message: `Could not get schema for node ${nodeId}`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Broadcast schema update
+      const schemaVersion = Date.now();
+      const channel = supabase.channel(`schema_updates:${dbWorkflowId}:${nodeId}`);
+      
+      await channel.send({
+        type: 'broadcast',
+        event: 'schema_update',
+        payload: {
+          workflowId: dbWorkflowId,
+          nodeId,
+          schema: formattedSchema,
+          timestamp: Date.now(),
+          source: 'refresh',
+          version: schemaVersion,
+          sheetName: sheetName || schema?.sheet_name || 'Sheet1'
+        }
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          schema: formattedSchema,
+          version: schemaVersion
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    else {
+      return new Response(
+        JSON.stringify({ error: `Unknown action: ${action}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
   } catch (error) {
-    console.error('Error processing request:', error);
+    console.error('Function error:', error);
+    
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: error.message || 'Internal Server Error',
-        error: String(error)
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
+      JSON.stringify({ error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
-
-/**
- * Handle schema propagation from source node to target node
- */
-async function handlePropagateSchema(
-  workflowId: string, 
-  sourceNodeId: string, 
-  targetNodeId: string,
-  sheetName?: string
-) {
-  console.log(`Propagating schema from ${sourceNodeId} to ${targetNodeId} in workflow ${workflowId}`);
-  
-  try {
-    if (!workflowId || !sourceNodeId || !targetNodeId) {
-      throw new Error('Missing required parameters');
-    }
-    
-    // Get source schema
-    const { data: sourceSchema, error: sourceError } = await supabase
-      .from('workflow_file_schemas')
-      .select('columns, data_types, file_id, sheet_name')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', sourceNodeId);
-      
-    if (sourceError) {
-      throw sourceError;
-    }
-    
-    if (!sourceSchema || sourceSchema.length === 0 || !sourceSchema[0].columns) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Source node has no schema' 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Find the source schema for the requested sheet
-    const effectiveSheetName = sheetName || sourceSchema[0].sheet_name || 'Sheet1';
-    
-    const matchingSchema = sourceSchema.find(s => s.sheet_name === effectiveSheetName) || sourceSchema[0];
-    
-    if (!matchingSchema.columns || matchingSchema.columns.length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: `Source node has no schema for sheet ${effectiveSheetName}` 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Propagate schema to target node
-    const { error: updateError } = await supabase
-      .from('workflow_file_schemas')
-      .upsert({
-        workflow_id: workflowId,
-        node_id: targetNodeId,
-        file_id: matchingSchema.file_id,
-        columns: matchingSchema.columns,
-        data_types: matchingSchema.data_types,
-        sheet_name: effectiveSheetName,
-        updated_at: new Date().toISOString()
-      });
-      
-    if (updateError) {
-      throw updateError;
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Schema propagated successfully',
-        sheetName: effectiveSheetName
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Error in handlePropagateSchema:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: error.message || 'Error propagating schema',
-        error: String(error)
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
-    );
-  }
-}
-
-/**
- * Handle schema refresh for a node
- */
-async function handleRefreshSchema(
-  workflowId: string, 
-  nodeId: string,
-  sheetName?: string
-) {
-  console.log(`Refreshing schema for node ${nodeId} in workflow ${workflowId}`);
-  
-  try {
-    if (!workflowId || !nodeId) {
-      throw new Error('Missing required parameters');
-    }
-    
-    // Get the node's schema
-    let query = supabase
-      .from('workflow_file_schemas')
-      .select('columns, data_types, file_id, sheet_name')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', nodeId);
-      
-    if (sheetName) {
-      query = query.eq('sheet_name', sheetName);
-    }
-    
-    const { data, error } = await query.maybeSingle();
-    
-    if (error) {
-      throw error;
-    }
-    
-    if (!data || !data.columns) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Node has no schema' 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Format schema for response
-    const schema = data.columns.map(column => ({
-      name: column,
-      type: data.data_types[column] || 'unknown'
-    }));
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        schema,
-        version: Date.now(),
-        sheetName: data.sheet_name
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Error in handleRefreshSchema:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: error.message || 'Error refreshing schema',
-        error: String(error)
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
-    );
-  }
-}
-
-/**
- * Handle checks for schema updates
- */
-async function handleCheckForUpdates(
-  workflowId: string, 
-  nodeId: string,
-  lastVersion?: number,
-  sheetName?: string
-) {
-  console.log(`Checking for schema updates for node ${nodeId} in workflow ${workflowId}`);
-  
-  try {
-    if (!workflowId || !nodeId) {
-      throw new Error('Missing required parameters');
-    }
-    
-    // Get the node's schema update timestamp
-    let query = supabase
-      .from('workflow_file_schemas')
-      .select('updated_at, columns, data_types, sheet_name')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', nodeId);
-      
-    if (sheetName) {
-      query = query.eq('sheet_name', sheetName);
-    }
-    
-    const { data, error } = await query.maybeSingle();
-    
-    if (error) {
-      throw error;
-    }
-    
-    if (!data) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Node has no schema',
-          hasUpdates: false 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Check if schema is newer than the last version the client has
-    const currentVersion = new Date(data.updated_at).getTime();
-    const hasUpdates = !lastVersion || currentVersion > lastVersion;
-    
-    if (!hasUpdates) {
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          hasUpdates: false,
-          version: currentVersion
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Format schema for response
-    const schema = data.columns.map(column => ({
-      name: column,
-      type: data.data_types[column] || 'unknown'
-    }));
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        hasUpdates: true,
-        schema,
-        version: currentVersion,
-        sheetName: data.sheet_name
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Error in handleCheckForUpdates:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: error.message || 'Error checking for updates',
-        hasUpdates: false,
-        error: String(error)
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
-    );
-  }
-}
-
-/**
- * Handle subscription to schema updates
- */
-async function handleSubscribeToUpdates(
-  workflowId: string, 
-  nodeId: string,
-  sheetName?: string
-) {
-  console.log(`Setting up subscription for node ${nodeId} in workflow ${workflowId}`);
-  
-  try {
-    // This is just the initial subscription setup
-    // Real-time updates will be handled by the Supabase client directly
-    
-    // Return the current schema as initial data
-    let query = supabase
-      .from('workflow_file_schemas')
-      .select('columns, data_types, sheet_name, updated_at')
-      .eq('workflow_id', workflowId)
-      .eq('node_id', nodeId);
-      
-    if (sheetName) {
-      query = query.eq('sheet_name', sheetName);
-    }
-    
-    const { data, error } = await query.maybeSingle();
-    
-    if (error) {
-      throw error;
-    }
-    
-    let schema = null;
-    let version = null;
-    
-    if (data && data.columns) {
-      schema = data.columns.map(column => ({
-        name: column,
-        type: data.data_types[column] || 'unknown'
-      }));
-      
-      version = new Date(data.updated_at).getTime();
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        subscribed: true,
-        schema,
-        version,
-        sheetName: data?.sheet_name
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Error in handleSubscribeToUpdates:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: error.message || 'Error setting up subscription',
-        subscribed: false,
-        error: String(error)
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
-    );
-  }
-}
-
-/**
- * Handle unsubscription from schema updates
- */
-async function handleUnsubscribeFromUpdates(
-  workflowId: string, 
-  nodeId: string
-) {
-  console.log(`Unsubscribing from updates for node ${nodeId} in workflow ${workflowId}`);
-  
-  // Nothing to do on the server for unsubscribe, client handles channel removal
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      unsubscribed: true
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
