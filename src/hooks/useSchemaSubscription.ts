@@ -85,7 +85,7 @@ export function useSchemaSubscription(
           
           // Cache the schema
           await cacheSchema(workflowId, nodeId, schema, {
-            source: "subscription",
+            source: "subscription" as "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh",
             version,
             sheetName
           });
@@ -154,9 +154,12 @@ export function useSchemaSubscription(
             schemaVersionRef.current = eventData.version;
           }
           
+          // Make sure the source is one of the allowed types
+          const validSource = (eventData.source as "manual" | "database" | "propagation" | "subscription" | "polling" | "refresh" | "manual_refresh") || "subscription";
+          
           // Cache the schema
           await cacheSchema(workflowId, nodeId, eventData.schema, {
-            source: eventData.source,
+            source: validSource,
             version: eventData.version,
             sheetName: eventData.sheetName
           });
@@ -165,7 +168,7 @@ export function useSchemaSubscription(
           if (onSchemaUpdated) {
             onSchemaUpdated(eventData.schema, {
               schema: eventData.schema,
-              source: eventData.source,
+              source: validSource,
               version: eventData.version,
               sheetName: eventData.sheetName
             });
@@ -196,7 +199,7 @@ export function useSchemaSubscription(
     }
   }, [workflowId, nodeId, sheetName, onSchemaUpdated, debugLog]);
   
-  // Set up polling as a fallback mechanism
+  // Setup polling as a fallback mechanism
   const setupPolling = useCallback(() => {
     // Clear any existing polling
     if (pollingTimeoutRef.current) {
