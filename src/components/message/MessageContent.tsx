@@ -5,6 +5,7 @@ import { MessageActions } from "./MessageActions";
 import { MessageLoadingState, LoadingStage } from "./MessageLoadingState";
 import { ReactionButtons } from "./ReactionButtons";
 import { FileInfo } from "../FileInfo";
+import { ExcelThumbnail } from "../ExcelThumbnail";
 import { motion, AnimatePresence } from "framer-motion";
 import { EditableMessage } from "./EditableMessage";
 import { Clock, Edit2, Trash2, Copy, Share2, Bookmark, BookmarkCheck } from "lucide-react";
@@ -39,6 +40,7 @@ interface MessageContentProps {
   fileInfo?: {
     filename: string;
     file_size: number;
+    file_id?: string;
   } | null;
   isNewMessage?: boolean;
   status?: MessageStatus;
@@ -135,6 +137,9 @@ export function MessageContent({
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
   const fileCount = metadata?.file_count || 0;
 
+  // Check if file is an Excel file
+  const isExcelFile = fileInfo?.filename?.match(/\.(xlsx|xls|csv)$/i) ?? false;
+
   // Save handler
   const handleSave = async (newContent: string) => {
     try {
@@ -212,12 +217,22 @@ export function MessageContent({
     >
       <MessageAvatar role={role} />
       <div className="flex-1">
+        {/* Display Excel Thumbnail for Excel files, regular FileInfo otherwise */}
         {role === 'user' && fileInfo && (
-          <FileInfo
-            filename={fileInfo.filename}
-            fileSize={fileInfo.file_size}
-            className="mb-2"
-          />
+          isExcelFile && fileInfo.file_id ? (
+            <ExcelThumbnail
+              fileId={fileInfo.file_id}
+              filename={fileInfo.filename}
+              messageId={messageId}
+              compact={true}
+            />
+          ) : (
+            <FileInfo
+              filename={fileInfo.filename}
+              fileSize={fileInfo.file_size}
+              className="mb-2"
+            />
+          )
         )}
         <div className="space-y-4">
           <AnimatePresence mode="sync">
