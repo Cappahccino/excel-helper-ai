@@ -66,7 +66,8 @@ export const MessageGroup = memo(({
             timestamp={formatTimestamp(msg.created_at)}
             fileInfo={msg.message_files?.[0] ? {
               filename: msg.message_files[0].filename || 'Untitled',
-              file_size: msg.message_files[0].file_size || 0
+              file_size: msg.message_files[0].file_size || 0,
+              file_id: msg.message_files[0].file_id
             } : null}
             isNewMessage={msg.id === latestMessageId}
             status={msg.id === latestMessageId ? status : msg.status || 'completed'}
