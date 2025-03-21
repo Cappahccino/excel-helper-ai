@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send } from "lucide-react";
+import { Paperclip, Send, Command } from "lucide-react";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { toast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
@@ -10,28 +10,43 @@ import { Tag } from "@/types/tags";
 interface ChatInputProps {
   onSendMessage: (message: string, fileIds?: string[] | null, tagNames?: string[] | null) => void;
   isAnalyzing: boolean;
+  processingStage?: {
+    stage: string;
+    completion_percentage?: number;
+  };
   sessionId?: string | null;
   fileInfo?: {
     filename: string;
     file_size: number;
+    fileMetadata?: any;
   } | null;
 }
 
+// Command suggestions interface
+interface CommandSuggestion {
+  command: string;
+  description: string;
+  icon: React.ReactNode;
+}
+
 const MAX_TAG_LENGTH = 50;
-const TAG_REGEX = /^[a-zA-Z0-9\s-_]+$/;
+const TAG_REGEX = /^[a-zA-Z0-9\\s-_]+$/;
 
 export function ChatInput({
   onSendMessage,
   isAnalyzing,
+  processingStage,
   sessionId,
   fileInfo
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
+  const [showCommands, setShowCommands] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [fileRoles, setFileRoles] = useState<Record<string, string>>({});
   const [fileTags, setFileTags] = useState<Record<string, Tag[]>>({});
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
 
   const {
     handleFileUpload,
@@ -44,6 +59,42 @@ export function ChatInput({
     queryKey: ['tags'],
     queryFn: fetchTags
   });
+
+  // Command suggestions based on context
+  const commandSuggestions: CommandSuggestion[] = [
+    {
+      command: "/summary",
+      description: "Generate a summary of the data",
+      icon: <span className="text-blue-500">📊</span>
+    },
+    {
+      command: "/chart",
+      description: "Create a visualization",
+      icon: <span className="text-green-500">📈</span>
+    },
+    {
+      command: "/filter",
+      description: "Filter the dataset",
+      icon: <span className="text-purple-500">🔍</span>
+    },
+    {
+      command: "/compare",
+      description: "Compare data points",
+      icon: <span className="text-orange-500">⚖️</span>
+    },
+    {
+      command: "/explain",
+      description: "Explain Excel formulas or concepts",
+      icon: <span className="text-teal-500">❓</span>
+    }
+  ];
+
+  // Populate column names from fileInfo if available
+  useEffect(() => {
+    if (fileInfo?.fileMetadata?.column_definitions) {
+      setAvailableColumns(Object.keys(fileInfo.fileMetadata.column_definitions));
+    }
+  }, [fileInfo]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -115,6 +166,15 @@ export function ChatInput({
     return null;
   };
 
+  // Handle command selection
+  const handleCommandSelect = (command: string) => {
+    setMessage(command + " ");
+    setShowCommands(false);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
   const handleSubmit = () => {
     if ((!message.trim() && !fileIds.length) || isAnalyzing || isUploading) return;
     
@@ -138,6 +198,11 @@ export function ChatInput({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
+    } else if (e.key === "/" && message === "") {
+      e.preventDefault();
+      setShowCommands(true);
+    } else if (e.key === "Escape") {
+      setShowCommands(false);
     }
   };
 
@@ -204,6 +269,19 @@ export function ChatInput({
 
   const isDisabled = isAnalyzing || isUploading || (!message.trim() && !fileIds.length);
 
+  // Get processing stage description
+  const getProcessingDescription = () => {
+    if (!processingStage) return "thinking...";
+    
+    switch (processingStage.stage) {
+      case 'uploading_files': return "uploading files...";
+      case 'analyzing': return "analyzing data...";
+      case 'processing': return "processing data...";
+      case 'generating': return "generating response...";
+      default: return processingStage.stage + "...";
+    }
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2 py-3 px-0 my-0 mx-0">
@@ -227,6 +305,15 @@ export function ChatInput({
         )}
 
         <div className="flex items-center gap-2 w-full bg-white rounded-lg border shadow-sm hover:shadow-md hover:border-gray-300 p-3 transition-all duration-200">
+          {/* Command button */}
+          <button
+            onClick={() => setShowCommands(!showCommands)}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
+            aria-label="Show commands"
+          >
+            <Command className="w-5 h-5" />
+          </button>
+          
           <button
             onClick={() => fileInputRef.current?.click()}
             className={`p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 ${
@@ -247,16 +334,37 @@ export function ChatInput({
             multiple
           />
 
-          <textarea
-            ref={textareaRef}
-            className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
-            placeholder={isAnalyzing ? "Assistant is thinking..." : "Ask me anything..."}
-            rows={1}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isAnalyzing || isUploading}
-          />
+          <div className="relative flex-1">
+            <textarea
+              ref={textareaRef}
+              className="w-full min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
+              placeholder={isAnalyzing ? `Assistant is ${getProcessingDescription()}` : "Ask me anything about your Excel data..."}
+              rows={1}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isAnalyzing || isUploading}
+            />
+            
+            {/* Command suggestions dropdown */}
+            {showCommands && (
+              <div className="absolute bottom-full left-0 w-full bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto z-10">
+                {commandSuggestions.map((cmd) => (
+                  <div
+                    key={cmd.command}
+                    className="flex items-center gap-2 p-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => handleCommandSelect(cmd.command)}
+                  >
+                    <div className="text-gray-500">{cmd.icon}</div>
+                    <div className="flex-1">
+                      <div className="font-medium">{cmd.command}</div>
+                      <div className="text-xs text-gray-500">{cmd.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <button
             onClick={handleSubmit}
@@ -273,6 +381,24 @@ export function ChatInput({
             )}
           </button>
         </div>
+        
+        {/* Processing status indicator */}
+        {isAnalyzing && processingStage && (
+          <div className="mt-2 text-xs text-gray-500">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                <div 
+                  className="bg-green-600 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${processingStage.completion_percentage || 0}%` }}
+                ></div>
+              </div>
+              <span className="whitespace-nowrap">
+                {getProcessingDescription()}
+                {processingStage.completion_percentage ? ` (${processingStage.completion_percentage}%)` : ''}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
