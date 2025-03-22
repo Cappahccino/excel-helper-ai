@@ -1,6 +1,6 @@
 
 // Claude API Integration for Excel Assistant
-import { CLAUDE_MODEL, ASSISTANT_INSTRUCTIONS } from "./config.ts";
+import { CLAUDE_MODEL, ASSISTANT_INSTRUCTIONS, MAX_RETRIES, RETRY_DELAY } from "./config.ts";
 import { supabaseAdmin } from "./database.ts";
 
 interface ClaudeMessage {
@@ -29,7 +29,61 @@ interface FileContent {
     rowCount: number;
     columnCount: number;
     preview: any[];
+    formulas?: Record<string, string>;
   }>;
+}
+
+// Error handling utility
+class ClaudeError extends Error {
+  status: number;
+  stage: string;
+  retryable: boolean;
+  
+  constructor(message: string, status = 500, stage = 'unknown', retryable = true) {
+    super(message);
+    this.name = 'ClaudeError';
+    this.status = status;
+    this.stage = stage;
+    this.retryable = retryable;
+  }
+}
+
+/**
+ * Utility for retrying operations with exponential backoff
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>, 
+  maxRetries = MAX_RETRIES,
+  initialDelay = RETRY_DELAY,
+  stage = 'unknown'
+): Promise<T> {
+  let lastError: Error | null = null;
+  let delay = initialDelay;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      
+      // If error is explicitly marked as not retryable, throw immediately
+      if (error instanceof ClaudeError && !error.retryable) {
+        throw error;
+      }
+      
+      if (attempt >= maxRetries) {
+        break;
+      }
+      
+      console.warn(`Retry attempt ${attempt + 1}/${maxRetries} for stage "${stage}" after error:`, error.message);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Exponential backoff with jitter
+      delay = delay * 1.5 + Math.random() * 300;
+    }
+  }
+  
+  throw lastError || new ClaudeError(`Max retries (${maxRetries}) exceeded in stage ${stage}`, 500, stage);
 }
 
 /**
@@ -57,39 +111,59 @@ export async function processWithClaude({
   };
 }> {
   try {
-    console.log('Processing Excel file analysis with Claude API');
+    console.log('Processing Excel file analysis with Claude 3.5 Sonnet API');
     
     // Update message status to processing
     await updateMessageStatus(messageId, 'processing', '', {
       stage: 'preparing_claude_request',
-      started_at: Date.now()
+      started_at: Date.now(),
+      model: CLAUDE_MODEL
     });
     
-    // Prepare file context
-    const fileInfo = fileContents.map(content => {
-      const sheetInfo = content.sheets.map(sheet => 
-        `    - ${sheet.name}: ${sheet.rowCount} rows × ${sheet.columnCount} columns`
-      ).join('\n');
+    // Prepare enhanced file context with formula information
+    const fileContext = fileContents.map(content => {
+      const sheetContexts = content.sheets.map(sheet => {
+        // Basic sheet info
+        let sheetContext = `    - ${sheet.name}: ${sheet.rowCount} rows × ${sheet.columnCount} columns`;
+        
+        // Add formula information if available
+        if (sheet.formulas && Object.keys(sheet.formulas).length > 0) {
+          const formulaCount = Object.keys(sheet.formulas).length;
+          sheetContext += `\n      * Contains ${formulaCount} formula${formulaCount === 1 ? '' : 's'}`;
+          
+          // Add sample formulas (up to 3)
+          const sampleFormulas = Object.entries(sheet.formulas).slice(0, 3);
+          if (sampleFormulas.length > 0) {
+            sheetContext += '\n      * Sample formulas:';
+            sampleFormulas.forEach(([cell, formula]) => {
+              sheetContext += `\n        - ${cell}: ${formula}`;
+            });
+          }
+        }
+        
+        return sheetContext;
+      }).join('\n');
       
       return `
 - ${content.filename}
   Sheets:
-${sheetInfo}`;
+${sheetContexts}`;
     }).join('\n');
 
-    // Create comprehensive prompt with context and specific instructions
+    // Enhanced prompt for Claude 3.5 Sonnet
     const userPrompt = `
 USER QUERY: ${query}
 
 AVAILABLE EXCEL FILES:
-${fileInfo}
+${fileContext}
 
 INSTRUCTIONS:
 1. Please analyze these Excel files and answer the query thoroughly
-2. If appropriate, suggest ways to analyze the data further
-3. If analyzing multiple files, consider relationships between them
+2. If formulas are present, explain what they do and provide insights about their logic
+3. If appropriate, suggest ways to improve data organization or analysis
 4. For large datasets, provide summary statistics to give an overview
-5. If formulas or complex calculations are involved, explain your approach
+5. If multiple files are present, check for relationships between them
+6. Highlight important patterns, trends, or outliers in the data
 
 ADDITIONAL CONTEXT:
 This query is part of chat session: ${sessionId}
@@ -98,66 +172,80 @@ This query is part of chat session: ${sessionId}
     // Update message status
     await updateMessageStatus(messageId, 'processing', '', {
       stage: 'sending_to_claude',
-      completion_percentage: 30
+      completion_percentage: 30,
+      request_start: Date.now()
     });
 
-    // Make API call to Claude
+    // Make API call to Claude with retry logic
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY environment variable not set');
+      throw new ClaudeError('ANTHROPIC_API_KEY environment variable not set', 500, 'configuration', false);
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 4000,
-        system: ASSISTANT_INSTRUCTIONS,
-        messages: [
-          { role: 'user', content: userPrompt }
-        ],
-        metadata: {
-          user_id: userId,
-          session_id: sessionId,
-          message_id: messageId
+    // Execute request with retry
+    const response = await withRetry(
+      async () => {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: CLAUDE_MODEL,
+            max_tokens: 4000,
+            system: ASSISTANT_INSTRUCTIONS,
+            messages: [
+              { role: 'user', content: userPrompt }
+            ],
+            metadata: {
+              user_id: userId,
+              session_id: sessionId,
+              message_id: messageId
+            }
+          })
+        });
+      
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new ClaudeError(
+            `Claude API error: ${res.status} ${res.statusText} - ${errorText}`,
+            res.status,
+            'claude_api_call',
+            res.status !== 429 && res.status < 500
+          );
         }
-      })
-    });
-
-    if (!response.ok) {
-      const errorDetails = await response.text();
-      throw new Error(`Claude API error: ${response.status} ${response.statusText} - ${errorDetails}`);
-    }
-
-    const claudeResponse = await response.json() as ClaudeResponse;
+        
+        return await res.json() as ClaudeResponse;
+      },
+      2,
+      1000,
+      'claude_api_call'
+    );
     
     // Extract content from Claude response
-    const responseContent = claudeResponse.content[0]?.text || '';
+    const responseContent = response.content[0]?.text || '';
     
     if (!responseContent.trim()) {
-      throw new Error('Empty Claude response');
+      throw new ClaudeError('Empty Claude response', 500, 'empty_response', false);
     }
 
     // Update message with response
     await updateMessageStatus(messageId, 'completed', responseContent, {
       stage: 'completed',
       completion_percentage: 100,
-      claude_message_id: claudeResponse.id,
-      model_used: claudeResponse.model,
-      usage: claudeResponse.usage,
+      claude_message_id: response.id,
+      model_used: response.model,
+      usage: response.usage,
       completed_at: Date.now()
     });
 
     return {
-      messageId: claudeResponse.id,
+      messageId: response.id,
       content: responseContent,
-      modelUsed: claudeResponse.model,
-      usage: claudeResponse.usage
+      modelUsed: response.model,
+      usage: response.usage
     };
   } catch (error) {
     console.error('Error in processWithClaude:', error);
@@ -165,7 +253,7 @@ This query is part of chat session: ${sessionId}
     // Update message to failed status
     await updateMessageStatus(messageId, 'failed', error.message || 'Claude processing failed', {
       error: error.message,
-      stage: 'claude_processing_error',
+      stage: error instanceof ClaudeError ? error.stage : 'claude_processing_error',
       failed_at: Date.now()
     });
     
