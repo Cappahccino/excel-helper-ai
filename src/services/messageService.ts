@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message, MessagePin } from "@/types/chat";
@@ -77,10 +76,10 @@ export async function fetchMessages(
 
     // Make sure all messages are complete with expected fields before transforming
     const validMessages = rawMessages.filter(msg => 
-      msg && typeof msg === 'object' && 'id' in msg && 'content' in msg
-    );
+      msg && typeof msg === 'object' && msg !== null && 'id' in msg && 'content' in msg
+    ) as DatabaseMessage[];
 
-    return transformMessages(validMessages as DatabaseMessage[]);
+    return transformMessages(validMessages);
   } catch (error) {
     console.error('Error in fetchMessages:', error);
     throw error;

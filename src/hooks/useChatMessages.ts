@@ -646,7 +646,7 @@ export function useChatMessages(
   }, [allMessages]);
 
   return {
-    messages,
+    messages: allMessages,
     filteredMessages,
     isLoading: isLoading || isRefetching || isSearching,
     isError,
