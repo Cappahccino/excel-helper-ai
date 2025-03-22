@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatMessages } from '@/hooks/useChatMessages';
 import { useChatRealtime } from '@/hooks/useChatRealtime'; 
-import { Message, MessageStatus, ProcessingStage } from '@/types/chat';
+import { Message } from '@/types/chat';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
@@ -55,7 +56,8 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     pinnedMessages,
     saveMessageDraft,
     getDraftMessage,
-    getMessageStatistics
+    getMessageStatistics,
+    formatTimestamp
   } = useChatMessages(sessionId);
 
   const { 
@@ -154,71 +156,25 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
   // Get statistics
   const stats = getMessageStatistics();
 
-  // Helper for rendering message status badges
-  const getStatusBadge = (status: MessageStatus) => {
-    switch (status) {
-      case 'processing':
-        return <Badge variant="secondary">Processing...</Badge>;
-      case 'completed':
-        return <Badge variant="success">Completed</Badge>;
-      case 'failed':
-        return <Badge variant="destructive">Failed</Badge>;
-      case 'cancelled':
-        return <Badge variant="outline">Cancelled</Badge>;
-      case 'expired':
-        return <Badge variant="outline">Expired</Badge>;
-      default:
-        return null;
-    }
-  };
-
-  // Helper for rendering progress
-  const renderProgress = (stage?: ProcessingStage) => {
-    if (!stage) return null;
-    
-    const completion = stage.completion_percentage || 0;
-    
-    return (
-      <div className="w-full mt-2">
-        <div className="text-xs text-gray-500 mb-1">
-          {stage.stage} ({Math.round(completion)}%)
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-blue-600 h-2 rounded-full" 
-            style={{ width: `${completion}%` }} 
-          />
-        </div>
-      </div>
-    );
-  };
-
-  // Connection status indicator
-  const connectionStatus = () => {
-    if (isConnected) {
-      return <Badge variant="outline" className="bg-green-50"><Wifi className="h-3 w-3 mr-1" /> Connected</Badge>;
-    } else if (isConnecting) {
-      return <Badge variant="outline" className="bg-yellow-50"><Spinner className="h-3 w-3 mr-1" /> Connecting...</Badge>;
-    } else {
-      return (
-        <Badge 
-          variant="outline" 
-          className="bg-red-50 cursor-pointer" 
-          onClick={reconnect}
-        >
-          <WifiOff className="h-3 w-3 mr-1" /> Disconnected (Click to retry)
-        </Badge>
-      );
-    }
-  };
-
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="border-b px-4 py-3">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg">Excel Assistant</CardTitle>
           <div className="flex items-center space-x-2">
-            {connectionStatus()}
+            {isConnected ? (
+              <Badge variant="outline" className="bg-green-50"><Wifi className="h-3 w-3 mr-1" /> Connected</Badge>
+            ) : isConnecting ? (
+              <Badge variant="outline" className="bg-yellow-50"><Spinner className="h-3 w-3 mr-1" /> Connecting...</Badge>
+            ) : (
+              <Badge 
+                variant="outline" 
+                className="bg-red-50 cursor-pointer" 
+                onClick={reconnect}
+              >
+                <WifiOff className="h-3 w-3 mr-1" /> Disconnected (Click to retry)
+              </Badge>
+            )}
             <Button 
               variant="ghost" 
               size="sm" 
@@ -237,7 +193,6 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
               variant="ghost" 
               size="sm" 
               onClick={() => {
-                // Show filter dialog (not implemented in this example)
                 toast({
                   title: "Filter",
                   description: "Filter dialog would open here"
@@ -286,26 +241,32 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
           <div className="mb-4 bg-blue-50 p-3 rounded-md">
             <div className="text-sm font-medium mb-2 flex justify-between">
               <span>Pinned Messages ({pinnedMessages.length})</span>
-              <Button variant="ghost" size="xs">
+              <Button variant="ghost" size="sm">
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </div>
             <div className="space-y-2">
-              {pinnedMessages.map(message => (
-                <div 
-                  key={`pinned-${message.id}`}
-                  className="bg-white p-2 rounded text-sm flex justify-between items-start"
-                >
-                  <div className="truncate">{message.content.substring(0, 100)}{message.content.length > 100 ? '...' : ''}</div>
-                  <Button 
-                    variant="ghost" 
-                    size="xs"
-                    onClick={() => unpinMessage(message.id)}
+              {pinnedMessages.map(pin => {
+                // Find the associated message for this pin
+                const message = messages.find(m => m.id === pin.message_id);
+                return (
+                  <div 
+                    key={`pinned-${pin.message_id}`}
+                    className="bg-white p-2 rounded text-sm flex justify-between items-start"
                   >
-                    <Pin className="h-3 w-3 fill-blue-500" />
-                  </Button>
-                </div>
-              ))}
+                    <div className="truncate">
+                      {message ? message.content.substring(0, 100) + (message.content.length > 100 ? '...' : '') : 'Message not found'}
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => unpinMessage(pin.message_id)}
+                    >
+                      <Pin className="h-3 w-3 fill-blue-500" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -348,24 +309,31 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                   <div className="text-xs text-gray-500">
                     {formatTimestamp(message.created_at)}
                   </div>
-                  {getStatusBadge(message.status)}
+                  {message.status === 'processing' && (
+                    <Badge variant="secondary">Processing...</Badge>
+                  )}
+                  {message.status === 'completed' && (
+                    <Badge variant="outline">Completed</Badge>
+                  )}
+                  {message.status === 'failed' && (
+                    <Badge variant="destructive">Failed</Badge>
+                  )}
                 </div>
                 <div className="whitespace-pre-wrap">{message.content}</div>
-                {message.status === 'processing' && renderProgress(message.metadata?.processing_stage)}
                 <div className="flex mt-2 gap-2 justify-end">
                   <Button 
                     variant="ghost" 
-                    size="xs" 
+                    size="sm" 
                     onClick={() => pinMessage(message.id)}
-                    disabled={pinnedMessages.some(m => m.id === message.id)}
+                    disabled={pinnedMessages.some(m => m.message_id === message.id)}
                   >
                     <Pin className={`h-3 w-3 ${
-                      pinnedMessages.some(m => m.id === message.id) ? 'fill-blue-500' : ''
+                      pinnedMessages.some(m => m.message_id === message.id) ? 'fill-blue-500' : ''
                     }`} />
                   </Button>
                   <Button 
                     variant="ghost" 
-                    size="xs"
+                    size="sm"
                     onClick={() => deleteMessage(message.id)}
                   >
                     <Trash className="h-3 w-3" />
@@ -384,7 +352,6 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             variant="outline" 
             size="icon"
             onClick={() => {
-              // Open file selection dialog (not implemented in this example)
               toast({
                 title: "File Selection",
                 description: "File selection dialog would open here"

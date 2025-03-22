@@ -1,6 +1,7 @@
+
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { MessagesResponse, Message, MessageType, MessagePin } from "@/types/chat";
+import { MessagesResponse, Message, MessageType, MessagePin, MessageStatus } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
 import {
   fetchMessages,
@@ -136,14 +137,14 @@ export function useChatMessages(
 
       setIsLoadingPins(true);
       try {
-        const { data, error } = await supabase
+        const { data: pinData, error } = await supabase
           .from('message_pins')
           .select('*')
           .eq('session_id', sessionId);
 
         if (error) throw error;
 
-        setPinnedMessages(data || []);
+        setPinnedMessages(pinData || []);
       } catch (error) {
         console.error('Error fetching pinned messages:', error);
         toast({
@@ -263,7 +264,7 @@ export function useChatMessages(
         case MessageFilterType.ANALYSIS:
           return message.role === 'assistant' && message.status === 'completed';
         case MessageFilterType.ERROR:
-          return message.status === 'error' || message.status === 'failed';
+          return message.status === 'failed' || message.status === 'cancelled';
         default:
           return true;
       }
@@ -351,7 +352,7 @@ export function useChatMessages(
 
       // Here you would call your semantic search API
       // For now, we'll simulate it with a function call
-      const { data, error } = await supabase.functions.invoke('semantic-search', {
+      const { data: searchData, error } = await supabase.functions.invoke('semantic-search', {
         body: {
           sessionId,
           query,
@@ -361,9 +362,9 @@ export function useChatMessages(
 
       if (error) throw error;
 
-      if (data && data.results) {
+      if (searchData && searchData.results) {
         // Store the message IDs from semantic search results
-        setSemanticResults(data.results.map((r: any) => r.id));
+        setSemanticResults(searchData.results.map((r: any) => r.id));
       }
     } catch (error) {
       console.error('Semantic search error:', error);
@@ -547,17 +548,21 @@ export function useChatMessages(
         variant: "destructive"
       });
 
-      // Try to restore previous pin
-      const { data } = supabase
-        .from('message_pins')
-        .select('*')
-        .eq('message_id', messageId)
-        .eq('session_id', sessionId!)
-        .single();
+      // Try to restore previous pin - this might need a query to get the correct data
+      const getPinData = async () => {
+        const { data } = await supabase
+          .from('message_pins')
+          .select('*')
+          .eq('message_id', messageId)
+          .eq('session_id', sessionId!)
+          .single();
 
-      if (data) {
-        setPinnedMessages(prev => [...prev, data]);
-      }
+        if (data) {
+          setPinnedMessages(prev => [...prev, data]);
+        }
+      };
+      
+      getPinData().catch(console.error);
     },
     onSuccess: () => {
       toast({
@@ -593,12 +598,56 @@ export function useChatMessages(
   // Helper to determine message type
   const getMessageType = useCallback((message: Message): MessageType => {
     if (message.role === 'user') return MessageType.QUERY;
-    if (message.status === 'error' || message.status === 'failed') return MessageType.ERROR;
+    if (message.status === 'failed' || message.status === 'cancelled') return MessageType.ERROR;
     return MessageType.ANALYSIS;
   }, []);
 
+  // Mock draft message functions
+  const saveMessageDraft = useCallback((message: string) => {
+    if (sessionId) {
+      localStorage.setItem(`draft_${sessionId}`, message);
+    }
+  }, [sessionId]);
+
+  const getDraftMessage = useCallback(() => {
+    if (sessionId) {
+      return localStorage.getItem(`draft_${sessionId}`) || '';
+    }
+    return '';
+  }, [sessionId]);
+
+  // Mock message statistics
+  const getMessageStatistics = useCallback(() => {
+    if (!allMessages.length) return null;
+    
+    const userCount = allMessages.filter(m => m.role === 'user').length;
+    const assistantCount = allMessages.filter(m => m.role === 'assistant').length;
+    const processingCount = allMessages.filter(m => m.status === 'processing').length;
+    
+    // Calculate average processing time (mock)
+    const processingTimes = allMessages
+      .filter(m => m.role === 'assistant' && m.metadata?.processing_stage)
+      .map(m => {
+        const stage = m.metadata?.processing_stage;
+        return stage ? (stage.last_updated - stage.started_at) : 0;
+      });
+    
+    const averageProcessingTime = processingTimes.length
+      ? processingTimes.reduce((a, b) => a + b, 0) / processingTimes.length
+      : null;
+    
+    return {
+      totalCount: allMessages.length,
+      userCount,
+      assistantCount,
+      processingCount,
+      averageProcessingTime
+    };
+  }, [allMessages]);
+
   return {
-    messages: filteredMessages,
+    messages,
+    filteredMessages,
     isLoading: isLoading || isRefetching || isSearching,
     isError,
     error,
@@ -636,6 +685,9 @@ export function useChatMessages(
     pinnedMessages,
     isLoadingPins,
 
-    getMessageType
+    getMessageType,
+    saveMessageDraft,
+    getDraftMessage,
+    getMessageStatistics
   };
 }

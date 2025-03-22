@@ -1,4 +1,11 @@
+
 export type MessageStatus = 'processing' | 'completed' | 'failed' | 'cancelled' | 'expired';
+
+export enum MessageType {
+  QUERY = 'query',
+  ANALYSIS = 'analysis',
+  ERROR = 'error'
+}
 
 export interface ProcessingStage {
   stage: string;
@@ -47,6 +54,7 @@ export interface Message {
       type: string;
       file_id: string;
     }>;
+    is_pinned?: boolean;
   } | null;
 }
 

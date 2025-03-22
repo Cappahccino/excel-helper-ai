@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message, MessagePin } from "@/types/chat";
@@ -69,7 +70,17 @@ export async function fetchMessages(
       throw error;
     }
 
-    return transformMessages(rawMessages as DatabaseMessage[]);
+    // Ensure we're handling data correctly to avoid type errors
+    if (!rawMessages) {
+      return [];
+    }
+
+    // Make sure all messages are complete with expected fields before transforming
+    const validMessages = rawMessages.filter(msg => 
+      msg && typeof msg === 'object' && 'id' in msg && 'content' in msg
+    );
+
+    return transformMessages(validMessages as DatabaseMessage[]);
   } catch (error) {
     console.error('Error in fetchMessages:', error);
     throw error;
@@ -90,7 +101,7 @@ export async function createUserMessage(
       .from('chat_messages')
       .insert({
         content,
-        role: 'user',
+        role: 'user', // Ensure role is strictly 'user' to match Message type
         session_id: sessionId,
         is_ai_response: false,
         user_id: userId,
@@ -129,7 +140,7 @@ export async function createUserMessage(
     }
 
     console.log('Successfully created user message with files:', message.id);
-    return message;
+    return transformMessage(message as DatabaseMessage);
   } catch (error) {
     console.error('Error in createUserMessage:', error);
     throw error;
@@ -148,7 +159,7 @@ export async function createAssistantMessage(
       .from('chat_messages')
       .insert({
         content: '',
-        role: 'assistant',
+        role: 'assistant', // Ensure role is strictly 'assistant' to match Message type
         session_id: sessionId,
         is_ai_response: true,
         user_id: userId,
@@ -384,8 +395,12 @@ function transformMessages(messages: DatabaseMessage[]): Message[] {
 
 // Transform a single message
 function transformMessage(message: DatabaseMessage): Message {
+  // Ensure role is strictly 'user' or 'assistant' as required by the Message type
+  const role = message.role === 'assistant' ? 'assistant' : 'user';
+  
   return {
     ...message,
+    role: role,
     // Add any additional transformations here
-  };
+  } as Message;
 }

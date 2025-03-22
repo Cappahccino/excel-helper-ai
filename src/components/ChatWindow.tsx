@@ -37,10 +37,10 @@ export function ChatWindow({
     formatTimestamp,
     groupMessagesByDate,
     refetch,
-    deleteMessage,
-    editMessage,
-    pinMessage,
-    unpinMessage,
+    deleteMessage: deleteMessageMutation,
+    editMessage: editMessageMutation,
+    pinMessage: pinMessageMutation,
+    unpinMessage: unpinMessageMutation,
     isMessagePinned
   } = useChatMessages(sessionId);
 
@@ -69,6 +69,23 @@ export function ChatWindow({
     onMessageSent?.();
   };
 
+  // Wrapper functions to return promises for compatibility
+  const handleDeleteMessage = async (messageId: string) => {
+    return deleteMessageMutation(messageId);
+  };
+
+  const handleEditMessage = async (messageId: string, content: string) => {
+    return editMessageMutation({ messageId, content });
+  };
+
+  const handlePinMessage = async (messageId: string) => {
+    return pinMessageMutation(messageId);
+  };
+
+  const handleUnpinMessage = async (messageId: string) => {
+    return unpinMessageMutation(messageId);
+  };
+
   if (isError) {
     return <ChatError onRetry={refetch} />;
   }
@@ -88,10 +105,10 @@ export function ChatWindow({
               groupMessagesByDate={groupMessagesByDate}
               latestMessageId={latestMessageId}
               status={status}
-              onMessageDelete={deleteMessage}
-              onMessageEdit={editMessage}
-              onMessagePin={pinMessage}
-              onMessageUnpin={unpinMessage}
+              onMessageDelete={handleDeleteMessage}
+              onMessageEdit={handleEditMessage}
+              onMessagePin={handlePinMessage}
+              onMessageUnpin={handleUnpinMessage}
               isMessagePinned={isMessagePinned}
             />
           </div>
