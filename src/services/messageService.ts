@@ -74,10 +74,16 @@ export async function fetchMessages(
       return [];
     }
 
-    // Make sure all messages are complete with expected fields before transforming
-    const validMessages = rawMessages.filter(msg => 
-      msg && typeof msg === 'object' && msg !== null && 'id' in msg && 'content' in msg
-    ) as DatabaseMessage[];
+    // Type-safe filtering of messages
+    // Using a type guard to ensure we're working with valid message objects
+    const validMessages = (rawMessages as any[]).filter((msg): msg is DatabaseMessage => {
+      return msg !== null && 
+             typeof msg === 'object' && 
+             'id' in msg && 
+             'content' in msg && 
+             'role' in msg && 
+             'session_id' in msg;
+    });
 
     return transformMessages(validMessages);
   } catch (error) {
