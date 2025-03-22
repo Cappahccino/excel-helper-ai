@@ -1,52 +1,90 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
-import { Message } from "@/types/chat";
+import { Message, MessagePin } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
 
-export async function fetchMessages(sessionId: string, cursor: string | null = null) {
-  let query = supabase
-    .from('chat_messages')
-    .select(`
-      *,
-      message_files(
-        file_id,
-        role,
-        excel_files!message_files_file_id_fkey(
-          id,
-          filename,
-          file_size
-        )
-      )
-    `)
-    .eq('session_id', sessionId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: true })
-    .limit(MESSAGES_PER_PAGE);
-
-  if (cursor) {
-    query = query.lt('created_at', cursor);
+export async function fetchMessages(
+  sessionId: string,
+  cursor: string | null = null,
+  options?: {
+    pageSize?: number;
+    filter?: string;
+    searchTerm?: string;
+    includeFileContent?: boolean;
+    selectFields?: string[];
   }
-  
-  const { data: rawMessages, error } = await query;
-  
-  if (error) {
-    console.error('Error fetching messages:', error);
+) {
+  const {
+    pageSize = MESSAGES_PER_PAGE,
+    filter = 'all',
+    searchTerm = '',
+    includeFileContent = false,
+    selectFields = ['*', 'message_files(*)']
+  } = options || {};
+
+  try {
+    let query = supabase
+      .from('chat_messages')
+      .select(selectFields.join(','))
+      .eq('session_id', sessionId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(pageSize);
+
+    // Apply cursor pagination
+    if (cursor) {
+      query = query.lt('created_at', cursor);
+    }
+
+    // Apply filters
+    if (filter === 'pinned') {
+      const { data: pinnedMessageIds } = await supabase
+        .from('message_pins')
+        .select('message_id')
+        .eq('session_id', sessionId);
+
+      if (pinnedMessageIds && pinnedMessageIds.length > 0) {
+        query = query.in('id', pinnedMessageIds.map(pin => pin.message_id));
+      } else {
+        // No pins, return empty array
+        return [];
+      }
+    }
+
+    // Apply search term
+    if (searchTerm) {
+      if (includeFileContent) {
+        // Search in message content OR file content
+        query = query.or(`content.ilike.%${searchTerm}%, message_files.file_id.in.(select file_id from excel_files where filename.ilike.%${searchTerm}%)`);
+      } else {
+        // Search only in message content
+        query = query.ilike('content', `%${searchTerm}%`);
+      }
+    }
+
+    const { data: rawMessages, error } = await query;
+
+    if (error) {
+      console.error('Error fetching messages:', error);
+      throw error;
+    }
+
+    return transformMessages(rawMessages as DatabaseMessage[]);
+  } catch (error) {
+    console.error('Error in fetchMessages:', error);
     throw error;
   }
-
-  return transformMessages(rawMessages as DatabaseMessage[]);
 }
 
 export async function createUserMessage(
-  content: string, 
-  sessionId: string, 
-  userId: string, 
+  content: string,
+  sessionId: string,
+  userId: string,
   fileIds?: string[] | null
 ) {
   try {
     console.log('Creating user message with files:', fileIds);
-    
+
     // Create the message
     const { data: message, error: messageError } = await supabase
       .from('chat_messages')
@@ -99,13 +137,13 @@ export async function createUserMessage(
 }
 
 export async function createAssistantMessage(
-  sessionId: string, 
-  userId: string, 
+  sessionId: string,
+  userId: string,
   fileIds?: string[] | null
 ) {
   try {
     console.log('Creating assistant message with files:', fileIds);
-    
+
     const { data: message, error: messageError } = await supabase
       .from('chat_messages')
       .insert({
@@ -164,42 +202,190 @@ export async function createAssistantMessage(
   }
 }
 
-function transformMessage(msg: DatabaseMessage): Message {
-  let status: Message['status'] = 'processing'; // Default is processing
-  if (msg.status === 'completed' || 
-      msg.status === 'failed' || 
-      msg.status === 'cancelled' || 
-      msg.status === 'expired') {
-    status = msg.status;
+/**
+ * Delete a message and related data (files, reactions, etc.)
+ */
+export async function deleteMessage(messageId: string, sessionId: string): Promise<boolean> {
+  try {
+    // First, delete any pins associated with this message
+    const { error: pinError } = await supabase
+      .from('message_pins')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('session_id', sessionId);
+
+    if (pinError) {
+      console.error('Error deleting message pins:', pinError);
+      // Continue with message deletion anyway
+    }
+
+    // Next, delete any reactions to this message
+    const { error: reactionError } = await supabase
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', messageId);
+
+    if (reactionError) {
+      console.error('Error deleting message reactions:', reactionError);
+      // Continue with message deletion anyway
+    }
+
+    // Delete message-file associations
+    // Note: We're not deleting the actual files, just the association
+    const { error: fileAssocError } = await supabase
+      .from('message_files')
+      .delete()
+      .eq('message_id', messageId);
+
+    if (fileAssocError) {
+      console.error('Error deleting message file associations:', fileAssocError);
+      // Continue with message deletion anyway
+    }
+
+    // Finally, delete the message itself
+    const { error } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('session_id', sessionId);
+
+    if (error) {
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error deleting message:', error);
+    throw error;
   }
-
-  // Transform message_files to the correct format
-  const messageFiles = msg.message_files?.map(mf => ({
-    file_id: mf.file_id,
-    role: mf.role,
-    filename: mf.excel_files?.filename,
-    file_size: mf.excel_files?.file_size
-  }));
-
-  return {
-    id: msg.id,
-    content: msg.content,
-    role: msg.role === 'assistant' ? 'assistant' : 'user',
-    session_id: msg.session_id,
-    created_at: msg.created_at,
-    updated_at: msg.updated_at,
-    status,
-    version: msg.version || undefined,
-    deployment_id: msg.deployment_id || undefined,
-    cleanup_after: msg.cleanup_after || undefined,
-    cleanup_reason: msg.cleanup_reason || undefined,
-    deleted_at: msg.deleted_at || undefined,
-    is_ai_response: msg.is_ai_response || false,
-    message_files: messageFiles,
-    metadata: msg.metadata as Message['metadata']
-  };
 }
 
+/**
+ * Edit a message's content
+ * Only user messages can be edited, not assistant messages
+ */
+export async function editMessage(
+  messageId: string,
+  content: string,
+  sessionId: string
+): Promise<Message> {
+  try {
+    // First, check if message exists and is a user message
+    const { data: existingMessage, error: checkError } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('id', messageId)
+      .eq('session_id', sessionId)
+      .eq('role', 'user')
+      .single();
+
+    if (checkError) {
+      console.error('Error checking message:', checkError);
+      throw new Error('Message not found or cannot be edited');
+    }
+
+    // Update the message
+    const { data: updatedMessage, error: updateError } = await supabase
+      .from('chat_messages')
+      .update({ 
+        content, 
+        updated_at: new Date().toISOString(),
+        is_edited: true
+      })
+      .eq('id', messageId)
+      .eq('session_id', sessionId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating message:', updateError);
+      throw updateError;
+    }
+
+    return transformMessage(updatedMessage as DatabaseMessage);
+  } catch (error) {
+    console.error('Error in editMessage:', error);
+    throw error;
+  }
+}
+
+/**
+ * Pin a message for quick reference
+ */
+export async function pinMessage(
+  messageId: string,
+  sessionId: string
+): Promise<MessagePin> {
+  try {
+    // Check if pin already exists
+    const { data: existingPin } = await supabase
+      .from('message_pins')
+      .select('*')
+      .eq('message_id', messageId)
+      .eq('session_id', sessionId)
+      .maybeSingle();
+
+    if (existingPin) {
+      return existingPin as MessagePin;
+    }
+
+    // Create new pin
+    const { data: pin, error } = await supabase
+      .from('message_pins')
+      .insert({
+        message_id: messageId,
+        session_id: sessionId
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error pinning message:', error);
+      throw error;
+    }
+
+    return pin as MessagePin;
+  } catch (error) {
+    console.error('Error in pinMessage:', error);
+    throw error;
+  }
+}
+
+/**
+ * Unpin a message
+ */
+export async function unpinMessage(
+  messageId: string,
+  sessionId: string
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('message_pins')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('Error unpinning message:', error);
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in unpinMessage:', error);
+    throw error;
+  }
+}
+
+// Helper function to transform database messages to client format
 function transformMessages(messages: DatabaseMessage[]): Message[] {
   return messages.map(transformMessage);
+}
+
+// Transform a single message
+function transformMessage(message: DatabaseMessage): Message {
+  return {
+    ...message,
+    // Add any additional transformations here
+  };
 }
