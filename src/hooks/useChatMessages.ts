@@ -120,10 +120,8 @@ export function useChatMessages(
     initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     getPreviousPageParam: (firstPage) => firstPage.nextCursor ?? undefined,
-    // Add staleTime for better caching
     staleTime: 5 * 60 * 1000, // 5 minutes
     enabled: !!sessionId,
-    // Add retry settings for better error recovery
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
@@ -499,7 +497,7 @@ export function useChatMessages(
       // Update local state optimistically
       setPinnedMessages(prev => [
         ...prev,
-        { id: Date.now().toString(), message_id: messageId, session_id: sessionId!, created_at: new Date().toISOString() }
+        { id: Date.now().toString(), message_id: messageId, session_id: sessionId!, created_at: new Date().toISOString(), user_id: null }
       ]);
 
       return { messageId };
@@ -600,7 +598,6 @@ export function useChatMessages(
   }, []);
 
   return {
-    // Basic chat functionality
     messages: filteredMessages,
     isLoading: isLoading || isRefetching || isSearching,
     isError,
@@ -616,7 +613,6 @@ export function useChatMessages(
     handleScroll,
     lastScrollPosition,
 
-    // Enhanced search and filtering
     searchMessages,
     debouncedSearch,
     filterMessages,
@@ -629,7 +625,6 @@ export function useChatMessages(
     semanticResults,
     performSemanticSearch,
 
-    // Message management
     deleteMessage: deleteMessageMutation.mutate,
     isDeletingMessage: deleteMessageMutation.isPending,
     editMessage: editMessageMutation.mutate,
@@ -641,7 +636,6 @@ export function useChatMessages(
     pinnedMessages,
     isLoadingPins,
 
-    // Helpers
     getMessageType
   };
 }

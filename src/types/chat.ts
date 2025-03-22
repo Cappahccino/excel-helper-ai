@@ -1,4 +1,3 @@
-
 export type MessageStatus = 'processing' | 'completed' | 'failed' | 'cancelled' | 'expired';
 
 export interface ProcessingStage {
@@ -49,6 +48,14 @@ export interface Message {
       file_id: string;
     }>;
   } | null;
+}
+
+export interface MessagePin {
+  id: string;
+  message_id: string;
+  session_id: string;
+  user_id: string | null;
+  created_at: string;
 }
 
 export interface SessionData {

@@ -14,6 +14,9 @@ interface MessageGroupProps {
   searchTerm?: string;
   onMessageDelete?: (messageId: string) => Promise<void>;
   onMessageEdit?: (messageId: string, content: string) => Promise<void>;
+  onMessagePin?: (messageId: string) => void;
+  onMessageUnpin?: (messageId: string) => void;
+  isMessagePinned?: (messageId: string) => boolean;
 }
 
 export const MessageGroup = memo(({ 
@@ -25,7 +28,10 @@ export const MessageGroup = memo(({
   highlightedMessageId,
   searchTerm,
   onMessageDelete,
-  onMessageEdit
+  onMessageEdit,
+  onMessagePin,
+  onMessageUnpin,
+  isMessagePinned = () => false
 }: MessageGroupProps) => {
   // If there are no messages, don't render anything
   if (messages.length === 0) return null;
@@ -77,6 +83,9 @@ export const MessageGroup = memo(({
             searchTerm={searchTerm}
             onDelete={onMessageDelete}
             onEdit={onMessageEdit}
+            isPinned={isMessagePinned(msg.id)}
+            onPin={onMessagePin}
+            onUnpin={onMessageUnpin}
           />
         </motion.div>
       ))}

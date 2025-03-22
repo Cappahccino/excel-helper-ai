@@ -73,6 +73,9 @@ interface MessageContentProps {
   searchTerm?: string;
   onDelete?: (messageId: string) => Promise<void>;
   onEdit?: (messageId: string, content: string) => Promise<void>;
+  isPinned?: boolean;
+  onPin?: (messageId: string) => void;
+  onUnpin?: (messageId: string) => void;
 }
 
 export function MessageContent({ 
@@ -88,9 +91,11 @@ export function MessageContent({
   highlightedMessageId,
   searchTerm = "",
   onDelete,
-  onEdit
+  onEdit,
+  isPinned = false,
+  onPin,
+  onUnpin
 }: MessageContentProps) {
-  // State
   const [isEditing, setIsEditing] = useState(false);
   const [showEditHistory, setShowEditHistory] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -98,10 +103,8 @@ export function MessageContent({
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
   
-  // Highlight message if it matches the highlighted ID
   const isHighlighted = highlightedMessageId === messageId;
   
-  // Get loading stage
   const getLoadingStage = () => {
     if (status === 'processing') {
       const stage = metadata?.processing_stage?.stage;
@@ -122,25 +125,20 @@ export function MessageContent({
     return LoadingStage.Processing;
   };
 
-  // Show loading state while generating or when no content is available
   const showLoading = (
     role === "assistant" &&
     status === 'processing'
   );
 
-  // Show content as soon as there's any content, even while still generating
   const showContent = content.trim().length > 0;
   
-  // Edit history
   const editHistory = metadata?.edit_history || [];
   const hasEditHistory = editHistory.length > 0;
   const reactionCounts = metadata?.reaction_counts ?? { positive: 0, negative: 0 };
   const fileCount = metadata?.file_count || 0;
 
-  // Check if file is an Excel file
   const isExcelFile = fileInfo?.filename?.match(/\.(xlsx|xls|csv)$/i) ?? false;
 
-  // Save handler
   const handleSave = async (newContent: string) => {
     try {
       if (onEdit) {
@@ -152,7 +150,6 @@ export function MessageContent({
     }
   };
 
-  // Delete handler
   const handleDelete = async () => {
     try {
       if (onDelete) {
@@ -164,24 +161,26 @@ export function MessageContent({
     }
   };
 
-  // Copy message content to clipboard
   const copyToClipboard = () => {
     navigator.clipboard.writeText(content);
   };
 
-  // Toggle bookmark
   const toggleBookmark = () => {
     setIsBookmarked(!isBookmarked);
-    // In a real implementation, you would save this to backend storage
   };
 
-  // Share message handler
   const shareMessage = () => {
-    // This would be implemented to share a link to this message
     console.log("Share message", messageId);
   };
 
-  // Highlight search terms in content
+  const handlePinToggle = () => {
+    if (isPinned) {
+      onUnpin?.(messageId);
+    } else {
+      onPin?.(messageId);
+    }
+  };
+
   useEffect(() => {
     if (!searchTerm || !messageRef.current) return;
     
@@ -189,12 +188,10 @@ export function MessageContent({
       const contentElement = messageRef.current.querySelector('.message-content');
       if (!contentElement) return;
       
-      // Reset any previous highlighting
       contentElement.innerHTML = contentElement.textContent || '';
       
       if (!searchTerm.trim()) return;
       
-      // Use a simple text search and replace approach
       const regex = new RegExp(searchTerm, 'gi');
       contentElement.innerHTML = contentElement.textContent!.replace(
         regex,
@@ -217,7 +214,6 @@ export function MessageContent({
     >
       <MessageAvatar role={role} />
       <div className="flex-1">
-        {/* Display Excel Thumbnail for Excel files, regular FileInfo otherwise */}
         {role === 'user' && fileInfo && (
           isExcelFile && fileInfo.file_id ? (
             <ExcelThumbnail
@@ -279,7 +275,6 @@ export function MessageContent({
                     </div>
                   )}
                   
-                  {/* Action buttons for options */}
                   {!isEditing && role === 'user' && (
                     <div className="absolute -right-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
                       <DropdownMenu onOpenChange={setShowMoreOptions}>
@@ -299,24 +294,26 @@ export function MessageContent({
                         </TooltipProvider>
                         <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuGroup>
-                            <DropdownMenuItem onClick={() => setIsEditing(true)}>
-                              <Edit2 className="mr-2 h-4 w-4" />
-                              <span>Edit message</span>
-                            </DropdownMenuItem>
+                            {role === 'user' && (
+                              <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                <span>Edit message</span>
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={copyToClipboard}>
                               <Copy className="mr-2 h-4 w-4" />
                               <span>Copy message</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={toggleBookmark}>
-                              {isBookmarked ? (
+                            <DropdownMenuItem onClick={handlePinToggle}>
+                              {isPinned ? (
                                 <>
-                                  <BookmarkCheck className="mr-2 h-4 w-4" />
-                                  <span>Remove bookmark</span>
+                                  <BookmarkCheck className="mr-2 h-4 w-4 text-blue-500" />
+                                  <span>Unpin message</span>
                                 </>
                               ) : (
                                 <>
                                   <Bookmark className="mr-2 h-4 w-4" />
-                                  <span>Add bookmark</span>
+                                  <span>Pin message</span>
                                 </>
                               )}
                             </DropdownMenuItem>
@@ -338,7 +335,6 @@ export function MessageContent({
                     </div>
                   )}
                   
-                  {/* Edit history */}
                   {hasEditHistory && !isEditing && (
                     <div className="mt-1">
                       <Button
@@ -379,7 +375,6 @@ export function MessageContent({
         </div>
       </div>
       
-      {/* Delete confirmation dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

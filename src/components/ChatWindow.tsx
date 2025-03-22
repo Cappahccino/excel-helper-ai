@@ -36,7 +36,12 @@ export function ChatWindow({
     sendMessage: sendMessageMutation,
     formatTimestamp,
     groupMessagesByDate,
-    refetch
+    refetch,
+    deleteMessage,
+    editMessage,
+    pinMessage,
+    unpinMessage,
+    isMessagePinned
   } = useChatMessages(sessionId);
 
   const {
@@ -83,6 +88,11 @@ export function ChatWindow({
               groupMessagesByDate={groupMessagesByDate}
               latestMessageId={latestMessageId}
               status={status}
+              onMessageDelete={deleteMessage}
+              onMessageEdit={editMessage}
+              onMessagePin={pinMessage}
+              onMessageUnpin={unpinMessage}
+              isMessagePinned={isMessagePinned}
             />
           </div>
         </ScrollArea>
