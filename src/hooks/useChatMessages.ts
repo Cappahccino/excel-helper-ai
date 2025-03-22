@@ -2,12 +2,12 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { useNavigate } from "react-router-dom";
 import { MessagesResponse, Message, MessageType, MessagePin } from "@/types/chat";
 import { formatTimestamp, groupMessagesByDate } from "@/utils/dateFormatting";
-import { 
-  fetchMessages, 
+import {
+  fetchMessages,
   deleteMessage as deleteMessageService,
   editMessage as editMessageService,
   pinMessage as pinMessageService,
-  unpinMessage as unpinMessageService 
+  unpinMessage as unpinMessageService
 } from "@/services/messageService";
 import { useMessageMutation } from "./useMessageMutation";
 import { useCallback, useState, useEffect, useRef, useMemo } from "react";
@@ -39,11 +39,11 @@ interface UseChatMessagesOptions {
 }
 
 /**
- * Enhanced hook for managing chat messages with better pagination, 
+ * Enhanced hook for managing chat messages with better pagination,
  * advanced filtering, searching, editing, and pinning capabilities
  */
 export function useChatMessages(
-  sessionId: string | null, 
+  sessionId: string | null,
   options: UseChatMessagesOptions = {}
 ) {
   const {
@@ -51,11 +51,11 @@ export function useChatMessages(
     defaultPageSize = 20,
     selectFields = ['*', 'message_files(*)', 'message_reactions(*)']
   } = options;
-  
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const subscriptionRef = useRef<any>(null);
-  
+
   // State for additional features
   const [isRefetching, setIsRefetching] = useState(false);
   const [filter, setFilter] = useState<MessageFilterType>(MessageFilterType.ALL);
@@ -66,7 +66,7 @@ export function useChatMessages(
   const [semanticResults, setSemanticResults] = useState<string[]>([]);
   const [isLoadingPins, setIsLoadingPins] = useState<boolean>(false);
   const [lastScrollPosition, setLastScrollPosition] = useState<number>(0);
-  
+
   // Create a ref to store the original messages for filtering
   const allMessagesRef = useRef<Message[]>([]);
 
@@ -89,16 +89,16 @@ export function useChatMessages(
           nextCursor: null
         };
       }
-      
+
       // Only apply server-side filtering for pinned messages or when searching
       const serverSideFilter = filter === MessageFilterType.PINNED || searchTerm ? filter : MessageFilterType.ALL;
-      
+
       // Dynamically adapt page size for search queries to ensure we get enough results
       const effectivePageSize = searchTerm ? Math.max(50, defaultPageSize) : defaultPageSize;
-      
+
       const messages = await fetchMessages(
-        sessionId, 
-        pageParam as string | null, 
+        sessionId,
+        pageParam as string | null,
         {
           pageSize: effectivePageSize,
           filter: serverSideFilter,
@@ -107,9 +107,9 @@ export function useChatMessages(
           selectFields: selectFields,
         }
       );
-      
-      const nextCursor = messages.length === effectivePageSize 
-        ? messages[messages.length - 1]?.created_at 
+
+      const nextCursor = messages.length === effectivePageSize
+        ? messages[messages.length - 1]?.created_at
         : null;
 
       return {
@@ -135,16 +135,16 @@ export function useChatMessages(
   useEffect(() => {
     const fetchPinnedMessages = async () => {
       if (!sessionId) return;
-      
+
       setIsLoadingPins(true);
       try {
         const { data, error } = await supabase
           .from('message_pins')
           .select('*')
           .eq('session_id', sessionId);
-          
+
         if (error) throw error;
-        
+
         setPinnedMessages(data || []);
       } catch (error) {
         console.error('Error fetching pinned messages:', error);
@@ -157,7 +157,7 @@ export function useChatMessages(
         setIsLoadingPins(false);
       }
     };
-    
+
     fetchPinnedMessages();
   }, [sessionId]);
 
@@ -183,7 +183,7 @@ export function useChatMessages(
         },
         (payload) => {
           console.log('Real-time message update:', payload);
-          
+
           // Handle different event types
           if (payload.eventType === 'INSERT') {
             queryClient.invalidateQueries({ queryKey: ['chat-messages', sessionId] });
@@ -191,12 +191,12 @@ export function useChatMessages(
             // Update the specific message in cache
             queryClient.setQueryData(['chat-messages', sessionId], (oldData: any) => {
               if (!oldData) return oldData;
-              
+
               return {
                 ...oldData,
                 pages: oldData.pages.map((page: any) => ({
                   ...page,
-                  messages: page.messages.map((msg: Message) => 
+                  messages: page.messages.map((msg: Message) =>
                     msg.id === payload.new.id ? { ...msg, ...payload.new } : msg
                   )
                 }))
@@ -206,7 +206,7 @@ export function useChatMessages(
             // Remove deleted message from cache
             queryClient.setQueryData(['chat-messages', sessionId], (oldData: any) => {
               if (!oldData) return oldData;
-              
+
               return {
                 ...oldData,
                 pages: oldData.pages.map((page: any) => ({
@@ -244,7 +244,7 @@ export function useChatMessages(
 
   // Combine all pages of messages
   const allMessages = (data?.pages ?? []).flatMap(page => page.messages);
-  
+
   // Store all fetched messages in ref for client-side filtering
   useEffect(() => {
     if (allMessages.length > 0) {
@@ -257,7 +257,7 @@ export function useChatMessages(
     if (filter === MessageFilterType.ALL || filter === MessageFilterType.PINNED) {
       return allMessages;
     }
-    
+
     return allMessages.filter(message => {
       switch (filter) {
         case MessageFilterType.QUERY:
@@ -273,46 +273,46 @@ export function useChatMessages(
   }, [allMessages, filter]);
 
   // Enhanced search with multiple options and highlighting
-  const searchMessages = useCallback((searchTerm: string, options?: { 
+  const searchMessages = useCallback((searchTerm: string, options?: {
     includeFileContent?: boolean,
     clientSideOnly?: boolean,
-    semantic?: boolean 
+    semantic?: boolean
   }): { messages: Message[], hasMore: boolean } => {
     const { clientSideOnly = false, semantic = false } = options || {};
-    
+
     if (!searchTerm.trim()) {
       return { messages: filteredMessages, hasMore: false };
     }
-    
+
     // For client-side only search, use the currently loaded messages
     if (clientSideOnly) {
       const normalizedSearchTerm = searchTerm.toLowerCase().trim();
-      const matchedMessages = filteredMessages.filter(message => 
+      const matchedMessages = filteredMessages.filter(message =>
         message.content.toLowerCase().includes(normalizedSearchTerm) ||
-        (message.message_files && message.message_files.some(file => 
+        (message.message_files && message.message_files.some(file =>
           file.filename?.toLowerCase().includes(normalizedSearchTerm)
         ))
       );
-      
+
       // Highlight matches in the message content
       const highlightedMessages = matchedMessages.map(message => ({
         ...message,
         content: highlightSearchTerms(message.content, normalizedSearchTerm),
         _highlightedContent: true // Mark as highlighted
       }));
-      
+
       return { messages: highlightedMessages, hasMore: hasNextPage || false };
     }
-    
+
     // If not client-side only, trigger a server search by updating state
     setSearchTerm(searchTerm);
     setIncludeFileContent(!!options?.includeFileContent);
-    
+
     // For semantic search, we'd need to implement it separately
     if (semantic) {
       performSemanticSearch(searchTerm);
     }
-    
+
     return { messages: filteredMessages, hasMore: hasNextPage || false };
   }, [filteredMessages, hasNextPage]);
 
@@ -320,9 +320,9 @@ export function useChatMessages(
   const debouncedSearch = useCallback(
     debounce((term: string, options?: { includeFileContent?: boolean }) => {
       setIsSearching(true);
-      searchMessages(term, { 
-        includeFileContent: options?.includeFileContent, 
-        clientSideOnly: false 
+      searchMessages(term, {
+        includeFileContent: options?.includeFileContent,
+        clientSideOnly: false
       });
       setIsSearching(false);
     }, 500),
@@ -347,22 +347,22 @@ export function useChatMessages(
   // Semantic search implementation
   const performSemanticSearch = useCallback(async (query: string) => {
     if (!sessionId || !query.trim()) return;
-    
+
     try {
       setIsSearching(true);
-      
+
       // Here you would call your semantic search API
       // For now, we'll simulate it with a function call
       const { data, error } = await supabase.functions.invoke('semantic-search', {
-        body: { 
-          sessionId, 
+        body: {
+          sessionId,
           query,
           limit: 10
         }
       });
-      
+
       if (error) throw error;
-      
+
       if (data && data.results) {
         // Store the message IDs from semantic search results
         setSemanticResults(data.results.map((r: any) => r.id));
@@ -395,7 +395,7 @@ export function useChatMessages(
       // Optimistically update the UI
       queryClient.setQueryData(['chat-messages', sessionId], (old: any) => {
         if (!old) return old;
-        
+
         return {
           ...old,
           pages: old.pages.map((page: any) => ({
@@ -412,7 +412,7 @@ export function useChatMessages(
       if (context?.previousMessages) {
         queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
       }
-      
+
       console.error('Error deleting message:', err);
       toast({
         title: "Error",
@@ -448,14 +448,14 @@ export function useChatMessages(
       // Optimistically update the UI
       queryClient.setQueryData(['chat-messages', sessionId], (old: any) => {
         if (!old) return old;
-        
+
         return {
           ...old,
           pages: old.pages.map((page: any) => ({
             ...page,
-            messages: page.messages.map((msg: Message) => 
-              msg.id === messageId 
-                ? { ...msg, content, updated_at: new Date().toISOString(), is_edited: true } 
+            messages: page.messages.map((msg: Message) =>
+              msg.id === messageId
+                ? { ...msg, content, updated_at: new Date().toISOString(), is_edited: true }
                 : msg
             )
           }))
@@ -469,7 +469,7 @@ export function useChatMessages(
       if (context?.previousMessages) {
         queryClient.setQueryData(['chat-messages', sessionId], context.previousMessages);
       }
-      
+
       console.error('Error editing message:', err);
       toast({
         title: "Error",
@@ -498,10 +498,10 @@ export function useChatMessages(
     onMutate: async (messageId) => {
       // Update local state optimistically
       setPinnedMessages(prev => [
-        ...prev, 
+        ...prev,
         { id: Date.now().toString(), message_id: messageId, session_id: sessionId!, created_at: new Date().toISOString() }
       ]);
-      
+
       return { messageId };
     },
     onError: (err, messageId) => {
@@ -511,7 +511,7 @@ export function useChatMessages(
         description: "Failed to pin message",
         variant: "destructive"
       });
-      
+
       // Revert optimistic update
       setPinnedMessages(prev => prev.filter(pin => pin.message_id !== messageId));
     },
@@ -520,7 +520,7 @@ export function useChatMessages(
         title: "Success",
         description: "Message pinned successfully",
       });
-      
+
       // Update with actual data from server
       setPinnedMessages(prev => {
         const filtered = prev.filter(pin => pin.message_id !== data.message_id);
@@ -538,7 +538,7 @@ export function useChatMessages(
     onMutate: async (messageId) => {
       // Update local state optimistically
       setPinnedMessages(prev => prev.filter(pin => pin.message_id !== messageId));
-      
+
       return { messageId };
     },
     onError: (err, messageId) => {
@@ -548,7 +548,7 @@ export function useChatMessages(
         description: "Failed to unpin message",
         variant: "destructive"
       });
-      
+
       // Try to restore previous pin
       const { data } = supabase
         .from('message_pins')
@@ -556,7 +556,7 @@ export function useChatMessages(
         .eq('message_id', messageId)
         .eq('session_id', sessionId!)
         .single();
-        
+
       if (data) {
         setPinnedMessages(prev => [...prev, data]);
       }
@@ -578,12 +578,12 @@ export function useChatMessages(
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     setLastScrollPosition(target.scrollTop);
-    
+
     if (!hasNextPage || isFetchingNextPage) return;
-    
+
     if (target.scrollTop === 0) {
       const scrollPosition = target.scrollHeight;
-      
+
       fetchNextPage().then(() => {
         if (target.scrollHeight !== scrollPosition) {
           target.scrollTop = target.scrollHeight - scrollPosition;
@@ -615,7 +615,7 @@ export function useChatMessages(
     isFetchingNextPage,
     handleScroll,
     lastScrollPosition,
-    
+
     // Enhanced search and filtering
     searchMessages,
     debouncedSearch,
@@ -628,7 +628,7 @@ export function useChatMessages(
     isSearching,
     semanticResults,
     performSemanticSearch,
-    
+
     // Message management
     deleteMessage: deleteMessageMutation.mutate,
     isDeletingMessage: deleteMessageMutation.isPending,
@@ -640,7 +640,7 @@ export function useChatMessages(
     isMessagePinned,
     pinnedMessages,
     isLoadingPins,
-    
+
     // Helpers
     getMessageType
   };
