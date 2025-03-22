@@ -32,3 +32,14 @@ export const ASSISTANT_INSTRUCTIONS = `You are an Excel expert assistant special
    - Provide alternative approaches when needed
 
 Remember to be thorough but concise, and always aim to provide actionable insights.`;
+
+// Model configuration
+export const OPENAI_MODEL = "gpt-4-turbo";
+export const CLAUDE_MODEL = "claude-3-5-sonnet-20240307";
+
+// Feature flags
+export const USE_CLAUDE = true; // Set to true to use Claude model, false for OpenAI
+
+// API configuration
+export const MAX_POLLING_ATTEMPTS = 30;
+export const POLLING_INTERVAL = 1000; // 1 second
