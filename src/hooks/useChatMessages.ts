@@ -7,7 +7,7 @@ import { useMessageMutation } from "./useMessageMutation";
 import { useCallback, useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import debounce from "lodash.debounce";
+import { debounce } from "lodash";
 
 // Constants for optimized fetching
 const PAGE_SIZE = 50;
