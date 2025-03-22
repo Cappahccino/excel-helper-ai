@@ -30,7 +30,8 @@ interface CommandSuggestion {
 }
 
 const MAX_TAG_LENGTH = 50;
-const TAG_REGEX = /^[a-zA-Z0-9\\s-_]+$/;
+// Fixed regex: added space character directly, moved hyphen to the end to avoid range issues
+const TAG_REGEX = /^[a-zA-Z0-9\s_-]+$/;
 
 export function ChatInput({
   onSendMessage,
