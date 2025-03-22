@@ -4,10 +4,10 @@ import { AIRequestData, AIRequestStatus } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 
-// Get Supabase URL and key directly from the client to avoid environment variable issues in browsers
-// This assumes your Supabase client is already properly initialized
-const SUPABASE_URL = supabase.supabaseUrl;
-const SUPABASE_ANON_KEY = supabase.supabaseKey;
+// Hardcoded URLs for greater browser compatibility
+// These should match the values in your Supabase client.ts file
+const SUPABASE_URL = "https://saxnxtumstrsqowuwwbt.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNheG54dHVtc3Ryc3Fvd3V3d2J0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc5MDkxODgsImV4cCI6MjA1MzQ4NTE4OH0.ltOp920tiFP9EQab5lJG2_UVRYE0_JIOJ_GMtaGrLxc";
 
 // Constants
 const TIMEOUT_MS = 60000; // 1 minute timeout for network requests
