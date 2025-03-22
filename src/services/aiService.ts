@@ -4,15 +4,10 @@ import { AIRequestData, AIRequestStatus } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 
-// Environment variables - using window.env for browser compatibility
-// or fallback to empty strings if not available
-const SUPABASE_URL = typeof window !== 'undefined' && window.__env ? 
-  window.__env.SUPABASE_URL : 
-  import.meta.env?.VITE_SUPABASE_URL || '';
-
-const SUPABASE_ANON_KEY = typeof window !== 'undefined' && window.__env ? 
-  window.__env.SUPABASE_ANON_KEY : 
-  import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
+// Get Supabase URL and key directly from the client to avoid environment variable issues in browsers
+// This assumes your Supabase client is already properly initialized
+const SUPABASE_URL = supabase.supabaseUrl;
+const SUPABASE_ANON_KEY = supabase.supabaseKey;
 
 // Constants
 const TIMEOUT_MS = 60000; // 1 minute timeout for network requests
@@ -758,16 +753,5 @@ export async function cancelAIRequest(requestId: string): Promise<{ success: boo
   } catch (error) {
     logger.error('Error in cancelAIRequest', error);
     return { success: false, error };
-  }
-}
-
-// Add TypeScript declaration for window.__env
-declare global {
-  interface Window {
-    __env?: {
-      SUPABASE_URL?: string;
-      SUPABASE_ANON_KEY?: string;
-      [key: string]: string | undefined;
-    };
   }
 }
