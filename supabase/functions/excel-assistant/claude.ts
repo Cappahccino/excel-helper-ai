@@ -94,13 +94,15 @@ export async function processWithClaude({
   fileContents,
   messageId,
   sessionId,
-  userId
+  userId,
+  isTextOnly = false
 }: {
   query: string;
   fileContents: FileContent[];
   messageId: string;
   sessionId: string;
   userId: string;
+  isTextOnly?: boolean;
 }): Promise<{
   messageId: string;
   content: string;
@@ -111,47 +113,66 @@ export async function processWithClaude({
   };
 }> {
   try {
-    console.log('Processing Excel file analysis with Claude 3.5 Sonnet API');
+    console.log(`Processing ${isTextOnly ? 'text-only query' : 'Excel file analysis'} with Claude 3.5 Sonnet API`);
     
     // Update message status to processing
     await updateMessageStatus(messageId, 'processing', '', {
       stage: 'preparing_claude_request',
       started_at: Date.now(),
-      model: CLAUDE_MODEL
+      model: CLAUDE_MODEL,
+      is_text_only: isTextOnly
     });
     
-    // Prepare enhanced file context with formula information
-    const fileContext = fileContents.map(content => {
-      const sheetContexts = content.sheets.map(sheet => {
-        // Basic sheet info
-        let sheetContext = `    - ${sheet.name}: ${sheet.rowCount} rows × ${sheet.columnCount} columns`;
-        
-        // Add formula information if available
-        if (sheet.formulas && Object.keys(sheet.formulas).length > 0) {
-          const formulaCount = Object.keys(sheet.formulas).length;
-          sheetContext += `\n      * Contains ${formulaCount} formula${formulaCount === 1 ? '' : 's'}`;
+    let userPrompt: string;
+    
+    if (isTextOnly) {
+      // Enhanced prompt for text-only queries
+      userPrompt = `
+USER QUERY (TEXT-ONLY): ${query}
+
+INSTRUCTIONS:
+1. This is a text-only query without any Excel files attached
+2. Provide helpful information about Excel or data analysis related to the query
+3. If the query requires file analysis, explain that files need to be uploaded
+4. Suggest how the user could better utilize the Excel assistant with file uploads
+5. Focus on providing educational content about Excel features, functions, or best practices
+
+ADDITIONAL CONTEXT:
+This query is part of chat session: ${sessionId}
+`.trim();
+    } else {
+      // Prepare enhanced file context with formula information
+      const fileContext = fileContents.map(content => {
+        const sheetContexts = content.sheets.map(sheet => {
+          // Basic sheet info
+          let sheetContext = `    - ${sheet.name}: ${sheet.rowCount} rows × ${sheet.columnCount} columns`;
           
-          // Add sample formulas (up to 3)
-          const sampleFormulas = Object.entries(sheet.formulas).slice(0, 3);
-          if (sampleFormulas.length > 0) {
-            sheetContext += '\n      * Sample formulas:';
-            sampleFormulas.forEach(([cell, formula]) => {
-              sheetContext += `\n        - ${cell}: ${formula}`;
-            });
+          // Add formula information if available
+          if (sheet.formulas && Object.keys(sheet.formulas).length > 0) {
+            const formulaCount = Object.keys(sheet.formulas).length;
+            sheetContext += `\n      * Contains ${formulaCount} formula${formulaCount === 1 ? '' : 's'}`;
+            
+            // Add sample formulas (up to 3)
+            const sampleFormulas = Object.entries(sheet.formulas).slice(0, 3);
+            if (sampleFormulas.length > 0) {
+              sheetContext += '\n      * Sample formulas:';
+              sampleFormulas.forEach(([cell, formula]) => {
+                sheetContext += `\n        - ${cell}: ${formula}`;
+              });
+            }
           }
-        }
+          
+          return sheetContext;
+        }).join('\n');
         
-        return sheetContext;
-      }).join('\n');
-      
-      return `
+        return `
 - ${content.filename}
   Sheets:
 ${sheetContexts}`;
-    }).join('\n');
+      }).join('\n');
 
-    // Enhanced prompt for Claude 3.5 Sonnet
-    const userPrompt = `
+      // Enhanced prompt for Excel file analysis
+      userPrompt = `
 USER QUERY: ${query}
 
 AVAILABLE EXCEL FILES:
@@ -168,12 +189,14 @@ INSTRUCTIONS:
 ADDITIONAL CONTEXT:
 This query is part of chat session: ${sessionId}
 `.trim();
+    }
 
     // Update message status
     await updateMessageStatus(messageId, 'processing', '', {
       stage: 'sending_to_claude',
       completion_percentage: 30,
-      request_start: Date.now()
+      request_start: Date.now(),
+      is_text_only: isTextOnly
     });
 
     // Make API call to Claude with retry logic
@@ -195,14 +218,17 @@ This query is part of chat session: ${sessionId}
           body: JSON.stringify({
             model: CLAUDE_MODEL,
             max_tokens: 4000,
-            system: ASSISTANT_INSTRUCTIONS,
+            system: isTextOnly 
+              ? ASSISTANT_INSTRUCTIONS + "\n\nNote: The user has not uploaded any Excel files, so focus on providing general guidance, educational content, or instructions on how they can utilize the Excel Assistant better with file uploads."
+              : ASSISTANT_INSTRUCTIONS,
             messages: [
               { role: 'user', content: userPrompt }
             ],
             metadata: {
               user_id: userId,
               session_id: sessionId,
-              message_id: messageId
+              message_id: messageId,
+              is_text_only: isTextOnly ? "true" : "false"
             }
           })
         });
@@ -238,7 +264,8 @@ This query is part of chat session: ${sessionId}
       claude_message_id: response.id,
       model_used: response.model,
       usage: response.usage,
-      completed_at: Date.now()
+      completed_at: Date.now(),
+      is_text_only: isTextOnly
     });
 
     return {
