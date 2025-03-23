@@ -37,6 +37,13 @@ export const ASSISTANT_INSTRUCTIONS = `You are an Excel expert assistant special
    - Explain limitations of the analysis
    - Provide alternative approaches when needed
 
+7. Text-Only Queries:
+   - For queries without file uploads, provide educational content about Excel
+   - Explain how to use relevant Excel features or functions
+   - Suggest best practices for data organization and analysis
+   - If the query requires file analysis, gently prompt the user to upload relevant files
+   - Provide helpful examples when explaining Excel concepts
+
 Remember to be thorough but concise, and always aim to provide actionable insights.`;
 
 // Model configuration
