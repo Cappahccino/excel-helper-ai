@@ -14,12 +14,14 @@ import {
   POLLING_INTERVAL,
   CLAUDE_MODEL
 } from "./config.ts";
+import { queueMessage, isMessageQueued } from "./queue.ts";
 
 // Environment variables
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const USE_MESSAGE_QUEUE = Deno.env.get('USE_MESSAGE_QUEUE') === 'true';
 
 // Constants
 const FILE_CACHE_TTL = 3600 * 1000; // 1 hour in milliseconds
@@ -116,7 +118,384 @@ class ExcelAssistantError extends Error {
   }
 }
 
-// (Keeping all the existing functions from the previous index.ts file...)
+/**
+ * Utility function to retry an asynchronous operation.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries: number,
+  delay: number,
+  stage: string
+): Promise<T> {
+  let attempt = 0;
+  while (attempt < retries) {
+    try {
+      return await fn();
+    } catch (error) {
+      console.warn(`Attempt ${attempt + 1} failed for stage ${stage}: ${error.message}`);
+      attempt++;
+      if (attempt === retries) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error(`Failed after ${retries} attempts`);
+}
+
+/**
+ * Get file metadata from cache or database
+ */
+async function getFileMetadata(fileId: string): Promise<any> {
+  const cachedData = fileMetadataCache.get(fileId);
+  if (cachedData && Date.now() - cachedData.timestamp < FILE_CACHE_TTL) {
+    console.log(`Using cached metadata for file ${fileId}`);
+    return cachedData.data;
+  }
+
+  const { data, error } = await supabase
+    .from('excel_files')
+    .select('*')
+    .eq('id', fileId)
+    .single();
+
+  if (error) {
+    console.error(`Error fetching file metadata for ${fileId}: ${error.message}`);
+    throw new ExcelAssistantError(
+      `Failed to fetch file metadata: ${error.message}`,
+      500,
+      'database',
+      true
+    );
+  }
+
+  fileMetadataCache.set(fileId, {
+    data: data,
+    timestamp: Date.now()
+  });
+
+  return data;
+}
+
+/**
+ * Extract Excel file content with improved error handling
+ */
+async function extractExcelFileContent(files: ExcelFile[]): Promise<FileContent[]> {
+  if (!files || files.length === 0) {
+    console.warn('No files provided for content extraction');
+    return [];
+  }
+  
+  console.log(`Extracting content from ${files.length} files`);
+  
+  try {
+    const fileContents: FileContent[] = [];
+    
+    for (const file of files) {
+      console.log(`Processing file: ${file.filename} (ID: ${file.id})`);
+      
+      // Download file from Supabase storage
+      const { data: fileContent, error: downloadError } = await supabase.storage
+        .from('excel_files')
+        .download(file.file_path);
+      
+      if (downloadError) {
+        console.error(`Error downloading file ${file.filename}: ${downloadError.message}`);
+        throw new ExcelAssistantError(
+          `Failed to download file: ${downloadError.message}`,
+          500,
+          'file_download',
+          true
+        );
+      }
+      
+      // Read the Excel file
+      const workbook = XLSX.read(await fileContent.arrayBuffer(), { type: 'array' });
+      
+      const sheets: SheetData[] = workbook.SheetNames.map(sheetName => {
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        // Get formulas if available
+        let formulas: Record<string, string> | undefined;
+        if (worksheet['!f']) {
+          formulas = {};
+          worksheet['!f'].forEach((formula: string, index: number) => {
+            const cellAddress = worksheet['!ref']?.split(':')[0]; // Get top-left cell
+            if (cellAddress) {
+              const col = index % (json[0] as any[]).length;
+              const row = Math.floor(index / (json[0] as any[]).length);
+              const cell = XLSX.utils.encode_cell({ r: row, c: col });
+              formulas![cell] = formula;
+            }
+          });
+        }
+        
+        return {
+          name: sheetName,
+          rowCount: json.length,
+          columnCount: json[0]?.length || 0,
+          preview: json.slice(0, 5),
+          formulas
+        };
+      });
+      
+      fileContents.push({
+        filename: file.filename,
+        sheets: sheets
+      });
+    }
+    
+    console.log('Successfully extracted content from all files');
+    return fileContents;
+  } catch (error) {
+    console.error('Error in extractExcelFileContent:', error);
+    
+    if (error instanceof ExcelAssistantError) {
+      throw error;
+    }
+    
+    throw new ExcelAssistantError(
+      `Failed to extract Excel file content: ${error.message}`,
+      500,
+      'file_extraction',
+      true
+    );
+  }
+}
+
+/**
+ * Update message status in the database
+ */
+async function updateMessageStatus(
+  messageId: string,
+  status: string,
+  content: string = '',
+  metadata: Record<string, any> = {}
+) {
+  try {
+    // Prepare the update payload
+    const updates: Record<string, any> = {
+      status
+    };
+    
+    if (content) {
+      updates.content = content;
+    }
+    
+    if (Object.keys(metadata).length > 0) {
+      const { data: existingMessage } = await supabase
+        .from('chat_messages')
+        .select('metadata')
+        .eq('id', messageId)
+        .single();
+      
+      updates.metadata = {
+        ...existingMessage?.metadata,
+        processing_stage: {
+          ...(existingMessage?.metadata?.processing_stage || {}),
+          ...metadata,
+          stage: metadata.stage || status,
+          last_updated: Date.now()
+        }
+      };
+    }
+    
+    // Update the message
+    const { error } = await supabase
+      .from('chat_messages')
+      .update(updates)
+      .eq('id', messageId);
+    
+    if (error) {
+      console.error(`Error updating message ${messageId} status:`, error);
+      throw error;
+    }
+    
+    console.log(`Updated message ${messageId} status to ${status}`);
+  } catch (error) {
+    console.error(`Failed to update message ${messageId} status:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get or create a thread for OpenAI assistant
+ */
+async function getOrCreateThread(sessionId: string): Promise<{
+  threadId: string;
+  assistantId: string;
+  isNew: boolean;
+}> {
+  try {
+    // Check if a thread already exists for this session
+    const { data: existingThread, error: threadError } = await supabase
+      .from('chat_threads')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single();
+
+    if (threadError && threadError.code !== '404') {
+      console.error('Error checking for existing thread:', threadError);
+      throw new ExcelAssistantError(
+        `Failed to check for existing thread: ${threadError.message}`,
+        500,
+        'database',
+        true
+      );
+    }
+
+    if (existingThread) {
+      console.log(`Using existing thread ${existingThread.thread_id} for session ${sessionId}`);
+      return {
+        threadId: existingThread.thread_id,
+        assistantId: existingThread.assistant_id,
+        isNew: false
+      };
+    }
+
+    // Create a new thread
+    console.log(`Creating new thread for session ${sessionId}`);
+    const thread = await openai!.beta.threads.create({
+      metadata: {
+        session_id: String(sessionId)
+      }
+    }, { headers: v2Headers });
+
+    // Store the thread ID in the database
+    const { data: newThread, error: newThreadError } = await supabase
+      .from('chat_threads')
+      .insert({
+        session_id: sessionId,
+        thread_id: thread.id,
+        assistant_id: 'asst_LwGlwugNzJ7jEA9j9jObSg94' // Hardcoded assistant ID
+      })
+      .select('*')
+      .single();
+
+    if (newThreadError) {
+      console.error('Error storing new thread:', newThreadError);
+      throw new ExcelAssistantError(
+        `Failed to store new thread: ${newThreadError.message}`,
+        500,
+        'database',
+        true
+      );
+    }
+
+    console.log(`New thread created: ${thread.id}`);
+    return {
+      threadId: newThread.thread_id,
+      assistantId: newThread.assistant_id,
+      isNew: true
+    };
+  } catch (error) {
+    console.error('Error in getOrCreateThread:', error);
+    
+    if (error instanceof ExcelAssistantError) {
+      throw error;
+    }
+    
+    throw new ExcelAssistantError(
+      `Failed to get or create thread: ${error.message}`,
+      500,
+      'thread_creation',
+      true
+    );
+  }
+}
+
+/**
+ * Prepare files for OpenAI assistant
+ */
+async function prepareFilesForAssistant(files: ExcelFile[]): Promise<any[]> {
+  try {
+    const openaiFiles = [];
+
+    for (const file of files) {
+      // Check if the file already exists in OpenAI
+      const { data: existingFile, error: fileError } = await supabase
+        .from('openai_files')
+        .select('*')
+        .eq('excel_file_id', file.id)
+        .single();
+
+      if (fileError && fileError.code !== '404') {
+        console.error('Error checking for existing file:', fileError);
+        throw new ExcelAssistantError(
+          `Failed to check for existing file: ${fileError.message}`,
+          500,
+          'database',
+          true
+        );
+      }
+
+      if (existingFile) {
+        console.log(`Using existing file ${existingFile.openai_file_id} for Excel file ${file.id}`);
+        openaiFiles.push({ id: existingFile.openai_file_id });
+        continue;
+      }
+
+      // Download the file from Supabase storage
+      const { data: fileContent, error: downloadError } = await supabase.storage
+        .from('excel_files')
+        .download(file.file_path);
+
+      if (downloadError) {
+        console.error('Error downloading file:', downloadError);
+        throw new ExcelAssistantError(
+          `Failed to download file: ${downloadError.message}`,
+          500,
+          'file_download',
+          true
+        );
+      }
+
+      // Upload the file to OpenAI
+      console.log(`Uploading file ${file.filename} to OpenAI`);
+      const uploadedFile = await openai!.files.create({
+        file: fileContent as any,
+        purpose: "assistants"
+      }, { headers: v2Headers });
+
+      // Store the file ID in the database
+      const { error: storeError } = await supabase
+        .from('openai_files')
+        .insert({
+          excel_file_id: file.id,
+          openai_file_id: uploadedFile.id
+        });
+
+      if (storeError) {
+        console.error('Error storing file ID:', storeError);
+        throw new ExcelAssistantError(
+          `Failed to store file ID: ${storeError.message}`,
+          500,
+          'database',
+          true
+        );
+      }
+
+      console.log(`File ${file.filename} uploaded to OpenAI with ID ${uploadedFile.id}`);
+      openaiFiles.push({ id: uploadedFile.id });
+    }
+
+    return openaiFiles;
+  } catch (error) {
+    console.error('Error in prepareFilesForAssistant:', error);
+    
+    if (error instanceof ExcelAssistantError) {
+      throw error;
+    }
+    
+    throw new ExcelAssistantError(
+      `Failed to prepare files for assistant: ${error.message}`,
+      500,
+      'file_preparation',
+      true
+    );
+  }
+}
 
 /**
  * Process Excel files with improved file metadata extraction
@@ -160,8 +539,6 @@ async function processExcelFiles(fileIds: string[]): Promise<ExcelFile[]> {
     );
   }
 }
-
-// (Keeping all the existing utility functions...)
 
 /**
  * Process user query with Claude API - enhanced for Claude 3.5 Sonnet
@@ -439,8 +816,69 @@ This query is part of chat session: ${sessionId}
       file_count: fileIds.length
     });
 
-    // Rest of the function remains the same...
-    // (Keeping all the existing OpenAI processing code...)
+    // Create thread message
+    const message = await openai.beta.threads.messages.create(
+      threadId,
+      {
+        role: "user",
+        content: [{ type: "text", text: messageContentText }],
+        file_ids: fileIds,
+        metadata: {
+          user_id: String(userId),
+          session_id: String(sessionId)
+        }
+      },
+      { headers: v2Headers }
+    );
+
+    // Update database with thread message ID
+    await updateMessageStatus(messageId, 'processing', '', {
+      stage: 'processing',
+      thread_message_id: message.id
+    });
+
+    // Create run
+    console.log('Creating run with assistant:', assistantId);
+    await openai.beta.threads.runs.create(
+      threadId,
+      {
+        assistant_id: assistantId,
+        instructions: `
+You are an Excel expert assistant specializing in analyzing and explaining Excel data. Follow these guidelines:
+
+1. Data Analysis:
+   - Always provide detailed insights about the data structure and content
+   - Highlight key patterns, trends, or anomalies in the data
+   - Suggest potential analyses or visualizations when relevant
+   - Use numerical summaries (min, max, average, etc.) when appropriate
+
+2. Response Format:
+   - Structure responses clearly with headers and sections
+   - Use bullet points for lists of insights or recommendations
+   - Include relevant statistics to support observations
+   - Format numbers appropriately (e.g., percentages, decimals)
+
+3. Excel-Specific Features:
+   - Reference specific Excel functions that could be useful
+   - Explain complex calculations or formulas when needed
+   - Suggest improvements to data organization if applicable
+   - Mention relevant Excel features or tools
+
+4. Context Awareness:
+   - Consider all sheets and their relationships
+   - Reference specific columns and data points
+   - Acknowledge data quality issues or limitations
+   - Maintain context across multiple messages in a thread
+
+5. Formula Analysis:
+   - Break down formulas into component parts
+   - Explain what each part of a formula does
+   - Suggest optimizations for complex formulas
+   - Identify potential errors in formulas
+        `
+      },
+      { headers: v2Headers }
+    );
 
     return {
       threadId,
@@ -449,7 +887,15 @@ This query is part of chat session: ${sessionId}
       fileIds
     };
   } catch (error) {
-    // Error handling remains the same...
+    console.error('Error in processUserQueryWithOpenAI:', error);
+    
+    // Update message status to failed
+    await updateMessageStatus(messageId, 'failed', '', {
+      stage: 'openai_processing_error',
+      error: error.message,
+      failed_at: Date.now()
+    });
+    
     if (error instanceof ExcelAssistantError) {
       throw error;
     }
@@ -566,10 +1012,8 @@ Be courteous and helpful, treating this as an opportunity to educate on Excel or
   }
 }
 
-// (Keeping all existing polling and message handling functions...)
-
 /**
- * Process request with improved validation and error handling
+ * Process request with improved validation, error handling, and queue support
  */
 async function processRequest(req: Request): Promise<Response> {
   try {
@@ -600,136 +1044,4 @@ async function processRequest(req: Request): Promise<Response> {
     
     if (!requestData.messageId) {
       return new Response(
-        JSON.stringify({ error: 'No message ID provided' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-      );
-    }
-    
-    // Check if this is a text-only query
-    const isTextOnlyQuery = !requestData.fileIds || requestData.fileIds.length === 0;
-    console.log(`Processing ${isTextOnlyQuery ? 'text-only' : 'file-based'} query`);
-    
-    // Get or create thread - needed for both file and text-only queries with OpenAI
-    const { threadId, assistantId } = !USE_CLAUDE ? 
-      await getOrCreateThread(requestData.sessionId) : 
-      { threadId: null, assistantId: null, isNew: true };
-    
-    let result: ProcessResult;
-    
-    if (isTextOnlyQuery) {
-      // Handle text-only query
-      if (USE_CLAUDE) {
-        // Process with Claude API for text-only
-        result = await processTextOnlyQueryWithClaude({
-          query: requestData.query,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      } else {
-        // Process with OpenAI API for text-only
-        result = await processTextOnlyQueryWithOpenAI({
-          threadId,
-          assistantId,
-          query: requestData.query,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      }
-    } else {
-      // Handle file-based query
-      // Process Excel files
-      const files = await processExcelFiles(requestData.fileIds);
-      
-      // Extract content from files
-      const fileContents = await extractExcelFileContent(files);
-      
-      if (USE_CLAUDE) {
-        // Process with Claude API
-        result = await processUserQueryWithClaude({
-          query: requestData.query,
-          files,
-          fileContents,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      } else {
-        // Process with OpenAI API
-        result = await processUserQueryWithOpenAI({
-          threadId,
-          assistantId,
-          query: requestData.query,
-          files,
-          fileContents,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      }
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        ...result 
-      }),
-      { 
-        status: 200, 
-        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
-      }
-    );
-  } catch (error) {
-    console.error('Error processing request:', error);
-    
-    const statusCode = error instanceof ExcelAssistantError ? error.status : 500;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStage = error instanceof ExcelAssistantError ? error.stage : 'unknown';
-    
-    return new Response(
-      JSON.stringify({ 
-        error: errorMessage, 
-        stage: errorStage,
-        timestamp: new Date().toISOString()
-      }),
-      { 
-        status: statusCode, 
-        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
-      }
-    );
-  }
-}
-
-/**
- * Handle OPTIONS requests for CORS
- */
-function handleOptions(req: Request): Response {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      ...corsHeaders,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    },
-  });
-}
-
-/**
- * Main handler for the edge function
- */
-serve(async (req: Request) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return handleOptions(req);
-  }
-  
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-    );
-  }
-  
-  return processRequest(req);
-});
+        JSON.stringify({ error: '

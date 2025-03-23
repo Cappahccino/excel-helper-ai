@@ -52,6 +52,7 @@ export const CLAUDE_MODEL = "claude-3-5-sonnet-20240307";
 
 // Feature flags
 export const USE_CLAUDE = true; // Set to true to use Claude model, false for OpenAI
+export const USE_MESSAGE_QUEUE = true; // Set to true to use Redis/BullMQ for message queueing
 
 // API configuration
 export const MAX_POLLING_ATTEMPTS = 30;
