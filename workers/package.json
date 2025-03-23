@@ -10,11 +10,15 @@
     "start:all": "concurrently \"npm run start\" \"npm run start:message\" \"npm run start:recovery\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.8",
-    "bullmq": "^5.4.1",
+    "@supabase/supabase-js": "^2.49.1",
+    "@types/ioredis": "^4.28.10",
+    "@types/node": "^22.13.11",
+    "@types/uuid": "^10.0.0",
+    "bullmq": "^5.44.3",
     "concurrently": "^8.2.2",
-    "dotenv": "^16.4.5",
-    "ioredis": "^5.3.2",
-    "node-fetch": "^3.3.2"
+    "dotenv": "^16.4.7",
+    "ioredis": "^5.6.0",
+    "node-fetch": "^3.3.2",
+    "uuid": "^11.1.0"
   }
 }

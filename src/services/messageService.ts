@@ -2,6 +2,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message, MessagePin } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
+import { createClient } from '@supabase/supabase-js';
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
+import { v4 as uuidv4 } from 'uuid';
+
+// Initialize Redis connection
+const redis = new Redis(process.env.REDIS_URL!);
+
+// Initialize message queue
+const messageQueue = new Queue('message-processing', {
+  connection: redis,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 1000,
+    },
+  },
+});
+
+// Initialize Supabase client
+const supabaseClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function fetchMessages(
   sessionId: string,
@@ -96,56 +121,62 @@ export async function createUserMessage(
   content: string,
   sessionId: string,
   userId: string,
-  fileIds?: string[] | null
+  fileIds: string[] = []
 ) {
-  try {
-    console.log('Creating user message with files:', fileIds);
-
-    // Create the message
-    const { data: message, error: messageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content,
-        role: 'user', // Ensure role is strictly 'user' to match Message type
-        session_id: sessionId,
-        is_ai_response: false,
-        user_id: userId,
-        status: 'completed' as const,
-        version: '1.0.0',
-        migration_verified: true
-      })
-      .select()
-      .single();
-
-    if (messageError) {
-      console.error('Error creating message:', messageError);
-      throw messageError;
-    }
-
-    // If there are files, create the message_files entries with batch processing
-    if (fileIds && fileIds.length > 0) {
-      const batchSize = 10;
-      for (let i = 0; i < fileIds.length; i += batchSize) {
-        const batch = fileIds.slice(i, i + batchSize);
-        const messageFiles = batch.map(fileId => ({
-          message_id: message.id,
-          file_id: fileId,
-          role: 'user'
-        }));
-
-        const { error: filesError } = await supabase
-          .from('message_files')
-          .insert(messageFiles);
-
-        if (filesError) {
-          console.error(`Error creating message files batch ${i}:`, filesError);
-          // Continue with other batches even if one fails
-        }
+  console.log('Creating user message:', { content, sessionId, userId, fileIds });
+  
+  const messageId = uuidv4();
+  const message = {
+    id: messageId,
+    content,
+    role: 'user',
+    session_id: sessionId,
+    user_id: userId,
+    status: 'queued',
+    metadata: {
+      file_ids: fileIds,
+      processing_stage: {
+        stage: 'queued',
+        queued_at: Date.now()
       }
     }
+  };
 
-    console.log('Successfully created user message with files:', message.id);
-    return transformMessage(message as DatabaseMessage);
+  try {
+    // Insert message into database
+    const { error: insertError } = await supabaseClient
+      .from('chat_messages')
+      .insert(message);
+
+    if (insertError) {
+      console.error('Error inserting user message:', insertError);
+      throw insertError;
+    }
+
+    // Add message to processing queue
+    console.log('Adding message to processing queue:', messageId);
+    await messageQueue.add(
+      'process-message',
+      {
+        messageId,
+        query: content,
+        userId,
+        sessionId,
+        fileIds,
+        isTextOnly: !fileIds?.length
+      },
+      {
+        jobId: messageId,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000
+        }
+      }
+    );
+    console.log('Message added to queue successfully:', messageId);
+
+    return message;
   } catch (error) {
     console.error('Error in createUserMessage:', error);
     throw error;
@@ -155,67 +186,38 @@ export async function createUserMessage(
 export async function createAssistantMessage(
   sessionId: string,
   userId: string,
-  fileIds?: string[] | null
+  fileIds: string[] = []
 ) {
-  try {
-    console.log('Creating assistant message with files:', fileIds);
-
-    const { data: message, error: messageError } = await supabase
-      .from('chat_messages')
-      .insert({
-        content: '',
-        role: 'assistant', // Ensure role is strictly 'assistant' to match Message type
-        session_id: sessionId,
-        is_ai_response: true,
-        user_id: userId,
-        status: 'processing' as const,
-        version: '1.0.0',
-        migration_verified: true,
-        deployment_id: crypto.randomUUID(),
-        metadata: {
-          processing_stage: {
-            stage: 'generating',
-            started_at: Date.now(),
-            last_updated: Date.now()
-          }
-        }
-      })
-      .select()
-      .single();
-
-    if (messageError) {
-      console.error('Error creating assistant message:', messageError);
-      throw messageError;
-    }
-
-    // If there are files, create the message_files entries with batch processing
-    if (fileIds && fileIds.length > 0) {
-      const batchSize = 10;
-      for (let i = 0; i < fileIds.length; i += batchSize) {
-        const batch = fileIds.slice(i, i + batchSize);
-        const messageFiles = batch.map(fileId => ({
-          message_id: message.id,
-          file_id: fileId,
-          role: 'assistant'
-        }));
-
-        const { error: filesError } = await supabase
-          .from('message_files')
-          .insert(messageFiles);
-
-        if (filesError) {
-          console.error(`Error creating message files batch ${i} for assistant:`, filesError);
-          // Continue with other batches even if one fails
-        }
+  console.log('Creating assistant message:', { sessionId, userId, fileIds });
+  
+  const messageId = uuidv4();
+  const message = {
+    id: messageId,
+    content: '',
+    role: 'assistant',
+    session_id: sessionId,
+    user_id: userId,
+    status: 'processing',
+    metadata: {
+      file_ids: fileIds,
+      processing_stage: {
+        stage: 'generating',
+        started_at: Date.now(),
+        last_updated: Date.now()
       }
     }
+  };
 
-    console.log('Successfully created assistant message:', message.id);
-    return transformMessage(message as DatabaseMessage);
-  } catch (error) {
-    console.error('Error in createAssistantMessage:', error);
+  const { error } = await supabaseClient
+    .from('chat_messages')
+    .insert(message);
+
+  if (error) {
+    console.error('Error creating assistant message:', error);
     throw error;
   }
+
+  return message;
 }
 
 /**
@@ -408,4 +410,46 @@ function transformMessage(message: DatabaseMessage): Message {
     role: role,
     // Add any additional transformations here
   } as Message;
+}
+
+export async function updateMessageContent(messageId: string, content: string, status: string = 'completed') {
+  console.log('Updating message content:', { messageId, status });
+  
+  try {
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({
+        content,
+        status,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          processing_stage: {
+            stage: status,
+            completed_at: Date.now(),
+            last_updated: Date.now()
+          }
+        }
+      })
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Error updating message content:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in updateMessageContent:', error);
+    throw error;
+  }
+}
+
+// Function to check Redis queue health
+export async function checkQueueHealth() {
+  try {
+    const queueHealth = await messageQueue.getMetrics();
+    console.log('Queue health metrics:', queueHealth);
+    return queueHealth;
+  } catch (error) {
+    console.error('Error checking queue health:', error);
+    throw error;
+  }
 }

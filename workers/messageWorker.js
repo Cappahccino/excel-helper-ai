@@ -4,14 +4,34 @@ const { createClient } = require("@supabase/supabase-js");
 require("dotenv").config();
 
 // Initialize Redis and Supabase clients
+console.log('Attempting to connect to Redis...');
 const redis = new Redis(process.env.REDIS_URL);
+
+redis.on('connect', () => {
+  console.log('Successfully connected to Redis');
+});
+
+redis.on('error', (err) => {
+  console.error('Redis connection error:', err);
+});
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Create message processing queue
-const messageQueue = new Queue("message-processing", { connection: redis });
+// Create message processing queue with debug logging
+console.log('Creating message processing queue...');
+const messageQueue = new Queue("message-processing", { 
+  connection: redis,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 1000
+    }
+  }
+});
 
 // Worker to process messages
 const messageWorker = new Worker(
@@ -26,10 +46,12 @@ const messageWorker = new Worker(
       isTextOnly 
     } = job.data;
     
-    console.log(`Processing message ${messageId} for user ${userId}`);
+    console.log(`[${new Date().toISOString()}] Processing message ${messageId} for user ${userId}`);
+    console.log('Job data:', job.data);
     
     try {
       // Update message status to processing
+      console.log(`Updating message ${messageId} status to processing...`);
       await updateMessageStatus(messageId, 'processing', '', {
         stage: 'preparing',
         processing_started_at: new Date().toISOString(),
@@ -37,11 +59,13 @@ const messageWorker = new Worker(
       
       // Check if we're using Claude or OpenAI
       const USE_CLAUDE = process.env.USE_CLAUDE === 'true';
+      console.log(`Using ${USE_CLAUDE ? 'Claude' : 'OpenAI'} for processing`);
       
       let result;
       
       // Process with appropriate service
       if (isTextOnly) {
+        console.log(`Processing text-only query for message ${messageId}`);
         // Call the Excel Assistant edge function for text-only queries
         result = await callExcelAssistant({
           query,
@@ -51,6 +75,7 @@ const messageWorker = new Worker(
           fileIds: []
         });
       } else {
+        console.log(`Processing file-based query for message ${messageId} with files:`, fileIds);
         // Call the Excel Assistant edge function with files
         result = await callExcelAssistant({
           query,
@@ -61,6 +86,7 @@ const messageWorker = new Worker(
         });
       }
       
+      console.log(`Successfully processed message ${messageId}, updating status...`);
       // Update message with the result
       await updateMessageStatus(messageId, 'completed', result.content || '', {
         stage: 'completed',
@@ -84,36 +110,21 @@ const messageWorker = new Worker(
   },
   { 
     connection: redis,
-    concurrency: 5, // Process 5 messages at a time
+    concurrency: 5,
     limiter: {
-      max: 10, // Max 10 jobs per time period
-      duration: 1000 // 1 second
+      max: 10,
+      duration: 1000
     }
   }
 );
 
 // Helper function to call Excel Assistant edge function
 async function callExcelAssistant(data) {
-  // Create specialized prompt for text-only queries
-  if (data.isTextOnly) {
-    const textOnlyPrompt = `
-USER QUERY (TEXT-ONLY): ${data.query}
-
-INSTRUCTIONS:
-1. This is a text-only query about Excel or data analysis
-2. Provide helpful information, tips, and best practices
-3. If the query requires file analysis, explain how to use Excel files with this assistant
-4. Include examples where appropriate
-5. Focus on educational content about Excel features and functions
-
-ADDITIONAL CONTEXT:
-- No Excel files are currently attached
-- This is part of chat session: ${data.sessionId}
-- If file analysis is needed, suggest uploading relevant files
-    `.trim();
-    
-    data.query = textOnlyPrompt;
-  }
+  console.log(`Calling Excel Assistant with data:`, {
+    messageId: data.messageId,
+    sessionId: data.sessionId,
+    isTextOnly: !data.fileIds?.length
+  });
 
   const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/excel-assistant`, {
     method: 'POST',
@@ -126,14 +137,18 @@ ADDITIONAL CONTEXT:
 
   if (!response.ok) {
     const error = await response.text();
+    console.error(`Excel Assistant API error (${response.status}):`, error);
     throw new Error(`Excel Assistant failed: ${error}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  console.log(`Excel Assistant response received for message ${data.messageId}`);
+  return result;
 }
 
 // Track message status with timeouts and heartbeats
 async function updateMessageStatus(messageId, status, content, metadata) {
+  console.log(`Updating message ${messageId} status to ${status}`);
   try {
     const updateData = {
       status,
@@ -146,12 +161,16 @@ async function updateMessageStatus(messageId, status, content, metadata) {
     
     if (metadata) {
       // Get existing metadata first
-      const { data: existingMessage } = await supabase
+      const { data: existingMessage, error: fetchError } = await supabase
         .from('chat_messages')
         .select('metadata')
         .eq('id', messageId)
         .single();
         
+      if (fetchError) {
+        console.error(`Error fetching existing message ${messageId}:`, fetchError);
+      }
+      
       const currentMetadata = existingMessage?.metadata || {};
       
       // Add specialized metadata for text-only queries
@@ -174,37 +193,53 @@ async function updateMessageStatus(messageId, status, content, metadata) {
       };
     }
     
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from('chat_messages')
       .update(updateData)
       .eq('id', messageId);
       
-    if (error) {
-      console.error(`Error updating message status for ${messageId}:`, error);
+    if (updateError) {
+      console.error(`Error updating message status for ${messageId}:`, updateError);
+    } else {
+      console.log(`Successfully updated message ${messageId} status`);
     }
   } catch (error) {
     console.error(`Fatal error updating message status for ${messageId}:`, error);
   }
 }
 
-// Error handling
+// Error handling with more detailed logging
 messageWorker.on('failed', (job, error) => {
   console.error(`Message job ${job.id} failed:`, error);
+  console.error('Job data:', job.data);
+  console.error('Error stack:', error.stack);
+});
+
+messageWorker.on('completed', (job) => {
+  console.log(`Message job ${job.id} completed successfully`);
 });
 
 // Heartbeat to keep track of worker health
-setInterval(async () => {
+const heartbeatInterval = setInterval(async () => {
   try {
-    await redis.set('message_worker_heartbeat', Date.now());
+    const timestamp = Date.now();
+    await redis.set('message_worker_heartbeat', timestamp);
+    console.log(`Updated worker heartbeat: ${new Date(timestamp).toISOString()}`);
   } catch (error) {
     console.error('Failed to update heartbeat:', error);
   }
 }, 30000); // Every 30 seconds
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
+async function shutdown() {
+  console.log('Shutting down worker...');
+  clearInterval(heartbeatInterval);
   await messageWorker.close();
   await redis.quit();
-});
+  console.log('Worker shutdown complete');
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 console.log('Message worker started'); 
