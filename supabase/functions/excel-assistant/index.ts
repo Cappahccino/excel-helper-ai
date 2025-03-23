@@ -20,6 +20,8 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const UPSTASH_REDIS_REST_URL = Deno.env.get('UPSTASH_REDIS_REST_URL');
+const UPSTASH_REDIS_REST_TOKEN = Deno.env.get('UPSTASH_REDIS_REST_TOKEN');
 
 // Constants
 const FILE_CACHE_TTL = 3600 * 1000; // 1 hour in milliseconds
@@ -609,71 +611,47 @@ async function processRequest(req: Request): Promise<Response> {
     const isTextOnlyQuery = !requestData.fileIds || requestData.fileIds.length === 0;
     console.log(`Processing ${isTextOnlyQuery ? 'text-only' : 'file-based'} query`);
     
-    // Get or create thread - needed for both file and text-only queries with OpenAI
-    const { threadId, assistantId } = !USE_CLAUDE ? 
-      await getOrCreateThread(requestData.sessionId) : 
-      { threadId: null, assistantId: null, isNew: true };
+    // Prepare queue payload
+    const queuePayload = {
+      messageId: requestData.messageId,
+      query: requestData.query,
+      userId: requestData.userId,
+      sessionId: requestData.sessionId,
+      fileIds: requestData.fileIds || [],
+      isTextOnly: isTextOnlyQuery,
+      timestamp: Date.now()
+    };
     
-    let result: ProcessResult;
+    // Connect to Redis using REST API (for edge function compatibility)
+    const redisUrl = `${UPSTASH_REDIS_REST_URL}/lpush/message-processing-queue/${JSON.stringify(queuePayload)}`;
     
-    if (isTextOnlyQuery) {
-      // Handle text-only query
-      if (USE_CLAUDE) {
-        // Process with Claude API for text-only
-        result = await processTextOnlyQueryWithClaude({
-          query: requestData.query,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      } else {
-        // Process with OpenAI API for text-only
-        result = await processTextOnlyQueryWithOpenAI({
-          threadId,
-          assistantId,
-          query: requestData.query,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
+    const redisResponse = await fetch(redisUrl, {
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
       }
-    } else {
-      // Handle file-based query
-      // Process Excel files
-      const files = await processExcelFiles(requestData.fileIds);
-      
-      // Extract content from files
-      const fileContents = await extractExcelFileContent(files);
-      
-      if (USE_CLAUDE) {
-        // Process with Claude API
-        result = await processUserQueryWithClaude({
-          query: requestData.query,
-          files,
-          fileContents,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      } else {
-        // Process with OpenAI API
-        result = await processUserQueryWithOpenAI({
-          threadId,
-          assistantId,
-          query: requestData.query,
-          files,
-          fileContents,
-          messageId: requestData.messageId,
-          userId: requestData.userId,
-          sessionId: requestData.sessionId
-        });
-      }
+    });
+    
+    if (!redisResponse.ok) {
+      throw new ExcelAssistantError(
+        `Failed to add job to queue: ${await redisResponse.text()}`,
+        500,
+        'queue',
+        true
+      );
     }
+    
+    // Update message status to queued
+    await updateMessageStatus(requestData.messageId, 'processing', '', {
+      stage: 'queued',
+      queued_at: Date.now(),
+      is_text_only: isTextOnlyQuery
+    });
     
     return new Response(
       JSON.stringify({ 
         success: true, 
-        ...result 
+        messageId: requestData.messageId,
+        status: 'queued' 
       }),
       { 
         status: 200, 
