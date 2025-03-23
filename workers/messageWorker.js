@@ -94,6 +94,27 @@ const messageWorker = new Worker(
 
 // Helper function to call Excel Assistant edge function
 async function callExcelAssistant(data) {
+  // Create specialized prompt for text-only queries
+  if (data.isTextOnly) {
+    const textOnlyPrompt = `
+USER QUERY (TEXT-ONLY): ${data.query}
+
+INSTRUCTIONS:
+1. This is a text-only query about Excel or data analysis
+2. Provide helpful information, tips, and best practices
+3. If the query requires file analysis, explain how to use Excel files with this assistant
+4. Include examples where appropriate
+5. Focus on educational content about Excel features and functions
+
+ADDITIONAL CONTEXT:
+- No Excel files are currently attached
+- This is part of chat session: ${data.sessionId}
+- If file analysis is needed, suggest uploading relevant files
+    `.trim();
+    
+    data.query = textOnlyPrompt;
+  }
+
   const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/excel-assistant`, {
     method: 'POST',
     headers: {
@@ -132,6 +153,15 @@ async function updateMessageStatus(messageId, status, content, metadata) {
         .single();
         
       const currentMetadata = existingMessage?.metadata || {};
+      
+      // Add specialized metadata for text-only queries
+      if (metadata.is_text_only) {
+        metadata.text_only_context = {
+          processed_at: Date.now(),
+          query_type: 'text_only',
+          requires_files: metadata.might_need_files || false
+        };
+      }
       
       updateData.metadata = {
         ...currentMetadata,

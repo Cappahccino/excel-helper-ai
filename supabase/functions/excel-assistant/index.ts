@@ -611,7 +611,24 @@ async function processRequest(req: Request): Promise<Response> {
     const isTextOnlyQuery = !requestData.fileIds || requestData.fileIds.length === 0;
     console.log(`Processing ${isTextOnlyQuery ? 'text-only' : 'file-based'} query`);
     
-    // Prepare queue payload
+    // Check if the query requires file analysis but no files are provided
+    const fileAnalysisKeywords = ['analyze', 'file', 'excel', 'sheet', 'data', 'column', 'row', 'cell'];
+    const queryLower = requestData.query.toLowerCase();
+    const mightNeedFiles = fileAnalysisKeywords.some(keyword => queryLower.includes(keyword));
+    
+    if (isTextOnlyQuery && mightNeedFiles) {
+      // Add a warning to the metadata but still process the query
+      const warningMessage = 'Your query seems to be asking about file analysis, but no files were provided. ' +
+                           'If you want to analyze specific Excel files, please upload them first.';
+      
+      await updateMessageStatus(requestData.messageId, 'processing', '', {
+        stage: 'validation',
+        warning: warningMessage,
+        requires_files: true
+      });
+    }
+    
+    // Prepare queue payload with enhanced metadata
     const queuePayload = {
       messageId: requestData.messageId,
       query: requestData.query,
@@ -619,7 +636,12 @@ async function processRequest(req: Request): Promise<Response> {
       sessionId: requestData.sessionId,
       fileIds: requestData.fileIds || [],
       isTextOnly: isTextOnlyQuery,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      metadata: {
+        query_type: isTextOnlyQuery ? 'text_only' : 'file_based',
+        might_need_files: mightNeedFiles,
+        original_query: requestData.query
+      }
     };
     
     // Connect to Redis using REST API (for edge function compatibility)
@@ -640,18 +662,24 @@ async function processRequest(req: Request): Promise<Response> {
       );
     }
     
-    // Update message status to queued
+    // Update message status to queued with enhanced metadata
     await updateMessageStatus(requestData.messageId, 'processing', '', {
       stage: 'queued',
       queued_at: Date.now(),
-      is_text_only: isTextOnlyQuery
+      is_text_only: isTextOnlyQuery,
+      might_need_files: mightNeedFiles,
+      query_analysis: {
+        type: isTextOnlyQuery ? 'text_only' : 'file_based',
+        potential_file_requirement: mightNeedFiles
+      }
     });
     
     return new Response(
       JSON.stringify({ 
         success: true, 
         messageId: requestData.messageId,
-        status: 'queued' 
+        status: 'queued',
+        warnings: isTextOnlyQuery && mightNeedFiles ? ['Query might require file upload'] : undefined
       }),
       { 
         status: 200, 
