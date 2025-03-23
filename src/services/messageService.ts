@@ -144,7 +144,7 @@ export async function createUserMessage(
 
   try {
     // Insert message into database
-    const { error: insertError } = await supabaseClient
+    const { error: insertError } = await supabase
       .from('chat_messages')
       .insert(message);
 
@@ -153,29 +153,30 @@ export async function createUserMessage(
       throw insertError;
     }
 
-    // Add message to processing queue
-    console.log('Adding message to processing queue:', messageId);
-    await messageQueue.add(
-      'process-message',
-      {
+    // Call edge function to queue message
+    console.log('Calling edge function to queue message:', messageId);
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/queue-message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({
         messageId,
         query: content,
         userId,
         sessionId,
         fileIds,
         isTextOnly: !fileIds?.length
-      },
-      {
-        jobId: messageId,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 1000
-        }
-      }
-    );
-    console.log('Message added to queue successfully:', messageId);
+      })
+    });
 
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to queue message: ${error}`);
+    }
+
+    console.log('Message queued successfully:', messageId);
     return message;
   } catch (error) {
     console.error('Error in createUserMessage:', error);
@@ -208,7 +209,7 @@ export async function createAssistantMessage(
     }
   };
 
-  const { error } = await supabaseClient
+  const { error } = await supabase
     .from('chat_messages')
     .insert(message);
 

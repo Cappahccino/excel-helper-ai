@@ -1,10 +1,9 @@
-const { Worker, Queue } = require("bullmq");
-const Redis = require("ioredis");
-const { createClient } = require("@supabase/supabase-js");
-require("dotenv").config();
+const Redis = require('ioredis');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
 // Initialize Redis and Supabase clients
-console.log('Attempting to connect to Redis...');
+console.log('Initializing Redis connection...');
 const redis = new Redis(process.env.REDIS_URL);
 
 redis.on('connect', () => {
@@ -20,130 +19,80 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Create message processing queue with debug logging
-console.log('Creating message processing queue...');
-const messageQueue = new Queue("message-processing", { 
-  connection: redis,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000
-    }
-  }
-});
-
-// Worker to process messages
-const messageWorker = new Worker(
-  "message-processing",
-  async (job) => {
-    const { 
-      messageId, 
-      query, 
-      userId, 
-      sessionId, 
-      fileIds, 
-      isTextOnly 
-    } = job.data;
+// Process messages from the queue
+async function processMessages() {
+  console.log('Starting message processing...');
+  
+  try {
+    // Get next message from queue
+    const jobData = await redis.rpop('message-processing');
     
-    console.log(`[${new Date().toISOString()}] Processing message ${messageId} for user ${userId}`);
-    console.log('Job data:', job.data);
+    if (!jobData) {
+      // No messages to process
+      return;
+    }
+    
+    const job = JSON.parse(jobData);
+    console.log('Processing message:', job.id);
+    
+    // Update message status
+    await updateMessageStatus(job.data.messageId, 'processing', '', {
+      stage: 'preparing',
+      processing_started_at: new Date().toISOString(),
+    });
     
     try {
-      // Update message status to processing
-      console.log(`Updating message ${messageId} status to processing...`);
-      await updateMessageStatus(messageId, 'processing', '', {
-        stage: 'preparing',
-        processing_started_at: new Date().toISOString(),
+      // Call Excel Assistant edge function
+      const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/excel-assistant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify(job.data)
       });
-      
-      // Check if we're using Claude or OpenAI
-      const USE_CLAUDE = process.env.USE_CLAUDE === 'true';
-      console.log(`Using ${USE_CLAUDE ? 'Claude' : 'OpenAI'} for processing`);
-      
-      let result;
-      
-      // Process with appropriate service
-      if (isTextOnly) {
-        console.log(`Processing text-only query for message ${messageId}`);
-        // Call the Excel Assistant edge function for text-only queries
-        result = await callExcelAssistant({
-          query,
-          messageId,
-          userId,
-          sessionId,
-          fileIds: []
-        });
-      } else {
-        console.log(`Processing file-based query for message ${messageId} with files:`, fileIds);
-        // Call the Excel Assistant edge function with files
-        result = await callExcelAssistant({
-          query,
-          messageId,
-          userId,
-          sessionId,
-          fileIds
-        });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Excel Assistant failed: ${error}`);
       }
+
+      const result = await response.json();
       
-      console.log(`Successfully processed message ${messageId}, updating status...`);
-      // Update message with the result
-      await updateMessageStatus(messageId, 'completed', result.content || '', {
+      // Update message with result
+      await updateMessageStatus(job.data.messageId, 'completed', result.content || '', {
         stage: 'completed',
         completed_at: new Date().toISOString(),
         ...result.metadata
       });
       
-      return { success: true, messageId };
+      console.log(`Successfully processed message ${job.data.messageId}`);
     } catch (error) {
-      console.error(`Error processing message ${messageId}:`, error);
+      console.error(`Error processing message ${job.data.messageId}:`, error);
       
-      // Update message status to failed
-      await updateMessageStatus(messageId, 'failed', error.message || 'Unknown error', {
-        stage: 'failed',
-        error_message: error.message || 'Unknown error during processing',
-        failed_at: new Date().toISOString()
-      });
-      
-      throw error;
+      // If we haven't exceeded max attempts, put the job back in the queue
+      if (job.attempts < job.maxAttempts) {
+        job.attempts++;
+        await redis.lpush('message-processing', JSON.stringify(job));
+        
+        await updateMessageStatus(job.data.messageId, 'processing', '', {
+          stage: 'retrying',
+          error: error.message,
+          attempt: job.attempts,
+          next_attempt_at: Date.now() + (1000 * Math.pow(2, job.attempts)) // Exponential backoff
+        });
+      } else {
+        // Mark as failed if we've exceeded max attempts
+        await updateMessageStatus(job.data.messageId, 'failed', error.message || 'Unknown error', {
+          stage: 'failed',
+          error_message: error.message || 'Unknown error during processing',
+          failed_at: new Date().toISOString()
+        });
+      }
     }
-  },
-  { 
-    connection: redis,
-    concurrency: 5,
-    limiter: {
-      max: 10,
-      duration: 1000
-    }
+  } catch (error) {
+    console.error('Error in message processing:', error);
   }
-);
-
-// Helper function to call Excel Assistant edge function
-async function callExcelAssistant(data) {
-  console.log(`Calling Excel Assistant with data:`, {
-    messageId: data.messageId,
-    sessionId: data.sessionId,
-    isTextOnly: !data.fileIds?.length
-  });
-
-  const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/excel-assistant`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
-    },
-    body: JSON.stringify(data)
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`Excel Assistant API error (${response.status}):`, error);
-    throw new Error(`Excel Assistant failed: ${error}`);
-  }
-
-  const result = await response.json();
-  console.log(`Excel Assistant response received for message ${data.messageId}`);
-  return result;
 }
 
 // Track message status with timeouts and heartbeats
@@ -173,15 +122,6 @@ async function updateMessageStatus(messageId, status, content, metadata) {
       
       const currentMetadata = existingMessage?.metadata || {};
       
-      // Add specialized metadata for text-only queries
-      if (metadata.is_text_only) {
-        metadata.text_only_context = {
-          processed_at: Date.now(),
-          query_type: 'text_only',
-          requires_files: metadata.might_need_files || false
-        };
-      }
-      
       updateData.metadata = {
         ...currentMetadata,
         processing_stage: {
@@ -208,16 +148,8 @@ async function updateMessageStatus(messageId, status, content, metadata) {
   }
 }
 
-// Error handling with more detailed logging
-messageWorker.on('failed', (job, error) => {
-  console.error(`Message job ${job.id} failed:`, error);
-  console.error('Job data:', job.data);
-  console.error('Error stack:', error.stack);
-});
-
-messageWorker.on('completed', (job) => {
-  console.log(`Message job ${job.id} completed successfully`);
-});
+// Process messages continuously
+const processInterval = setInterval(processMessages, 1000); // Check every second
 
 // Heartbeat to keep track of worker health
 const heartbeatInterval = setInterval(async () => {
@@ -233,8 +165,8 @@ const heartbeatInterval = setInterval(async () => {
 // Graceful shutdown
 async function shutdown() {
   console.log('Shutting down worker...');
+  clearInterval(processInterval);
   clearInterval(heartbeatInterval);
-  await messageWorker.close();
   await redis.quit();
   console.log('Worker shutdown complete');
 }
