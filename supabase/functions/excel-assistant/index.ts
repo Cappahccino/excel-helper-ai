@@ -1,3 +1,4 @@
+
 // Import dependencies with specific versions to ensure stability
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
@@ -12,7 +13,8 @@ import {
   USE_CLAUDE, 
   MAX_POLLING_ATTEMPTS, 
   POLLING_INTERVAL,
-  CLAUDE_MODEL
+  CLAUDE_MODEL,
+  USE_MESSAGE_QUEUE
 } from "./config.ts";
 import { queueMessage, isMessageQueued } from "./queue.ts";
 
@@ -21,7 +23,6 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const USE_MESSAGE_QUEUE = Deno.env.get('USE_MESSAGE_QUEUE') === 'true';
 
 // Constants
 const FILE_CACHE_TTL = 3600 * 1000; // 1 hour in milliseconds
@@ -1044,4 +1045,292 @@ async function processRequest(req: Request): Promise<Response> {
     
     if (!requestData.messageId) {
       return new Response(
-        JSON.stringify({ error: '
+        JSON.stringify({ error: 'No message ID provided' }),
+        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+    
+    // Check if this is a text-only query
+    const isTextOnlyQuery = !requestData.fileIds || requestData.fileIds.length === 0;
+    
+    // If we have message queue enabled and this isn't a polling request, queue the message
+    if (USE_MESSAGE_QUEUE && requestData.action !== 'poll') {
+      console.log(`Using message queue for processing message ${requestData.messageId}`);
+      
+      // First check if message is already queued
+      const isQueued = await isMessageQueued(requestData.messageId);
+      if (isQueued) {
+        console.log(`Message ${requestData.messageId} is already queued`);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            status: 'queued',
+            messageId: requestData.messageId 
+          }),
+          { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+      
+      // Queue the message
+      const queueResult = await queueMessage({
+        messageId: requestData.messageId,
+        query: requestData.query,
+        userId: requestData.userId,
+        sessionId: requestData.sessionId,
+        fileIds: requestData.fileIds,
+        isTextOnly: isTextOnlyQuery
+      });
+      
+      if (queueResult.success) {
+        console.log(`Message ${requestData.messageId} queued successfully with job ID ${queueResult.jobId}`);
+        // Update status in database to queued
+        await updateMessageStatus(requestData.messageId, 'queued', '', {
+          stage: 'queued',
+          job_id: queueResult.jobId,
+          queued_at: Date.now()
+        });
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            status: 'queued', 
+            messageId: requestData.messageId,
+            jobId: queueResult.jobId
+          }),
+          { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      } else if (queueResult.fallback) {
+        // If queueing failed but fallback is available, process directly
+        console.log(`Queue unavailable, processing message ${requestData.messageId} directly`);
+        // Continue with direct processing
+      } else {
+        // If queueing failed without fallback, return error
+        return new Response(
+          JSON.stringify({ 
+            error: `Failed to queue message: ${queueResult.error}`,
+            status: 'error' 
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+    }
+    
+    // Handle polling for message status
+    if (requestData.action === 'poll') {
+      const { data: message, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('id', requestData.messageId)
+        .single();
+      
+      if (error) {
+        return new Response(
+          JSON.stringify({ error: `Message not found: ${error.message}` }),
+          { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+      
+      if (message.status === 'completed') {
+        return new Response(
+          JSON.stringify({ 
+            status: 'completed', 
+            content: message.content,
+            messageId: message.id
+          }),
+          { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      } else if (message.status === 'failed') {
+        return new Response(
+          JSON.stringify({ 
+            status: 'failed', 
+            error: message.metadata?.processing_stage?.error || 'Processing failed',
+            messageId: message.id
+          }),
+          { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      } else {
+        // Still processing
+        return new Response(
+          JSON.stringify({ 
+            status: message.status, 
+            messageId: message.id,
+            stage: message.metadata?.processing_stage?.stage || 'processing'
+          }),
+          { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+    }
+    
+    // Direct processing path
+    
+    // First update message to processing status
+    await updateMessageStatus(requestData.messageId, 'processing', '', {
+      stage: 'starting',
+      started_at: Date.now(),
+      is_text_only: isTextOnlyQuery
+    });
+    
+    let result: ProcessResult;
+    
+    if (isTextOnlyQuery) {
+      console.log(`Processing text-only query for message ${requestData.messageId}`);
+      
+      if (USE_CLAUDE) {
+        // Process text-only query with Claude
+        result = await processTextOnlyQueryWithClaude({
+          query: requestData.query,
+          messageId: requestData.messageId,
+          userId: requestData.userId,
+          sessionId: requestData.sessionId
+        });
+      } else {
+        // Get or create thread for OpenAI
+        const { threadId, assistantId } = await getOrCreateThread(requestData.sessionId);
+        
+        // Process text-only query with OpenAI
+        result = await processTextOnlyQueryWithOpenAI({
+          threadId,
+          assistantId,
+          query: requestData.query,
+          messageId: requestData.messageId,
+          userId: requestData.userId,
+          sessionId: requestData.sessionId
+        });
+      }
+    } else {
+      // Process file-based query
+      console.log(`Processing file-based query for ${requestData.fileIds.length} files`);
+      
+      // Get file information
+      const files = await processExcelFiles(requestData.fileIds);
+      
+      // Extract file content
+      const fileContents = await extractExcelFileContent(files);
+      
+      if (USE_CLAUDE) {
+        // Process with Claude API
+        result = await processUserQueryWithClaude({
+          query: requestData.query,
+          files,
+          fileContents,
+          messageId: requestData.messageId,
+          userId: requestData.userId,
+          sessionId: requestData.sessionId
+        });
+      } else {
+        // Get or create thread for OpenAI
+        const { threadId, assistantId } = await getOrCreateThread(requestData.sessionId);
+        
+        // Process with OpenAI API
+        result = await processUserQueryWithOpenAI({
+          threadId,
+          assistantId,
+          query: requestData.query,
+          files,
+          fileContents,
+          messageId: requestData.messageId,
+          userId: requestData.userId,
+          sessionId: requestData.sessionId
+        });
+      }
+    }
+    
+    // For Claude API, we already have the response content
+    if (result.claudeResponse) {
+      // Update message with Claude response
+      await updateMessageStatus(
+        requestData.messageId,
+        'completed',
+        result.claudeResponse.content,
+        {
+          stage: 'completed',
+          completed_at: Date.now(),
+          model_used: result.claudeResponse.modelUsed,
+          tokens: result.claudeResponse.usage
+        }
+      );
+      
+      // Return response
+      return new Response(
+        JSON.stringify({
+          status: 'completed',
+          content: result.claudeResponse.content,
+          messageId: requestData.messageId,
+          model: result.claudeResponse.modelUsed,
+          usage: result.claudeResponse.usage
+        }),
+        { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+    
+    // For OpenAI, we need to return the thread ID and run ID
+    // OpenAI processing is asynchronous, so we'll need the client to poll for updates
+    return new Response(
+      JSON.stringify({
+        status: 'processing',
+        messageId: requestData.messageId,
+        threadId: result.threadId,
+        runId: result.runId
+      }),
+      { headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
+    
+  } catch (error) {
+    console.error('Error processing request:', error);
+    
+    // Try to update message status to failed if we have the message ID
+    try {
+      const requestData = await req.json();
+      if (requestData.messageId) {
+        await updateMessageStatus(requestData.messageId, 'failed', '', {
+          stage: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          error_stack: error instanceof Error ? error.stack : undefined,
+          failed_at: Date.now()
+        });
+      }
+    } catch (e) {
+      console.error('Error updating message status:', e);
+    }
+    
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        status: 'error',
+        stage: error instanceof ExcelAssistantError ? error.stage : 'unknown'
+      }),
+      { 
+        status: error instanceof ExcelAssistantError ? error.status : 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
+      }
+    );
+  }
+}
+
+// Handle OPTIONS requests for CORS
+function handleOptions(req: Request) {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+}
+
+// Main handler
+serve(async (req: Request) => {
+  // Handle CORS preflight requests
+  const corsResponse = handleOptions(req);
+  if (corsResponse) return corsResponse;
+  
+  // Process request
+  if (req.method === 'POST') {
+    return processRequest(req);
+  }
+  
+  // Handle unsupported methods
+  return new Response(
+    JSON.stringify({ error: 'Method not allowed' }),
+    { 
+      status: 405, 
+      headers: { 'Content-Type': 'application/json', ...corsHeaders } 
+    }
+  );
+});

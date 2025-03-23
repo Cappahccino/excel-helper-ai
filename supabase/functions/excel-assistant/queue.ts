@@ -73,3 +73,97 @@ export async function isMessageQueued(messageId: string): Promise<boolean> {
     return false;
   }
 }
+
+// Retrieve a specific job by ID
+export async function getJob(jobId: string): Promise<any | null> {
+  try {
+    if (!redis) return null;
+    
+    const jobData = await redis.get(`message-processing:${jobId}`);
+    if (!jobData) return null;
+    
+    return JSON.parse(jobData);
+  } catch (error) {
+    console.error('Error getting job:', error);
+    return null;
+  }
+}
+
+// Mark a job as completed
+export async function completeJob(jobId: string): Promise<boolean> {
+  try {
+    if (!redis) return false;
+    
+    // Remove from waiting list
+    await redis.lrem('message-processing:waiting', 0, jobId);
+    
+    // Add to completed list
+    await redis.lpush('message-processing:completed', jobId);
+    
+    // Set expiry for completed job (24 hours)
+    await redis.expire(`message-processing:${jobId}`, 86400);
+    
+    return true;
+  } catch (error) {
+    console.error('Error completing job:', error);
+    return false;
+  }
+}
+
+// Mark a job as failed
+export async function failJob(jobId: string, error: string): Promise<boolean> {
+  try {
+    if (!redis) return false;
+    
+    // Get existing job data
+    const jobDataStr = await redis.get(`message-processing:${jobId}`);
+    if (!jobDataStr) return false;
+    
+    const jobData = JSON.parse(jobDataStr);
+    
+    // Update with error information
+    jobData.failed = true;
+    jobData.error = error;
+    jobData.failedAt = Date.now();
+    
+    // Save updated job data
+    await redis.set(`message-processing:${jobId}`, JSON.stringify(jobData));
+    
+    // Remove from waiting list
+    await redis.lrem('message-processing:waiting', 0, jobId);
+    
+    // Add to failed list
+    await redis.lpush('message-processing:failed', jobId);
+    
+    // Set expiry for failed job (72 hours)
+    await redis.expire(`message-processing:${jobId}`, 259200);
+    
+    return true;
+  } catch (error) {
+    console.error('Error failing job:', error);
+    return false;
+  }
+}
+
+// Get next job from the queue
+export async function getNextJob(): Promise<{ jobId: string; data: any } | null> {
+  try {
+    if (!redis) return null;
+    
+    // Get next job ID from waiting list
+    const jobId = await redis.rpop('message-processing:waiting');
+    if (!jobId) return null;
+    
+    // Get job data
+    const jobDataStr = await redis.get(`message-processing:${jobId}`);
+    if (!jobDataStr) return null;
+    
+    return {
+      jobId,
+      data: JSON.parse(jobDataStr)
+    };
+  } catch (error) {
+    console.error('Error getting next job:', error);
+    return null;
+  }
+}
