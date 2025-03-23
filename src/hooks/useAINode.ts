@@ -39,10 +39,11 @@ export function useAINode(workflowId: string, nodeId: string) {
       
       // Poll for status in case subscription doesn't work
       const checkStatus = async () => {
-        const statusResult = await fetch(`${process.env.SUPABASE_URL}/rest/v1/workflow_ai_requests?id=eq.${requestId}&select=*`, {
+        // Update to use import.meta.env instead of process.env
+        const statusResult = await fetch(`${import.meta.env.SUPABASE_URL}/rest/v1/workflow_ai_requests?id=eq.${requestId}&select=*`, {
           headers: {
             'Content-Type': 'application/json',
-            'apikey': process.env.SUPABASE_ANON_KEY || '',
+            'apikey': import.meta.env.SUPABASE_ANON_KEY || '',
             'Authorization': `Bearer ${localStorage.getItem('supabase.auth.token')}`
           }
         }).then(r => r.json());

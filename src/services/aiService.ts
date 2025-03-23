@@ -1,12 +1,11 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { AIRequestData, AIRequestStatus } from '@/types/workflow';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 
 // Environment variables
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_URL = import.meta.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.SUPABASE_ANON_KEY;
 
 // Constants
 const TIMEOUT_MS = 60000; // 1 minute timeout for network requests
