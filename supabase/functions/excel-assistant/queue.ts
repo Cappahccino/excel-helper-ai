@@ -1,6 +1,6 @@
 
 // Queue helper for Excel Assistant edge function
-import { createClient } from "https://esm.sh/@upstash/redis@1.26.1";
+import { createClient } from "https://esm.sh/@upstash/redis@1.26.1/deno";
 
 // Environment variables
 const UPSTASH_REDIS_REST_URL = Deno.env.get('UPSTASH_REDIS_REST_URL');
