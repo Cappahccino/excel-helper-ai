@@ -3,6 +3,9 @@ import { Node as ReactFlowNode, Edge as ReactFlowEdge, NodeProps as ReactFlowNod
 // Define our own Json type since we can't import it from supabase
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
+// Add AIRequestStatus type that was missing
+export type AIRequestStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+
 // Expanded Node Types
 export type InputNodeType = 
   | 'dataInput' | 'fileUpload' | 'databaseQuery' | 'manualEntry'
@@ -448,7 +451,7 @@ export interface AIRequestData {
   ai_provider: 'openai' | 'anthropic' | 'deepseek';
   user_query: string;
   ai_response?: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: AIRequestStatus;
   error_message?: string;
   created_at: string;
   completed_at?: string;
