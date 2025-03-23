@@ -1,4 +1,3 @@
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { MessagesResponse } from "@/types/chat";
@@ -57,41 +56,40 @@ export function useMessageMutation(sessionId: string | null) {
       try {
         console.log('Starting message send flow with session:', currentSessionId);
         
-        // Get files with improved logging
-        let activeFileIds = fileIds;
-        if (!activeFileIds || activeFileIds.length === 0) {
-          console.log('No files provided, fetching active session files...');
-          activeFileIds = await getFilesWithRetry(currentSessionId);
-        }
-
-        if (!activeFileIds || activeFileIds.length === 0) {
-          throw new Error('No files available for the message');
-        }
-
-        console.log('Using file IDs:', activeFileIds);
+        // Determine if this is a text-only query
+        const isTextOnlyQuery = !fileIds || fileIds.length === 0;
+        console.log(`Processing ${isTextOnlyQuery ? 'text-only' : 'file-based'} query`);
         
-        // Enhanced validation with detailed logging
-        console.log('Validating file availability...');
-        const filesValid = await validateFileAvailability(activeFileIds);
+        let activeFileIds: string[] = [];
         
-        if (!filesValid) {
-          console.warn("Files may not be ready for processing");
-          toast({
-            title: "Warning",
-            description: "Some files may not be fully processed yet. The message will still be sent, but the response might be delayed.",
-            variant: "default"
-          });
-          await wait(500);
-        } else {
-          console.log("All files validated successfully");
-        }
+        if (!isTextOnlyQuery) {
+          // Handle file-based query
+          activeFileIds = fileIds || [];
+          console.log('Using provided file IDs:', activeFileIds);
+          
+          // Enhanced validation with detailed logging
+          console.log('Validating file availability...');
+          const filesValid = await validateFileAvailability(activeFileIds);
+          
+          if (!filesValid) {
+            console.warn("Files may not be ready for processing");
+            toast({
+              title: "Warning",
+              description: "Some files may not be fully processed yet. The message will still be sent, but the response might be delayed.",
+              variant: "default"
+            });
+            await wait(500);
+          } else {
+            console.log("All files validated successfully");
+          }
 
-        // Ensure session files are set up
-        console.log('Ensuring session files are properly associated...');
-        await ensureSessionFiles(currentSessionId, activeFileIds);
+          // Ensure session files are set up
+          console.log('Ensuring session files are properly associated...');
+          await ensureSessionFiles(currentSessionId, activeFileIds);
+        }
 
         // Create user message
-        console.log('Creating user message with files:', activeFileIds);
+        console.log(`Creating ${isTextOnlyQuery ? 'text-only' : 'file-based'} user message`);
         const userMessage = await createUserMessage(content, currentSessionId, user.id, activeFileIds);
 
         // Process tags if provided
@@ -130,7 +128,6 @@ export function useMessageMutation(sessionId: string | null) {
         console.log('Triggering AI processing...');
         try {
           // Placeholder for AI response triggering - this will be handled elsewhere
-          // In the future, implement a proper AI response triggering
           console.log('AI processing triggered successfully');
         } catch (error) {
           // Handle specific error types from AI service
@@ -141,7 +138,9 @@ export function useMessageMutation(sessionId: string | null) {
             
             switch (error.type) {
               case AIServiceErrorType.NO_FILES:
-                toastMessage = "No files available for processing. Please upload files first.";
+                toastMessage = isTextOnlyQuery 
+                  ? "Your query will be processed without file analysis."
+                  : "No files available for processing. Please upload files first.";
                 break;
               case AIServiceErrorType.VERIFICATION_FAILED:
                 toastMessage = "File verification failed. Files may not be ready or may be corrupted.";
@@ -154,9 +153,9 @@ export function useMessageMutation(sessionId: string | null) {
             }
             
             toast({
-              title: "Processing Error",
+              title: isTextOnlyQuery ? "Processing" : "Processing Error",
               description: toastMessage,
-              variant: "destructive"
+              variant: isTextOnlyQuery ? "default" : "destructive"
             });
           } else {
             // Handle generic errors
@@ -167,9 +166,6 @@ export function useMessageMutation(sessionId: string | null) {
               variant: "destructive"
             });
           }
-          
-          // We don't rethrow here to allow the UI to continue showing messages
-          // The error handling is done via the message status updates
         }
 
         return { userMessage, assistantMessage };
