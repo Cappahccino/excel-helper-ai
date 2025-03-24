@@ -3,29 +3,19 @@ import { DatabaseMessage } from "@/types/messages.types";
 import { Message, MessagePin } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
 import { createClient } from '@supabase/supabase-js';
-import { Queue } from 'bullmq';
-import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 
-// Initialize Redis connection
-const redis = new Redis(process.env.REDIS_URL!);
-
-// Initialize message queue
-const messageQueue = new Queue('message-processing', {
-  connection: redis,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
-  },
-});
+declare const process: {
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: string;
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
+  }
+};
 
 // Initialize Supabase client
 const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
 export async function fetchMessages(
@@ -439,18 +429,6 @@ export async function updateMessageContent(messageId: string, content: string, s
     }
   } catch (error) {
     console.error('Error in updateMessageContent:', error);
-    throw error;
-  }
-}
-
-// Function to check Redis queue health
-export async function checkQueueHealth() {
-  try {
-    const queueHealth = await messageQueue.getMetrics();
-    console.log('Queue health metrics:', queueHealth);
-    return queueHealth;
-  } catch (error) {
-    console.error('Error checking queue health:', error);
     throw error;
   }
 }
