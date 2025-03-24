@@ -25,21 +25,29 @@ async function upstashRedis(command, ...args) {
 
 // Process messages from the queue
 async function processMessages() {
-  console.log('Starting message processing...');
+  console.log('Checking for messages in queue...');
   
   try {
     // Get next message from queue using RPOP
+    console.log('Attempting to fetch message from Redis queue...');
     const jobData = await upstashRedis('rpop', 'message-processing');
     
     if (!jobData) {
-      // No messages to process
+      console.log('No messages in queue');
       return;
     }
     
+    console.log('Raw job data:', jobData);
     const job = JSON.parse(jobData);
-    console.log('Processing message:', job.id);
+    console.log('Parsed job data:', {
+      id: job.id,
+      messageId: job.data?.messageId,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts
+    });
     
     // Update message status
+    console.log(`Updating message ${job.data.messageId} to in_progress status`);
     await updateMessageStatus(job.data.messageId, 'in_progress', '', {
       stage: 'preparing',
       processing_started_at: new Date().toISOString(),
@@ -47,6 +55,7 @@ async function processMessages() {
     
     try {
       // Call Excel Assistant edge function
+      console.log(`Calling Excel Assistant for message ${job.data.messageId}`);
       const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/excel-assistant`, {
         method: 'POST',
         headers: {
@@ -58,12 +67,19 @@ async function processMessages() {
 
       if (!response.ok) {
         const error = await response.text();
+        console.error(`Excel Assistant error response:`, error);
         throw new Error(`Excel Assistant failed: ${error}`);
       }
 
       const result = await response.json();
+      console.log(`Excel Assistant success for message ${job.data.messageId}:`, {
+        status: 'success',
+        contentLength: result.content?.length || 0,
+        hasMetadata: !!result.metadata
+      });
       
       // Update message with result
+      console.log(`Updating message ${job.data.messageId} to completed status`);
       await updateMessageStatus(job.data.messageId, 'completed', result.content || '', {
         stage: 'completed',
         completed_at: new Date().toISOString(),
@@ -77,6 +93,7 @@ async function processMessages() {
       // If we haven't exceeded max attempts, put the job back in the queue
       if (job.attempts < job.maxAttempts) {
         job.attempts++;
+        console.log(`Retrying message ${job.data.messageId} (attempt ${job.attempts}/${job.maxAttempts})`);
         await upstashRedis('lpush', 'message-processing', JSON.stringify(job));
         
         await updateMessageStatus(job.data.messageId, 'in_progress', '', {
@@ -87,6 +104,7 @@ async function processMessages() {
         });
       } else {
         // Mark as failed if we've exceeded max attempts
+        console.log(`Message ${job.data.messageId} failed after ${job.attempts} attempts`);
         await updateMessageStatus(job.data.messageId, 'failed', error.message || 'Unknown error', {
           stage: 'failed',
           error_message: error.message || 'Unknown error during processing',
