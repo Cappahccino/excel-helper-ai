@@ -1,6 +1,4 @@
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Redis } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 
 // CORS headers
@@ -16,10 +14,12 @@ serve(async (req) => {
   }
 
   try {
-    // Get Redis connection details from environment
-    const REDIS_URL = Deno.env.get('REDIS_URL');
-    if (!REDIS_URL) {
-      throw new Error('REDIS_URL not configured');
+    // Get Redis REST API details from environment
+    const UPSTASH_REDIS_REST_URL = Deno.env.get('UPSTASH_REDIS_REST_URL');
+    const UPSTASH_REDIS_REST_TOKEN = Deno.env.get('UPSTASH_REDIS_REST_TOKEN');
+
+    if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
+      throw new Error('Redis REST API configuration missing');
     }
 
     // Parse request body
@@ -28,7 +28,15 @@ serve(async (req) => {
     // Validate required fields
     if (!messageId || !query || !userId || !sessionId) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({ 
+          error: 'Missing required fields',
+          details: {
+            messageId: !messageId,
+            query: !query,
+            userId: !userId,
+            sessionId: !sessionId
+          }
+        }),
         { 
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -36,10 +44,7 @@ serve(async (req) => {
       );
     }
 
-    // Connect to Redis
-    const redis = await Redis.fromURL(REDIS_URL);
-
-    // Add job to queue
+    // Create job data
     const job = {
       id: messageId,
       data: {
@@ -55,21 +60,31 @@ serve(async (req) => {
       maxAttempts: 3
     };
 
-    // Use Redis list as a queue
-    await redis.lpush('message-processing', JSON.stringify(job));
+    // Add job to queue using Redis REST API
+    const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${JSON.stringify(job)}`, {
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
+      }
+    });
+
+    if (!queueResponse.ok) {
+      const error = await queueResponse.text();
+      throw new Error(`Failed to queue message: ${error}`);
+    }
     
-    // Update message metadata
+    // Update message metadata in Supabase
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    await supabaseClient
+    const { error: updateError } = await supabaseClient
       .from('chat_messages')
       .update({
+        status: 'in_progress',
         metadata: {
           processing_stage: {
-            stage: 'processing',
+            stage: 'queued',
             queued_at: Date.now(),
             job_id: messageId
           }
@@ -77,11 +92,17 @@ serve(async (req) => {
       })
       .eq('id', messageId);
 
-    // Close Redis connection
-    await redis.close();
+    if (updateError) {
+      console.error('Error updating message metadata:', updateError);
+      // Continue anyway since the message is queued
+    }
 
     return new Response(
-      JSON.stringify({ success: true, messageId }),
+      JSON.stringify({ 
+        success: true, 
+        messageId,
+        queueTimestamp: Date.now()
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
@@ -90,7 +111,11 @@ serve(async (req) => {
     console.error('Error queueing message:', error);
     
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        errorType: error.name,
+        timestamp: Date.now()
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

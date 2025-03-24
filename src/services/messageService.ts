@@ -103,22 +103,24 @@ export async function createUserMessage(
     metadata: {
       file_ids: fileIds,
       processing_stage: {
-        stage: 'processing',
+        stage: 'initializing',
         started_at: Date.now()
       }
     }
   };
 
   try {
+    // First, create the message in processing state
     const { error: insertError } = await supabase
       .from('chat_messages')
       .insert(message);
 
     if (insertError) {
       console.error('Error inserting user message:', insertError);
-      throw insertError;
+      throw new Error('Failed to create message: ' + insertError.message);
     }
 
+    // Then try to queue it
     console.log('Calling edge function to queue message:', messageId);
     const { data: functionData, error: functionError } = await supabase.functions.invoke('queue-message', {
       body: {
@@ -132,13 +134,95 @@ export async function createUserMessage(
     });
 
     if (functionError) {
-      throw new Error(`Failed to queue message: ${functionError.message}`);
+      // If queueing fails, update message status to failed but don't throw
+      console.error('Failed to queue message:', functionError);
+      await updateMessageStatus(messageId, 'failed', {
+        error: functionError.message,
+        error_type: 'queue_failure',
+        occurred_at: Date.now()
+      });
+      
+      // Return message with failed status
+      return {
+        ...message,
+        status: 'failed' as MessageStatus,
+        metadata: {
+          ...message.metadata,
+          error: functionError.message,
+          error_type: 'queue_failure'
+        }
+      };
     }
 
+    // Update status to in_progress after successful queueing
+    await updateMessageStatus(messageId, 'in_progress', {
+      stage: 'queued',
+      queued_at: Date.now()
+    });
+
     console.log('Message queued successfully:', messageId);
-    return message;
+    return {
+      ...message,
+      status: 'in_progress' as MessageStatus
+    };
   } catch (error) {
     console.error('Error in createUserMessage:', error);
+    
+    // Try to update message status if it was created
+    try {
+      await updateMessageStatus(messageId, 'failed', {
+        error: error.message,
+        error_type: 'creation_failure',
+        occurred_at: Date.now()
+      });
+    } catch (updateError) {
+      console.error('Failed to update message status:', updateError);
+    }
+    
+    throw error;
+  }
+}
+
+// Helper function for updating message status
+async function updateMessageStatus(
+  messageId: string, 
+  status: MessageStatus, 
+  details?: {
+    stage?: string;
+    error?: string;
+    error_type?: string;
+    occurred_at?: number;
+    queued_at?: number;
+  }
+) {
+  try {
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({
+        status,
+        metadata: {
+          processing_stage: {
+            stage: details?.stage || status,
+            updated_at: Date.now(),
+            ...(details?.error && { 
+              error: {
+                message: details.error,
+                type: details.error_type,
+                occurred_at: details.occurred_at
+              }
+            }),
+            ...(details?.queued_at && { queued_at: details.queued_at })
+          }
+        }
+      })
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Error updating message status:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in updateMessageStatus:', error);
     throw error;
   }
 }
