@@ -1,31 +1,35 @@
-const Redis = require('ioredis');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-// Initialize Redis and Supabase clients
-console.log('Initializing Redis connection...');
-const redis = new Redis(process.env.REDIS_URL);
-
-redis.on('connect', () => {
-  console.log('Successfully connected to Redis');
-});
-
-redis.on('error', (err) => {
-  console.error('Redis connection error:', err);
-});
-
+// Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// Helper function to make Upstash Redis REST API calls
+async function upstashRedis(command, ...args) {
+  const response = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`, {
+    headers: {
+      Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upstash Redis API error: ${await response.text()}`);
+  }
+
+  const result = await response.json();
+  return result.result;
+}
 
 // Process messages from the queue
 async function processMessages() {
   console.log('Starting message processing...');
   
   try {
-    // Get next message from queue
-    const jobData = await redis.rpop('message-processing');
+    // Get next message from queue using RPOP
+    const jobData = await upstashRedis('rpop', 'message-processing');
     
     if (!jobData) {
       // No messages to process
@@ -36,7 +40,7 @@ async function processMessages() {
     console.log('Processing message:', job.id);
     
     // Update message status
-    await updateMessageStatus(job.data.messageId, 'processing', '', {
+    await updateMessageStatus(job.data.messageId, 'in_progress', '', {
       stage: 'preparing',
       processing_started_at: new Date().toISOString(),
     });
@@ -73,9 +77,9 @@ async function processMessages() {
       // If we haven't exceeded max attempts, put the job back in the queue
       if (job.attempts < job.maxAttempts) {
         job.attempts++;
-        await redis.lpush('message-processing', JSON.stringify(job));
+        await upstashRedis('lpush', 'message-processing', JSON.stringify(job));
         
-        await updateMessageStatus(job.data.messageId, 'processing', '', {
+        await updateMessageStatus(job.data.messageId, 'in_progress', '', {
           stage: 'retrying',
           error: error.message,
           attempt: job.attempts,
@@ -155,7 +159,7 @@ const processInterval = setInterval(processMessages, 1000); // Check every secon
 const heartbeatInterval = setInterval(async () => {
   try {
     const timestamp = Date.now();
-    await redis.set('message_worker_heartbeat', timestamp);
+    await upstashRedis('set', 'message_worker_heartbeat', timestamp);
     console.log(`Updated worker heartbeat: ${new Date(timestamp).toISOString()}`);
   } catch (error) {
     console.error('Failed to update heartbeat:', error);
@@ -163,11 +167,10 @@ const heartbeatInterval = setInterval(async () => {
 }, 30000); // Every 30 seconds
 
 // Graceful shutdown
-async function shutdown() {
+function shutdown() {
   console.log('Shutting down worker...');
   clearInterval(processInterval);
   clearInterval(heartbeatInterval);
-  await redis.quit();
   console.log('Worker shutdown complete');
 }
 
