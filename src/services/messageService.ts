@@ -99,12 +99,12 @@ export async function createUserMessage(
     role: 'user',
     session_id: sessionId,
     user_id: userId,
-    status: 'queued' as MessageStatus,
+    status: 'processing' as MessageStatus,
     metadata: {
       file_ids: fileIds,
       processing_stage: {
-        stage: 'queued',
-        queued_at: Date.now()
+        stage: 'processing',
+        started_at: Date.now()
       }
     }
   };

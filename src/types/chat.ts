@@ -1,5 +1,5 @@
 
-export type MessageStatus = 'processing' | 'completed' | 'failed' | 'cancelled' | 'expired';
+export type MessageStatus = 'processing' | 'completed' | 'failed' | 'cancelled' | 'expired' | 'in_progress';
 
 export enum MessageType {
   QUERY = 'query',

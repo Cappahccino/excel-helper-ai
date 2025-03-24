@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Redis } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
@@ -67,7 +68,8 @@ serve(async (req) => {
       .from('chat_messages')
       .update({
         metadata: {
-          queue_status: {
+          processing_stage: {
+            stage: 'processing',
             queued_at: Date.now(),
             job_id: messageId
           }

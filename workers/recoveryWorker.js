@@ -1,6 +1,6 @@
+
 const Redis = require('ioredis');
 const { createClient } = require('@supabase/supabase-js');
-const { Queue } = require('bullmq');
 require('dotenv').config();
 
 // Initialize Redis and Supabase clients
@@ -19,9 +19,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-// Initialize message queue
-const messageQueue = new Queue('message-processing', { connection: redis });
 
 // Configuration
 const STUCK_MESSAGE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
@@ -100,7 +97,7 @@ async function recoverStuckMessages() {
           await supabase
             .from('chat_messages')
             .update({
-              status: 'queued',
+              status: 'processing',
               metadata: {
                 ...message.metadata,
                 processing_stage: {
