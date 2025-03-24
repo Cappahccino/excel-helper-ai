@@ -27,8 +27,6 @@ export default defineConfig(({ mode }) => ({
   envPrefix: 'NEXT_PUBLIC_',
   define: {
     // This replaces process.env with import.meta.env for Vite compatibility
-    'process.env': Object.fromEntries(
-      Object.entries(import.meta.env).map(([key, value]) => [key, value])
-    )
+    'process.env': process.env
   }
 }));

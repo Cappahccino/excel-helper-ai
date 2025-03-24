@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message, MessagePin, MessageStatus } from "@/types/chat";
