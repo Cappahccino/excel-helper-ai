@@ -2,21 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
 import { Message, MessagePin } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
-import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-
-declare const process: {
-  env: {
-    NEXT_PUBLIC_SUPABASE_URL: string;
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
-  }
-};
-
-// Initialize Supabase client
-const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 export async function fetchMessages(
   sessionId: string,
@@ -145,25 +131,19 @@ export async function createUserMessage(
 
     // Call edge function to queue message
     console.log('Calling edge function to queue message:', messageId);
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/queue-message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-      },
-      body: JSON.stringify({
+    const { data: functionData, error: functionError } = await supabase.functions.invoke('queue-message', {
+      body: {
         messageId,
         query: content,
         userId,
         sessionId,
         fileIds,
         isTextOnly: !fileIds?.length
-      })
+      }
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to queue message: ${error}`);
+    if (functionError) {
+      throw new Error(`Failed to queue message: ${functionError.message}`);
     }
 
     console.log('Message queued successfully:', messageId);
