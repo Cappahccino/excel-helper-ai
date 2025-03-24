@@ -1,6 +1,7 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { DatabaseMessage } from "@/types/messages.types";
-import { Message, MessagePin } from "@/types/chat";
+import { Message, MessagePin, MessageStatus } from "@/types/chat";
 import { MESSAGES_PER_PAGE } from "@/config/constants";
 import { v4 as uuidv4 } from 'uuid';
 
@@ -99,7 +100,7 @@ export async function createUserMessage(
     role: 'user',
     session_id: sessionId,
     user_id: userId,
-    status: 'queued',
+    status: 'queued' as MessageStatus,
     metadata: {
       file_ids: fileIds,
       processing_stage: {
@@ -157,7 +158,7 @@ export async function createAssistantMessage(
     role: 'assistant',
     session_id: sessionId,
     user_id: userId,
-    status: 'processing',
+    status: 'processing' as MessageStatus,
     metadata: {
       file_ids: fileIds,
       processing_stage: {
@@ -362,7 +363,7 @@ function transformMessage(message: DatabaseMessage): Message {
   } as Message;
 }
 
-export async function updateMessageContent(messageId: string, content: string, status: string = 'completed') {
+export async function updateMessageContent(messageId: string, content: string, status: MessageStatus = 'completed') {
   console.log('Updating message content:', { messageId, status });
   
   try {
