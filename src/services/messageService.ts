@@ -32,12 +32,10 @@ export async function fetchMessages(
       .order('created_at', { ascending: true })
       .limit(pageSize);
 
-    // Apply cursor pagination
     if (cursor) {
       query = query.lt('created_at', cursor);
     }
 
-    // Apply filters
     if (filter === 'pinned') {
       const { data: pinnedMessageIds } = await supabase
         .from('message_pins')
@@ -47,18 +45,14 @@ export async function fetchMessages(
       if (pinnedMessageIds && pinnedMessageIds.length > 0) {
         query = query.in('id', pinnedMessageIds.map(pin => pin.message_id));
       } else {
-        // No pins, return empty array
         return [];
       }
     }
 
-    // Apply search term
     if (searchTerm) {
       if (includeFileContent) {
-        // Search in message content OR file content
         query = query.or(`content.ilike.%${searchTerm}%, message_files.file_id.in.(select file_id from excel_files where filename.ilike.%${searchTerm}%)`);
       } else {
-        // Search only in message content
         query = query.ilike('content', `%${searchTerm}%`);
       }
     }
@@ -70,13 +64,10 @@ export async function fetchMessages(
       throw error;
     }
 
-    // Ensure we're handling data correctly to avoid type errors
     if (!rawMessages) {
       return [];
     }
 
-    // Type-safe filtering of messages
-    // Using a type guard to ensure we're working with valid message objects
     const validMessages = (rawMessages as any[]).filter((msg): msg is DatabaseMessage => {
       return msg !== null && 
              typeof msg === 'object' && 
@@ -119,7 +110,6 @@ export async function createUserMessage(
   };
 
   try {
-    // Insert message into database
     const { error: insertError } = await supabase
       .from('chat_messages')
       .insert(message);
@@ -129,7 +119,6 @@ export async function createUserMessage(
       throw insertError;
     }
 
-    // Call edge function to queue message
     console.log('Calling edge function to queue message:', messageId);
     const { data: functionData, error: functionError } = await supabase.functions.invoke('queue-message', {
       body: {
@@ -196,7 +185,6 @@ export async function createAssistantMessage(
  */
 export async function deleteMessage(messageId: string, sessionId: string): Promise<boolean> {
   try {
-    // First, delete any pins associated with this message
     const { error: pinError } = await supabase
       .from('message_pins')
       .delete()
@@ -208,7 +196,6 @@ export async function deleteMessage(messageId: string, sessionId: string): Promi
       // Continue with message deletion anyway
     }
 
-    // Next, delete any reactions to this message
     const { error: reactionError } = await supabase
       .from('message_reactions')
       .delete()
@@ -219,8 +206,6 @@ export async function deleteMessage(messageId: string, sessionId: string): Promi
       // Continue with message deletion anyway
     }
 
-    // Delete message-file associations
-    // Note: We're not deleting the actual files, just the association
     const { error: fileAssocError } = await supabase
       .from('message_files')
       .delete()
@@ -231,7 +216,6 @@ export async function deleteMessage(messageId: string, sessionId: string): Promi
       // Continue with message deletion anyway
     }
 
-    // Finally, delete the message itself
     const { error } = await supabase
       .from('chat_messages')
       .delete()
@@ -259,7 +243,6 @@ export async function editMessage(
   sessionId: string
 ): Promise<Message> {
   try {
-    // First, check if message exists and is a user message
     const { data: existingMessage, error: checkError } = await supabase
       .from('chat_messages')
       .select('*')
@@ -273,7 +256,6 @@ export async function editMessage(
       throw new Error('Message not found or cannot be edited');
     }
 
-    // Update the message
     const { data: updatedMessage, error: updateError } = await supabase
       .from('chat_messages')
       .update({ 
@@ -306,7 +288,6 @@ export async function pinMessage(
   sessionId: string
 ): Promise<MessagePin> {
   try {
-    // Check if pin already exists
     const { data: existingPin } = await supabase
       .from('message_pins')
       .select('*')
@@ -318,7 +299,6 @@ export async function pinMessage(
       return existingPin as MessagePin;
     }
 
-    // Create new pin
     const { data: pin, error } = await supabase
       .from('message_pins')
       .insert({
@@ -373,7 +353,6 @@ function transformMessages(messages: DatabaseMessage[]): Message[] {
 
 // Transform a single message
 function transformMessage(message: DatabaseMessage): Message {
-  // Ensure role is strictly 'user' or 'assistant' as required by the Message type
   const role = message.role === 'assistant' ? 'assistant' : 'user';
   
   return {

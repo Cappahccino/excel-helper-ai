@@ -1,3 +1,4 @@
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -25,6 +26,7 @@ export default defineConfig(({ mode }) => ({
   },
   envPrefix: 'NEXT_PUBLIC_',
   define: {
-    'process.env': {}
+    // This replaces process.env with import.meta.env for Vite compatibility
+    'process.env': {...import.meta.env}
   }
 }));
