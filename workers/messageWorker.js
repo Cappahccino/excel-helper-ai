@@ -104,73 +104,129 @@ async function processMessages() {
     try {
       // Call Excel Assistant edge function
       const edgeFunctionUrl = `${process.env.SUPABASE_URL}/functions/v1/excel-assistant`;
-      console.log(`\nCalling Excel Assistant edge function:`, {
-        messageId: job.data.messageId,
-        timestamp: new Date().toISOString(),
-        url: edgeFunctionUrl,
-        requestBody: {
-          messageId: job.data.messageId,
-          query: job.data.query,
-          hasFiles: job.data.fileIds?.length > 0,
-          fileCount: job.data.fileIds?.length,
-          isTextOnly: job.data.isTextOnly,
-          hasContent: !!job.data.content,
-          contentLength: job.data.content?.length,
-          metadata: job.data.metadata
+      
+      // Prepare request data
+      const requestData = {
+        ...job.data,
+        processingMetadata: {
+          queuedAt: job.timestamp,
+          processingStartedAt: Date.now(),
+          attempts: job.attempts,
+          worker_version: '1.0.0',
+          worker_id: process.pid
         }
+      };
+
+      // Log detailed request information
+      console.log('\n=== Excel Assistant Request Details ===');
+      console.log('URL:', edgeFunctionUrl);
+      console.log('Headers:', {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer <ANON_KEY_PRESENT>',
+        'Length': JSON.stringify(requestData).length
+      });
+      console.log('Request Data:', {
+        messageId: requestData.messageId,
+        query: requestData.query,
+        files: {
+          count: requestData.fileIds?.length || 0,
+          ids: requestData.fileIds || [],
+          hasFiles: requestData.fileIds?.length > 0
+        },
+        content: {
+          present: !!requestData.content,
+          length: requestData.content?.length || 0,
+          preview: requestData.content?.substring(0, 100) + (requestData.content?.length > 100 ? '...' : '')
+        },
+        metadata: {
+          present: !!requestData.metadata,
+          keys: Object.keys(requestData.metadata || {}),
+          processing: requestData.processingMetadata
+        },
+        timestamp: new Date().toISOString()
       });
       
+      // Make the request with timing
       const startTime = Date.now();
-      const response = await fetch(edgeFunctionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          ...job.data,
-          processingMetadata: {
-            queuedAt: job.timestamp,
-            processingStartedAt: startTime,
-            attempts: job.attempts,
-            worker_version: '1.0.0'
-          }
-        })
-      });
+      console.log('\nInitiating Excel Assistant request...');
+      
+      let response;
+      try {
+        response = await fetch(edgeFunctionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify(requestData)
+        });
+      } catch (networkError) {
+        console.error('\n=== Excel Assistant Network Error ===');
+        console.error('Error Type:', networkError.name);
+        console.error('Error Message:', networkError.message);
+        console.error('Stack Trace:', networkError.stack);
+        console.error('Request URL:', edgeFunctionUrl);
+        console.error('Request Data:', {
+          messageId: requestData.messageId,
+          dataSize: JSON.stringify(requestData).length
+        });
+        throw networkError;
+      }
 
       const responseTime = Date.now() - startTime;
-      console.log(`Excel Assistant response received:`, {
-        messageId: job.data.messageId,
-        status: response.status,
-        statusText: response.statusText,
-        responseTime: `${responseTime}ms`,
-        headers: Object.fromEntries(response.headers.entries())
-      });
+      
+      // Log detailed response information
+      console.log('\n=== Excel Assistant Response Details ===');
+      console.log('Response Status:', response.status, response.statusText);
+      console.log('Response Time:', `${responseTime}ms`);
+      console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
 
+      // Handle non-OK responses
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Excel Assistant error details:`, {
-          messageId: job.data.messageId,
-          status: response.status,
-          error: errorText,
-          timestamp: new Date().toISOString(),
-          responseTime,
-          headers: Object.fromEntries(response.headers.entries())
+        console.error('\n=== Excel Assistant Error Response ===');
+        console.error('Status:', response.status, response.statusText);
+        console.error('Error:', errorText);
+        console.error('Headers:', Object.fromEntries(response.headers.entries()));
+        console.error('Request Data:', {
+          messageId: requestData.messageId,
+          query: requestData.query
         });
+        console.error('Timing:', {
+          queuedAt: new Date(requestData.processingMetadata.queuedAt).toISOString(),
+          startedAt: new Date(requestData.processingMetadata.processingStartedAt).toISOString(),
+          completedAt: new Date().toISOString(),
+          totalTime: responseTime
+        });
+        
         throw new Error(`Excel Assistant failed (${response.status}): ${errorText}`);
       }
 
-      const result = await response.json();
-      console.log(`Excel Assistant success:`, {
-        messageId: job.data.messageId,
-        responseTime,
-        contentLength: result.content?.length || 0,
-        hasMetadata: !!result.metadata,
-        metadata: {
-          ...result.metadata,
-          sensitive_fields_removed: true
-        },
-        timestamp: new Date().toISOString()
+      // Parse and validate response
+      let result;
+      try {
+        const responseText = await response.text();
+        console.log('\nRaw Response:', responseText.substring(0, 1000) + (responseText.length > 1000 ? '...' : ''));
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('\n=== Excel Assistant Response Parse Error ===');
+        console.error('Error:', parseError.message);
+        console.error('Raw Response:', await response.text());
+        throw new Error('Failed to parse Excel Assistant response');
+      }
+
+      // Log success details
+      console.log('\n=== Excel Assistant Success Details ===');
+      console.log('Message ID:', job.data.messageId);
+      console.log('Processing Time:', `${responseTime}ms`);
+      console.log('Response Size:', JSON.stringify(result).length, 'bytes');
+      console.log('Content Preview:', result.content?.substring(0, 100) + (result.content?.length > 100 ? '...' : ''));
+      console.log('Metadata Keys:', Object.keys(result.metadata || {}));
+      console.log('Timing:', {
+        queuedAt: new Date(requestData.processingMetadata.queuedAt).toISOString(),
+        startedAt: new Date(requestData.processingMetadata.processingStartedAt).toISOString(),
+        completedAt: new Date().toISOString(),
+        totalTime: responseTime
       });
       
       // Update message with result
@@ -178,22 +234,27 @@ async function processMessages() {
         stage: 'completed',
         completed_at: new Date().toISOString(),
         processing_time: responseTime,
-        ...result.metadata
+        response_size: JSON.stringify(result).length,
+        ...result.metadata,
+        processing_summary: {
+          queue_time: startTime - job.timestamp,
+          processing_time: responseTime,
+          total_time: Date.now() - job.timestamp,
+          attempts: job.attempts
+        }
       });
       
-      console.log(`Successfully processed message ${job.data.messageId}`);
+      console.log(`\nSuccessfully processed message ${job.data.messageId}`);
     } catch (error) {
-      console.error(`Error processing message:`, {
-        messageId: job.data.messageId,
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-          cause: error.cause
-        },
-        timestamp: new Date().toISOString(),
-        attempt: job.attempts,
-        maxAttempts: job.maxAttempts
+      console.error('\n=== Excel Assistant Processing Error ===');
+      console.error('Message ID:', job.data.messageId);
+      console.error('Error Type:', error.name);
+      console.error('Error Message:', error.message);
+      console.error('Stack Trace:', error.stack);
+      console.error('Processing Stage:', {
+        attempts: job.attempts,
+        maxAttempts: job.maxAttempts,
+        timestamp: new Date().toISOString()
       });
       
       // If we haven't exceeded max attempts, put the job back in the queue
