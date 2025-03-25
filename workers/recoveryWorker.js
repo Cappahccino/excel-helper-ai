@@ -1,158 +1,151 @@
 
-const Redis = require('ioredis');
 const { createClient } = require('@supabase/supabase-js');
+const fetch = require('node-fetch');
 require('dotenv').config();
 
-// Initialize Redis and Supabase clients
-console.log('Initializing Redis connection...');
-const redis = new Redis(process.env.REDIS_URL);
-
-redis.on('connect', () => {
-  console.log('Successfully connected to Redis');
-});
-
-redis.on('error', (err) => {
-  console.error('Redis connection error:', err);
-});
-
+// Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Configuration
-const STUCK_MESSAGE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
-const WORKER_HEARTBEAT_THRESHOLD = 60 * 1000; // 1 minute
-
-async function checkWorkerHealth() {
+// Helper function to make Upstash Redis REST API calls
+async function upstashRedis(command, ...args) {
   try {
-    const lastHeartbeat = await redis.get('message_worker_heartbeat');
-    if (!lastHeartbeat) {
-      console.log('No worker heartbeat found');
-      return false;
+    const url = `${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`;
+    console.log(`Redis API request URL: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Upstash Redis API error (${response.status}):`, error);
+      throw new Error(`Upstash Redis API error: ${error}`);
     }
 
-    const timeSinceHeartbeat = Date.now() - parseInt(lastHeartbeat);
-    const isWorkerHealthy = timeSinceHeartbeat < WORKER_HEARTBEAT_THRESHOLD;
-    
-    if (!isWorkerHealthy) {
-      console.log(`Worker appears unhealthy. Last heartbeat was ${timeSinceHeartbeat}ms ago`);
-    }
-    
-    return isWorkerHealthy;
+    const result = await response.json();
+    return result.result;
   } catch (error) {
-    console.error('Error checking worker health:', error);
-    return false;
+    console.error(`Redis command error (${command}):`, error);
+    throw error;
   }
 }
 
+// Find and recover stuck messages
 async function recoverStuckMessages() {
-  console.log('Checking for stuck messages...');
-  
   try {
-    // Get messages stuck in processing state
+    console.log('Checking for stuck messages...');
+    
+    // Find messages that have been stuck in processing for more than 5 minutes
     const { data: stuckMessages, error } = await supabase
       .from('chat_messages')
-      .select('*')
-      .eq('status', 'processing')
-      .lt('updated_at', new Date(Date.now() - STUCK_MESSAGE_THRESHOLD).toISOString());
-      
+      .select('id, session_id, metadata')
+      .or('status.eq.processing,status.eq.in_progress')
+      .lt('updated_at', new Date(Date.now() - 5 * 60 * 1000).toISOString());
+    
     if (error) {
       console.error('Error fetching stuck messages:', error);
       return;
     }
     
-    if (!stuckMessages?.length) {
-      console.log('No stuck messages found');
+    console.log(`Found ${stuckMessages?.length || 0} stuck messages`);
+    
+    if (!stuckMessages || stuckMessages.length === 0) {
       return;
     }
     
-    console.log(`Found ${stuckMessages.length} stuck messages`);
-    
-    // Check if main worker is healthy
-    const isWorkerHealthy = await checkWorkerHealth();
-    
+    // Check if these messages are in the Redis queue
     for (const message of stuckMessages) {
-      console.log(`Processing stuck message ${message.id}`);
+      console.log(`Checking message ${message.id}...`);
       
       try {
-        // If worker is unhealthy, requeue the message
-        if (!isWorkerHealthy) {
-          const job = {
-            id: message.id,
-            data: {
-              messageId: message.id,
-              query: message.content,
-              userId: message.user_id,
-              sessionId: message.session_id,
-              fileIds: message.metadata?.file_ids || [],
-              isTextOnly: !message.metadata?.file_ids?.length,
-              attempts: 0,
-              maxAttempts: 3
-            }
-          };
-          
-          await redis.lpush('message-processing', JSON.stringify(job));
-          
-          await supabase
-            .from('chat_messages')
-            .update({
-              status: 'processing',
-              metadata: {
-                ...message.metadata,
-                processing_stage: {
-                  stage: 'requeued',
-                  requeued_at: new Date().toISOString(),
-                  reason: 'Message stuck in processing'
-                }
-              }
-            })
-            .eq('id', message.id);
-            
-          console.log(`Requeued stuck message ${message.id}`);
-        } else {
-          // If worker is healthy but message is stuck, mark as failed
-          await supabase
-            .from('chat_messages')
-            .update({
-              status: 'failed',
-              metadata: {
-                ...message.metadata,
-                processing_stage: {
-                  stage: 'failed',
-                  failed_at: new Date().toISOString(),
-                  reason: 'Message stuck in processing'
-                }
-              }
-            })
-            .eq('id', message.id);
-            
-          console.log(`Marked stuck message ${message.id} as failed`);
+        // Get queue items to check if this message is already queued
+        const queueItems = await upstashRedis('lrange', 'message-processing', '0', '-1');
+        const isQueued = queueItems?.some(item => {
+          try {
+            const job = JSON.parse(item);
+            return job.id === message.id || job.data?.messageId === message.id;
+          } catch (e) {
+            return false;
+          }
+        });
+        
+        if (isQueued) {
+          console.log(`Message ${message.id} is already in the queue, skipping`);
+          continue;
         }
-      } catch (error) {
-        console.error(`Error recovering stuck message ${message.id}:`, error);
+        
+        // Create a recovery job and add to queue
+        console.log(`Recovering message ${message.id}...`);
+        
+        // Extract any file IDs from the metadata if available
+        const fileIds = message.metadata?.file_ids || [];
+        
+        const job = {
+          id: message.id,
+          data: {
+            messageId: message.id,
+            query: message.metadata?.original_query || "Recover this message",
+            userId: message.metadata?.user_id,
+            sessionId: message.session_id,
+            fileIds,
+            isTextOnly: fileIds.length === 0
+          },
+          timestamp: Date.now(),
+          attempts: 0,
+          maxAttempts: 3,
+          isRecovery: true
+        };
+        
+        // Add to queue
+        await upstashRedis('lpush', 'message-processing', JSON.stringify(job));
+        
+        // Update message status
+        await supabase
+          .from('chat_messages')
+          .update({
+            metadata: {
+              ...(message.metadata || {}),
+              processing_stage: {
+                ...(message.metadata?.processing_stage || {}),
+                stage: 'recovery_queued',
+                recovery_attempt: true,
+                recovery_at: Date.now()
+              }
+            }
+          })
+          .eq('id', message.id);
+        
+        console.log(`Message ${message.id} requeued successfully`);
+      } catch (messageError) {
+        console.error(`Error recovering message ${message.id}:`, messageError);
       }
     }
   } catch (error) {
-    console.error('Error in recovery process:', error);
+    console.error('Error in recoverStuckMessages:', error);
   }
 }
 
-// Run recovery process every minute
-const recoveryInterval = setInterval(recoverStuckMessages, 60000);
-
-// Graceful shutdown
-async function shutdown() {
-  console.log('Shutting down recovery worker...');
-  clearInterval(recoveryInterval);
-  await redis.quit();
-  console.log('Recovery worker shutdown complete');
-}
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+// Run recovery process immediately and then every 5 minutes
+const runRecovery = async () => {
+  await recoverStuckMessages();
+  setTimeout(runRecovery, 5 * 60 * 1000);
+};
 
 console.log('Recovery worker started');
+runRecovery();
 
-// Run initial check
-recoverStuckMessages(); 
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('Recovery worker shutting down...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('Recovery worker shutting down...');
+  process.exit(0);
+});
