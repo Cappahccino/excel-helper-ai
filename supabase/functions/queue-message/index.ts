@@ -1,9 +1,4 @@
-<<<<<<< HEAD
-
-import { serve } from "std/http/server.ts"
-=======
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
->>>>>>> d388be7 (modified worker to process data better before sending to excel assistant)
 import { createClient } from "@supabase/supabase-js"
 
 // CORS headers
@@ -63,6 +58,7 @@ serve(async (req) => {
       )
     }
 
+    let queueResult;
     // Create job data - include all fields that Excel Assistant needs
     const job = {
       id: messageId,
@@ -81,12 +77,9 @@ serve(async (req) => {
       maxAttempts: 3
     }
 
-    // URL encode the job data for Redis
-    const encodedJob = encodeURIComponent(JSON.stringify(job))
-
     try {
       // Add job to queue using Redis REST API
-      const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${encodedJob}`, {
+      const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${encodeURIComponent(JSON.stringify(job))}`, {
         headers: {
           Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
         }
@@ -97,7 +90,7 @@ serve(async (req) => {
         throw new Error(`Failed to queue message: ${error}`)
       }
 
-      const queueResult = await queueResponse.json()
+      queueResult = await queueResponse.json()
       console.log('Queue response:', {
         messageId,
         queueLength: queueResult.result,

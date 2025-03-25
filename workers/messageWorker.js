@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');  // Add fetch import
+const fetch = require('node-fetch');
 require('dotenv').config();
 
 // Validate required environment variables
@@ -69,7 +69,9 @@ async function processMessages() {
     console.log('Raw job data:', jobData);
     let job;
     try {
-      job = JSON.parse(jobData);
+      // Handle URL-encoded job data
+      const decodedData = decodeURIComponent(jobData);
+      job = JSON.parse(decodedData);
     } catch (parseError) {
       console.error('Failed to parse job data:', parseError);
       console.error('Invalid job data:', jobData);
@@ -81,18 +83,22 @@ async function processMessages() {
       return;
     }
 
-    console.log('Parsed job data:', {
+    console.log('Processing job:', {
       id: job.id,
-      messageId: job.data?.messageId,
+      messageId: job.data.messageId,
       attempts: job.attempts,
-      maxAttempts: job.maxAttempts
+      maxAttempts: job.maxAttempts,
+      hasFiles: job.data.fileIds?.length > 0,
+      isTextOnly: job.data.isTextOnly,
+      timestamp: new Date(job.timestamp).toISOString()
     });
     
     // Update message status
-    console.log(`Updating message ${job.data.messageId} to in_progress status`);
     await updateMessageStatus(job.data.messageId, 'in_progress', '', {
-      stage: 'preparing',
+      stage: 'processing',
       processing_started_at: new Date().toISOString(),
+      has_files: job.data.fileIds?.length > 0,
+      is_text_only: job.data.isTextOnly
     });
     
     try {
@@ -104,7 +110,10 @@ async function processMessages() {
         url: edgeFunctionUrl,
         requestBody: {
           messageId: job.data.messageId,
-          // Log other non-sensitive fields from job.data
+          query: job.data.query,
+          hasFiles: job.data.fileIds?.length > 0,
+          fileCount: job.data.fileIds?.length,
+          isTextOnly: job.data.isTextOnly,
           hasContent: !!job.data.content,
           contentLength: job.data.content?.length,
           metadata: job.data.metadata
@@ -118,7 +127,15 @@ async function processMessages() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify(job.data) // Send the entire job.data object
+        body: JSON.stringify({
+          ...job.data,
+          processingMetadata: {
+            queuedAt: job.timestamp,
+            processingStartedAt: startTime,
+            attempts: job.attempts,
+            worker_version: '1.0.0'
+          }
+        })
       });
 
       const responseTime = Date.now() - startTime;
@@ -151,13 +168,12 @@ async function processMessages() {
         hasMetadata: !!result.metadata,
         metadata: {
           ...result.metadata,
-          sensitive_fields_removed: true // Don't log sensitive metadata
+          sensitive_fields_removed: true
         },
         timestamp: new Date().toISOString()
       });
       
       // Update message with result
-      console.log(`Updating message ${job.data.messageId} to completed status`);
       await updateMessageStatus(job.data.messageId, 'completed', result.content || '', {
         stage: 'completed',
         completed_at: new Date().toISOString(),
@@ -189,7 +205,8 @@ async function processMessages() {
         const backoffDelay = 1000 * Math.pow(2, job.attempts); // Exponential backoff
         console.log(`Retrying message ${job.data.messageId} (attempt ${job.attempts}/${job.maxAttempts}) with ${backoffDelay}ms delay`);
         
-        await upstashRedis('lpush', 'message-processing', JSON.stringify(job));
+        // Re-encode job data for Redis
+        await upstashRedis('lpush', 'message-processing', encodeURIComponent(JSON.stringify(job)));
         
         await updateMessageStatus(job.data.messageId, 'in_progress', '', {
           stage: 'retrying',
@@ -205,7 +222,7 @@ async function processMessages() {
       } else {
         // Mark as failed if we've exceeded max attempts
         console.log(`Message ${job.data.messageId} failed after ${job.attempts} attempts`);
-        await updateMessageStatus(job.data.messageId, 'failed', error.message || 'Unknown error', {
+        await updateMessageStatus(job.data.messageId, 'failed', '', {
           stage: 'failed',
           error_message: error.message || 'Unknown error during processing',
           error_details: {
