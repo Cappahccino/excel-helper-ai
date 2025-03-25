@@ -1,165 +1,139 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, FileSpreadsheet, Clock, Zap, RefreshCw, Database } from 'lucide-react';
-import Image from 'next/image';
 
-interface FeatureCardProps {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}
+import { useState } from "react";
+import { ArrowRight } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
-interface WorkflowStepProps {
-  number: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-}
+const Index = () => {
+  const [email, setEmail] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
-export default function HomePage() {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      // First, try to insert the email into the waitlist_users table
+      const { error: dbError } = await supabase
+        .from("waitlist_users")
+        .insert([{ email }]);
+
+      if (dbError) {
+        console.error("Database error:", dbError);
+        if (dbError.code === '23505') { // Unique violation error code
+          throw new Error("This email is already on the waitlist!");
+        }
+        throw dbError;
+      }
+
+      // If database insert succeeds, send the welcome email
+      const { error: emailError } = await supabase.functions.invoke("send-waitlist-email", {
+        body: { email },
+      });
+
+      if (emailError) {
+        console.error("Email error:", emailError);
+        throw emailError;
+      }
+
+      setSubmitted(true);
+      setEmail("");
+      toast({
+        title: "Success!",
+        description: "You've been added to our waitlist. Check your email for confirmation.",
+      });
+    } catch (error: any) {
+      console.error("Error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {/* Hero Section */}
-      <section className="container mx-auto px-4 pt-8 pb-16 text-center">
-        {/* Logo */}
-        <div className="flex justify-center mb-12">
-          <Image
-            src="/lovable-uploads/web_logo.png"
-            alt="Tallyze"
-            width={180}
-            height={60}
-            className="h-auto"
-            priority
-          />
+    <div className="min-h-screen bg-gradient-to-br from-[#F2FCE2] via-white to-[#E8F9E3] flex flex-col">
+      {/* Decorative Elements */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none"></div>
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/80 pointer-events-none"></div>
+
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center px-4">
+        <div className="max-w-4xl w-full mx-auto text-center">
+          
+          {/* Logo Positioned at the Top of Main Content */}
+          <div className="flex justify-center items-center mb-8">
+            <span className="text-[#3cbd84] text-3xl md:text-4xl font-bold italic font-['Jersey_25']">
+                Tallyze
+             </span>
+          </div>
+
+          <div className="space-y-6 mb-12">
+            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 tracking-tight font-['Darker_Grotesque']">
+              <span className="block mb-2 animate-fade-in opacity-0 [animation-delay:200ms]">Automate.</span>
+              <span className="block mb-2 animate-fade-in opacity-0 [animation-delay:400ms]">Analyze.</span>
+              <span className="block animate-fade-in opacity-0 [animation-delay:600ms]">Accelerate.</span>
+            </h1>
+            <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto font-['Darker_Grotesque']">
+              Streamline your Financial Operations with Tallyze
+            </p>
+
+            <div className="w-24 h-1 bg-[#27B67A] mx-auto rounded-full"></div>
+          </div>
+
+          {submitted ? (
+            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-8 max-w-md mx-auto border border-[#27B67A]/20 shadow-xl">
+              <div className="w-12 h-12 bg-[#F2FCE2] rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-[#27B67A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-gray-900 font-semibold text-xl font-['Darker_Grotesque']">Thank you for joining!</p>
+              <p className="text-gray-600 mt-2 font-['Darker_Grotesque']">We'll notify you when we launch.</p>
+            </div>
+          ) : (
+            <div className="max-w-md mx-auto">
+              <form onSubmit={handleSubmit} className="group">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      required
+                      className="w-full px-6 py-4 rounded-xl border-2 border-[#27B67A]/20 bg-white/80 backdrop-blur-sm placeholder:text-gray-400 text-gray-900 focus:outline-none focus:border-[#27B67A]/40 shadow-lg transition-all duration-300 font-['Darker_Grotesque']"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="bg-[#27B67A] text-white px-8 py-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-[#229163] transition-all duration-300 shadow-lg disabled:opacity-50 font-['Darker_Grotesque']"
+                  >
+                    <span>{isLoading ? "Joining..." : "Join Waitlist"}</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+                <p className="text-gray-500 text-sm mt-4 font-['Darker_Grotesque']">
+                  We respect your privacy
+                </p>
+              </form>
+            </div>
+          )}
         </div>
+      </main>
 
-        <motion.h1 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-5xl md:text-6xl font-bold text-gray-900 mb-6"
-        >
-          Automate Your Financial <br />
-          Analysis & Workflows <br />
-          <span className="text-[#3cbd84]">with AI</span>
-        </motion.h1>
-        
-        <motion.p 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto"
-        >
-          Transform your Excel workflows into automated processes. Connect with Xero, 
-          Salesforce, and more to streamline your financial analysis and reporting.
-        </motion.p>
-
-        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-          <Button size="lg" className="bg-[#3cbd84] hover:bg-[#2da46f]">
-            Try Tallyze Free <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-          <Button size="lg" variant="outline" className="border-[#3cbd84] text-[#3cbd84] hover:bg-[#3cbd84]/10">
-            See how it works
-          </Button>
-        </div>
-
-        <div className="text-sm text-gray-500 mb-8">
-          Trusted by finance teams at Fortune 500 companies and leading enterprises
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section className="container mx-auto px-4 py-16">
-        <div className="grid md:grid-cols-3 gap-8">
-          <FeatureCard 
-            icon={<FileSpreadsheet className="h-8 w-8 text-[#3cbd84]" />}
-            title="Smart Excel Analysis"
-            description="AI-powered analysis of your financial spreadsheets. Get insights, anomaly detection, and automated reporting."
-          />
-          <FeatureCard 
-            icon={<Clock className="h-8 w-8 text-[#3cbd84]" />}
-            title="Scheduled Workflows"
-            description="Set up automated workflows that run on your schedule. Daily reconciliation, weekly reports, monthly closings."
-          />
-          <FeatureCard 
-            icon={<Zap className="h-8 w-8 text-[#3cbd84]" />}
-            title="Real-time Integration"
-            description="Connect directly with Xero, Salesforce, and other financial tools for live data analysis."
-          />
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="container mx-auto px-4 py-16 bg-gray-50">
-        <h2 className="text-3xl font-bold text-center mb-12">How Tallyze Works</h2>
-        <div className="grid md:grid-cols-3 gap-8">
-          <WorkflowStep 
-            number="1"
-            title="Connect Your Data"
-            description="Import your Excel files or connect directly to Xero, Salesforce, and other platforms."
-            icon={<Database className="h-6 w-6" />}
-          />
-          <WorkflowStep 
-            number="2"
-            title="Set Up Workflows"
-            description="Create automated workflows for your financial processes with our visual builder."
-            icon={<RefreshCw className="h-6 w-6" />}
-          />
-          <WorkflowStep 
-            number="3"
-            title="Automate & Monitor"
-            description="Let AI handle your routine tasks while you monitor results and get alerts."
-            icon={<Zap className="h-6 w-6" />}
-          />
-        </div>
-      </section>
-
-      {/* Integration Partners */}
-      <section className="container mx-auto px-4 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">Integrations</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 items-center justify-items-center">
-          {/* Add integration partner logos here */}
-          <div className="h-12 w-32 bg-gray-200 rounded flex items-center justify-center">Xero</div>
-          <div className="h-12 w-32 bg-gray-200 rounded flex items-center justify-center">Salesforce</div>
-          <div className="h-12 w-32 bg-gray-200 rounded flex items-center justify-center">Excel</div>
-          <div className="h-12 w-32 bg-gray-200 rounded flex items-center justify-center">Google Sheets</div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="container mx-auto px-4 py-16 text-center">
-        <h2 className="text-3xl font-bold mb-6">
-          Ready to Transform Your Financial Workflows?
-        </h2>
-        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          Join leading companies that have automated their financial operations with Tallyze.
-        </p>
-        <Button size="lg" className="bg-[#3cbd84] hover:bg-[#2da46f]">
-          Start Your Free Trial <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </section>
+      {/* Footer */}
+      <footer className="relative w-full py-8">
+        <div className="absolute bottom-0 left-0 w-full h-32 bg-gradient-to-t from-[#F2FCE2]/50 to-transparent pointer-events-none"></div>
+      </footer>
     </div>
   );
-}
+};
 
-const FeatureCard: React.FC<FeatureCardProps> = ({ icon, title, description }) => {
-  return (
-    <div className="p-6 rounded-lg border border-gray-200 hover:shadow-lg transition-shadow">
-      <div className="mb-4">{icon}</div>
-      <h3 className="text-xl font-semibold mb-2">{title}</h3>
-      <p className="text-gray-600">{description}</p>
-    </div>
-  );
-}
-
-const WorkflowStep: React.FC<WorkflowStepProps> = ({ number, title, description, icon }) => {
-  return (
-    <div className="text-center">
-      <div className="w-12 h-12 rounded-full bg-[#3cbd84]/10 text-[#3cbd84] flex items-center justify-center mx-auto mb-4">
-        {icon}
-      </div>
-      <div className="text-xl font-semibold mb-2">{title}</div>
-      <p className="text-gray-600">{description}</p>
-    </div>
-  );
-}
+export default Index;

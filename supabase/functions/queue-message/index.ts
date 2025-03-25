@@ -62,86 +62,23 @@ serve(async (req) => {
 
     try {
       // Add job to queue using Redis REST API
-      console.log(`Attempting to queue message ${messageId} to Redis...`);
       const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${JSON.stringify(job)}`, {
         headers: {
           Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
         }
-      });
+      })
 
       if (!queueResponse.ok) {
-        const error = await queueResponse.text();
-        console.error('Redis queue error details:', {
-          status: queueResponse.status,
-          statusText: queueResponse.statusText,
-          error,
-          messageId: job.id,
-          timestamp: Date.now()
-        });
-        throw new Error(`Failed to queue message: ${error}`);
+        const error = await queueResponse.text()
+        throw new Error(`Failed to queue message: ${error}`)
       }
-
-      console.log(`Successfully queued message ${messageId} to Redis`);
     } catch (queueError) {
-      console.error('Error queueing to Redis:', {
-        error: queueError.message,
-        stack: queueError.stack,
-        messageId: job.id,
-        timestamp: Date.now(),
-        jobData: {
-          ...job,
-          data: {
-            ...job.data,
-            query: job.data.query.substring(0, 100) + '...' // Truncate for logging
-          }
-        }
-      });
-      
-      // Update message status to failed in case of queue error
-      try {
-        const supabaseClient = createClient(
-          Deno.env.get('SUPABASE_URL') || '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
-          {
-            auth: {
-              autoRefreshToken: false,
-              persistSession: false
-            }
-          }
-        );
-
-        await supabaseClient
-          .from('chat_messages')
-          .update({
-            status: 'failed',
-            metadata: {
-              processing_stage: {
-                stage: 'queue_failed',
-                error: queueError.message,
-                failed_at: new Date().toISOString(),
-                error_details: {
-                  name: queueError.name,
-                  message: queueError.message,
-                  timestamp: Date.now()
-                }
-              }
-            }
-          })
-          .eq('id', messageId);
-      } catch (updateError) {
-        console.error('Failed to update message status after queue error:', {
-          updateError,
-          messageId,
-          originalError: queueError.message
-        });
-      }
-      
-      throw new Error(`Redis queue error: ${queueError.message}`);
+      console.error('Error queueing to Redis:', queueError)
+      throw new Error(`Redis queue error: ${queueError.message}`)
     }
     
     try {
       // Update message metadata in Supabase
-      console.log(`Updating message ${messageId} metadata after successful queue...`);
       const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') || '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
@@ -151,7 +88,7 @@ serve(async (req) => {
             persistSession: false
           }
         }
-      );
+      )
 
       const { error: updateError } = await supabaseClient
         .from('chat_messages')
@@ -161,26 +98,15 @@ serve(async (req) => {
             processing_stage: {
               stage: 'queued',
               queued_at: Date.now(),
-              job_id: messageId,
-              queue_details: {
-                timestamp: Date.now(),
-                initial_attempts: job.attempts,
-                max_attempts: job.maxAttempts
-              }
+              job_id: messageId
             }
           }
         })
-        .eq('id', messageId);
+        .eq('id', messageId)
 
       if (updateError) {
-        console.error('Error updating message metadata:', {
-          error: updateError,
-          messageId,
-          timestamp: Date.now()
-        });
+        console.error('Error updating message metadata:', updateError)
         // Continue anyway since the message is queued
-      } else {
-        console.log(`Successfully updated metadata for message ${messageId}`);
       }
     } catch (dbError) {
       console.error('Error updating Supabase:', dbError)
