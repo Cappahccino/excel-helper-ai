@@ -1,11 +1,25 @@
+<<<<<<< HEAD
 
 import { serve } from "std/http/server.ts"
+=======
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
+>>>>>>> d388be7 (modified worker to process data better before sending to excel assistant)
 import { createClient } from "@supabase/supabase-js"
 
 // CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Validate Redis URL format
+function isValidRedisUrl(url) {
+  try {
+    new URL(url);
+    return url.startsWith('https://');
+  } catch {
+    return false;
+  }
 }
 
 serve(async (req) => {
@@ -23,8 +37,12 @@ serve(async (req) => {
       throw new Error('Redis REST API configuration missing')
     }
 
+    if (!isValidRedisUrl(UPSTASH_REDIS_REST_URL)) {
+      throw new Error('Invalid Redis REST API URL format')
+    }
+
     // Parse request body
-    const { messageId, query, userId, sessionId, fileIds, isTextOnly } = await req.json()
+    const { messageId, query, userId, sessionId, fileIds, isTextOnly, content, metadata } = await req.json()
 
     // Validate required fields
     if (!messageId || !query || !userId || !sessionId) {
@@ -45,7 +63,7 @@ serve(async (req) => {
       )
     }
 
-    // Create job data
+    // Create job data - include all fields that Excel Assistant needs
     const job = {
       id: messageId,
       data: {
@@ -54,16 +72,21 @@ serve(async (req) => {
         userId,
         sessionId,
         fileIds: fileIds || [],
-        isTextOnly: isTextOnly || false
+        isTextOnly: isTextOnly || false,
+        content: content || '',
+        metadata: metadata || {}
       },
       timestamp: Date.now(),
       attempts: 0,
       maxAttempts: 3
     }
 
+    // URL encode the job data for Redis
+    const encodedJob = encodeURIComponent(JSON.stringify(job))
+
     try {
       // Add job to queue using Redis REST API
-      const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${JSON.stringify(job)}`, {
+      const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${encodedJob}`, {
         headers: {
           Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
         }
@@ -73,6 +96,13 @@ serve(async (req) => {
         const error = await queueResponse.text()
         throw new Error(`Failed to queue message: ${error}`)
       }
+
+      const queueResult = await queueResponse.json()
+      console.log('Queue response:', {
+        messageId,
+        queueLength: queueResult.result,
+        timestamp: new Date().toISOString()
+      })
     } catch (queueError) {
       console.error('Error queueing to Redis:', queueError)
       throw new Error(`Redis queue error: ${queueError.message}`)
@@ -99,7 +129,8 @@ serve(async (req) => {
             processing_stage: {
               stage: 'queued',
               queued_at: Date.now(),
-              job_id: messageId
+              job_id: messageId,
+              queue_position: queueResult?.result || 0
             }
           }
         })
@@ -118,7 +149,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         messageId,
-        queueTimestamp: Date.now()
+        queueTimestamp: Date.now(),
+        queuePosition: queueResult?.result || 0
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

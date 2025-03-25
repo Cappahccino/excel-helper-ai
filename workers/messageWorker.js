@@ -1,4 +1,3 @@
-
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');  // Add fetch import
 require('dotenv').config();
@@ -119,14 +118,7 @@ async function processMessages() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify({
-          messageId: job.data.messageId,
-          query: job.data.query,
-          userId: job.data.userId,
-          sessionId: job.data.sessionId,
-          fileIds: job.data.fileIds || [],
-          isTextOnly: job.data.isTextOnly || false
-        })
+        body: JSON.stringify(job.data) // Send the entire job.data object
       });
 
       const responseTime = Date.now() - startTime;
