@@ -1,5 +1,21 @@
 const { createClient } = require('@supabase/supabase-js');
+const fetch = require('node-fetch');  // Add fetch import
 require('dotenv').config();
+
+// Validate required environment variables
+const requiredEnvVars = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_ANON_KEY',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN'
+];
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingEnvVars.length > 0) {
+  console.error('Missing required environment variables:', missingEnvVars);
+  process.exit(1);
+}
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -9,6 +25,8 @@ const supabase = createClient(
 
 // Helper function to make Upstash Redis REST API calls
 async function upstashRedis(command, ...args) {
+  console.log(`Executing Redis command: ${command} with args:`, args);
+  
   const response = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`, {
     headers: {
       Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
@@ -16,10 +34,13 @@ async function upstashRedis(command, ...args) {
   });
 
   if (!response.ok) {
-    throw new Error(`Upstash Redis API error: ${await response.text()}`);
+    const error = await response.text();
+    console.error(`Upstash Redis API error (${response.status}):`, error);
+    throw new Error(`Upstash Redis API error: ${error}`);
   }
 
   const result = await response.json();
+  console.log(`Redis command result:`, result);
   return result.result;
 }
 
@@ -38,7 +59,20 @@ async function processMessages() {
     }
     
     console.log('Raw job data:', jobData);
-    const job = JSON.parse(jobData);
+    let job;
+    try {
+      job = JSON.parse(jobData);
+    } catch (parseError) {
+      console.error('Failed to parse job data:', parseError);
+      console.error('Invalid job data:', jobData);
+      return;
+    }
+
+    if (!job.data?.messageId) {
+      console.error('Invalid job structure - missing messageId:', job);
+      return;
+    }
+
     console.log('Parsed job data:', {
       id: job.id,
       messageId: job.data?.messageId,
@@ -55,8 +89,22 @@ async function processMessages() {
     
     try {
       // Call Excel Assistant edge function
-      console.log(`Calling Excel Assistant for message ${job.data.messageId}`);
-      const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/excel-assistant`, {
+      const edgeFunctionUrl = `${process.env.SUPABASE_URL}/functions/v1/excel-assistant`;
+      console.log(`\nCalling Excel Assistant edge function:`, {
+        messageId: job.data.messageId,
+        timestamp: new Date().toISOString(),
+        url: edgeFunctionUrl,
+        requestBody: {
+          messageId: job.data.messageId,
+          // Log other non-sensitive fields from job.data
+          hasContent: !!job.data.content,
+          contentLength: job.data.content?.length,
+          metadata: job.data.metadata
+        }
+      });
+      
+      const startTime = Date.now();
+      const response = await fetch(edgeFunctionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,17 +113,39 @@ async function processMessages() {
         body: JSON.stringify(job.data)
       });
 
+      const responseTime = Date.now() - startTime;
+      console.log(`Excel Assistant response received:`, {
+        messageId: job.data.messageId,
+        status: response.status,
+        statusText: response.statusText,
+        responseTime: `${responseTime}ms`,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       if (!response.ok) {
-        const error = await response.text();
-        console.error(`Excel Assistant error response:`, error);
-        throw new Error(`Excel Assistant failed: ${error}`);
+        const errorText = await response.text();
+        console.error(`Excel Assistant error details:`, {
+          messageId: job.data.messageId,
+          status: response.status,
+          error: errorText,
+          timestamp: new Date().toISOString(),
+          responseTime,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        throw new Error(`Excel Assistant failed (${response.status}): ${errorText}`);
       }
 
       const result = await response.json();
-      console.log(`Excel Assistant success for message ${job.data.messageId}:`, {
-        status: 'success',
+      console.log(`Excel Assistant success:`, {
+        messageId: job.data.messageId,
+        responseTime,
         contentLength: result.content?.length || 0,
-        hasMetadata: !!result.metadata
+        hasMetadata: !!result.metadata,
+        metadata: {
+          ...result.metadata,
+          sensitive_fields_removed: true // Don't log sensitive metadata
+        },
+        timestamp: new Date().toISOString()
       });
       
       // Update message with result
@@ -83,24 +153,43 @@ async function processMessages() {
       await updateMessageStatus(job.data.messageId, 'completed', result.content || '', {
         stage: 'completed',
         completed_at: new Date().toISOString(),
+        processing_time: responseTime,
         ...result.metadata
       });
       
       console.log(`Successfully processed message ${job.data.messageId}`);
     } catch (error) {
-      console.error(`Error processing message ${job.data.messageId}:`, error);
+      console.error(`Error processing message:`, {
+        messageId: job.data.messageId,
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          cause: error.cause
+        },
+        timestamp: new Date().toISOString(),
+        attempt: job.attempts,
+        maxAttempts: job.maxAttempts
+      });
       
       // If we haven't exceeded max attempts, put the job back in the queue
       if (job.attempts < job.maxAttempts) {
         job.attempts++;
-        console.log(`Retrying message ${job.data.messageId} (attempt ${job.attempts}/${job.maxAttempts})`);
+        const backoffDelay = 1000 * Math.pow(2, job.attempts); // Exponential backoff
+        console.log(`Retrying message ${job.data.messageId} (attempt ${job.attempts}/${job.maxAttempts}) with ${backoffDelay}ms delay`);
+        
         await upstashRedis('lpush', 'message-processing', JSON.stringify(job));
         
         await updateMessageStatus(job.data.messageId, 'in_progress', '', {
           stage: 'retrying',
           error: error.message,
           attempt: job.attempts,
-          next_attempt_at: Date.now() + (1000 * Math.pow(2, job.attempts)) // Exponential backoff
+          next_attempt_at: Date.now() + backoffDelay,
+          error_details: {
+            message: error.message,
+            stack: error.stack,
+            timestamp: Date.now()
+          }
         });
       } else {
         // Mark as failed if we've exceeded max attempts
@@ -108,12 +197,22 @@ async function processMessages() {
         await updateMessageStatus(job.data.messageId, 'failed', error.message || 'Unknown error', {
           stage: 'failed',
           error_message: error.message || 'Unknown error during processing',
+          error_details: {
+            message: error.message,
+            stack: error.stack,
+            final_attempt: job.attempts,
+            timestamp: Date.now()
+          },
           failed_at: new Date().toISOString()
         });
       }
     }
   } catch (error) {
-    console.error('Error in message processing:', error);
+    console.error('Fatal error in message processing:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: Date.now()
+    });
   }
 }
 
