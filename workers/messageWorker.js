@@ -1,3 +1,4 @@
+
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');  // Add fetch import
 require('dotenv').config();
@@ -27,21 +28,29 @@ const supabase = createClient(
 async function upstashRedis(command, ...args) {
   console.log(`Executing Redis command: ${command} with args:`, args);
   
-  const response = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`, {
-    headers: {
-      Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
+  try {
+    const url = `${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`;
+    console.log(`Redis API request URL: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Upstash Redis API error (${response.status}):`, error);
+      throw new Error(`Upstash Redis API error: ${error}`);
     }
-  });
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`Upstash Redis API error (${response.status}):`, error);
-    throw new Error(`Upstash Redis API error: ${error}`);
+    const result = await response.json();
+    console.log(`Redis command result:`, result);
+    return result.result;
+  } catch (error) {
+    console.error(`Redis command error (${command}):`, error);
+    throw error;
   }
-
-  const result = await response.json();
-  console.log(`Redis command result:`, result);
-  return result.result;
 }
 
 // Process messages from the queue
@@ -110,7 +119,14 @@ async function processMessages() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify(job.data)
+        body: JSON.stringify({
+          messageId: job.data.messageId,
+          query: job.data.query,
+          userId: job.data.userId,
+          sessionId: job.data.sessionId,
+          fileIds: job.data.fileIds || [],
+          isTextOnly: job.data.isTextOnly || false
+        })
       });
 
       const responseTime = Date.now() - startTime;
@@ -173,6 +189,9 @@ async function processMessages() {
       });
       
       // If we haven't exceeded max attempts, put the job back in the queue
+      if (!job.attempts) job.attempts = 0;
+      if (!job.maxAttempts) job.maxAttempts = 3;
+      
       if (job.attempts < job.maxAttempts) {
         job.attempts++;
         const backoffDelay = 1000 * Math.pow(2, job.attempts); // Exponential backoff
@@ -225,7 +244,7 @@ async function updateMessageStatus(messageId, status, content, metadata) {
       updated_at: new Date().toISOString()
     };
     
-    if (content) {
+    if (content !== undefined && content !== null) {
       updateData.content = content;
     }
     
