@@ -678,41 +678,64 @@ const MessageStatus = {
   PROCESSING: 'processing',    // Worker has picked up the message
   ANALYZING: 'analyzing',      // Excel Assistant is processing
   COMPLETED: 'completed',      // Successfully processed
-  FAILED: 'failed'            // Error occurred
+  FAILED: 'failed',           // Error occurred
+  CANCELLED: 'cancelled',      // Message processing was cancelled
+  EXPIRED: 'expired'          // Message processing timed out
 } as const;
 
-// Modify updateMessageStatus to include stage validation
+/**
+ * Update message status in the database with proper stage tracking
+ */
 async function updateMessageStatus(
   messageId: string,
   status: string,
   content: string = '',
   metadata: Record<string, any> = {}
 ) {
-  // Only allow status updates from Excel Assistant for certain stages
-  const allowedStages = [MessageStatus.ANALYZING, MessageStatus.COMPLETED, MessageStatus.FAILED];
-  if (!allowedStages.includes(status)) {
-    console.warn(`Excel Assistant should not update message to status: ${status}`);
-    return;
-  }
-
   try {
-    const { error } = await supabase
-      .from('chat_messages')
-      .update({
-        status,
-        content,
-        metadata: {
-          ...metadata,
+    // Only allow status updates from Excel Assistant for certain stages
+    const allowedStages = [
+      MessageStatus.ANALYZING,
+      MessageStatus.COMPLETED,
+      MessageStatus.FAILED
+    ];
+    
+    if (!allowedStages.includes(status)) {
+      console.warn(`Excel Assistant should not update message to status: ${status}`);
+      return;
+    }
+
+    // Prepare the update payload
+    const updatePayload = {
+      status,
+      metadata: {
+        ...metadata,
+        processing_stage: {
+          ...(metadata.processing_stage || {}),
+          stage: status,
           updated_at: Date.now(),
           updated_by: 'excel_assistant'
         }
-      })
+      }
+    };
+
+    // Only update content if it's provided
+    if (content) {
+      updatePayload.content = content;
+    }
+
+    // Update the message in the database
+    const { error } = await supabase
+      .from('chat_messages')
+      .update(updatePayload)
       .eq('id', messageId);
 
     if (error) {
       console.error('Error updating message status:', error);
       throw error;
     }
+
+    console.log(`Successfully updated message ${messageId} to status: ${status}`);
   } catch (error) {
     console.error('Error in updateMessageStatus:', error);
     throw error;
