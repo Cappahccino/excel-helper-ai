@@ -293,14 +293,16 @@ export function ChatInput({
   const renderMessageWithHighlight = () => {
     if (!selectedCommand) return message;
     
-    const parts = message.split(selectedCommand);
-    if (parts.length < 2) return message;
+    if (!message.startsWith(selectedCommand)) {
+      setSelectedCommand(null);
+      return message;
+    }
     
     return (
-      <>
+      <div className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words">
         <span className="text-green-500 font-medium">{selectedCommand}</span>
-        {parts[1]}
-      </>
+        {message.slice(selectedCommand.length)}
+      </div>
     );
   };
 
@@ -357,27 +359,21 @@ export function ChatInput({
           />
 
           <div className="relative flex-1">
-            <div
-              className="w-full min-w-0 bg-transparent text-sm placeholder:text-gray-400"
-              style={{ minHeight: '24px' }}
-            >
-              {selectedCommand ? (
-                <div className="whitespace-pre-wrap break-words">
-                  {renderMessageWithHighlight()}
-                </div>
-              ) : (
-                <textarea
-                  ref={textareaRef}
-                  className="w-full min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
-                  placeholder={isAnalyzing ? `Assistant is ${getProcessingDescription()}` : "Ask me anything about your Excel data..."}
-                  rows={1}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={isAnalyzing || isUploading}
-                />
-              )}
-            </div>
+            <textarea
+              ref={textareaRef}
+              className="w-full min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none relative"
+              placeholder={isAnalyzing ? `Assistant is ${getProcessingDescription()}` : "Ask me anything about your Excel data..."}
+              rows={1}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isAnalyzing || isUploading}
+              style={{ 
+                minHeight: '24px',
+                color: selectedCommand ? 'transparent' : 'inherit'
+              }}
+            />
+            {selectedCommand && renderMessageWithHighlight()}
             
             {/* Command suggestions dropdown */}
             {showCommands && (
