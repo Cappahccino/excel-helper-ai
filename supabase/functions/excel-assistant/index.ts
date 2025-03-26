@@ -645,7 +645,7 @@ async function processRequest(req: Request): Promise<Response> {
     };
     
     // Connect to Redis using REST API (for edge function compatibility)
-    const redisUrl = `${UPSTASH_REDIS_REST_URL}/lpush/message-processing-queue/${JSON.stringify(queuePayload)}`;
+    const redisUrl = `${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${encodeURIComponent(JSON.stringify(queuePayload))}`;
     
     const redisResponse = await fetch(redisUrl, {
       headers: {

@@ -105,7 +105,7 @@ async function processMessages() {
       // Call Excel Assistant edge function
       const edgeFunctionUrl = `${process.env.SUPABASE_URL}/functions/v1/excel-assistant`;
       
-      // Prepare request data
+      // Prepare request data with all necessary fields
       const requestData = {
         ...job.data,
         processingMetadata: {
@@ -113,7 +113,12 @@ async function processMessages() {
           processingStartedAt: Date.now(),
           attempts: job.attempts,
           worker_version: '1.0.0',
-          worker_id: process.pid
+          worker_id: process.pid,
+          queue_info: {
+            original_queue: 'message-processing',
+            attempt: job.attempts,
+            max_attempts: job.maxAttempts
+          }
         }
       };
 
@@ -208,6 +213,11 @@ async function processMessages() {
         const responseText = await response.text();
         console.log('\nRaw Response:', responseText.substring(0, 1000) + (responseText.length > 1000 ? '...' : ''));
         result = JSON.parse(responseText);
+        
+        // Validate response structure
+        if (!result.content && !result.error) {
+          throw new Error('Invalid response format: missing content or error');
+        }
       } catch (parseError) {
         console.error('\n=== Excel Assistant Response Parse Error ===');
         console.error('Error:', parseError.message);
@@ -240,7 +250,11 @@ async function processMessages() {
           queue_time: startTime - job.timestamp,
           processing_time: responseTime,
           total_time: Date.now() - job.timestamp,
-          attempts: job.attempts
+          attempts: job.attempts,
+          worker_info: {
+            version: '1.0.0',
+            pid: process.pid
+          }
         }
       });
       
