@@ -141,6 +141,11 @@ async function processMessages() {
       // Call Excel Assistant edge function
       const edgeFunctionUrl = `${process.env.SUPABASE_URL}/functions/v1/excel-assistant`;
       
+      console.log('\n=== Debug Information ===');
+      console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+      console.log('Edge Function URL:', edgeFunctionUrl);
+      console.log('Authorization Header Present:', !!process.env.SUPABASE_ANON_KEY);
+      
       // Prepare request data with all necessary fields
       const requestData = {
         ...job.data,
@@ -167,6 +172,14 @@ async function processMessages() {
         'Length': JSON.stringify(requestData).length
       });
       
+      // Validate request data
+      const requiredFields = ['messageId', 'query', 'userId', 'sessionId'];
+      const missingFields = requiredFields.filter(field => !requestData[field]);
+      if (missingFields.length > 0) {
+        console.error('Missing required fields:', missingFields);
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+      
       // Log the exact request payload
       console.log('\nExact Request Payload:');
       console.log(JSON.stringify({
@@ -190,6 +203,7 @@ async function processMessages() {
       
       let response;
       try {
+        console.log('Making fetch request to:', edgeFunctionUrl);
         response = await fetch(edgeFunctionUrl, {
           method: 'POST',
           headers: {
@@ -198,15 +212,20 @@ async function processMessages() {
           },
           body: JSON.stringify(requestData)
         });
+        console.log('Fetch request completed');
       } catch (networkError) {
         console.error('\n=== Excel Assistant Network Error ===');
         console.error('Error Type:', networkError.name);
         console.error('Error Message:', networkError.message);
         console.error('Stack Trace:', networkError.stack);
         console.error('Request URL:', edgeFunctionUrl);
-        console.error('Request Data:', {
-          messageId: requestData.messageId,
-          dataSize: JSON.stringify(requestData).length
+        console.error('Network Error Details:', {
+          code: networkError.code,
+          errno: networkError.errno,
+          syscall: networkError.syscall,
+          hostname: networkError.hostname,
+          host: networkError.host,
+          port: networkError.port
         });
         throw networkError;
       }
