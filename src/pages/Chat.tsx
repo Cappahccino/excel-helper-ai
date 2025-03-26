@@ -365,7 +365,7 @@ const Chat = () => {
                       </div>
                     </div>
                     <h2 className="text-3xl font-semibold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-4">
-                      Welcome to Excel Assistant
+                      Welcome to Tallyze
                     </h2>
                     <p className="text-gray-600 text-lg max-w-xl mx-auto">
                       Ask me anything about Excel, or upload a file for analysis using the paperclip button below.

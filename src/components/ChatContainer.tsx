@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatMessages } from '@/hooks/useChatMessages';
 import { useChatRealtime } from '@/hooks/useChatRealtime'; 
@@ -160,7 +159,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     <Card className="h-full flex flex-col">
       <CardHeader className="border-b px-4 py-3">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-lg">Excel Assistant</CardTitle>
+          <CardTitle className="text-lg">Tallyze</CardTitle>
           <div className="flex items-center space-x-2">
             {isConnected ? (
               <Badge variant="outline" className="bg-green-50"><Wifi className="h-3 w-3 mr-1" /> Connected</Badge>
