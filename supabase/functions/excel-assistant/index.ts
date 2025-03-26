@@ -671,3 +671,50 @@ serve(async (req: Request) => {
   
   return processRequest(req);
 });
+
+// Define message status stages
+const MessageStatus = {
+  QUEUED: 'queued',           // Initial state when message is added to Redis
+  PROCESSING: 'processing',    // Worker has picked up the message
+  ANALYZING: 'analyzing',      // Excel Assistant is processing
+  COMPLETED: 'completed',      // Successfully processed
+  FAILED: 'failed'            // Error occurred
+} as const;
+
+// Modify updateMessageStatus to include stage validation
+async function updateMessageStatus(
+  messageId: string,
+  status: string,
+  content: string = '',
+  metadata: Record<string, any> = {}
+) {
+  // Only allow status updates from Excel Assistant for certain stages
+  const allowedStages = [MessageStatus.ANALYZING, MessageStatus.COMPLETED, MessageStatus.FAILED];
+  if (!allowedStages.includes(status)) {
+    console.warn(`Excel Assistant should not update message to status: ${status}`);
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({
+        status,
+        content,
+        metadata: {
+          ...metadata,
+          updated_at: Date.now(),
+          updated_by: 'excel_assistant'
+        }
+      })
+      .eq('id', messageId);
+
+    if (error) {
+      console.error('Error updating message status:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in updateMessageStatus:', error);
+    throw error;
+  }
+}
