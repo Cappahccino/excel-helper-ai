@@ -130,25 +130,22 @@ async function processMessages() {
         'Authorization': 'Bearer <ANON_KEY_PRESENT>',
         'Length': JSON.stringify(requestData).length
       });
-      console.log('Request Data:', {
+      
+      // Log the exact request payload
+      console.log('\nExact Request Payload:');
+      console.log(JSON.stringify({
         messageId: requestData.messageId,
         query: requestData.query,
-        files: {
-          count: requestData.fileIds?.length || 0,
-          ids: requestData.fileIds || [],
-          hasFiles: requestData.fileIds?.length > 0
-        },
-        content: {
-          present: !!requestData.content,
-          length: requestData.content?.length || 0,
-          preview: requestData.content?.substring(0, 100) + (requestData.content?.length > 100 ? '...' : '')
-        },
-        metadata: {
-          present: !!requestData.metadata,
-          keys: Object.keys(requestData.metadata || {}),
-          processing: requestData.processingMetadata
-        },
-        timestamp: new Date().toISOString()
+        userId: requestData.userId,
+        sessionId: requestData.sessionId,
+        fileIds: requestData.fileIds || [],
+        content: requestData.content,
+        isTextOnly: requestData.isTextOnly
+      }, null, 2));
+      
+      console.log('\nRequest Metadata:', {
+        timestamp: new Date().toISOString(),
+        processingMetadata: requestData.processingMetadata
       });
       
       // Make the request with timing
