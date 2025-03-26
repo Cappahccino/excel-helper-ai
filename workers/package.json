@@ -9,11 +9,15 @@
     "start:all": "concurrently \"npm run start\" \"npm run start:recovery\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.8",
-    "dotenv": "^16.4.5"
+    "@supabase/supabase-js": "^2.48.1",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0",
     "concurrently": "^8.2.2"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

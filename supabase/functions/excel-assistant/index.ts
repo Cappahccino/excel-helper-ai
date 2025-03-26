@@ -181,13 +181,6 @@ async function processUserQueryWithClaude(params: {
   try {
     console.log('Processing Excel analysis with Claude 3.5 Sonnet API');
     
-    // Update message status to provide better progress tracking
-    await updateMessageStatus(messageId, 'processing', '', {
-      stage: 'preparing_claude_request',
-      started_at: Date.now(),
-      model: CLAUDE_MODEL
-    });
-    
     // Create enhanced file context with formula information
     const fileContext = fileContents.map(content => {
       const sheetContexts = content.sheets.map(sheet => {
@@ -198,93 +191,32 @@ async function processUserQueryWithClaude(params: {
         if (sheet.formulas && Object.keys(sheet.formulas).length > 0) {
           const formulaCount = Object.keys(sheet.formulas).length;
           sheetContext += `\n      * Contains ${formulaCount} formula${formulaCount === 1 ? '' : 's'}`;
-          
-          // Add sample formulas (up to 3)
-          const sampleFormulas = Object.entries(sheet.formulas).slice(0, 3);
-          if (sampleFormulas.length > 0) {
-            sheetContext += '\n      * Sample formulas:';
-            sampleFormulas.forEach(([cell, formula]) => {
-              sheetContext += `\n        - ${cell}: ${formula}`;
-            });
-          }
         }
-        
         return sheetContext;
-      }).join('\n');
-      
-      const fileSize = files.find(f => f.filename === content.filename)?.file_size || 0;
-      const formattedSize = fileSize > 0 ? `${(fileSize / 1024).toFixed(1)} KB` : 'Unknown size';
-      
-      return `
-- ${content.filename} (${formattedSize})
-  Sheets:
-${sheetContexts}`;
+      });
+      return `  * ${content.filename}:\n${sheetContexts.join('\n')}`;
     }).join('\n');
 
-    // Enhanced prompt with better context and specific instructions for Claude 3.5 Sonnet
-    const userPrompt = `
-USER QUERY: ${query}
-
-AVAILABLE EXCEL FILES:
-${fileContext}
-
-INSTRUCTIONS:
-1. Please analyze these Excel files and answer the query thoroughly
-2. If formulas are present, explain what they do and provide insights about their logic
-3. If appropriate, suggest ways to improve data organization or analysis
-4. For large datasets, provide summary statistics to give an overview
-5. If multiple files are present, check for relationships between them
-6. Highlight important patterns, trends, or outliers in the data
-
-ADDITIONAL CONTEXT:
-This query is part of chat session: ${sessionId}
-`.trim();
-
-    // Update message status for better tracking
-    await updateMessageStatus(messageId, 'processing', '', {
-      stage: 'sending_to_claude',
-      completion_percentage: 30,
-      request_start: Date.now()
+    // Process with Claude
+    const claudeResponse = await processWithClaude({
+      query,
+      files,
+      fileContents,
+      fileContext,
+      messageId,
+      userId,
+      sessionId
     });
 
-    // Execute request with retry logic
-    const result = await withRetry(
-      () => processWithClaude({
-        query,
-        fileContents,
-        messageId,
-        sessionId,
-        userId
-      }),
-      2,
-      1000,
-      'claude_api_call'
-    );
-    
     return {
-      messageId: result.messageId,
-      claudeResponse: {
-        content: result.content,
-        modelUsed: result.modelUsed,
-        usage: result.usage
-      }
+      messageId,
+      fileIds: files.map(f => f.id),
+      claudeResponse
     };
   } catch (error) {
     console.error('Error in processUserQueryWithClaude:', error);
-    
-    // Update message status to failed
-    await updateMessageStatus(messageId, 'failed', '', {
-      stage: 'claude_processing_error',
-      error: error.message,
-      failed_at: Date.now()
-    });
-    
-    if (error instanceof ExcelAssistantError) {
-      throw error;
-    }
-    
     throw new ExcelAssistantError(
-      `Failed to process query with Claude: ${error.message}`,
+      `Failed to process query: ${error.message}`,
       500,
       'claude_processing',
       true

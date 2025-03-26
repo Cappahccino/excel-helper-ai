@@ -2,7 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 require('dotenv').config();
 
-// Validate required environment variables
+// Environment variable validation
 const requiredEnvVars = [
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -11,17 +11,53 @@ const requiredEnvVars = [
   'UPSTASH_REDIS_REST_TOKEN'
 ];
 
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+// Check for missing environment variables
+const missingEnvVars = requiredEnvVars.filter(envVar => {
+  const value = process.env[envVar];
+  if (!value) {
+    console.error(`Missing ${envVar} environment variable`);
+    return true;
+  }
+  // Additional validation for URLs
+  if (envVar.includes('URL')) {
+    try {
+      new URL(value);
+    } catch (error) {
+      console.error(`Invalid URL for ${envVar}: ${value}`);
+      return true;
+    }
+  }
+  return false;
+});
+
 if (missingEnvVars.length > 0) {
-  console.error('Missing required environment variables:', missingEnvVars);
+  console.error('Required environment variables are missing or invalid:');
+  missingEnvVars.forEach(envVar => console.error(`- ${envVar}`));
+  console.error('\nPlease ensure these variables are set in your Supabase Edge Function secrets.');
   process.exit(1);
 }
 
-// Initialize Supabase client
+// Initialize Supabase client with validated credentials
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
 );
+
+// Log successful initialization
+console.log('Environment validated and services initialized successfully');
+console.log('Worker Configuration:', {
+  maxConcurrentJobs: process.env.MAX_CONCURRENT_JOBS || 5,
+  maxRetryCount: process.env.MAX_RETRY_COUNT || 3,
+  recoveryInterval: process.env.RECOVERY_CHECK_INTERVAL || 300000,
+  logLevel: process.env.LOG_LEVEL || 'info',
+  debugLogging: process.env.ENABLE_DEBUG_LOGGING === 'true'
+});
 
 // Helper function to make Upstash Redis REST API calls
 async function upstashRedis(command, ...args) {
