@@ -254,8 +254,8 @@ async function processMessages() {
       } catch (parseError) {
         console.error('\n=== Excel Assistant Response Parse Error ===');
         console.error('Error:', parseError.message);
-        console.error('Raw Response:', await response.text());
-        throw new Error('Failed to parse Excel Assistant response');
+        // Don't try to read the response body again
+        throw new Error('Failed to parse Excel Assistant response: ' + parseError.message);
       }
 
       // Log success details

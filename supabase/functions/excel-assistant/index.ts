@@ -540,78 +540,29 @@ async function processRequest(req: Request): Promise<Response> {
     }
     
     // Check if this is a text-only query
-    const isTextOnlyQuery = !requestData.fileIds || requestData.fileIds.length === 0;
-    console.log(`Processing ${isTextOnlyQuery ? 'text-only' : 'file-based'} query`);
+    const isTextOnly = !requestData.fileIds || requestData.fileIds.length === 0;
+    console.log(`Processing ${isTextOnly ? 'text-only' : 'file-based'} query`);
     
-    // Check if the query requires file analysis but no files are provided
-    const fileAnalysisKeywords = ['analyze', 'file', 'excel', 'sheet', 'data', 'column', 'row', 'cell'];
-    const queryLower = requestData.query.toLowerCase();
-    const mightNeedFiles = fileAnalysisKeywords.some(keyword => queryLower.includes(keyword));
-    
-    if (isTextOnlyQuery && mightNeedFiles) {
-      // Add a warning to the metadata but still process the query
-      const warningMessage = 'Your query seems to be asking about file analysis, but no files were provided. ' +
-                           'If you want to analyze specific Excel files, please upload them first.';
-      
-      await updateMessageStatus(requestData.messageId, 'processing', '', {
-        stage: 'validation',
-        warning: warningMessage,
-        requires_files: true
-      });
-    }
-    
-    // Prepare queue payload with enhanced metadata
-    const queuePayload = {
-      messageId: requestData.messageId,
+    // Process with Claude
+    const result = await processWithClaude({
       query: requestData.query,
-      userId: requestData.userId,
+      fileContents: [], // Empty array for text-only queries
+      messageId: requestData.messageId,
       sessionId: requestData.sessionId,
-      fileIds: requestData.fileIds || [],
-      isTextOnly: isTextOnlyQuery,
-      timestamp: Date.now(),
-      metadata: {
-        query_type: isTextOnlyQuery ? 'text_only' : 'file_based',
-        might_need_files: mightNeedFiles,
-        original_query: requestData.query
-      }
-    };
-    
-    // Connect to Redis using REST API (for edge function compatibility)
-    const redisUrl = `${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${encodeURIComponent(JSON.stringify(queuePayload))}`;
-    
-    const redisResponse = await fetch(redisUrl, {
-      headers: {
-        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
-      }
+      userId: requestData.userId,
+      isTextOnly: true
     });
     
-    if (!redisResponse.ok) {
-      throw new ExcelAssistantError(
-        `Failed to add job to queue: ${await redisResponse.text()}`,
-        500,
-        'queue',
-        true
-      );
-    }
-    
-    // Update message status to queued with enhanced metadata
-    await updateMessageStatus(requestData.messageId, 'processing', '', {
-      stage: 'queued',
-      queued_at: Date.now(),
-      is_text_only: isTextOnlyQuery,
-      might_need_files: mightNeedFiles,
-      query_analysis: {
-        type: isTextOnlyQuery ? 'text_only' : 'file_based',
-        potential_file_requirement: mightNeedFiles
-      }
-    });
-    
+    // Return response in the format expected by the worker
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        messageId: requestData.messageId,
-        status: 'queued',
-        warnings: isTextOnlyQuery && mightNeedFiles ? ['Query might require file upload'] : undefined
+        content: result.content,
+        metadata: {
+          modelUsed: result.modelUsed,
+          usage: result.usage,
+          isTextOnly: true,
+          processingTime: Date.now()
+        }
       }),
       { 
         status: 200, 
@@ -627,9 +578,11 @@ async function processRequest(req: Request): Promise<Response> {
     
     return new Response(
       JSON.stringify({ 
-        error: errorMessage, 
-        stage: errorStage,
-        timestamp: new Date().toISOString()
+        error: errorMessage,
+        metadata: {
+          stage: errorStage,
+          timestamp: new Date().toISOString()
+        }
       }),
       { 
         status: statusCode, 
@@ -693,8 +646,9 @@ async function updateMessageStatus(
   metadata: Record<string, any> = {}
 ) {
   try {
-    // Only allow status updates from Excel Assistant for certain stages
+    // Allow all valid message statuses
     const allowedStages = [
+      MessageStatus.PROCESSING,
       MessageStatus.ANALYZING,
       MessageStatus.COMPLETED,
       MessageStatus.FAILED
