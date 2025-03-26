@@ -42,6 +42,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [showCommands, setShowCommands] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [localFiles, setLocalFiles] = useState<File[]>([]);
@@ -170,6 +171,7 @@ export function ChatInput({
   // Handle command selection
   const handleCommandSelect = (command: string) => {
     setMessage(command + " ");
+    setSelectedCommand(command);
     setShowCommands(false);
     if (textareaRef.current) {
       textareaRef.current.focus();
@@ -190,6 +192,7 @@ export function ChatInput({
     );
     
     setMessage("");
+    setSelectedCommand(null);
     setLocalFiles([]);
     setFileRoles({});
     setFileTags({});
@@ -204,6 +207,9 @@ export function ChatInput({
       setShowCommands(true);
     } else if (e.key === "Escape") {
       setShowCommands(false);
+      setSelectedCommand(null);
+    } else if (e.key === "Backspace" && selectedCommand && message.trim() === selectedCommand) {
+      setSelectedCommand(null);
     }
   };
 
@@ -283,6 +289,21 @@ export function ChatInput({
     }
   };
 
+  // Function to render message with highlighted command
+  const renderMessageWithHighlight = () => {
+    if (!selectedCommand) return message;
+    
+    const parts = message.split(selectedCommand);
+    if (parts.length < 2) return message;
+    
+    return (
+      <>
+        <span className="text-green-500 font-medium">{selectedCommand}</span>
+        {parts[1]}
+      </>
+    );
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex flex-col gap-2 py-3 px-0 my-0 mx-0">
@@ -336,16 +357,27 @@ export function ChatInput({
           />
 
           <div className="relative flex-1">
-            <textarea
-              ref={textareaRef}
-              className="w-full min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
-              placeholder={isAnalyzing ? `Assistant is ${getProcessingDescription()}` : "Ask me anything about your Excel data..."}
-              rows={1}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isAnalyzing || isUploading}
-            />
+            <div
+              className="w-full min-w-0 bg-transparent text-sm placeholder:text-gray-400"
+              style={{ minHeight: '24px' }}
+            >
+              {selectedCommand ? (
+                <div className="whitespace-pre-wrap break-words">
+                  {renderMessageWithHighlight()}
+                </div>
+              ) : (
+                <textarea
+                  ref={textareaRef}
+                  className="w-full min-w-0 bg-transparent border-none focus:outline-none text-sm placeholder:text-gray-400 resize-none"
+                  placeholder={isAnalyzing ? `Assistant is ${getProcessingDescription()}` : "Ask me anything about your Excel data..."}
+                  rows={1}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isAnalyzing || isUploading}
+                />
+              )}
+            </div>
             
             {/* Command suggestions dropdown */}
             {showCommands && (
