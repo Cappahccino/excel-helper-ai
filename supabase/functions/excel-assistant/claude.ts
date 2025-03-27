@@ -1,4 +1,3 @@
-
 // Claude API Integration for Excel Assistant
 import { CLAUDE_MODEL, ASSISTANT_INSTRUCTIONS, MAX_RETRIES, RETRY_DELAY } from "./config.ts";
 import { supabaseAdmin } from "./database.ts";
@@ -226,7 +225,6 @@ This query is part of chat session: ${sessionId}
             ],
             metadata: {
               user_id: userId,
-              session_id: sessionId,
               message_id: messageId,
               is_text_only: isTextOnly ? "true" : "false"
             }
