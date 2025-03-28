@@ -1,50 +1,79 @@
-const Redis = require('ioredis');
-const { Queue } = require('bullmq');
+const fetch = require('node-fetch');
 require('dotenv').config();
 
-async function checkRedisConnection() {
-  console.log('Checking Redis connection...');
+// Helper function to make Upstash Redis REST API calls
+async function upstashRedis(command, ...args) {
+  console.log(`Executing Redis command: ${command} with args:`, args);
   
   try {
-    const redis = new Redis(process.env.REDIS_URL);
+    const url = `${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`;
+    console.log(`Redis API request URL: ${url}`);
     
-    redis.on('connect', () => {
-      console.log('Successfully connected to Redis');
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
+      }
     });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Upstash Redis API error (${response.status}):`, error);
+      throw new Error(`Upstash Redis API error: ${error}`);
+    }
+
+    const result = await response.json();
+    console.log(`Redis command result:`, result);
+    return result.result;
+  } catch (error) {
+    console.error(`Redis command error (${command}):`, error);
+    throw error;
+  }
+}
+
+async function checkRedisConnection() {
+  console.log('Checking Redis connection and queue status...');
+  
+  try {
+    // Test connection with PING
+    console.log('\nTesting connection...');
+    const pingResult = await upstashRedis('ping');
+    console.log('Redis PING result:', pingResult);
+
+    // Get queue length
+    console.log('\nChecking queue length...');
+    const queueLength = await upstashRedis('llen', 'message-processing');
+    console.log('Messages in queue:', queueLength);
+
+    // Get queue contents without removing them
+    console.log('\nChecking queue contents...');
+    const queueContents = await upstashRedis('lrange', 'message-processing', '0', '9');
     
-    redis.on('error', (err) => {
-      console.error('Redis connection error:', err);
-    });
-    
-    // Test Redis connection
-    await redis.ping();
-    console.log('Redis PING successful');
-    
-    // Initialize queue
-    const messageQueue = new Queue('message-processing', { connection: redis });
-    
-    // Get queue metrics
-    const jobCounts = await messageQueue.getJobCounts();
-    console.log('Queue job counts:', jobCounts);
-    
-    // Get active jobs
-    const activeJobs = await messageQueue.getActive();
-    console.log('Active jobs:', activeJobs);
-    
-    // Get waiting jobs
-    const waitingJobs = await messageQueue.getWaiting();
-    console.log('Waiting jobs:', waitingJobs);
-    
-    // Get failed jobs
-    const failedJobs = await messageQueue.getFailed();
-    console.log('Failed jobs:', failedJobs);
-    
-    // Clean up
-    await redis.quit();
-    console.log('Redis connection closed');
+    if (queueContents && queueContents.length > 0) {
+      console.log('\nFirst 10 messages in queue:');
+      queueContents.forEach((item, index) => {
+        try {
+          const decodedData = decodeURIComponent(item);
+          const message = JSON.parse(decodedData);
+          console.log(`\nMessage ${index + 1}:`, {
+            id: message.id,
+            messageId: message.data?.messageId,
+            timestamp: new Date(message.timestamp).toISOString(),
+            attempts: message.attempts,
+            isTextOnly: message.data?.isTextOnly
+          });
+        } catch (error) {
+          console.log(`Message ${index + 1} (parse error):`, item);
+        }
+      });
+    } else {
+      console.log('Queue is empty');
+    }
+
+    console.log('\nRedis check completed successfully');
   } catch (error) {
     console.error('Error checking Redis:', error);
   }
 }
 
+// Run the check
 checkRedisConnection().catch(console.error); 

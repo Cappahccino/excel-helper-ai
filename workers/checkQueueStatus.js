@@ -1,73 +1,81 @@
-require('dotenv').config();
 const fetch = require('node-fetch');
+require('dotenv').config();
+
+// Helper function to make Upstash Redis REST API calls
+async function upstashRedis(command, ...args) {
+  console.log(`Executing Redis command: ${command} with args:`, args);
+  
+  try {
+    const url = `${process.env.UPSTASH_REDIS_REST_URL}/${command}/${args.join('/')}`;
+    console.log(`Redis API request URL: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error(`Upstash Redis API error (${response.status}):`, error);
+      throw new Error(`Upstash Redis API error: ${error}`);
+    }
+
+    const result = await response.json();
+    console.log(`Redis command result:`, result);
+    return result.result;
+  } catch (error) {
+    console.error(`Redis command error (${command}):`, error);
+    throw error;
+  }
+}
 
 async function checkQueueStatus() {
-  const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL;
-  const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-  if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
-    console.error('Missing Upstash configuration');
-    return;
-  }
-
+  console.log('Checking queue status...');
+  
   try {
-    // Check queue length
-    const llenResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/llen/message-processing`, {
-      headers: {
-        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
-      }
-    });
-    const llenData = await llenResponse.json();
-    console.log('Current queue length:', llenData.result);
+    // Get queue length
+    const queueLength = await upstashRedis('llen', 'message-processing');
+    console.log('\nQueue Status:');
+    console.log('Messages in queue:', queueLength);
 
-    // Get all items in queue
-    const lrangeResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lrange/message-processing/0/-1`, {
-      headers: {
-        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
+    if (queueLength > 0) {
+      // Get the first message without removing it
+      const nextMessage = await upstashRedis('lindex', 'message-processing', '0');
+      
+      try {
+        const decodedData = decodeURIComponent(nextMessage);
+        const message = JSON.parse(decodedData);
+        console.log('\nNext message in queue:', {
+          id: message.id,
+          messageId: message.data?.messageId,
+          timestamp: new Date(message.timestamp).toISOString(),
+          attempts: message.attempts,
+          isTextOnly: message.data?.isTextOnly
+        });
+      } catch (error) {
+        console.log('Error parsing next message:', nextMessage);
       }
-    });
-    const lrangeData = await lrangeResponse.json();
-    
-    console.log('\nQueue contents:');
-    if (lrangeData.result && lrangeData.result.length > 0) {
-      lrangeData.result.forEach((item, index) => {
+
+      // Get queue distribution (last 10 messages)
+      const recentMessages = await upstashRedis('lrange', 'message-processing', '0', '9');
+      
+      const messageTypes = recentMessages.reduce((acc, item) => {
         try {
-          const job = JSON.parse(item);
-          console.log(`\nItem ${index + 1}:`);
-          console.log('Message ID:', job.id);
-          console.log('Timestamp:', new Date(job.timestamp).toISOString());
-          console.log('Attempts:', job.attempts);
-          console.log('Max Attempts:', job.maxAttempts);
-          console.log('User ID:', job.data.userId);
-          console.log('Session ID:', job.data.sessionId);
-          console.log('File IDs:', job.data.fileIds);
-        } catch (parseError) {
-          console.error(`Failed to parse item ${index + 1}:`, item);
+          const decodedData = decodeURIComponent(item);
+          const message = JSON.parse(decodedData);
+          const type = message.data?.isTextOnly ? 'text_only' : 'with_files';
+          acc[type] = (acc[type] || 0) + 1;
+        } catch (error) {
+          acc.invalid = (acc.invalid || 0) + 1;
         }
-      });
-    } else {
-      console.log('Queue is empty');
+        return acc;
+      }, {});
+
+      console.log('\nMessage type distribution (last 10):', messageTypes);
     }
 
-    // Check worker heartbeat
-    const heartbeatResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/get/message_worker_heartbeat`, {
-      headers: {
-        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`
-      }
-    });
-    const heartbeatData = await heartbeatResponse.json();
-    
-    if (heartbeatData.result) {
-      const lastHeartbeat = parseInt(heartbeatData.result);
-      const timeSinceHeartbeat = Date.now() - lastHeartbeat;
-      console.log('\nWorker Status:');
-      console.log('Last heartbeat:', new Date(lastHeartbeat).toISOString());
-      console.log('Time since last heartbeat:', Math.round(timeSinceHeartbeat / 1000), 'seconds');
-      console.log('Worker status:', timeSinceHeartbeat > 60000 ? 'POTENTIALLY DEAD' : 'ALIVE');
-    } else {
-      console.log('\nNo worker heartbeat found');
-    }
-
+    console.log('\nQueue check completed successfully');
   } catch (error) {
     console.error('Error checking queue status:', error);
   }
