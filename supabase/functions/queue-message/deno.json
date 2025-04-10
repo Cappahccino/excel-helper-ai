@@ -10,4 +10,4 @@
     "strict": true,
     "types": ["@supabase/supabase-js"]
   }
-} 
+}
