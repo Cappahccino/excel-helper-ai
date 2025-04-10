@@ -1,3 +1,4 @@
+
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 require('dotenv').config();
@@ -93,7 +94,8 @@ async function processMessages() {
   console.log('Checking for messages in queue...');
   
   try {
-    // Get next message from queue using RPOP
+    // Get next message from queue using RPOP to complement the LPUSH operation
+    // This ensures FIFO (First In, First Out) queue behavior
     console.log('Attempting to fetch message from Redis queue...');
     const jobData = await upstashRedis('rpop', 'message-processing');
     

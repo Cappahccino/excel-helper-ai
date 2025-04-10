@@ -79,7 +79,9 @@ serve(async (req) => {
     }
 
     try {
-      // Add job to queue using Redis REST API
+      // Add job to queue using Redis REST API with LPUSH
+      // This correctly adds the job to the left side of the list
+      // The worker will use RPOP to get items from the right side, creating a FIFO queue
       const queueResponse = await fetch(`${UPSTASH_REDIS_REST_URL}/lpush/message-processing/${encodeURIComponent(JSON.stringify(job))}`, {
         headers: {
           Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`

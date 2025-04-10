@@ -54,7 +54,7 @@ async function clearStuckMessages() {
       console.log(`- Message ID: ${msg.id}, Status: ${msg.status}, Role: ${msg.role}, Last Updated: ${msg.updated_at}`);
     });
     
-    // Confirm with user
+    // Update stuck messages
     const messageIds = stuckMessages.map(msg => msg.id);
     const { count, error: updateError } = await supabase
       .from('chat_messages')
@@ -66,7 +66,8 @@ async function clearStuckMessages() {
             error: 'Message processing timed out',
             cleared_at: now.toISOString(),
             original_status: 'processing or in_progress',
-            reason: 'stuck_message_recovery'
+            reason: 'stuck_message_recovery',
+            queue_error: 'Message was not properly processed by worker - check worker logs'
           }
         }
       })

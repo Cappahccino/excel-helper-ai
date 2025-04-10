@@ -101,7 +101,7 @@ async function recoverStuckMessages() {
           isRecovery: true
         };
         
-        // Add to queue
+        // Add to queue using lpush to maintain FIFO order with messageWorker.js RPOP
         await upstashRedis('lpush', 'message-processing', JSON.stringify(job));
         
         // Update message status
