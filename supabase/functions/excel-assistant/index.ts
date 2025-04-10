@@ -118,8 +118,6 @@ class ExcelAssistantError extends Error {
   }
 }
 
-// (Keeping all the existing functions from the previous index.ts file...)
-
 /**
  * Process Excel files with improved file metadata extraction
  */
@@ -162,8 +160,6 @@ async function processExcelFiles(fileIds: string[]): Promise<ExcelFile[]> {
     );
   }
 }
-
-// (Keeping all the existing utility functions...)
 
 /**
  * Process user query with Claude API - enhanced for Claude 3.5 Sonnet
@@ -499,8 +495,6 @@ Be courteous and helpful, treating this as an opportunity to educate on Excel or
     );
   }
 }
-
-// (Keeping all existing polling and message handling functions...)
 
 /**
  * Process request with improved validation and error handling

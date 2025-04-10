@@ -183,7 +183,6 @@ export async function createUserMessage(
   }
 }
 
-// Helper function for updating message status
 async function updateMessageStatus(
   messageId: string, 
   status: MessageStatus, 

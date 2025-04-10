@@ -222,12 +222,7 @@ This query is part of chat session: ${sessionId}
               : ASSISTANT_INSTRUCTIONS,
             messages: [
               { role: 'user', content: userPrompt }
-            ],
-            metadata: {
-              user_id: userId,
-              message_id: messageId,
-              is_text_only: isTextOnly ? "true" : "false"
-            }
+            ]
           })
         });
       
