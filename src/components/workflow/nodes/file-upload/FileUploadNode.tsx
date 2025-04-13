@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { FileText, RefreshCw } from 'lucide-react';
@@ -64,58 +63,66 @@ const FileUploadNode: React.FC<FileUploadNodeProps> = ({ id, selected, data }) =
   useEffect(() => {
     async function propagateSchemaToConnectedNodes() {
       if (!nodeWorkflowId || !selectedFileId) {
-        return;
-      }
-
-      // Check if this node is not ready for propagation yet
-      if (processingState.status !== FileProcessingState.Completed) {
-        console.log(`FileUploadNode ${id}: Not ready for schema propagation yet - file processing status: ${processingState.status}`);
-        return;
-      }
-
-      if (!selectedSheet && availableSheets.length > 0) {
-        console.log(`FileUploadNode ${id}: Sheet not selected yet, but sheets are available`);
+        console.log(`FileUploadNode ${id}: Cannot propagate schema - missing workflowId or fileId`);
         return;
       }
 
       try {
-        console.log(`FileUploadNode ${id}: Checking readiness for schema propagation`);
-        
-        // Get the edges to find connected nodes
+        // Only propagate if processing is complete and we have a valid sheet
+        if (processingState.status !== 'completed' || !selectedSheet) {
+          console.log(`FileUploadNode ${id}: Not ready to propagate schema - status: ${processingState.status}, sheet: ${selectedSheet}`);
+          return;
+        }
+
+        // Get connected nodes
         const edges = await getEdges(nodeWorkflowId);
         const connectedNodes = edges
           .filter(edge => edge.source === id)
           .map(edge => edge.target);
 
         if (connectedNodes.length === 0) {
-          console.log(`FileUploadNode ${id}: No connected nodes found to propagate schema to`);
+          console.log(`FileUploadNode ${id}: No connected nodes to propagate schema to`);
           return;
         }
 
-        console.log(`FileUploadNode ${id}: Found ${connectedNodes.length} connected nodes to propagate schema to`);
-        
-        // Force check readiness
+        // Check if node is ready for propagation
         const isReady = await isNodeReadyForPropagation(id);
-        
         if (!isReady) {
-          console.log(`FileUploadNode ${id}: Not ready for schema propagation yet per readiness check`);
+          console.log(`FileUploadNode ${id}: Not ready for schema propagation`);
           return;
         }
-        
-        console.log(`FileUploadNode ${id}: Ready to propagate schema with sheet ${selectedSheet || 'default'} to connected nodes`);
-        
+
+        // Add a small delay to ensure all metadata is saved
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         // Try to propagate schema to all connected nodes
         for (const targetNodeId of connectedNodes) {
-          console.log(`FileUploadNode ${id}: Directly propagating schema to node ${targetNodeId} with sheet ${selectedSheet || 'Sheet1'}`);
+          console.log(`FileUploadNode ${id}: Propagating schema to node ${targetNodeId} with sheet ${selectedSheet}`);
           
-          // Use direct propagation first for immediate update
-          const success = await propagateFileSchema(id, targetNodeId, selectedSheet);
-          
-          if (success) {
-            console.log(`FileUploadNode ${id}: Successfully propagated schema to ${targetNodeId}`);
-          } else {
-            console.log(`FileUploadNode ${id}: Failed direct propagation, queueing schema propagation to node ${targetNodeId}`);
-            // Fall back to queued propagation if direct fails
+          try {
+            // First synchronize sheet selection
+            const syncSuccess = await workflow.syncSheetSelection?.(id, targetNodeId);
+            if (!syncSuccess) {
+              console.warn(`FileUploadNode ${id}: Failed to sync sheet selection with ${targetNodeId}`);
+            }
+
+            // Use direct propagation with retries
+            let propagationSuccess = false;
+            for (let attempt = 0; attempt < 3 && !propagationSuccess; attempt++) {
+              if (attempt > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+              propagationSuccess = await propagateFileSchema(id, targetNodeId, selectedSheet);
+            }
+
+            if (propagationSuccess) {
+              console.log(`FileUploadNode ${id}: Successfully propagated schema to ${targetNodeId}`);
+            } else {
+              console.log(`FileUploadNode ${id}: Failed direct propagation after retries, queueing schema propagation to node ${targetNodeId}`);
+              queueSchemaPropagation(id, targetNodeId, selectedSheet);
+            }
+          } catch (error) {
+            console.error(`FileUploadNode ${id}: Error propagating schema to ${targetNodeId}:`, error);
             queueSchemaPropagation(id, targetNodeId, selectedSheet);
           }
         }

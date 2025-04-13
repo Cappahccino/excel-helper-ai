@@ -1,11 +1,10 @@
-
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useWorkflow } from '@/components/workflow/context/WorkflowContext';
+import { useWorkflow } from '@/hooks/useWorkflow';
 import { FilterIcon, AlertTriangle, Loader2, RefreshCw, Info, Check, X, FileText, Search } from 'lucide-react';
 import { SchemaColumn } from '@/hooks/useNodeManagement';
 import { Badge } from '@/components/ui/badge';
@@ -14,11 +13,13 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import WorkflowLogPanel from '@/components/workflow/WorkflowLogPanel';
-import { useSchemaConnection, ConnectionState } from '@/hooks/useSchemaConnection';
+import { useSchemaConnection } from '@/hooks/useSchemaConnection';
 import { standardizeColumnType, standardizeSchemaColumns } from '@/utils/schemaStandardization';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { validateConfiguration as libValidateConfiguration, updateOperatorsForColumn as libUpdateOperatorsForColumn } from '@/lib/filter-utils';
+import { ConnectionState } from '@/types/workflow';
 
 const OPERATORS = {
   string: [
@@ -66,7 +67,8 @@ interface FilteringNodeProps {
   selected?: boolean;
 }
 
-const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => {
+const FilteringNode = ({ id, data }: NodeProps) => {
+  const { workflow } = useWorkflow();
   const [operators, setOperators] = useState<{ value: string; label: string }[]>(OPERATORS.default);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState<boolean>(false);
@@ -76,26 +78,35 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [sourceSheetName, setSourceSheetName] = useState<string | undefined>(undefined);
   const [executionId, setExecutionId] = useState<string | null>(null);
-  
-  const workflow = useWorkflow();
-  const workflowId = data.workflowId || workflow.workflowId;
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
 
+  // Track schema subscription status
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  
+  // Use a ref to track the latest schema
+  const latestSchemaRef = useRef<any>(null);
+  
   const {
     connectionState,
     schema,
-    isLoading,
-    error,
+    isLoading: schemaLoading,
+    error: schemaError,
     lastRefreshTime,
     refreshSchema,
     hasSourceNode,
     sheetName
-  } = useSchemaConnection(workflowId, id, sourceNodeId, {
-    debug: debug,
-    autoConnect: true,
-    showNotifications: true,
-    maxRetries: 3,
-    retryDelay: 1000,
-    sheetName: sourceSheetName
+  } = useSchemaConnection({
+    nodeId: id,
+    onSchemaChange: (newSchema) => {
+      console.log(`FilterNode ${id}: Received schema update:`, newSchema);
+      latestSchemaRef.current = newSchema;
+      
+      // Reset retry count on successful schema update
+      if (newSchema) {
+        setRetryCount(0);
+      }
+    }
   });
 
   // Set execution ID whenever workflow execution changes
@@ -106,18 +117,18 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   }, [workflow.executionId]);
 
   const inspectSchemas = useCallback(async () => {
-    if (!workflowId || !id) {
+    if (!workflow.workflowId || !id) {
       console.log("Cannot inspect schemas: missing workflowId or nodeId");
       return;
     }
     
     try {
-      console.log(`Inspecting schemas for workflow ${workflowId}, node ${id}, sheetName: ${sourceSheetName || sheetName || 'default'}`);
+      console.log(`Inspecting schemas for workflow ${workflow.workflowId}, node ${id}, sheetName: ${sourceSheetName || sheetName || 'default'}`);
       toast.info('Inspecting schemas...');
       
       const { data, error } = await supabase.functions.invoke('inspectSchemas', {
         body: { 
-          workflowId, 
+          workflowId: workflow.workflowId, 
           nodeId: id,
           sheetName: sourceSheetName || sheetName
         }
@@ -156,14 +167,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.error('Error in inspectSchemas:', error);
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [workflowId, id, sourceSheetName, sheetName]);
+  }, [workflow.workflowId, id, sourceSheetName, sheetName]);
 
   // Helper to get source node metadata
   const getSourceNodeMetadata = useCallback(async (sourceId: string) => {
-    if (!workflowId || !sourceId) return null;
+    if (!workflow.workflowId || !sourceId) return null;
     
     try {
-      const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+      const dbWorkflowId = workflow.workflowId.startsWith('temp-') ? workflow.workflowId.substring(5) : workflow.workflowId;
       
       const { data: nodeData, error } = await supabase
         .from('workflow_files')
@@ -182,14 +193,14 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.error('Error in getSourceNodeMetadata:', err);
       return null;
     }
-  }, [workflowId]);
+  }, [workflow.workflowId]);
 
   const findSourceNode = useCallback(async () => {
-    if (!workflowId || !id) return null;
+    if (!workflow.workflowId || !id) return null;
     
     try {
       console.log(`FilteringNode ${id}: Finding source node`);
-      const edges = await workflow.getEdges(workflowId);
+      const edges = await workflow.getEdges(workflow.workflowId);
       const sources = edges
         .filter(edge => edge.target === id)
         .map(edge => edge.source);
@@ -215,7 +226,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       }
       
       console.log(`FilteringNode ${id}: No source found in workflow context, checking database`);
-      const dbWorkflowId = workflowId.startsWith('temp-') ? workflowId.substring(5) : workflowId;
+      const dbWorkflowId = workflow.workflowId.startsWith('temp-') ? workflow.workflowId.substring(5) : workflow.workflowId;
       
       const { data: edgesData, error } = await supabase
         .from('workflow_edges')
@@ -256,12 +267,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       console.error('Error finding source node:', error);
       return null;
     }
-  }, [workflow, id, workflowId, getSourceNodeMetadata]);
+  }, [workflow, id, workflow.workflowId, getSourceNodeMetadata]);
 
   useEffect(() => {
     let isActive = true;
     
-    if (workflowId && id && !isInitialized) {
+    if (workflow.workflowId && id && !isInitialized) {
       console.log(`FilteringNode ${id}: Initializing component...`);
       findSourceNode().then((source) => {
         if (isActive) {
@@ -278,10 +289,10 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return () => {
       isActive = false;
     };
-  }, [workflowId, id, findSourceNode, isInitialized]);
+  }, [workflow.workflowId, id, findSourceNode, isInitialized]);
   
   useEffect(() => {
-    if (!workflowId || !id) return;
+    if (!workflow.workflowId || !id) return;
     
     const channel = supabase
       .channel(`edge-updates-${id}`)
@@ -303,7 +314,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workflowId, id, findSourceNode]);
+  }, [workflow.workflowId, id, findSourceNode]);
 
   const validateConfiguration = useCallback((config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -448,7 +459,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       case ConnectionState.ERROR:
         return {
           icon: <AlertTriangle className="w-4 h-4 text-amber-500" />,
-          tooltip: error || "Error connecting to source schema"
+          tooltip: schemaError || "Error connecting to source schema"
         };
       case ConnectionState.DISCONNECTED:
       default:
@@ -476,7 +487,7 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
 
   const connectionInfo = useMemo(() => {
     return getConnectionStatusInfo();
-  }, [connectionState, error, hasSourceNode]);
+  }, [connectionState, schemaError, hasSourceNode]);
 
   useEffect(() => {
     if (debug && standardizedSchema.length > 0) {
@@ -496,8 +507,8 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
   };
 
   const isInitialLoading = useMemo(() => {
-    return (isLoading && !schema.length) || (!isInitialized && hasSourceNode);
-  }, [isLoading, schema.length, isInitialized, hasSourceNode]);
+    return (schemaLoading && !schema.length) || (!isInitialized && hasSourceNode);
+  }, [schemaLoading, schema.length, isInitialized, hasSourceNode]);
 
   // Debug button handler to show current state
   const handleShowDebugInfo = () => {
@@ -509,13 +520,96 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
       connectionState,
       schemaLength: schema.length,
       hasSourceNode,
-      isLoading,
-      workflowId
+      isLoading: schemaLoading,
+      workflowId: workflow.workflowId
     };
     
     console.log('FilteringNode debug info:', debugInfo);
     toast.info('Debug info printed to console');
   };
+
+  // Initialize node and set up connections
+  useEffect(() => {
+    async function initializeNode() {
+      try {
+        if (!workflow || isInitialized) return;
+
+        console.log(`FilterNode ${id}: Initializing node`);
+        
+        // Get incoming edges to find source node
+        const edges = await workflow.getEdges();
+        const incomingEdge = edges.find(edge => edge.target === id);
+        
+        if (incomingEdge) {
+          console.log(`FilterNode ${id}: Found source node ${incomingEdge.source}`);
+          setSourceNodeId(incomingEdge.source);
+          
+          // Request immediate schema refresh
+          refreshSchema();
+        }
+        
+        setIsInitialized(true);
+      } catch (error) {
+        console.error(`FilterNode ${id}: Error initializing node:`, error);
+      }
+    }
+
+    initializeNode();
+  }, [workflow, id, isInitialized]);
+
+  // Handle schema subscription and retries
+  useEffect(() => {
+    if (!sourceNodeId || isSubscribed) return;
+
+    async function setupSchemaSubscription() {
+      try {
+        console.log(`FilterNode ${id}: Setting up schema subscription to source node ${sourceNodeId}`);
+        
+        // Check if source node is ready
+        const isSourceReady = await workflow?.isNodeReady(sourceNodeId);
+        if (!isSourceReady) {
+          console.log(`FilterNode ${id}: Source node ${sourceNodeId} not ready yet`);
+          
+          // Retry with exponential backoff if within retry limit
+          if (retryCount < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+            setTimeout(() => {
+              setRetryCount(prev => prev + 1);
+              refreshSchema();
+            }, delay);
+          }
+          return;
+        }
+
+        // Subscribe to schema changes
+        const success = await workflow?.subscribeToNodeSchema(sourceNodeId, id);
+        if (success) {
+          console.log(`FilterNode ${id}: Successfully subscribed to schema changes`);
+          setIsSubscribed(true);
+          refreshSchema();
+        }
+      } catch (error) {
+        console.error(`FilterNode ${id}: Error setting up schema subscription:`, error);
+      }
+    }
+
+    setupSchemaSubscription();
+  }, [sourceNodeId, isSubscribed, retryCount, id]);
+
+  // Handle schema updates and validation
+  useEffect(() => {
+    if (!schema || !latestSchemaRef.current) return;
+
+    console.log(`FilterNode ${id}: Processing schema update`);
+    
+    try {
+      // Validate and update filter configuration based on new schema
+      validateConfiguration(data.config, schema);
+      updateOperatorsForColumn(data.config.column, schema);
+    } catch (error) {
+      console.error(`FilterNode ${id}: Error processing schema update:`, error);
+    }
+  }, [schema]);
 
   return (
     <Card className={`min-w-[280px] ${selected ? 'ring-2 ring-blue-500' : ''}`}>
@@ -648,12 +742,12 @@ const FilteringNode: React.FC<FilteringNodeProps> = ({ id, data, selected }) => 
           </div>
         )}
         
-        {error && sourceNodeId && (
+        {schemaError && sourceNodeId && (
           <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
             <div className="flex">
               <AlertTriangle className="h-4 w-4 text-amber-500 mr-1 flex-shrink-0" />
               <div>
-                <p>{error}</p>
+                <p>{schemaError}</p>
                 <Button 
                   variant="link" 
                   size="sm" 
