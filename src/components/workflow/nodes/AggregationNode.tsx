@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -16,7 +15,7 @@ interface AggregationNodeProps {
   data: {
     label: string;
     config: {
-      function?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+      function?: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'median' | 'mode' | 'stddev' | 'variance' | 'first' | 'last';
       column?: string;
       groupBy?: string;
     };
@@ -31,7 +30,13 @@ const AGGREGATION_FUNCTIONS = [
   { value: 'avg', label: 'Average' },
   { value: 'min', label: 'Minimum' },
   { value: 'max', label: 'Maximum' },
-  { value: 'count', label: 'Count' }
+  { value: 'count', label: 'Count' },
+  { value: 'median', label: 'Median' },
+  { value: 'mode', label: 'Mode' },
+  { value: 'stddev', label: 'Standard Deviation' },
+  { value: 'variance', label: 'Variance' },
+  { value: 'first', label: 'First Value' },
+  { value: 'last', label: 'Last Value' }
 ];
 
 const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected }) => {
@@ -39,6 +44,8 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
   const [isLoading, setIsLoading] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   
   const workflow = useWorkflow();
   const { 
@@ -87,11 +94,61 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
     }
   }, [id, workflow, data.config, getNodeSchema]);
 
+  const loadPreview = useCallback(async () => {
+    if (!workflow.workflowId || !id || !data.config.function || !data.config.column) {
+      setPreviewData(null);
+      return;
+    }
+
+    setIsPreviewLoading(true);
+    try {
+      const edges = await workflow.getEdges(workflow.workflowId);
+      const inputNodeIds = edges
+        .filter(edge => edge.target === id)
+        .map(edge => edge.source);
+      
+      if (inputNodeIds.length === 0) {
+        setPreviewData(null);
+        return;
+      }
+
+      const sourceNodeId = inputNodeIds[0];
+      const response = await fetch('/api/preview-node', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: workflow.workflowId,
+          nodeId: id,
+          sourceNodeId,
+          config: data.config
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load preview');
+      }
+
+      const previewResult = await response.json();
+      setPreviewData(previewResult.data);
+    } catch (error) {
+      console.error('Error loading preview:', error);
+      setPreviewData(null);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }, [workflow.workflowId, id, data.config]);
+
   useEffect(() => {
     if (selected) {
       loadSchema();
     }
   }, [loadSchema, selected]);
+
+  useEffect(() => {
+    if (selected && data.config.function && data.config.column) {
+      loadPreview();
+    }
+  }, [loadPreview, selected, data.config]);
 
   const validateConfiguration = (config: any, schema: SchemaColumn[]) => {
     if (!config || !schema || schema.length === 0) {
@@ -121,6 +178,52 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
       
       data.onChange(id, newConfig);
     }
+  };
+
+  const renderPreview = () => {
+    if (!data.config.function || !data.config.column) {
+      return null;
+    }
+
+    return (
+      <div className="mt-3 border-t pt-3">
+        <div className="text-xs font-medium text-gray-500 mb-2">Preview</div>
+        {isPreviewLoading ? (
+          <div className="flex items-center justify-center py-2">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+          </div>
+        ) : previewData ? (
+          <div className="text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              {data.config.groupBy ? (
+                previewData.slice(0, 3).map((row: any, index: number) => (
+                  <React.Fragment key={index}>
+                    <div className="text-gray-500">{row[data.config.groupBy!]}:</div>
+                    <div className="font-medium">{row[data.config.function!].toFixed(2)}</div>
+                  </React.Fragment>
+                ))
+              ) : (
+                <>
+                  <div className="text-gray-500">Result:</div>
+                  <div className="font-medium">
+                    {typeof previewData === 'number' ? previewData.toFixed(2) : previewData}
+                  </div>
+                </>
+              )}
+            </div>
+            {data.config.groupBy && previewData.length > 3 && (
+              <div className="mt-1 text-gray-400">
+                +{previewData.length - 3} more groups
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-gray-400 py-1">
+            No preview available
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -257,6 +360,8 @@ const AggregationNode: React.FC<AggregationNodeProps> = ({ id, data, selected })
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+
+        {renderPreview()}
 
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />

@@ -196,25 +196,84 @@ serve(async (req) => {
           );
         }
         
+        // Helper functions for statistical calculations
+        const calculateMedian = (numbers: number[]) => {
+          const sorted = numbers.sort((a, b) => a - b);
+          const middle = Math.floor(sorted.length / 2);
+          if (sorted.length % 2 === 0) {
+            return (sorted[middle - 1] + sorted[middle]) / 2;
+          }
+          return sorted[middle];
+        };
+        
+        const calculateMode = (numbers: number[]) => {
+          const counts = new Map();
+          let maxCount = 0;
+          let mode = null;
+          
+          for (const num of numbers) {
+            const count = (counts.get(num) || 0) + 1;
+            counts.set(num, count);
+            if (count > maxCount) {
+              maxCount = count;
+              mode = num;
+            }
+          }
+          
+          return mode;
+        };
+        
+        const calculateStdDev = (numbers: number[]) => {
+          const mean = numbers.reduce((sum, val) => sum + val, 0) / numbers.length;
+          const squareDiffs = numbers.map(value => Math.pow(value - mean, 2));
+          const variance = squareDiffs.reduce((sum, val) => sum + val, 0) / numbers.length;
+          return Math.sqrt(variance);
+        };
+        
+        const calculateVariance = (numbers: number[]) => {
+          const mean = numbers.reduce((sum, val) => sum + val, 0) / numbers.length;
+          const squareDiffs = numbers.map(value => Math.pow(value - mean, 2));
+          return squareDiffs.reduce((sum, val) => sum + val, 0) / numbers.length;
+        };
+        
         // If no groupBy, perform a simple aggregation
         if (!groupByColumn) {
           let result;
+          const numbers = data.map(row => Number(row[column]) || 0);
           
           switch (aggFunction) {
             case 'sum':
-              result = data.reduce((sum, row) => sum + (Number(row[column]) || 0), 0);
+              result = numbers.reduce((sum, val) => sum + val, 0);
               break;
             case 'avg':
-              result = data.reduce((sum, row) => sum + (Number(row[column]) || 0), 0) / (data.length || 1);
+              result = numbers.reduce((sum, val) => sum + val, 0) / (numbers.length || 1);
               break;
             case 'min':
-              result = Math.min(...data.map(row => Number(row[column]) || 0));
+              result = Math.min(...numbers);
               break;
             case 'max':
-              result = Math.max(...data.map(row => Number(row[column]) || 0));
+              result = Math.max(...numbers);
               break;
             case 'count':
-              result = data.length;
+              result = numbers.length;
+              break;
+            case 'median':
+              result = calculateMedian(numbers);
+              break;
+            case 'mode':
+              result = calculateMode(numbers);
+              break;
+            case 'stddev':
+              result = calculateStdDev(numbers);
+              break;
+            case 'variance':
+              result = calculateVariance(numbers);
+              break;
+            case 'first':
+              result = numbers[0];
+              break;
+            case 'last':
+              result = numbers[numbers.length - 1];
               break;
             default:
               result = 0;
@@ -241,22 +300,41 @@ serve(async (req) => {
           // Apply aggregation to each group
           processedData = Object.entries(groups).map(([groupValue, groupRows]) => {
             let result;
+            const numbers = groupRows.map(row => Number(row[column]) || 0);
             
             switch (aggFunction) {
               case 'sum':
-                result = groupRows.reduce((sum, row) => sum + (Number(row[column]) || 0), 0);
+                result = numbers.reduce((sum, val) => sum + val, 0);
                 break;
               case 'avg':
-                result = groupRows.reduce((sum, row) => sum + (Number(row[column]) || 0), 0) / (groupRows.length || 1);
+                result = numbers.reduce((sum, val) => sum + val, 0) / (numbers.length || 1);
                 break;
               case 'min':
-                result = Math.min(...groupRows.map(row => Number(row[column]) || 0));
+                result = Math.min(...numbers);
                 break;
               case 'max':
-                result = Math.max(...groupRows.map(row => Number(row[column]) || 0));
+                result = Math.max(...numbers);
                 break;
               case 'count':
-                result = groupRows.length;
+                result = numbers.length;
+                break;
+              case 'median':
+                result = calculateMedian(numbers);
+                break;
+              case 'mode':
+                result = calculateMode(numbers);
+                break;
+              case 'stddev':
+                result = calculateStdDev(numbers);
+                break;
+              case 'variance':
+                result = calculateVariance(numbers);
+                break;
+              case 'first':
+                result = numbers[0];
+                break;
+              case 'last':
+                result = numbers[numbers.length - 1];
                 break;
               default:
                 result = 0;
